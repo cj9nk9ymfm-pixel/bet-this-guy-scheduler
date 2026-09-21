@@ -3,6 +3,8 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
+    paths:
+      - '.github/workflows/btg-maintenance.yml'
   schedule:
     - cron: '2-57/5 * * * *'
 permissions: {}
@@ -19,38 +21,102 @@ jobs:
       - name: Run publishing, grading and closing-price capture
         shell: python
         run: |
-          import concurrent.futures, json, os, time, urllib.error, urllib.request
+          import concurrent.futures, datetime, json, os, time, urllib.error, urllib.request
+
           token = os.environ.get("BTG_MAINTENANCE_TOKEN", "")
           if len(token) < 32:
               raise SystemExit("BTG_MAINTENANCE_TOKEN must be configured before activation")
+
+          now = datetime.datetime.now(datetime.timezone.utc)
+          weekday, hour = now.weekday(), now.hour
+          active_window = (
+              (weekday == 2 and hour >= 12)
+              or weekday == 3
+              or (weekday == 4 and hour < 8)
+              or (weekday == 5 and hour >= 12)
+              or weekday in (6, 0)
+              or (weekday == 1 and hour < 8)
+          )
+          forced = os.environ.get("GITHUB_EVENT_NAME") in ("workflow_dispatch", "push")
+          quiet_checkpoint = hour % 6 == 0 and now.minute < 10
+
+          jobs = []
+          mode = "active NFL window" if active_window else "quiet period"
+          if forced:
+              mode, jobs = "verification run", ["publish", "grade", "closing"]
+          elif active_window:
+              jobs.append("closing")
+              if (now.minute // 5) % 2 == 0:
+                  jobs.append("grade")
+              if (now.minute // 5) % 3 == 0:
+                  jobs.append("publish")
+          elif quiet_checkpoint:
+              jobs = ["publish", "grade"]
+
+          summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+          def write_summary(lines):
+              if summary_path:
+                  with open(summary_path, "a", encoding="utf-8") as summary:
+                      summary.write("\n".join(lines) + "\n")
+
+          if not jobs:
+              print("quiet period: no provider calls needed")
+              write_summary([
+                  "## Bet This Guy maintenance",
+                  "",
+                  "- Status: **Healthy — quiet-period check skipped**",
+                  "- Provider calls: **0**",
+                  "- Checked: " + now.isoformat(),
+              ])
+              raise SystemExit(0)
+
           class NoRedirect(urllib.request.HTTPRedirectHandler):
               def redirect_request(self, req, fp, code, msg, headers, newurl):
                   return None
           opener = urllib.request.build_opener(NoRedirect)
+
           def run(job):
+              last_error = "unknown error"
               for attempt in range(2):
                   try:
                       request = urllib.request.Request(
                           "https://betthisguy.com/api/maintenance?job=" + job,
                           data=b"", method="POST",
-                          headers={"Authorization": "Bearer " + token,
-                                   "Accept": "application/json",
-                                   "User-Agent": "BetThisGuy-Maintenance/1.0"})
+                          headers={
+                              "Authorization": "Bearer " + token,
+                              "Accept": "application/json",
+                              "User-Agent": "BetThisGuy-Maintenance/1.0",
+                          })
                       with opener.open(request, timeout=90) as response:
                           result = json.load(response)
                       if result.get("success") is not True:
                           raise RuntimeError("Job did not complete")
                       print(job + ": completed")
-                      return
+                      return job, True, "completed"
                   except urllib.error.HTTPError as exc:
-                      print(job + ": HTTP " + str(exc.code))
-                      if attempt == 1:
-                          raise RuntimeError(job + ": failed; inspect site worker logs") from None
-                      time.sleep(10)
+                      last_error = "HTTP " + str(exc.code)
                   except Exception as exc:
-                      print(job + ": " + type(exc).__name__)
-                      if attempt == 1:
-                          raise RuntimeError(job + ": failed; inspect site worker logs") from None
+                      last_error = type(exc).__name__
+                  print(job + ": " + last_error)
+                  if attempt == 0:
                       time.sleep(10)
+              return job, False, last_error
+
           with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-              list(executor.map(run, ["publish", "grade", "closing"]))
+              results = list(executor.map(run, jobs))
+
+          failures = [job + " (" + detail + ")" for job, ok, detail in results if not ok]
+          write_summary([
+              "## Bet This Guy maintenance",
+              "",
+              "- Status: **" + ("Failed" if failures else "Healthy") + "**",
+              "- Mode: **" + mode + "**",
+              "- Jobs: **" + ", ".join(jobs) + "**",
+              "- Completed: " + now.isoformat(),
+              "",
+              "| Job | Result |",
+              "| --- | --- |",
+              *["| " + job + " | " + ("Completed" if ok else detail) + " |" for job, ok, detail in results],
+          ])
+          if failures:
+              raise SystemExit("Maintenance failed: " + ", ".join(failures))
