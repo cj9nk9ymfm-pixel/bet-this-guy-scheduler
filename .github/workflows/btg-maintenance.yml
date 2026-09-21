@@ -17,7 +17,7 @@ jobs:
       - name: Run publishing, grading and closing-price capture
         shell: python
         run: |
-          import concurrent.futures, json, os, time, urllib.request
+          import concurrent.futures, json, os, time, urllib.error, urllib.request
           token = os.environ.get("BTG_MAINTENANCE_TOKEN", "")
           if len(token) < 32:
               raise SystemExit("BTG_MAINTENANCE_TOKEN must be configured before activation")
@@ -38,7 +38,13 @@ jobs:
                           raise RuntimeError("Job did not complete")
                       print(job + ": completed")
                       return
-                  except Exception:
+                  except urllib.error.HTTPError as exc:
+                      print(job + ": HTTP " + str(exc.code))
+                      if attempt == 1:
+                          raise RuntimeError(job + ": failed; inspect site worker logs") from None
+                      time.sleep(10)
+                  except Exception as exc:
+                      print(job + ": " + type(exc).__name__)
                       if attempt == 1:
                           raise RuntimeError(job + ": failed; inspect site worker logs") from None
                       time.sleep(10)
