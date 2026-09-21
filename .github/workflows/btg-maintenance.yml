@@ -1,0 +1,46 @@
+name: Publish and grade official picks
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '2-57/5 * * * *'
+permissions: {}
+concurrency:
+  group: btg-maintenance
+  cancel-in-progress: false
+jobs:
+  maintain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    env:
+      BTG_MAINTENANCE_TOKEN: ${{ secrets.BTG_MAINTENANCE_TOKEN }}
+    steps:
+      - name: Run publishing, grading and closing-price capture
+        shell: python
+        run: |
+          import concurrent.futures, json, os, time, urllib.request
+          token = os.environ.get("BTG_MAINTENANCE_TOKEN", "")
+          if len(token) < 32:
+              raise SystemExit("BTG_MAINTENANCE_TOKEN must be configured before activation")
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  return None
+          opener = urllib.request.build_opener(NoRedirect)
+          def run(job):
+              for attempt in range(2):
+                  try:
+                      request = urllib.request.Request(
+                          "https://bet-this-guy.kind-pika-6337.chatgpt.site/api/maintenance?job=" + job,
+                          data=b"", method="POST",
+                          headers={"Authorization": "Bearer " + token})
+                      with opener.open(request, timeout=90) as response:
+                          result = json.load(response)
+                      if result.get("success") is not True:
+                          raise RuntimeError("Job did not complete")
+                      print(job + ": completed")
+                      return
+                  except Exception:
+                      if attempt == 1:
+                          raise RuntimeError(job + ": failed; inspect site worker logs") from None
+                      time.sleep(10)
+          with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+              list(executor.map(run, ["publish", "grade", "closing"]))
