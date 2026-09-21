@@ -29,7 +29,7 @@ jobs:
               for attempt in range(2):
                   try:
                       request = urllib.request.Request(
-                          "https://bet-this-guy.kind-pika-6337.chatgpt.site/api/maintenance?job=" + job,
+                          "https://betthisguy.com/api/maintenance?job=" + job,
                           data=b"", method="POST",
                           headers={"Authorization": "Bearer " + token})
                       with opener.open(request, timeout=90) as response:
