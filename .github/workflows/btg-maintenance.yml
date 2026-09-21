@@ -33,7 +33,9 @@ jobs:
                       request = urllib.request.Request(
                           "https://betthisguy.com/api/maintenance?job=" + job,
                           data=b"", method="POST",
-                          headers={"Authorization": "Bearer " + token,\n                                   "Accept": "application/json",\n                                   "User-Agent": "BetThisGuy-Maintenance/1.0"})
+                          headers={"Authorization": "Bearer " + token,
+                                   "Accept": "application/json",
+                                   "User-Agent": "BetThisGuy-Maintenance/1.0"})
                       with opener.open(request, timeout=90) as response:
                           result = json.load(response)
                       if result.get("success") is not True:
