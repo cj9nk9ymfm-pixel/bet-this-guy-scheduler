@@ -1,0 +1,118 @@
+const assert=require('node:assert/strict'),vm=require('node:vm'),{webcrypto}=require('node:crypto');
+const {DatabaseSync}=require('node:sqlite');
+const {client,read}=require('./helpers/client.cjs');
+let assertions=0;
+const equal=(actual,expected,message)=>{assert.deepEqual(JSON.parse(JSON.stringify(actual)),expected,message);assertions++};
+const c=client();assert.ifError(c.error);
+const server=vm.createContext({URL,URLSearchParams,Request,Response,Headers,AbortSignal,Date,console,setTimeout,clearTimeout,crypto:webcrypto,TextEncoder,fetch:async()=>Response.json({data:[]})});
+const template=read('worker/index.template.js');
+vm.runInContext(template.slice(template.indexOf('const API_BASE')).replace('__MOVEMENT_SERVER__',read('worker/movement.js')).replace('__LIVE_SERVER__',read('worker/live.js')).replace('__STATS_SHARED__',read('dist/stats.js')).replace('__RECORDS_SERVER__',read('worker/records.js')).replace('__ACCOUNTS_SERVER__',read('worker/accounts.js')).replace('export default {','this.worker={'),server);
+const se=code=>vm.runInContext(code,server);
+const row={passing_yards:300,rushing_yards:25,receiving_yards:60,receptions:6,passing_touchdowns:3,rushing_touchdowns:1,receiving_touchdowns:2,passing_interceptions:1,total_touchdowns:3,solo_tackles:5,assisted_tackles:3,long_reception:40,game:{status_state:'final'}};
+const expected={'Passing Yards':300,'Rushing Yards':25,'Receiving Yards':60,'Receptions':6,'Passing Touchdowns':3,'Rushing Touchdowns':1,'Receiving Touchdowns':2,'Anytime Touchdown':3,'First Touchdown':null,'Last Touchdown':null,'First Quarter Passing Yards':null,'Tackles + Assists':8,'Interceptions Thrown':1,'Pass + Rush + Receiving TDs':6,'Longest Reception':40};
+c.ctx.row=row;server.row=row;
+for(const [market,value] of Object.entries(expected)){
+  c.ctx.market=server.market=market;
+  equal(c.eval('liveMetric({market},row).value'),value,`live ${market}`);
+  equal(c.eval('propMetric({market},row).value'),value,`history ${market}`);
+  equal(se('recordMarketValue({market},row)'),value,`settlement ${market}`);
+}
+for(const missing of [null,undefined,'',false,'bad']){server.missing=missing;equal(se('gradeRecordSide("Under",250.5,missing)'),null,'unknown is never a win');}
+equal(se('gradeRecordSide("Under",.5,0)'),'won','reported zero is valid');
+equal(se('recordMarketValue({market:"Rush + Receiving Yards"},{rushing_yards:20,receiving_yards:null})'),null,'incomplete sum');
+equal(se('recordMarketValue({market:"Anytime Touchdown"},{rushing_touchdowns:0,receiving_touchdowns:0})'),null,'missing returns do not prove no TD');
+equal(c.eval('hitAgainstLine({side:"Over",line:50},50)'),null,'push not miss');
+equal(c.eval('liveLegState({market:"Rushing Yards",side:"Over",line:50},{state:"final"},{rushing_yards:50}).title'),'PROVISIONAL PUSH');
+equal(se('selectPlayer([{first_name:"Other",last_name:"Allen"}],"Josh Allen","")'),null);
+for(const key of ['propedge-saved','bet-this-guy-preferences','bet-this-guy-tracked'])equal(Boolean(client(390,{[key]:'{invalid'}).error),false,`recover ${key}`);
+c.eval('innerWidth=1280;showDesktopPage("saved")');equal(c.eval('state.view'),'saved');
+c.eval('props=[{...demoProps[0],eventID:"NFL--fixture",startsAt:new Date(Date.now()+86400000).toISOString()}];state.slip=[{key:"1-Under",p:props[0],side:"Under",odds:props[0].under}];renderSlip()');
+equal(c.eval('state.slip[0].changed'),false,'Under uses its price');
+c.eval('props=[];renderSlip()');equal(c.eval('state.slip[0].unavailable'),true,'removed market');equal(c.nodes.get('#trackParlay').disabled,true,'no tracking unavailable market');
+c.eval('state.slip=[];renderSlip()');equal(c.nodes.get('#shareParlay').disabled,false,'clear recovers');
+equal(read('dist/index.html').includes('<option value="15">'),false,'UI limit matches generator');
+c.eval('state.view="board";document.body.dataset.desktopPage="props";props=[{...demoProps[0],startsAt:"2026-09-20T17:00:00Z",team:"Buffalo Bills · @ Miami Dolphins"}];liveBoard.games=[{id:77,away:{full_name:"Buffalo Bills"},home:{full_name:"Miami Dolphins"},startsAt:props[0].startsAt,state:"in_progress",period:3,clock:"8:42"}];liveBoard.gameStats.set("77",{stats:[{player:{full_name:props[0].player},passing_yards:187}]})');
+equal(c.eval('card(props[0]).includes("187")'),true,'main-board progress renders live value');
+// Escape verified entries too, not just excluded legacy entries.
+const trust=client(),trustScript=read('dist/trust.html').match(/<script>([\s\S]*?)<\/script>/)[1];
+vm.runInContext(trustScript,trust.ctx);
+trust.ctx.fixture=[{kind:'prop',source:'market-verified-v2',player:'<img src=x onerror=alert(1)>',market:'<b>Yards</b>',result:'lost',odds:100,posted_at:new Date().toISOString()}];
+trust.eval('paint(fixture);showResultSection("props")');equal(trust.nodes.get('#propRecordList').innerHTML.includes('<img'),false,'escape stored fields');equal(trust.nodes.get('#propRecordList').innerHTML.includes('&lt;img'),true,'show escaped text');equal(trust.eval('money(-10)'),'−$10.00');
+equal(trust.eval('verified({kind:"parlay",source:"historical-replay"})'),false,'exclude replay');
+equal(trust.eval('verified({kind:"prop",source:null})'),false,'exclude unauthenticated legacy');
+equal(trust.eval('profit({result:"won",combined_odds:300,legs:[{odds:100,result:"won"},{odds:100,result:"push"}]})'),10,'push leg voided for estimated payout');
+trust.eval('localStorage.setItem("bet-this-guy-preferences",JSON.stringify({typicalWager:25}))');
+equal(trust.eval('profit({result:"won",odds:200})'),50,'custom stake pays correct plus-odds net');
+equal(trust.eval('profit({result:"lost",odds:-150})'),-25,'loss subtracts the custom stake');
+equal(trust.eval('profit({result:"push",odds:100})'),0,'push has no net gain or loss');
+equal(trust.eval('sectionProfit([{result:"won",status:"final",odds:100},{result:"lost",status:"provisional",odds:100}]).includes("Including provisional")'),true,'separate provisional total');
+trust.eval('localStorage.removeItem("bet-this-guy-preferences")');
+trust.ctx.accuracyRows=['won','lost','push','pending'].map((result,i)=>({id:'audit-'+i,kind:'parlay',source:'market-verified-v2',combined_odds:1500,result,posted_at:new Date().toISOString(),legs:[{gameId:'game',player:'Player',market:'Receptions',side:'Over',line:4.5,odds:100}]}));
+trust.eval('paint(accuracyRows)');equal(trust.nodes.get('#tierGrid').innerHTML.includes('50.0%'),true,'push and pending excluded from win percentage');
+equal(trust.nodes.get('#sampleScope').textContent.includes('1 distinct leg selections'),true,'overlapping legs disclosed');
+equal(trust.eval('tierFor(2500).key'),'swing','2500 stays in middle tier');
+equal(trust.eval('tierFor(2501).key'),'moonshot','2501 starts upper tier');
+trust.ctx.provisionalFixture=[{id:'provisional-win',kind:'prop',source:'market-verified-v2',player:'Player',market:'Passing Yards',side:'Over',line:200.5,odds:100,status:'provisional',result:'won',posted_at:new Date().toISOString()}];
+trust.eval('paint(provisionalFixture)');
+equal(trust.nodes.get('#propRecordList').innerHTML.includes('PROVISIONAL WIN'),true,'provisional outcome is visible');
+equal(trust.nodes.get('#propRecordList').innerHTML.includes('Final box score not confirmed'),true,'confirmation note visible');
+equal(trust.eval('statLine(provisionalFixture).done.length'),0,'provisional results excluded from confirmed totals');
+equal(trust.nodes.get('#tierGrid').innerHTML.includes('1 provisional'),true,'provisional count remains in the category breakdown');
+trust.eval('showResultSection("overview")');equal(trust.nodes.get('#detailPanel').hidden,true,'overview hides the pick lists');
+trust.eval('showResultSection("methodology")');equal(trust.nodes.get('#methodPanel').hidden,false,'methodology has its own view');
+trust.eval('paint(accuracyRows);showResultSection("swing")');equal(trust.nodes.get('#recordList').innerHTML.includes('4-leg parlay'),false,'parlay detail is scoped to its actual legs');
+trust.nodes.get('#gradeFilter').value='pending';trust.eval('renderDetail()');equal(trust.nodes.get('#detailCount').innerHTML.startsWith('1 of 4'),true,'pending filter isolates ungraded picks');
+
+(async()=>{
+  server.statsCache=new Map([['Josh Allen|2026-09-20T17:00:00Z|Passing Yards',row]]);
+  equal(await se('gradePublicRecord({kind:"prop",player:"Josh Allen",game_time:"2026-09-20T17:00:00Z",market:"Passing Yards",side:"Over",line:250.5},{},statsCache)'),'won','DB field and stat mapping');
+  server.auditRecord={kind:'parlay',game_time:'2026-09-20T17:00:00Z',legs:[{player:'Unknown',market:'First Touchdown',side:'Over',line:.5},{player:'Josh Allen',market:'Passing Yards',side:'Over',line:350.5}]};
+  server.statsCache.set('Unknown|2026-09-20T17:00:00Z|First Touchdown',row);
+  equal(await se('gradePublicRecord(auditRecord,{},statsCache)'),'lost','unknown first leg cannot hide a confirmed loss');
+  equal(se('auditRecord.gradedLegs[0].result'),'pending','unresolved leg is never fabricated');
+  server.auditRecord.legs[1].line=250.5;
+  equal(await se('gradePublicRecord(auditRecord,{},statsCache)'),null,'one win cannot settle unresolved parlay');
+  server.row={...row,game:{status_state:'in_progress'}};server.statsCache=new Map([['Josh Allen|2026-09-20T17:00:00Z|Passing Yards',server.row]]);
+  equal(await se('gradePublicRecord({kind:"prop",player:"Josh Allen",gameTime:"2026-09-20T17:00:00Z",market:"Passing Yards",side:"Over",line:250.5},{},statsCache)'),null,'never settle ongoing box score');
+  const now=Date.parse('2026-09-21T00:00:00Z'),start=new Date(now+17*3600000).toISOString();
+  se(`Date.now=()=>${now}`);
+  const fixture={id:'fixture',eventID:'NFL--fixture',commence_time:start,away_team:'Buffalo Bills',home_team:'Miami Dolphins',bookmakers:[{key:'book',last_update:new Date(now).toISOString(),markets:[{key:'player_pass_yds',outcomes:Array.from({length:10},(_,i)=>({name:'Over',description:'Player '+i,price:110,point:250.5}))}]}]};
+  server.fixture=fixture;
+  const database=new DatabaseSync(':memory:');
+  for(const file of ['0000_public_record.sql','0001_record_settlement.sql','0002_historical_replays.sql'])database.exec(read('drizzle/'+file));
+  const writes=[];server.DB={prepare(sql){const prepared=database.prepare(sql),wrapper=args=>({sql,args,async all(){return{results:prepared.all(...args)}},async run(){prepared.run(...args);return{success:true}},bind(...values){return wrapper(values)}});return wrapper([])},async batch(statements){writes.push(...statements);for(const statement of statements)await statement.run();return statements.map(()=>({success:true}))}};
+  se('eventProps=async()=>Response.json({data:[fixture]})');
+  const ctx={waitUntil(){}};
+  async function submit(record,headers={}){return server.worker.fetch(new Request('https://test.invalid/api/record',{method:'POST',headers:{'content-type':'application/json',...headers},body:JSON.stringify({records:[record]})}),{DB:server.DB,THE_ODDS_API_KEY:'fixture'},ctx)}
+  const leg=i=>({player:'Player '+i,market:'Passing Yards',side:'Over',line:250.5,odds:110,gameId:'NFL--fixture'});
+  for(const size of [2,3,5,10]){
+    const res=await submit({id:'attacker-id',kind:'parlay',combinedOdds:999999,result:'won',postedAt:'2000-01-01',legs:Array.from({length:size},(_,i)=>leg(i))});
+    equal(res.status,200,`${size}-leg post`);const body=await res.json();equal(body.accepted,1);equal(body.ids[0].length<100,true,'bounded authoritative ID');
+    equal(writes.at(-1).args[7],se(`recordAmerican(Math.pow(2.1,${size}))`),'server recomputes odds');
+    equal(writes.at(-1).args.includes('2000-01-01'),false,'server controls timestamp');
+    equal(writes.at(-1).args.includes('won'),false,'client cannot set result');
+  }
+  const id1=await se('boundedRecordId("parlay",[{gameId:"a",player:"A",market:"Passing Yards",side:"Over",line:1},{gameId:"b",player:"B",market:"Passing Yards",side:"Over",line:1}])');
+  const id2=await se('boundedRecordId("parlay",[{gameId:"b",player:"B",market:"Passing Yards",side:"Over",line:1},{gameId:"a",player:"A",market:"Passing Yards",side:"Over",line:1}])');equal(id1,id2,'stable dedupe across ordering');
+  const before=writes.length;
+  for(const change of [{player:'<b>fake</b>'},{odds:9999},{line:1.5},{market:'Fake Market'},{side:'Under'}])equal((await submit({kind:'prop',...leg(0),...change})).status,409,'reject forged offer');
+  equal((await submit({kind:'parlay',legs:[leg(0),leg(0)]})).status,409,'reject duplicates');
+  equal((await submit({kind:'prop',...leg(0)},{origin:'https://evil.invalid'})).status,403,'reject cross-site posting');
+  fixture.commence_time=new Date(now-1000).toISOString();equal((await submit({kind:'prop',...leg(0)})).status,409,'reject post-kickoff record');fixture.commence_time=start;
+  fixture.bookmakers[0].last_update=new Date(now-3600000).toISOString();equal((await submit({kind:'prop',...leg(0)})).status,409,'reject stale offer');
+  equal(writes.length,before,'invalid requests never write');
+  database.exec("INSERT INTO public_recommendations (id,kind,source,status,result,posted_at) VALUES ('legacy-unverified','prop',NULL,'final','won','2026-09-19T00:00:00Z'), ('replay-test','parlay','historical-replay','final','lost','2026-09-19T00:00:00Z')");
+  const publicResponse=await server.worker.fetch(new Request('https://test.invalid/api/record'),{DB:server.DB},ctx);
+  equal(publicResponse.status,200,'real SQLite read queries execute');
+  const publicData=await publicResponse.json();equal(publicData.recent.length,4,'only verified records included');equal(publicData.analytics.length,4,'analytics exclude legacy and replay');
+  equal(database.prepare('SELECT COUNT(*) AS count FROM public_recommendations').get().count,6,'legacy rows retained');
+  database.close();
+  // A failed response is visible, rather than silently treated as recorded.
+  c.ctx.fetch=async()=>Response.json({success:true,accepted:0});
+  equal(await c.eval('postVerifiedRecords([{kind:"prop",player:"new fixture"}])'),false,'accepted count checked');
+  equal(c.nodes.get('#recordPostingNotice').hidden,false,'failure notice visible');
+  const submitted=[];c.ctx.fetch=async(url,options)=>{const records=JSON.parse(options.body).records;submitted.push(records);return records.length>1?Response.json({success:false,accepted:0},{status:409}):Response.json({success:true,accepted:1})};
+  equal(await c.eval('postVerifiedRecords([{kind:"prop",player:"batch A"},{kind:"prop",player:"batch B"}])'),true,'conflicted batch retries each selection');
+  equal(submitted.map(records=>records.length),[2,1,1],'valid records survive batch conflicts');
+  console.log(`PASS: ${assertions} readiness regression assertions (mocked DOM/provider and real in-memory SQLite; no production writes)`);
+})().catch(error=>{console.error(error);process.exitCode=1});

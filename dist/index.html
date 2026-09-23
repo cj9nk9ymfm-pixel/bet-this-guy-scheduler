@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#050b1d" />
+  <meta name="description" content="NFL player prop value, recent performance, line movement, and smarter parlay building." />
+  <title>Bet This Guy — NFL Prop Intelligence</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css?v=175" />
+  <link rel="stylesheet" href="/theme-blue.css?v=107" />
+  <link rel="stylesheet" href="/nfl.css?v=189" />
+  <link rel="stylesheet" href="/performance.css?v=2" />
+  <link rel="stylesheet" href="/live.css?v=110" />
+  <link rel="stylesheet" href="/auth.css?v=1" />
+  <style>html.warm-resume .app-loader{display:none!important}</style>
+  <script>try{const last=Number(localStorage.getItem('btg-last-active')||0);if(last&&Date.now()-last<1800000)document.documentElement.classList.add('warm-resume')}catch{}</script>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23050b1d'/%3E%3Cpath d='M14 14h25l11 11v25H14z' fill='%231c6cff'/%3E%3Cpath d='M22 43V25h13l7 7-7 7h-7v4z' fill='white'/%3E%3Ccircle cx='35' cy='32' r='3' fill='%2300d4ff'/%3E%3C/svg%3E" />
+</head>
+<body>
+  <div class="app-loader" id="appLoader" role="status" aria-live="polite" aria-label="Loading all posted player props">
+    <div class="loader-grid"></div>
+    <div class="loader-content">
+      <div class="loader-emblem">
+        <span class="loader-orbit orbit-one"></span><span class="loader-orbit orbit-two"></span>
+        <img src="bet-this-guy-logo-v3.png" alt="Bet This Guy" />
+      </div>
+      <b class="loader-chat-label">VERIFYING THE GROUP CHAT</b>
+      <div class="loader-chat" id="loaderChat" aria-live="polite"></div>
+      <p id="loaderText">Running the “this time is different” model…</p>
+      <div class="loader-track"><span></span></div>
+          <small>NFL PROPS&nbsp;&nbsp;·&nbsp;&nbsp; PLAYER TRENDS&nbsp;&nbsp;·&nbsp;&nbsp; PARLAYS</small>
+    </div>
+  </div>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Bet This Guy home"><img class="brand-logo" src="/bet-this-guy-logo-v3.png" alt="Bet This Guy" /></a>
+    <nav class="desktop-nav" aria-label="Main navigation">
+      <button class="nav-link active" data-view="board">Props</button>
+      <button class="nav-link" data-nav-target="live"><span class="nav-live-dot"></span>Live</button>
+      <button class="nav-link" data-nav-target="parlays">Parlays</button>
+      <button class="nav-link" data-nav-target="generator">Parlay Generator</button>
+      <button class="nav-link" data-view="movement">Line Movement</button>
+      <button class="nav-link" data-view="saved">Watchlist <span id="watchCount">0</span></button>
+    </nav>
+    <div class="top-actions">
+      <button class="icon-btn saved-header-btn" id="openSavedProps" aria-label="Open saved props">☆<span id="savedHeaderCount">0</span></button>
+      <button class="feed-status" id="feedBtn"><i></i><span>Connecting…</span></button>
+      <button class="icon-btn account-btn" id="accountBtn" aria-label="Sign in or create an account"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"></circle><path d="M4.5 21a7.5 7.5 0 0 1 15 0"></path></svg><span>Sign in</span></button>
+      <button class="icon-btn" id="settingsBtn" aria-label="Betting preferences">⚙</button>
+      <button class="icon-btn" id="themeBtn" aria-label="Toggle theme">☼</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="bookmark-tools" aria-label="Saved props">
+      <aside id="bookmarkRecovery" class="bookmark-recovery" aria-labelledby="bookmarkRecoveryTitle" hidden>
+        <div><strong id="bookmarkRecoveryTitle">Older bookmarks need to be saved again</strong><p><span id="legacyBookmarkCount"></span> from the old format cannot be matched reliably. Find your picks and tap the star to save them again. Newer bookmarks are preserved. Picks that are no longer offered cannot be re-saved.</p></div>
+        <div class="bookmark-recovery-actions"><button id="findBookmarkPicks" type="button">Find picks to re-save</button><button id="dismissBookmarkRecovery" type="button">Dismiss reminder</button></div>
+      </aside>
+    </section>
+    <section class="workspace">
+      <div class="board">
+        <section class="live-center" id="liveCenter" aria-labelledby="liveCenterTitle" hidden>
+          <header class="live-center-head">
+            <div><p class="eyebrow">LIVE NFL TRACKER</p><h1 id="liveCenterTitle">Follow every leg as it happens</h1><p id="liveCenterSummary">Waiting for an NFL game to go live.</p></div>
+            <div class="live-connection"><i></i><span id="liveUpdatedAt">Connecting…</span></div>
+          </header>
+          <div class="live-game-switcher" id="liveGameSwitcher" role="tablist" aria-label="Live NFL games"></div>
+          <section class="live-parlay-panel" id="liveParlayPanel" hidden></section>
+          <div class="live-prop-grid" id="livePropGrid"></div>
+          <div class="live-empty" id="liveCenterEmpty"><strong>No NFL games are live right now.</strong><span>Live props, scores, stat progress, and parlay legs will appear here automatically at kickoff.</span></div>
+          <p class="live-disclaimer">Live results are unofficial. Overs may show as hit when the threshold is crossed; unders and all final grades wait for confirmed game statistics.</p>
+        </section>
+        <details class="advanced-filters" id="advancedFilters">
+          <summary>
+            <span><b>⚙ Smart Filters</b><small id="filterSummary">NFL · All games · All props</small></span>
+            <span class="filter-summary-right"><em id="filterMatchCount">18 matches</em><i id="activeFilterCount">0 active</i></span>
+          </summary>
+          <div class="advanced-filter-grid">
+            <label class="nfl-fixed-filter">League<select id="sportFilterAdvanced" aria-label="League"><option value="NFL">NFL</option></select></label>
+            <label>Game<select id="gameFilterAdvanced" aria-label="Filter by game"></select></label>
+            <label>Team<select id="teamFilterAdvanced" aria-label="Filter by team"></select></label>
+            <label>Day<select id="dayFilterAdvanced" aria-label="Filter by game day"></select></label>
+            <label>Start time<select id="timeFilterAdvanced" aria-label="Filter by game time"><option value="All">Any time</option><option>Morning</option><option>Afternoon</option><option>Evening</option><option>Late</option></select></label>
+            <label>Prop type<select id="propFilterAdvanced" aria-label="Filter by prop type"></select></label>
+            <label>Recommended side<select id="sideFilterAdvanced" aria-label="Filter by recommended side"><option value="All">Over or under</option><option>Over</option><option>Under</option></select></label>
+            <label class="tier-filter-hidden">Bet temperature<select id="heatFilterAdvanced" aria-label="Filter by bet temperature"><option value="All">Any temperature</option><option value="inferno">🔥 Red Hot</option><option value="hot">💨 Steaming</option><option value="warm">♨️ Luke Warm</option><option value="chilly">◆ Chilly</option><option value="ice">❄ Ice Cold</option></select></label>
+            <label>Line movement<select id="moveFilterAdvanced" aria-label="Filter by line movement"><option value="All">Any movement</option><option value="Up">Line up</option><option value="Down">Line down</option><option value="Hold">No movement</option></select></label>
+            <label>Minimum model edge<select id="edgeFilterAdvanced" aria-label="Minimum model edge"><option value="0">Any edge</option><option value="4">4%+</option><option value="6">6%+</option><option value="8">8%+</option><option value="10">10%+</option></select></label>
+            <label>Minimum confidence<select id="confidenceFilterAdvanced" aria-label="Minimum confidence"><option value="0">Any confidence</option><option value="60">60+</option><option value="65">65+</option><option value="70">70+</option><option value="75">75+</option></select></label>
+            <label>Recommended odds<select id="oddsFilterAdvanced" aria-label="Filter by recommended odds"><option value="All">Any odds</option><option value="Plus">Plus money</option><option value="Standard">Standard price</option><option value="Heavy">Heavy favorite</option></select></label>
+            <label>Sort by<select id="sortFilterAdvanced" aria-label="Sort filtered props"><option value="edge">Highest edge</option><option value="move">Biggest move</option><option value="confidence">Confidence</option><option value="time">Start time</option></select></label>
+          </div>
+          <div class="advanced-filter-actions"><span>These filters apply only to Parlays and the Parlay Generator.</span><button id="resetAdvancedFilters" type="button">Reset all</button></div>
+        </details>
+        <div class="player-finder" id="playerFinder">
+          <div class="player-finder-icon">⌕</div>
+          <label for="playerSearch"><span>Find a player</span><input id="playerSearch" type="search" placeholder="Start typing a player’s name…" autocomplete="off" aria-autocomplete="list" aria-controls="playerSearchResults" /></label>
+          <button id="clearPlayerSearch" type="button" hidden>Clear</button>
+          <div class="player-search-results" id="playerSearchResults" role="listbox" hidden></div>
+        </div>
+
+        <div class="proof-banners proof-strip" aria-label="Verified picks and results">
+          <a class="track-record-banner official-picks-banner" href="/trust#official">
+            <span><strong>Official Picks</strong><small>Locked before kickoff</small></span>
+            <span class="track-record-arrow" aria-hidden="true">›</span>
+          </a>
+          <a class="track-record-banner" href="/trust#overview">
+            <span><strong>Track Record</strong><small>Every result + profit/loss</small></span>
+            <span class="track-record-arrow" aria-hidden="true">›</span>
+          </a>
+        </div>
+
+        <div class="section-head board-title" id="propsSection">
+          <div><p class="eyebrow">FEATURED PROPS</p><h2 id="viewTitle">Bet These Guys</h2><p id="resultCount">Balanced across the strongest available markets</p></div>
+        </div>
+
+        <div class="prop-sub-tabs" id="propTypeTabs" role="tablist" aria-label="Popular prop types" hidden></div>
+        <div class="prop-sub-tabs game-tabs" id="gameTabs" role="tablist" aria-label="Games" hidden></div>
+
+        <div class="controls">
+          <select id="marketFilter" aria-label="Market type"><option value="All">All NFL markets</option></select>
+          <select id="sortFilter" aria-label="Sort props"><option value="edge">Highest edge</option><option value="move">Biggest move</option><option value="confidence">Confidence</option><option value="time">Start time</option></select>
+          <button class="filter-toggle" id="highEdgeBtn">🔥 Red Hot only</button>
+        </div>
+
+        <div class="prop-list" id="propList"></div>
+        <div class="empty" id="emptyState" hidden><strong>No props match these filters.</strong><span>Try another sport, market, or search.</span></div>
+
+        <section class="parlay-mixer" id="parlayMixer" aria-labelledby="mixerTitle">
+          <div class="mixer-intro">
+            <div><p class="eyebrow">PARLAY GENERATOR</p><h2 id="mixerTitle">Build a parlay</h2><span>Set your target and leg count, then shuffle through fresh combinations.</span></div>
+            <div class="target-odds"><small>TARGET ODDS</small><output id="targetOdds">+1000</output></div>
+          </div>
+          <p class="parlay-filter-summary" data-parlay-filter-summary aria-live="polite">All games · All prop types</p>
+          <div class="mixer-controls">
+            <div class="odds-slider-wrap">
+              <div class="slider-title"><span>Target odds</span><b>Go as big as +1000000</b></div>
+              <input id="oddsSlider" type="range" min="0" max="100" step="1" value="19" aria-label="Target American odds" />
+              <div class="slider-labels"><span>+200</span><span>+1000000</span></div>
+            </div>
+            <div class="odds-slider-wrap">
+              <div class="slider-title"><span>Number of legs</span><output id="legsCount">5 legs</output></div>
+              <input id="legsSlider" type="range" min="2" max="10" step="1" value="5" aria-label="Number of parlay legs" />
+              <div class="slider-labels"><span>2 legs</span><span id="maxLegLabel">8 legs</span></div>
+            </div>
+          </div>
+          <div class="mixer-result" id="mixerResult"></div>
+          <div class="mixer-actions">
+            <button class="shuffle-btn" id="mixerShuffle">⟳ Shuffle another</button>
+            <button class="primary mixer-load" id="mixerLoad">Load into bet slip</button>
+          </div>
+        </section>
+
+        <section class="parlay-lab" id="parlayLab" aria-labelledby="parlayLabTitle">
+          <div class="parlay-lab-head">
+            <div><p class="eyebrow">PREMADE PARLAYS</p><h2 id="parlayLabTitle">Pick your payout range</h2></div>
+            <span>Three fresh options every time</span>
+          </div>
+          <p class="parlay-filter-summary" data-parlay-filter-summary aria-live="polite">All games · All prop types</p>
+          <div class="parlay-level-tabs" role="tablist" aria-label="Parlay payout level">
+            <button class="active" role="tab" data-parlay-level="2" aria-selected="true" aria-controls="parlayCards"><strong>Okay, Hear Me Out</strong><span>+100 to +1000</span></button>
+            <button role="tab" data-parlay-level="1" aria-selected="false" aria-controls="parlayCards"><strong>What If?</strong><span>+1000 to +2500</span></button>
+            <button role="tab" data-parlay-level="0" aria-selected="false" aria-controls="parlayCards"><strong>Could You Imagine?</strong><span>+2500 to +15000</span></button>
+          </div>
+          <div class="parlay-cards" id="parlayCards"></div>
+          <p class="parlay-disclaimer">Suggested combinations use the current listed odds. Parlays multiply risk quickly—verify every line before betting.</p>
+        </section>
+      </div>
+
+      <aside class="slip" id="slip">
+        <div class="slip-head"><div><span>SMART PARLAY</span><h2>Bet slip</h2></div><button id="clearSlip">Clear</button></div>
+        <div class="slip-notice" id="slipNotice">Build manually or load up to 8 unique legs from the Parlay Mixer.</div>
+        <div id="slipLegs" class="slip-legs"></div>
+        <div class="slip-empty" id="slipEmpty"><span>＋</span><strong>Build your parlay</strong><p>Add picks from the board or let the mixer build up to 15 legs.</p></div>
+        <div class="parlay-summary" id="parlaySummary" hidden>
+          <div><span>Combined odds</span><strong id="combinedOdds">+0</strong></div>
+          <div><span>Est. probability</span><strong id="parlayProb">0%</strong></div>
+          <label>Wager <span>Potential payout</span><div><b>$</b><input id="wager" inputmode="decimal" value="10" /><strong id="payout">$0.00</strong></div></label>
+          <div class="budget-warning" id="budgetWarning" hidden></div>
+          <button class="primary group-chat-share" id="shareParlay" data-share-state="ready" aria-label="Send parlay screenshot and Bet This Guy website link to the group chat">
+            <span class="share-icon" aria-hidden="true">🔥</span>
+            <span class="share-copy"><strong>Send It to the Chat</strong><small>I need someone to tell me this is a good idea.</small></span>
+            <span class="share-typing" aria-hidden="true"><i></i><i></i><i></i></span>
+          </button>
+          <button class="track-parlay" id="trackParlay">＋ Track this parlay</button>
+          <small>Odds are illustrative. Verify every line at your licensed sportsbook before betting.</small>
+        </div>
+        <div class="responsible"><strong>Keep it entertainment.</strong><span>Set a budget. Never chase losses. 21+ where legal.</span></div>
+      </aside>
+    </section>
+  </main>
+
+  <nav class="mobile-nav" aria-label="Mobile navigation"><a class="active" href="?page=props" data-page-link="props">Props</a><a href="?page=parlays" data-page-link="parlays">Parlays</a><a class="nav-generator" href="?page=generator" data-page-link="generator">Generator</a><a href="?page=movement" data-page-link="movement">Movement</a><a href="?page=slip" data-page-link="slip">Slip <span id="slipCount">0</span></a></nav>
+  <footer class="app-footer"><span>Research and entertainment · No guaranteed outcomes</span><nav><a href="/trust">Trust Center</a><a href="/legal#privacy">Privacy</a><a href="/legal#terms">Terms</a></nav></footer>
+
+  <dialog id="detailDialog"><button class="dialog-close" aria-label="Close">×</button><div id="detailContent"></div></dialog>
+  <dialog id="parlayDetailDialog" class="parlay-detail-dialog"><button class="dialog-close" aria-label="Close parlay details">×</button><div id="parlayDetailContent"></div></dialog>
+  <dialog id="playerDialog" class="player-dialog"><button class="dialog-close" aria-label="Close player stats">×</button><div id="playerProfile"></div></dialog>
+  <dialog id="movementDialog" class="movement-dialog"><button class="dialog-close" aria-label="Close line movement">×</button><div id="movementDetail"></div></dialog>
+  <dialog id="accountDialog" class="account-dialog"><div class="account-shell"><header class="account-head"><img src="/bet-this-guy-logo-v3.png" alt="Bet This Guy" /><button id="accountClose" class="account-close" aria-label="Close account">×</button></header>
+    <section class="auth-view" data-auth-view="login"><p class="auth-eyebrow">YOUR PICKS. YOUR RECORD.</p><h2>Welcome back</h2><p class="auth-lead">Sign in to sync settings and track every pick across your devices.</p><div class="auth-socials"><button class="auth-social" type="button" data-auth-provider="google">Continue with Google</button><button class="auth-social" type="button" data-auth-provider="apple">Continue with Apple</button></div><div class="auth-divider">or use email</div><form class="auth-form" id="authLoginForm"><label>Email<input name="email" type="email" autocomplete="email" required /></label><label>Password<input name="password" type="password" autocomplete="current-password" required /></label><div class="auth-password-row"><button class="auth-link-button" type="button" data-auth-target="forgot">Forgot password?</button></div><button class="primary" type="submit">Sign in</button></form><p class="auth-switch">New here?<button class="auth-link-button" type="button" data-auth-target="signup">Create a free account</button></p><div class="auth-security"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg><span>Your password is handled by our secure identity provider and is never stored by Bet This Guy.</span></div></section>
+    <section class="auth-view" data-auth-view="signup" hidden><p class="auth-eyebrow">FREE BET THIS GUY ACCOUNT</p><h2>Build your record</h2><p class="auth-lead">Save your board, sync your settings, and let us grade your tracked picks.</p><div class="auth-socials"><button class="auth-social" type="button" data-auth-provider="google">Sign up with Google</button><button class="auth-social" type="button" data-auth-provider="apple">Sign up with Apple</button></div><div class="auth-divider">or use email</div><form class="auth-form" id="authSignupForm"><label>Name<input name="name" type="text" autocomplete="name" maxlength="80" required /></label><label>Email<input name="email" type="email" autocomplete="email" required /></label><label>Password<input name="password" type="password" autocomplete="new-password" minlength="12" required /><small>12+ characters with uppercase, lowercase, and a number</small></label><label>Confirm password<input name="confirm" type="password" autocomplete="new-password" minlength="12" required /></label><label class="auth-terms"><input name="terms" type="checkbox" required /><span>I agree to the <a href="/legal#terms">Terms</a> and <a href="/legal#privacy">Privacy Policy</a>.</span></label><button class="primary" type="submit">Create account</button></form><p class="auth-switch">Already have an account?<button class="auth-link-button" type="button" data-auth-target="login">Sign in</button></p></section>
+    <section class="auth-view" data-auth-view="forgot" hidden><p class="auth-eyebrow">ACCOUNT RECOVERY</p><h2>Reset your password</h2><p class="auth-lead">Enter your email and we’ll send you a secure password-reset link.</p><form class="auth-form" id="authForgotForm"><label>Email<input name="email" type="email" autocomplete="email" required /></label><button class="primary" type="submit">Send reset link</button></form><p class="auth-switch"><button class="auth-link-button" type="button" data-auth-target="login">Back to sign in</button></p></section>
+    <section class="auth-view auth-check" data-auth-view="check-email" hidden><div class="auth-check-icon">✓</div><p class="auth-eyebrow">CHECK YOUR EMAIL</p><h2>One more step</h2><p class="auth-lead" id="checkEmailCopy">Use the secure link we sent to confirm your account.</p><strong id="checkEmailAddress"></strong><p class="auth-switch"><button class="auth-link-button" type="button" data-auth-target="login">Return to sign in</button></p></section>
+    <section class="auth-view" data-auth-view="reset" hidden><p class="auth-eyebrow">SECURE PASSWORD RESET</p><h2>Choose a new password</h2><p class="auth-lead">Use a password you don’t use anywhere else.</p><form class="auth-form" id="authResetForm"><label>New password<input name="password" type="password" autocomplete="new-password" minlength="12" required /></label><label>Confirm new password<input name="confirm" type="password" autocomplete="new-password" minlength="12" required /></label><button class="primary" type="submit">Update password</button></form></section>
+    <section class="auth-view" data-auth-view="account" hidden><p class="auth-eyebrow">MY BET THIS GUY</p><h2 id="accountName">Your account</h2><p class="auth-lead">Your saved picks and settings follow you on every device.</p><div class="auth-account-card"><header><div><strong id="accountEmail"></strong><span>Secure account</span></div><span class="auth-plan" id="accountPlan">FREE</span></header><div class="auth-account-actions"><button type="button" id="openMyRecord">My picks & record →</button><button type="button" id="importLegacyBets" hidden></button></div></div><div class="auth-account-foot"><a href="/legal#privacy">Privacy & account data</a><button type="button" id="accountSignOut">Sign out</button></div></section>
+    <section class="auth-view" data-auth-view="record" hidden><div class="record-head"><button class="record-back" id="recordBack" aria-label="Back to account">‹</button><div><p class="auth-eyebrow">MY PICKS</p><h2>My record</h2></div></div><div class="record-summary" id="recordSummary"></div><div class="record-list" id="recordList"></div></section>
+    <p class="auth-status" id="authStatus" role="status" hidden></p>
+  </div></dialog>
+  <dialog id="feedDialog"><button class="dialog-close" aria-label="Close">×</button><p class="eyebrow">NFL DATA CONNECTION</p><h2>Live and upcoming NFL lines</h2><p id="feedDescription">The current NFL board loads first. Additional game prop trees load only when you open that game, keeping startup quick.</p><div class="feed-detail"><span>Odds</span><strong>The Odds API · multi-book comparison</strong><span>Player stats</span><strong>BALLDONTLIE · live NFL box scores</strong><span>Refresh</span><strong>Live scores & stats ~5s · in-play props ~60s</strong><span>Coverage</span><strong>NFL only</strong></div><p class="trust-inline"><a href="/trust">See how verification, model edge, and results are defined →</a></p><div class="dialog-actions"><button id="resetFeed">View demo board</button><button class="primary" id="saveFeed">Refresh NFL lines</button></div><small id="feedMessage"></small></dialog>
+  <dialog id="settingsDialog" class="settings-dialog"><div class="settings-shell"><header class="settings-head"><div><p class="eyebrow">YOUR BET THIS GUY</p><h2>Settings</h2></div><button class="dialog-close" aria-label="Close">×</button></header><nav class="settings-tabs" role="tablist" aria-label="Settings sections"><button class="active" type="button" data-settings-tab="personal">Personal</button><button type="button" data-settings-tab="books">Sportsbooks</button><button type="button" data-settings-tab="tracking">Tracking</button><button type="button" data-settings-tab="safety">Safety & Share</button></nav><div class="settings-body"><section class="settings-panel" data-settings-panel="personal"><h3>Make the board yours</h3><p>Choose what appears first and how generated parlays should behave.</p><div class="settings-section"><h3>Favorite sports</h3><div class="book-grid" id="sportPreferences"></div></div><div class="settings-grid"><label>Risk level<select id="riskPreference"><option value="conservative">Conservative</option><option value="balanced">Balanced</option><option value="aggressive">Aggressive</option></select></label><label>Typical wager<input id="typicalWager" type="number" min="0" step="1" /></label><label>Minimum book coverage<select id="minBookCoverage"><option value="1">1 sportsbook</option><option value="2">2 sportsbooks</option><option value="3">3 sportsbooks</option><option value="4">4 sportsbooks</option></select></label><label>Maximum parlay legs<select id="maxParlayLegs"><option value="4">4 legs</option><option value="6">6 legs</option><option value="8">8 legs</option><option value="10">10 legs</option></select></label></div><div class="settings-checks"><label><input id="hideInactive" type="checkbox" /> Hide sports without posted props</label><label><input id="lineAlerts" type="checkbox" /> Highlight saved props that move 0.5+</label><label><input id="avoidSameGame" type="checkbox" /> Limit correlated legs from the same game</label><label><input id="hideLongshots" type="checkbox" /> Hide long-shot scorer props from Best of the Best</label><label><input id="browserAlerts" type="checkbox" /> Alert me when a new Fire bet appears</label></div></section><section class="settings-panel" data-settings-panel="books" hidden><h3>My sportsbooks</h3><p>Recommendations and generated parlays will use prices from your selected books.</p><div class="settings-section"><div class="book-grid" id="bookPreferences"></div></div><small>Leave every book unchecked to compare all available sportsbooks.</small></section><section class="settings-panel" data-settings-panel="tracking" hidden><h3>My results</h3><p>Grade tracked parlays manually and keep an honest record on this device.</p><div class="tracking-summary" id="trackingSummary"></div><div class="tracked-list" id="trackedList"></div><a class="trust-inline" href="/trust">View the public methodology and accuracy dashboard →</a><button class="track-parlay settings-clear" id="clearTracking">Clear tracking history</button></section><section class="settings-panel" data-settings-panel="safety" hidden><h3>Safety & sharing</h3><p>Set your entertainment limit and choose how shared parlay cards look.</p><div class="settings-grid"><label>Weekly entertainment budget<input id="weeklyBudget" type="number" min="0" step="5" /></label><label>Share-card theme<select id="shareTheme"><option value="classic">Classic Blue</option><option value="heat">Orange Heat</option><option value="group">Group Chat</option></select></label></div><div class="settings-checks"><label><input id="noWeeklyLimit" type="checkbox" /> No weekly limit</label></div><div class="settings-note"><strong>Keep it entertainment.</strong><span>Pricing recommendations are market-derived. Verified projections, injuries, weather and confirmed lineups will appear only when those feeds are connected.</span></div></section></div><footer class="settings-footer"><span id="settingsSaveStatus">Changes stay on this device.</span><button class="primary" id="savePreferences">Save settings</button></footer></div></dialog>
+
+  <script src="/supabase.js?v=2.117.1"></script>
+  <script src="/auth.js?v=1"></script>
+  <script src="/stats.js?v=180"></script>
+  <script src="/movement.js?v=176"></script>
+  <script src="/app.js?v=195"></script>
+  <script src="/live.js?v=176-114"></script>
+</body>
+</html>

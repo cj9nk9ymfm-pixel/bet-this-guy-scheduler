@@ -1,0 +1,36 @@
+const assert=require('node:assert/strict'),vm=require('node:vm'),{webcrypto}=require('node:crypto'),{DatabaseSync}=require('node:sqlite');
+const {read,client}=require('./helpers/client.cjs');
+const now=Date.parse('2026-09-27T10:00:00Z');class Clock extends Date{static now(){return now}}
+const db=new DatabaseSync(':memory:');for(const f of ['0000_public_record.sql','0001_record_settlement.sql','0002_historical_replays.sql'])db.exec(read('drizzle/'+f));
+const DB={prepare(sql){return{bind(...args){return{all:async()=>({results:db.prepare(sql).all(...args)}),run:async()=>db.prepare(sql).run(...args),sql,args}},all:async()=>({results:db.prepare(sql).all()})}},batch:async statements=>{db.exec('BEGIN');try{const out=statements.map(s=>db.prepare(s.sql).run(...s.args));db.exec('COMMIT');return out}catch(e){db.exec('ROLLBACK');throw e}}};
+const context=vm.createContext({URL,URLSearchParams,Request,Response,Headers,AbortSignal,Date:Clock,console,setTimeout,clearTimeout,crypto:webcrypto,TextEncoder,fetch:async()=>Response.json({data:[]}),env:{DB,THE_ODDS_API_KEY:'fixture'}});
+const template=read('worker/index.template.js');vm.runInContext(template.slice(template.indexOf('const API_BASE')).replace('__MOVEMENT_SERVER__',read('worker/movement.js')).replace('__LIVE_SERVER__',read('worker/live.js')).replace('__STATS_SHARED__',read('dist/stats.js')).replace('__RECORDS_SERVER__',read('worker/records.js')).replace('__ACCOUNTS_SERVER__',read('worker/accounts.js')).replace('export default {','this.worker={'),context);const run=s=>vm.runInContext(s,context);
+const events=Array.from({length:16},(_,g)=>({id:'game'+g,eventID:'NFL--game'+g,commence_time:'2026-09-27T17:00:00Z',away_team:'Away '+g,home_team:'Home '+g,bookmakers:Array.from({length:3},(_,b)=>({key:'book'+b,title:'Book '+b,last_update:new Date(now).toISOString(),markets:[{key:'player_reception_yds',outcomes:Array.from({length:10},(_,p)=>[{name:'Over',description:`Player ${g} ${p}`,point:50.5,price:b===0?110:-110},{name:'Under',description:`Player ${g} ${p}`,point:50.5,price:-110}]).flat()}]}))}));for(const e of events)for(const b of e.bookmakers){const outcomes=b.markets[0].outcomes;b.markets=['player_reception_yds','player_rush_yds','player_pass_yds'].map((key,i)=>({key,outcomes:outcomes.filter(o=>Number(o.description.split(' ').at(-1))%3===i)}))}context.events=events;
+(async()=>{
+ assert.equal(run("officialWeek(Date.parse('2026-09-29T03:00:00Z'))"),'2026-09-22','Monday late game remains previous week');
+ assert.equal(run("officialWeek(Date.parse('2026-09-29T12:00:00Z'))"),'2026-09-29');
+ assert.equal(run('officialCandidates(events).length'),160);
+ context.stale=JSON.parse(JSON.stringify(events));context.stale.forEach(e=>e.bookmakers.forEach(b=>b.last_update='2026-09-26T00:00:00Z'));
+ assert.equal(run('officialCandidates(stale).length'),0);
+ context.weak=JSON.parse(JSON.stringify(events));context.weak.forEach(e=>e.bookmakers.forEach(b=>b.markets.forEach(m=>m.outcomes.forEach(o=>o.price=-110))));
+ assert.equal(run('officialCandidates(weak).length'),0,'no forced quota without edge');
+ context.thin=events.map(e=>({...e,bookmakers:e.bookmakers.slice(0,2)}));assert.equal(run('officialCandidates(thin).length'),0);
+ run("var candidates=officialCandidates(events),plan=officialPlan(candidates,[],'2026-09-22')");
+ assert.equal(run('plan.filter(p=>p.tier==="props").length'),100);
+ for(const [tier,cap] of [['reasonable',15],['swing',10],['moonshot',5]])assert.equal(run(`plan.filter(p=>p.tier==='${tier}').length`),cap);
+ await run("writeOfficialPlan(plan,'2026-09-22',env)");
+ assert.equal(db.prepare('SELECT COUNT(*) n FROM public_recommendations').get().n,130);
+ const before=db.prepare('SELECT id,odds,combined_odds,posted_at,legs_json FROM public_recommendations ORDER BY id').all();
+ await run("writeOfficialPlan(plan,'2026-09-22',env)");assert.deepEqual(db.prepare('SELECT id,odds,combined_odds,posted_at,legs_json FROM public_recommendations ORDER BY id').all(),before,'repeat/concurrent-plan publication cannot replace or multiply picks');
+ assert.ok(db.prepare("SELECT COUNT(*) n FROM public_recommendations WHERE kind='prop' GROUP BY game_id").all().every(r=>r.n<=8));
+ const parlays=db.prepare("SELECT legs_json FROM public_recommendations WHERE kind='parlay'").all().map(r=>JSON.parse(r.legs_json));
+ const exposure=new Map();for(const legs of parlays){assert.equal(new Set(legs.map(p=>p.gameId)).size,legs.length);for(const leg of legs)exposure.set(leg.playerKey,(exposure.get(leg.playerKey)||0)+1)}assert.ok([...exposure.values()].every(n=>n<=3));
+ for(let i=0;i<parlays.length;i++)for(let j=i+1;j<parlays.length;j++)assert.ok(parlays[i].filter(a=>parlays[j].some(b=>a.playerKey===b.playerKey)).length<=1);
+ run('eventProps=async request=>Response.json({data:events.filter(e=>e.eventID===new URL(request.url).searchParams.get("eventID"))})');
+ await assert.rejects(run('verifiedRecordStatements([{kind:"prop",...candidates[0]}],new Request("https://test.invalid/api/record"),env,{waitUntil(){}})'),/server only/,'clients cannot nominate official picks');
+ context.existing=db.prepare('SELECT * FROM public_recommendations').all();assert.equal(run("officialPlan(candidates,existing,'2026-09-22').length"),0);
+ run('futureSchedule=async()=>Response.json({data:events.map(e=>({eventID:e.eventID,status:{startsAt:e.commence_time}}))});var jobs=[];queueOfficialPicks(new Request("https://test.invalid/api/props"),env,{waitUntil:p=>jobs.push(p)})');await Promise.all(run('jobs'));
+ assert.equal(db.prepare('SELECT COUNT(*) n FROM public_recommendations').get().n,130,'production trigger uses schedule and persisted state');
+ const c=client();vm.runInContext(read('dist/trust.html').match(/<script>([\s\S]*?)<\/script>/)[1],c.ctx);c.ctx.rows=[...context.existing,{id:'legacy',source:'market-verified-v2',kind:'prop',status:'final',result:'lost'}];c.nodes.get('#recordScope').value='2026-09-22';c.eval('paint(rows)');assert.equal(c.eval('resultRows.length'),130);c.nodes.get('#recordScope').value='legacy';c.eval('paint(rows)');assert.equal(c.eval('resultRows.length'),1);
+ console.log('PASS: official weekly caps, quality gates, overlap limits, immutable odds, repeat publication, client rejection, weekly rollover and history filters (real SQLite; no production writes)');
+})().catch(e=>{console.error(e);process.exitCode=1});

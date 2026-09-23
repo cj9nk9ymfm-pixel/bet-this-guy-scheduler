@@ -1,0 +1,22 @@
+const assert=require('node:assert/strict'),vm=require('node:vm'),{DatabaseSync}=require('node:sqlite');
+const {read,client}=require('./helpers/client.cjs');
+const database=new DatabaseSync(':memory:');database.exec(read('drizzle/0003_shared_movement.sql'));
+const DB={prepare(sql){const stmt=database.prepare(sql),wrap=args=>({bind:(...a)=>wrap(a),all:async()=>({results:stmt.all(...args)}),run:async()=>({meta:{changes:Number(stmt.run(...args).changes)}})});return wrap([])}};
+const now=Date.now(),yesterday=now-86400000;
+const event=(at,price)=>({id:'fixture',eventID:'NFL--fixture',sport_label:'NFL',commence_time:new Date(now+86400000).toISOString(),away_team:'Away',home_team:'Home',bookmakers:[{key:'draftkings',title:'DraftKings',markets:[{key:'player_rush_yds',last_update:new Date(at).toISOString(),outcomes:[{name:'Over',description:'Player Test',point:49.5,price},{name:'Under',description:'Player Test',point:49.5,price:-110}]}]}]});
+let historicalCalls=0,offline=false;
+const ctx=vm.createContext({URL,URLSearchParams,Request,Response,Headers,AbortSignal,Date,console,setTimeout,clearTimeout,fetch:async url=>{if(String(url).includes('/historical/')){assert.match(new URL(url).searchParams.get('date'),/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);historicalCalls++;return Response.json({timestamp:new Date(yesterday).toISOString(),data:event(yesterday,-110)})}if(offline)throw Error('offline');return Response.json(event(Date.now(),-150))}});
+vm.runInContext(read('worker/index.template.js').slice(read('worker/index.template.js').indexOf('const API_BASE')).replace('__LIVE_SERVER__',read('worker/live.js')).replace('__STATS_SHARED__',read('dist/stats.js')).replace('__RECORDS_SERVER__',read('worker/records.js')).replace('__ACCOUNTS_SERVER__',read('worker/accounts.js')).replace('__MOVEMENT_SERVER__',read('worker/movement.js')).replace('export default {','this.worker={'),ctx);
+const request=()=>ctx.worker.fetch(new Request('https://test.invalid/api/movement?eventID=NFL--fixture'),{DB,THE_ODDS_API_KEY:'fixture'},{waitUntil:p=>p.catch(()=>{})});
+(async()=>{
+  const first=await request();assert.equal(first.status,200);const payload=await first.json();assert.equal(payload.snapshots.length,2);assert.equal(payload.snapshots[0].source,'provider-history');assert.equal(historicalCalls,1);
+  assert.equal((await request()).status,200,'cached response remains readable for the next visitor');
+  assert.equal(vm.runInContext('[...runtimeFeedCache.values()].every(value=>typeof value.body==="string"&&!(value instanceof Response))',ctx),true,'cache retains plain data, never request-owned streams');
+  const fresh=client();assert.ifError(fresh.error);fresh.ctx.payload=payload;fresh.eval('BTGMovement.importShared(payload)');
+  assert.equal(fresh.eval('BTGMovement.seriesFor({sport:"NFL",eventID:"NFL--fixture",player:"Player Test",market:"Rushing Yards",side:"Over"}).length'),1,'new visitor sees true historical movement immediately');
+  fresh.eval('BTGMovement.importShared(payload)');assert.equal(fresh.eval('BTGMovement.seriesFor({sport:"NFL",eventID:"NFL--fixture",player:"Player Test",market:"Rushing Yards",side:"Over"})[0].rows.length'),2,'repeat import preserves real sequence');
+  vm.runInContext('runtimeFeedCache.clear()',ctx);await request();assert.equal(historicalCalls,1,'DB prevents repeated historical credit usage');
+  offline=true;vm.runInContext('runtimeFeedCache.clear()',ctx);assert.equal((await request()).status,503,'failed current feed cannot show stale history as current');
+  assert.equal(database.prepare('SELECT count(*) n FROM movement_snapshots').get().n,3,'snapshot deduplication');
+  console.log('PASS: shared history, first-visit results, repeated import, persistent historical lookup deduplication, SQL migration, and current-feed failure');
+})().catch(e=>{console.error(e);process.exitCode=1});

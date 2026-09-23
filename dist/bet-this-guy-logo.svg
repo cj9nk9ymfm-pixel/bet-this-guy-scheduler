@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Bet This Guy logo</title>
+  <desc id="desc">A neon target locked onto by a bold forward pointer inside a betting ticket.</desc>
+  <defs>
+    <linearGradient id="ticket" x1="62" y1="35" x2="454" y2="475" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#274BFF"/>
+      <stop offset=".54" stop-color="#006FFF"/>
+      <stop offset="1" stop-color="#00D9FF"/>
+    </linearGradient>
+    <linearGradient id="pointer" x1="178" y1="151" x2="364" y2="371" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#C5EFFF"/>
+    </linearGradient>
+    <filter id="blueGlow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="14" result="b"/>
+      <feColorMatrix in="b" values="0 0 0 0 0 0 0 0 0 .6 0 0 0 0 1 0 0 0 .7 0"/>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="142" fill="#03091C"/>
+  <path d="M77 101c0-22 18-40 40-40h278c22 0 40 18 40 40v72c-27 8-46 33-46 63s19 55 46 63v112c0 22-18 40-40 40H117c-22 0-40-18-40-40V299c27-8 46-33 46-63s-19-55-46-63v-72Z" fill="url(#ticket)"/>
+  <path d="M118 118h276" stroke="#7DE2FF" stroke-width="7" stroke-linecap="round" stroke-dasharray="12 18" opacity=".58"/>
+  <circle cx="282" cy="262" r="100" fill="#07122E" stroke="#86E6FF" stroke-width="12"/>
+  <circle cx="282" cy="262" r="60" fill="none" stroke="#1C8DFF" stroke-width="11"/>
+  <circle cx="282" cy="262" r="23" fill="#00E0FF" filter="url(#blueGlow)"/>
+  <path d="M135 354V177l175 95-72 27 46 92-42 21-46-92-61 34Z" fill="url(#pointer)" stroke="#06112B" stroke-width="13" stroke-linejoin="round"/>
+  <path d="M340 79c7 20 25 27 25 48 0 18-14 32-33 32s-34-14-34-32c0-16 11-28 20-40 0 16 10 22 16 25-1-14 1-23 6-33Z" fill="#FF5A75"/>
+  <path d="M339 111c2 8 10 12 10 20 0 8-7 14-15 14s-15-6-15-14c0-7 5-12 10-18 0 7 4 10 7 12 0-6 1-10 3-14Z" fill="#FFD45C"/>
+</svg>
