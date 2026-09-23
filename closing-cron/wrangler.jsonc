@@ -1,0 +1,8 @@
+{
+  "name": "bet-this-guy-scheduler",
+  "main": "index.js",
+  "compatibility_date": "2026-09-01",
+  "workers_dev": false,
+  "triggers": { "crons": ["*/5 * * * *"] }
+  // MAINTENANCE_TOKEN is a secret: `npx wrangler secret put MAINTENANCE_TOKEN`
+}

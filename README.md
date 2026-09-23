@@ -56,24 +56,31 @@ This product is for informational and entertainment purposes. Users should verif
 
 ## Scheduler
 
-This repository also runs Bet This Guy's automatic publishing, grading and closing-line capture through `.github/workflows/btg-maintenance.yml`. Activation steps are in `scripts/MAINTENANCE-SETUP.md`.
+This repository also runs Bet This Guy's automatic maintenance:
+
+- Publishing and grading run from `.github/workflows/btg-maintenance.yml` on GitHub Actions.
+- Closing-line capture runs from the Cloudflare Worker cron in `closing-cron/`. GitHub starts scheduled runs late, often by 5–10 minutes. Cloudflare's cron starts on time, which matters for capturing lines at kickoff.
+
+Activation steps are in `scripts/MAINTENANCE-SETUP.md`.
 
 ### Health
 
-The badge above is green when the latest maintenance run succeeded and red when attention is needed. Open **Actions**, choose the latest run and read its summary to see:
+The badge above covers publishing and grading. It is green when the latest maintenance run succeeded and red when attention is needed. Open **Actions**, choose the latest run and read its summary to see:
 
 - whether the scheduler was in an active NFL window or a quiet period;
 - which maintenance jobs ran;
-- whether publishing, grading and closing-line capture completed; and
-- whether a quiet-period check avoided provider calls.
+- whether publishing and grading completed; and
+- whether a run with no jobs due avoided provider calls.
+
+For closing-line capture, open the `bet-this-guy-scheduler` Worker in the Cloudflare dashboard and check the log for each cron run. A failed capture is marked as an error there.
 
 ### API budget guardrails
 
 The timer checks every five minutes, but provider calls are throttled automatically:
 
-- During active NFL windows, closing-line capture checks every five minutes, grading runs about every ten minutes and publishing runs about every fifteen minutes.
-- During quiet periods, most runs make zero provider calls.
+- During active NFL windows, the Cloudflare cron captures closing lines every five minutes, grading runs about every ten minutes and publishing runs about every fifteen minutes.
+- During quiet periods, the Cloudflare cron makes no calls and most GitHub runs make zero provider calls.
 - A lightweight publishing and grading checkpoint runs every six hours during quiet periods.
-- Manual and workflow-change verification runs execute all three jobs.
+- Manual and workflow-change verification runs on GitHub execute all three jobs, including one closing-line capture.
 
-The repository contains no sportsbook or stats-provider API keys. The maintenance credential is stored only as an encrypted GitHub Actions secret.
+The repository contains no sportsbook or stats-provider API keys. The maintenance credential is stored only as an encrypted GitHub Actions secret and a Cloudflare Worker secret.
