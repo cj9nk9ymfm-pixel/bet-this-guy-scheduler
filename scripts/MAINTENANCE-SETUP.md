@@ -1,6 +1,6 @@
 # Maintenance scheduler activation
 
-Status: prepared, not activated. Sites continues visitor-triggered maintenance until the external scheduler is connected and verified.
+Status: activated. The workflow runs from the default branch of this repository (`cj9nk9ymfm-pixel/bet-this-guy-scheduler`) every five minutes and calls the protected maintenance endpoint. Check the badge in `README.md` or the latest Actions run summary for current health. The steps below are kept for reference when rotating the token or reinstalling the scheduler.
 
 The workflow in `.github/workflows/btg-maintenance.yml` must be installed on a GitHub repository's default branch. The source repository on git.chatgpt-team.site does not run GitHub Actions.
 
