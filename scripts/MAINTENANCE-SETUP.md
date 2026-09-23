@@ -7,6 +7,7 @@ Closing-line capture runs separately, from the Cloudflare Worker cron in `closin
 1. Deploy `closing-cron/` to the `bet-this-guy-scheduler` Worker. Either run `npx wrangler deploy` from `closing-cron/`, or connect Workers Builds to this repository with **Root directory** set to `closing-cron`.
 2. Set the Worker secret `MAINTENANCE_TOKEN` to the same value as `BTG_MAINTENANCE_TOKEN`, either with `npx wrangler secret put MAINTENANCE_TOKEN` or in the dashboard under **Settings**, then **Variables and Secrets**.
 3. During an active NFL window, check the Worker's cron runs in the dashboard. Each run should log `closing: completed`.
+4. Optional but recommended: set the Worker secret `ALERT_NTFY_TOPIC` to a long, private topic name, and subscribe to the same topic in the ntfy phone app. A failed capture, after its one retry, then sends a high-priority push notification. Treat the topic name like a password, because anyone who knows it can read the alerts.
 
 Publishing and grading run from `.github/workflows/btg-maintenance.yml` on this repository's default branch. The website runs on the `bet-this-guy` Cloudflare Worker (see `README.md`). To reinstall the scheduler or rotate its token:
 
