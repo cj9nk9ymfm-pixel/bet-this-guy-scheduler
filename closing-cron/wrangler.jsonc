@@ -4,5 +4,6 @@
   "compatibility_date": "2026-09-01",
   "workers_dev": false,
   "triggers": { "crons": ["*/5 * * * *"] }
-  // MAINTENANCE_TOKEN is a secret: `npx wrangler secret put MAINTENANCE_TOKEN`
+  // Secrets: MAINTENANCE_TOKEN, and optionally ALERT_NTFY_TOPIC for failure alerts.
+  // Set them with `npx wrangler secret put <NAME>` or in the dashboard.
 }

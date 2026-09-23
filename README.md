@@ -84,7 +84,7 @@ The badge above covers publishing and grading. It is green when the latest maint
 - whether publishing and grading completed; and
 - whether a run with no jobs due avoided provider calls.
 
-For closing-line capture, open the `bet-this-guy-scheduler` Worker in the Cloudflare dashboard and check the log for each cron run. A failed capture is marked as an error there.
+For closing-line capture, open the `bet-this-guy-scheduler` Worker in the Cloudflare dashboard and check the log for each cron run. A failed capture is marked as an error there, and when the Worker's `ALERT_NTFY_TOPIC` secret is set, it also sends a push notification through [ntfy](https://ntfy.sh) to phones subscribed to that topic.
 
 ### API budget guardrails
 
