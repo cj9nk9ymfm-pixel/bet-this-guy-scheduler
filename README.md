@@ -39,6 +39,25 @@ Never commit those secret values. The Supabase publishable browser key is intent
 
 Before enabling social-login buttons, configure the Google and Apple providers in Supabase Auth and add the production and local callback URLs. Email confirmation and password-reset redirects must also be allow-listed in Supabase.
 
+## Hosting on Cloudflare
+
+The site is moving from ChatGPT Sites to a Cloudflare Worker named `bet-this-guy`, built from this repository. `wrangler.jsonc` configures it with the `bet-this-guy` D1 database. Until the domain switches over, betthisguy.com is still served by Sites.
+
+Deployment uses Cloudflare Workers Builds, so no Cloudflare credentials are stored in GitHub. To connect it, go to **Workers & Pages** in the Cloudflare dashboard and choose **Create**, then **Import a repository**. Pick this repository and use:
+
+- **Project name:** `bet-this-guy`
+- **Build command:** `npm run build`
+- **Deploy command:** `npx wrangler d1 migrations apply DB --remote && npx wrangler deploy`
+- **Root directory:** leave empty
+
+Each push to `main` then applies any new migrations in `drizzle/` and deploys the site. Set the Worker secrets `THE_ODDS_API_KEY`, `BALLDONTLIE_API_KEY` and `MAINTENANCE_TOKEN` under **Settings**, then **Variables and Secrets**. Until the domain moves, test the site at its `workers.dev` address.
+
+Remaining steps to finish the move:
+
+1. Export the production data from Sites and import it into the `bet-this-guy` D1 database.
+2. Add betthisguy.com to Cloudflare and attach it to the `bet-this-guy` Worker as a custom domain.
+3. Once betthisguy.com is served from Cloudflare, retire the Sites deployment.
+
 ## Database migrations
 
 Migrations are in `drizzle/`. Apply them in order to a new D1 database. The current schema source is `db/schema.ts` and Drizzle configuration is in `drizzle.config.ts`.

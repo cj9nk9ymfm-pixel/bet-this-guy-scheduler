@@ -1,0 +1,19 @@
+// Bet This Guy site Worker. Built by `npm run build` into dist/server/index.js.
+// Deployed by Cloudflare Workers Builds from this repository's main branch.
+{
+  "name": "bet-this-guy",
+  "main": "dist/server/index.js",
+  "compatibility_date": "2026-09-01",
+  "workers_dev": true,
+  "observability": { "enabled": true },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "bet-this-guy",
+      "database_id": "d05b3e77-7dd7-4ec1-921f-06d5afff0cc9",
+      "migrations_dir": "drizzle"
+    }
+  ]
+  // Secrets, set in the dashboard or with `npx wrangler secret put <NAME>`:
+  // THE_ODDS_API_KEY, BALLDONTLIE_API_KEY, MAINTENANCE_TOKEN
+}
