@@ -35,6 +35,10 @@ The Worker expects these server-side secrets/bindings:
 - `BALLDONTLIE_API_KEY`: box scores and grading data
 - `MAINTENANCE_TOKEN`: authorization for scheduled maintenance endpoints
 
+Optional variable:
+
+- `VISITOR_MAINTENANCE`: leave unset normally. Publishing, grading and closing-line capture run on the GitHub scheduler and the closing-line cron. Set it to `on` only as a fallback if the scheduler is down. Visitor traffic then triggers that work again, at the cost of extra provider calls.
+
 Never commit those secret values. The Supabase publishable browser key is intentionally public; Supabase Row Level Security and the site API enforce access control.
 
 Before enabling social-login buttons, configure the Google and Apple providers in Supabase Auth and add the production and local callback URLs. Email confirmation and password-reset redirects must also be allow-listed in Supabase.

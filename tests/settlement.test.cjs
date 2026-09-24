@@ -9,8 +9,13 @@ run('var originalSettle=settlePublicRecords,originalRecordStats=recordPlayerStat
   run(`var finishJob,started=0,background=[];
     settlePublicRecords=()=>{started++;return new Promise(resolve=>finishJob=resolve)};
     captureClosingLines=async()=>{};
-    var env={BALLDONTLIE_API_KEY:'fixture',DB:{prepare:()=>({all:async()=>({results:[]})})}};
+    var quietEnv={BALLDONTLIE_API_KEY:'fixture',DB:{prepare:()=>({all:async()=>({results:[]})})}};
+    var env={...quietEnv,VISITOR_MAINTENANCE:'on'};
     var ctx={waitUntil:promise=>background.push(promise)};`);
+  const quiet=await run('publicRecord(new Request("https://test.invalid/api/record"),quietEnv,ctx)');
+  assert.equal(quiet.status,200);
+  assert.equal(run('started'),0,'by default record reads leave grading to the scheduler');
+  assert.equal(run('background.length'),0,'by default record reads queue no provider work');
   const response=await Promise.race([run('publicRecord(new Request("https://test.invalid/api/record"),env,ctx)'),new Promise((_,reject)=>setTimeout(()=>reject(Error('record read blocked on provider')),100))]);
   assert.equal(response.status,200);
   assert.equal(run('started'),1);
