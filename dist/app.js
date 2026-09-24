@@ -1069,7 +1069,7 @@ renderBookmarkRecovery();
 const VERDICTS={
   send:{key:'send',icon:'✅',label:'Bet This Guy',line:'The numbers back this one. Send it to the chat.'},
   flip:{key:'flip',icon:'🪙',label:'Coin Flip',line:'Priced about right — no edge either way.'},
-  read:{key:'read',icon:'👀',label:'Left on Read',line:'The books are taking more than usual here. Skip it.'}
+  read:{key:'read',icon:'👎',label:'Left on Read',line:'The books are taking more than usual here. Skip it.'}
 };
 function propVerdict(p){
   const edge=Number(p?.rawEdge);
