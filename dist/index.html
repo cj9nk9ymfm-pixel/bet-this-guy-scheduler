@@ -44,12 +44,17 @@
   <header class="topbar">
     <a class="brand" href="/" aria-label="Bet This Guy home"><img class="brand-logo" src="/bet-this-guy-logo-v3.png" alt="Bet This Guy" /></a>
     <nav class="desktop-nav" aria-label="Main navigation">
-      <button class="nav-link active" data-view="board">Props</button>
+      <button class="nav-link active" data-view="board">Bets</button>
       <button class="nav-link" data-nav-target="live"><span class="nav-live-dot"></span>Live</button>
       <button class="nav-link" data-nav-target="parlays">Parlays</button>
-      <button class="nav-link" data-nav-target="generator">Parlay Generator</button>
-      <button class="nav-link" data-view="movement">Line Movement</button>
-      <button class="nav-link" data-view="saved">Watchlist <span id="watchCount">0</span></button>
+      <button class="nav-link nav-more-toggle" id="desktopMoreBtn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="desktopMorePanel">More<i class="nav-more-caret" aria-hidden="true">▾</i></button>
+      <div class="nav-more-panel" id="desktopMorePanel" hidden>
+        <button class="nav-link" data-nav-target="generator">Parlay Generator<small>Build a parlay to your odds and size</small></button>
+        <button class="nav-link" data-view="movement">Line Movement<small>See which lines are moving</small></button>
+        <button class="nav-link" data-view="saved">Watchlist <span id="watchCount">0</span><small>Props you starred</small></button>
+        <a class="nav-link" href="/trust#official">Official Picks<small>This week’s locked picks</small></a>
+        <a class="nav-link" href="/trust">Track Record<small>Every graded result</small></a>
+      </div>
     </nav>
     <div class="top-actions">
       <button class="icon-btn saved-header-btn" id="openSavedProps" aria-label="Open saved props">☆<span id="savedHeaderCount">0</span></button>
@@ -200,7 +205,15 @@
     </section>
   </main>
 
-  <nav class="mobile-nav" aria-label="Mobile navigation"><a class="active" href="?page=props" data-page-link="props">Props</a><a href="?page=parlays" data-page-link="parlays">Parlays</a><a class="nav-generator" href="?page=generator" data-page-link="generator">Generator</a><a href="?page=movement" data-page-link="movement">Movement</a><a href="?page=slip" data-page-link="slip">Slip <span id="slipCount">0</span></a></nav>
+  <nav class="mobile-nav" aria-label="Mobile navigation"><a class="active" href="?page=props" data-page-link="props">Bets</a><a href="?page=parlays" data-page-link="parlays">Parlays</a><a href="?page=slip" data-page-link="slip">Slip <span id="slipCount">0</span></a><a class="nav-more" href="#more" id="mobileMoreBtn" aria-haspopup="dialog" aria-controls="moreSheet">More</a></nav>
+  <dialog class="more-sheet" id="moreSheet" aria-label="More pages"><div class="more-sheet-head"><strong>More</strong><button type="button" class="more-sheet-close" id="moreSheetClose" aria-label="Close">×</button></div>
+    <a href="?page=generator" data-page-link="generator"><strong>Parlay Generator</strong><span>Build a parlay to your odds and size</span></a>
+    <a href="?page=movement" data-page-link="movement"><strong>Line Movement</strong><span>See which lines are moving</span></a>
+    <button type="button" data-more-action="saved"><strong>Watchlist</strong><span>Props you starred</span></button>
+    <a href="/trust#official"><strong>Official Picks</strong><span>This week’s locked picks</span></a>
+    <a href="/trust"><strong>Track Record</strong><span>Every graded result</span></a>
+    <button type="button" data-more-action="settings"><strong>Settings</strong><span>Bet amount, odds limits and more</span></button>
+  </dialog>
   <footer class="app-footer"><span>Research and entertainment · No guaranteed outcomes</span><nav><a href="/trust">Trust Center</a><a href="/legal#privacy">Privacy</a><a href="/legal#terms">Terms</a></nav></footer>
 
   <dialog id="detailDialog"><button class="dialog-close" aria-label="Close">×</button><div id="detailContent"></div></dialog>

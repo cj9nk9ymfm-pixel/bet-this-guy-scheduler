@@ -410,3 +410,21 @@ body.light .top-play{border-color:#6bc5e8!important;box-shadow:0 9px 24px rgba(2
 .verdict-read{border-color:#6b3a47;background:rgba(48,16,27,.55)}
 .verdict-read .verdict-icon{background:rgba(255,120,140,.14)}
 .verdict-read .verdict-badge strong{color:#ff9aab}
+
+/* Simpler menu: four phone tabs and a More sheet; desktop More dropdown */
+@media(max-width:720px){nav.mobile-nav{grid-template-columns:repeat(4,minmax(0,1fr))!important}nav.mobile-nav a{font-size:13px!important}}
+.more-sheet{margin:auto auto 0;width:100%;max-width:520px;padding:14px 14px calc(18px + env(safe-area-inset-bottom));border:1px solid #27466f;border-radius:20px 20px 0 0;background:#06122a;color:#f6f9ff}
+.more-sheet::backdrop{background:rgba(2,6,16,.65)}
+.more-sheet-head{display:flex;justify-content:space-between;align-items:center;padding:2px 4px 10px}
+.more-sheet-head strong{font:800 18px/1 "Space Grotesk",system-ui,sans-serif}
+.more-sheet-close{width:36px;height:36px;border:1px solid #27466f;border-radius:50%;background:transparent;color:#f6f9ff;font-size:20px}
+.more-sheet a,.more-sheet button[data-more-action]{display:flex;flex-direction:column;gap:3px;width:100%;margin:0 0 8px;padding:13px 14px;border:1px solid rgba(92,147,211,.25);border-radius:14px;background:rgba(9,24,48,.8);color:#f6f9ff;text-align:left;text-decoration:none;font:inherit}
+.more-sheet a strong,.more-sheet button strong{font-size:15px}
+.more-sheet a span,.more-sheet button span{font-size:12.5px;color:#9fb3d9}
+.nav-more-panel{position:fixed;z-index:60;display:flex;flex-direction:column;gap:4px;width:280px;padding:8px;border:1px solid #27466f;border-radius:14px;background:#06122a;box-shadow:0 18px 40px rgba(0,0,0,.45)}
+.nav-more-panel[hidden]{display:none}
+.nav-more-panel .nav-link{display:block;width:100%;height:auto;padding:10px 12px;border-radius:10px;text-align:left;text-decoration:none}
+.nav-more-panel .nav-link small{display:block;margin-top:3px;font-size:12px;font-weight:500;color:#9fb3d9}
+.nav-more-panel .nav-link::after{display:none!important}
+.desktop-nav .nav-more-toggle .nav-more-caret{all:unset;margin-left:4px;font-size:11px;opacity:.75}
+.nav-more-panel .nav-link:hover,.nav-more-panel .nav-link.active{background:rgba(24,184,255,.12)}
