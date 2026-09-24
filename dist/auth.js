@@ -1,7 +1,32 @@
 (function(){
 const SUPABASE_URL='https://dtypbfxmponfrwtprnca.supabase.co';
 const SUPABASE_KEY='sb_publishable_SRVkae5U7sfu1sgRHB2UFQ_AroKYMPj';
-const client=window.supabase?.createClient?.(SUPABASE_URL,SUPABASE_KEY,{auth:{flowType:'pkce',persistSession:true,autoRefreshToken:true,detectSessionInUrl:true,storageKey:'btg-secure-session'}});
+const SESSION_KEY='btg-secure-session';
+// The 218 KB Supabase library loads only when needed: right away for visitors
+// with a saved session or returning from an email/OAuth link, otherwise when
+// the account dialog opens. index.html keeps its fingerprinted URL in an inert
+// <template> so it is not downloaded up front.
+let client=null,clientLoading=null;
+const authLinkInUrl=()=>{const query=new URLSearchParams(location.search);return query.has('code')||query.has('auth')||query.has('error_description')||/access_token=|error_description=|type=recovery/.test(location.hash)};
+const hasSavedSession=()=>{try{for(let i=0;i<localStorage.length;i++)if(String(localStorage.key(i)).startsWith(SESSION_KEY))return true}catch{}return false};
+function loadClient(){
+  if(client)return Promise.resolve(client);
+  if(clientLoading)return clientLoading;
+  clientLoading=new Promise((resolve,reject)=>{
+    const create=()=>{client=window.supabase?.createClient?.(SUPABASE_URL,SUPABASE_KEY,{auth:{flowType:'pkce',persistSession:true,autoRefreshToken:true,detectSessionInUrl:true,storageKey:SESSION_KEY}});if(!client)return reject(new Error('Sign-in is unavailable right now.'));watchSession(client);resolve(client)};
+    if(window.supabase)return create();
+    const script=document.createElement('script');
+    script.src=document.querySelector('#supabaseScript')?.content?.querySelector('script')?.getAttribute('src')||'/supabase.js';
+    script.onload=create;script.onerror=()=>reject(new Error('Sign-in could not load. Check your connection and try again.'));
+    document.head.append(script);
+  }).catch(error=>{clientLoading=null;throw error});
+  return clientLoading;
+}
+const auth=async()=>(await loadClient()).auth;
+function watchSession(next){
+  next.auth.onAuthStateChange((event,value)=>{if(event==='PASSWORD_RECOVERY')setTimeout(()=>{session=value;open('reset')},0);else setTimeout(()=>handleSession(value),0)});
+  next.auth.getSession().then(({data})=>handleSession(data.session));
+}
 let session=null,profile=null,bets=[],accountMessage='';
 const $=selector=>document.querySelector(selector);
 const money=cents=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format((Number(cents)||0)/100);
@@ -29,8 +54,8 @@ function show(view){
   if(view==='account')renderAccount();
   if(view==='record')refreshBets();
 }
-function open(view){
-  if(!client){return}
+async function open(view){
+  if(!client){try{await loadClient()}catch(error){show('login');setStatus(error.message,'error');if(!dialog().open)dialog().showModal();return}}
   const target=view||(signedIn()?'account':'login');
   show(target);if(!dialog().open)dialog().showModal();
 }
@@ -39,7 +64,7 @@ async function api(path,options={}){
   const headers={...(options.body?{'content-type':'application/json'}:{}),authorization:`Bearer ${session.access_token}`,...options.headers};
   const response=await fetch(path,{...options,headers});
   const body=await response.json().catch(()=>({}));
-  if(response.status===401){await client.auth.signOut();throw new Error('Your session expired. Please sign in again.');}
+  if(response.status===401){await (await auth()).signOut();throw new Error('Your session expired. Please sign in again.');}
   if(!response.ok)throw new Error(body.error||'The request could not be completed.');
   return body;
 }
@@ -111,21 +136,20 @@ async function importLegacy(){
 }
 async function handleSession(next){session=next;profile=null;updateButton();if(session){await loadAccount().catch(error=>setStatus(friendly(error),'error'))}else{bets=[];if(dialog()?.open)show('login')}}
 
-async function submitLogin(event){event.preventDefault();const form=event.currentTarget;setBusy(form,true);setStatus('');const data=new FormData(form);try{const{error}=await client.auth.signInWithPassword({email:String(data.get('email')).trim(),password:String(data.get('password'))});if(error)throw error;accountMessage='Welcome back.';show('account')}catch(error){setStatus(friendly(error),'error')}finally{setBusy(form,false)}}
-async function submitSignup(event){event.preventDefault();const form=event.currentTarget;setBusy(form,true);setStatus('');const data=new FormData(form),email=String(data.get('email')).trim(),password=String(data.get('password')),confirm=String(data.get('confirm')),name=String(data.get('name')).trim();try{if(name.length<2)throw new Error('Enter your name.');if(password.length<12||!/[a-z]/.test(password)||!/[A-Z]/.test(password)||!/[0-9]/.test(password))throw new Error('Use at least 12 characters with uppercase, lowercase, and a number.');if(password!==confirm)throw new Error('The passwords do not match.');if(!data.get('terms'))throw new Error('Agree to the Terms and Privacy Policy to create an account.');const{data:result,error}=await client.auth.signUp({email,password,options:{data:{full_name:name},emailRedirectTo:`${location.origin}/?auth=confirmed`}});if(error)throw error;if(result.session){accountMessage='Your account is ready.';show('account')}else{show('check-email');$('#checkEmailAddress').textContent=email}}catch(error){setStatus(friendly(error),'error')}finally{setBusy(form,false)}}
-async function submitForgot(event){event.preventDefault();const form=event.currentTarget;setBusy(form,true);setStatus('');const email=String(new FormData(form).get('email')).trim();try{const{error}=await client.auth.resetPasswordForEmail(email,{redirectTo:`${location.origin}/?auth=reset`});if(error)throw error;show('check-email');$('#checkEmailAddress').textContent=email;$('#checkEmailCopy').textContent='Use the secure link in your email to choose a new password.'}catch(error){setStatus(friendly(error),'error')}finally{setBusy(form,false)}}
-async function submitReset(event){event.preventDefault();const form=event.currentTarget;setBusy(form,true);setStatus('');const data=new FormData(form),password=String(data.get('password')),confirm=String(data.get('confirm'));try{if(password.length<12||!/[a-z]/.test(password)||!/[A-Z]/.test(password)||!/[0-9]/.test(password))throw new Error('Use at least 12 characters with uppercase, lowercase, and a number.');if(password!==confirm)throw new Error('The passwords do not match.');const{error}=await client.auth.updateUser({password});if(error)throw error;accountMessage='Your password has been updated.';show('account')}catch(error){setStatus(friendly(error),'error')}finally{setBusy(form,false)}}
-async function social(provider){setStatus('');const{error}=await client.auth.signInWithOAuth({provider,options:{redirectTo:location.origin}});if(error)setStatus(friendly(error),'error')}
+async function submitLogin(event){event.preventDefault();const form=event.currentTarget;setBusy(form,true);setStatus('');const data=new FormData(form);try{const{error}=await (await auth()).signInWithPassword({email:String(data.get('email')).trim(),password:String(data.get('password'))});if(error)throw error;accountMessage='Welcome back.';show('account')}catch(error){setStatus(friendly(error),'error')}finally{setBusy(form,false)}}
+async function submitSignup(event){event.preventDefault();const form=event.currentTarget;setBusy(form,true);setStatus('');const data=new FormData(form),email=String(data.get('email')).trim(),password=String(data.get('password')),confirm=String(data.get('confirm')),name=String(data.get('name')).trim();try{if(name.length<2)throw new Error('Enter your name.');if(password.length<12||!/[a-z]/.test(password)||!/[A-Z]/.test(password)||!/[0-9]/.test(password))throw new Error('Use at least 12 characters with uppercase, lowercase, and a number.');if(password!==confirm)throw new Error('The passwords do not match.');if(!data.get('terms'))throw new Error('Agree to the Terms and Privacy Policy to create an account.');const{data:result,error}=await (await auth()).signUp({email,password,options:{data:{full_name:name},emailRedirectTo:`${location.origin}/?auth=confirmed`}});if(error)throw error;if(result.session){accountMessage='Your account is ready.';show('account')}else{show('check-email');$('#checkEmailAddress').textContent=email}}catch(error){setStatus(friendly(error),'error')}finally{setBusy(form,false)}}
+async function submitForgot(event){event.preventDefault();const form=event.currentTarget;setBusy(form,true);setStatus('');const email=String(new FormData(form).get('email')).trim();try{const{error}=await (await auth()).resetPasswordForEmail(email,{redirectTo:`${location.origin}/?auth=reset`});if(error)throw error;show('check-email');$('#checkEmailAddress').textContent=email;$('#checkEmailCopy').textContent='Use the secure link in your email to choose a new password.'}catch(error){setStatus(friendly(error),'error')}finally{setBusy(form,false)}}
+async function submitReset(event){event.preventDefault();const form=event.currentTarget;setBusy(form,true);setStatus('');const data=new FormData(form),password=String(data.get('password')),confirm=String(data.get('confirm'));try{if(password.length<12||!/[a-z]/.test(password)||!/[A-Z]/.test(password)||!/[0-9]/.test(password))throw new Error('Use at least 12 characters with uppercase, lowercase, and a number.');if(password!==confirm)throw new Error('The passwords do not match.');const{error}=await (await auth()).updateUser({password});if(error)throw error;accountMessage='Your password has been updated.';show('account')}catch(error){setStatus(friendly(error),'error')}finally{setBusy(form,false)}}
+async function social(provider){setStatus('');const{error}=await (await auth()).signInWithOAuth({provider,options:{redirectTo:location.origin}});if(error)setStatus(friendly(error),'error')}
 function init(){
-  if(!client)return;
   $('#accountBtn').onclick=()=>open();$('#accountClose').onclick=()=>dialog().close();
   document.querySelectorAll('[data-auth-target]').forEach(button=>button.onclick=()=>show(button.dataset.authTarget));
   document.querySelectorAll('[data-auth-provider]').forEach(button=>button.onclick=()=>social(button.dataset.authProvider));
   $('#authLoginForm').onsubmit=submitLogin;$('#authSignupForm').onsubmit=submitSignup;$('#authForgotForm').onsubmit=submitForgot;$('#authResetForm').onsubmit=submitReset;
-  $('#accountSignOut').onclick=async()=>{await client.auth.signOut();dialog().close()};
+  $('#accountSignOut').onclick=async()=>{await (await auth()).signOut();dialog().close()};
   $('#openMyRecord').onclick=()=>show('record');$('#recordBack').onclick=()=>show('account');$('#importLegacyBets').onclick=importLegacy;
-  client.auth.onAuthStateChange((event,next)=>{if(event==='PASSWORD_RECOVERY')setTimeout(()=>{session=next;open('reset')},0);else setTimeout(()=>handleSession(next),0)});
-  client.auth.getSession().then(({data})=>handleSession(data.session));
+  if(hasSavedSession()||authLinkInUrl())loadClient().catch(error=>console.warn('auth_unavailable',error.message));
+  else handleSession(null);
 }
 window.BTGAuth={open,isSignedIn:signedIn,savePreferences,syncSavedProps,trackParlay,refreshBets,renderTrackingPanel};
 addEventListener('load',init,{once:true});
