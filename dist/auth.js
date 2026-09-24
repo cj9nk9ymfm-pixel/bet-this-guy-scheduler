@@ -2,6 +2,9 @@
 const SUPABASE_URL='https://dtypbfxmponfrwtprnca.supabase.co';
 const SUPABASE_KEY='sb_publishable_SRVkae5U7sfu1sgRHB2UFQ_AroKYMPj';
 const SESSION_KEY='btg-secure-session';
+// Google and Apple sign-in are hidden until their Supabase providers are set up.
+// Set to true to show the "Continue with Google/Apple" buttons again.
+const SOCIAL_SIGN_IN=false;
 // The 218 KB Supabase library loads only when needed: right away for visitors
 // with a saved session or returning from an email/OAuth link, otherwise when
 // the account dialog opens. index.html keeps its fingerprinted URL in an inert
@@ -142,6 +145,7 @@ async function submitForgot(event){event.preventDefault();const form=event.curre
 async function submitReset(event){event.preventDefault();const form=event.currentTarget;setBusy(form,true);setStatus('');const data=new FormData(form),password=String(data.get('password')),confirm=String(data.get('confirm'));try{if(password.length<12||!/[a-z]/.test(password)||!/[A-Z]/.test(password)||!/[0-9]/.test(password))throw new Error('Use at least 12 characters with uppercase, lowercase, and a number.');if(password!==confirm)throw new Error('The passwords do not match.');const{error}=await (await auth()).updateUser({password});if(error)throw error;accountMessage='Your password has been updated.';show('account')}catch(error){setStatus(friendly(error),'error')}finally{setBusy(form,false)}}
 async function social(provider){setStatus('');const{error}=await (await auth()).signInWithOAuth({provider,options:{redirectTo:location.origin}});if(error)setStatus(friendly(error),'error')}
 function init(){
+  if(!SOCIAL_SIGN_IN)document.querySelectorAll('.auth-socials,.auth-divider').forEach(element=>element.style.display='none');
   $('#accountBtn').onclick=()=>open();$('#accountClose').onclick=()=>dialog().close();
   document.querySelectorAll('[data-auth-target]').forEach(button=>button.onclick=()=>show(button.dataset.authTarget));
   document.querySelectorAll('[data-auth-provider]').forEach(button=>button.onclick=()=>social(button.dataset.authProvider));

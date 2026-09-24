@@ -1157,3 +1157,39 @@ render=function(){
   title.textContent='No one’s earned a Bet This Guy yet';
   count.textContent=`We only stamp it when the numbers back it. Here are today’s closest calls · ${updated}`;
 };
+
+// Simpler menu: Bets · Parlays · Slip · More on phones, Bets · Live · Parlays ·
+// More on desktop. The pages are unchanged; less-used ones live under More.
+(function(){
+  const sheet=$('#moreSheet'),mobileMore=$('#mobileMoreBtn'),desktopMore=$('#desktopMoreBtn'),panel=$('#desktopMorePanel');
+  const morePages=['generator','movement'];
+  const syncMoreActive=()=>{
+    const mobilePage=document.body.dataset.mobilePage,desktopPage=document.body.dataset.desktopPage;
+    mobileMore?.classList.toggle('active',morePages.includes(mobilePage));
+    desktopMore?.classList.toggle('active',morePages.includes(desktopPage)||desktopPage==='saved'||!!panel?.querySelector('.nav-link.active'));
+  };
+  if(sheet&&mobileMore){
+    mobileMore.onclick=event=>{event.preventDefault();if(!sheet.open)sheet.showModal()};
+    $('#moreSheetClose').onclick=()=>sheet.close();
+    sheet.addEventListener('click',event=>{if(event.target===sheet)sheet.close()});
+    sheet.querySelectorAll('[data-page-link]').forEach(link=>link.addEventListener('click',()=>{sheet.close();syncMoreActive()}));
+    sheet.querySelector('[data-more-action="saved"]').onclick=()=>{sheet.close();$('#openSavedProps')?.click()};
+    sheet.querySelector('[data-more-action="settings"]').onclick=()=>{sheet.close();$('#settingsBtn')?.click()};
+  }
+  if(desktopMore&&panel){
+    const close=()=>{panel.hidden=true;desktopMore.setAttribute('aria-expanded','false')};
+    desktopMore.onclick=event=>{
+      event.stopPropagation();
+      if(!panel.hidden)return close();
+      // The nav can scroll sideways, so place the panel on the page, not inside it.
+      const box=desktopMore.getBoundingClientRect();panel.style.top=`${box.bottom+8}px`;panel.style.left=`${Math.max(12,Math.min(box.left,innerWidth-292))}px`;
+      panel.hidden=false;desktopMore.setAttribute('aria-expanded','true');
+    };
+    panel.addEventListener('click',()=>{close();setTimeout(syncMoreActive,0)});
+    document.addEventListener('click',event=>{if(!panel.hidden&&!panel.contains(event.target))close()});
+    addEventListener('keydown',event=>{if(event.key==='Escape')close()});
+    addEventListener('resize',close);
+  }
+  if(typeof MutationObserver==='function')new MutationObserver(syncMoreActive).observe(document.body,{attributes:true,attributeFilter:['data-mobile-page','data-desktop-page']});
+  syncMoreActive();
+})();
