@@ -394,3 +394,19 @@ body.light .top-play{border-color:#6bc5e8!important;box-shadow:0 9px 24px rgba(2
   .game-tabs .sub-tab{min-height:38px!important;padding:4px 7px!important}
   .top-play{padding-top:27px!important}
 }
+
+/* Verdict badges: Bet This Guy / Coin Flip / Left on Read */
+.verdict{margin:12px 0 4px;padding:12px 14px;border-radius:14px;border:1px solid #27466f;background:rgba(9,24,48,.75)}
+.verdict-badge{display:flex;align-items:center;gap:9px}
+.verdict-icon{display:grid;place-items:center;width:30px;height:30px;border-radius:50%;font-size:16px;background:rgba(255,255,255,.08)}
+.verdict-badge strong{font:800 15px/1.1 "Space Grotesk",system-ui,sans-serif;letter-spacing:.06em;text-transform:uppercase}
+.verdict p{margin:7px 0 0;font-size:13px;line-height:1.45;color:#b7c8e6}
+.verdict .verdict-bet{color:#f6f9ff;font-weight:600}
+.verdict .verdict-trend{font-size:12px;color:#8fa6cc}
+.verdict-send{border-color:#1fd88f;background:linear-gradient(135deg,rgba(18,94,66,.55),rgba(7,34,39,.85));box-shadow:0 0 0 1px rgba(31,216,143,.25),0 0 22px rgba(31,216,143,.22)}
+.verdict-send .verdict-icon{background:rgba(31,216,143,.2)}
+.verdict-send .verdict-badge strong{color:#5ff0b5}
+.verdict-flip .verdict-badge strong{color:#dbe4f5}
+.verdict-read{border-color:#6b3a47;background:rgba(48,16,27,.55)}
+.verdict-read .verdict-icon{background:rgba(255,120,140,.14)}
+.verdict-read .verdict-badge strong{color:#ff9aab}
