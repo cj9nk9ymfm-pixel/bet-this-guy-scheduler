@@ -31,4 +31,13 @@ assert.ok(!html({rawEdge:-1}).includes('top-play-badge'),'no "#1 TOP PLAY" witho
 assert.ok(html({}).includes('verdict-send'));
 assert.ok(/<\/section><div class="verdict verdict-flip"/.test(html({rawEdge:-1})),'verdict sits right after the pick');
 assert.ok(html({}).includes('Bet $25 → win $33.75'),'dollar amounts are inserted literally');
-console.log('PASS: verdicts use the official 1%/3-book bar, plain bet sentences read correctly, and rank badges are only earned');
+// Send to the chat: honest, ready-to-paste messages.
+run('preferences.typicalWager=10');
+assert.equal(run(`shareText(${prop({bestBook:'FanDuel'})})`),'✅ Bet This Guy: Drake London Under 5.5 Receptions (+135 at FanDuel). Bet $10 → win $13.50 if Drake London has 5 or fewer receptions.');
+assert.match(run(`shareText(${prop({rawEdge:-1})})`),/^🪙 Coin Flip: .*Priced about right, no edge either way\. Bet \$10/);
+assert.match(run(`shareText(${prop({rawEdge:-4})})`),/^👎 Left on Read: .*skip it\.$/);
+assert.ok(html({rawEdge:-4}).includes('Warn the chat'));assert.ok(html({}).includes('Send to the chat'));
+// Card market check in plain words.
+assert.equal(run(`plainTrust({key:'verified',books:'8 books',freshness:'just now',stats:'Stats on tap'})`),'Checked 8 sportsbooks · just now');
+assert.equal(run(`plainTrust({key:'limited',books:'1 books',freshness:'4 min ago',stats:'Order not verified'})`),'Only 1 sportsbook so far · 4 min ago · Touchdown order isn’t verified');
+console.log('PASS: verdicts use the official 1%/3-book bar, plain bet sentences read correctly, and rank badges are only earned; share messages and card wording are plain');
