@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 
 const files = await Promise.all([
@@ -22,12 +23,29 @@ const files = await Promise.all([
 ]);
 
 const [html, landing, landingCss, legal, trust, app, styles, theme, nfl, performance, logo, template, live, liveCss, liveServer, authClient, authCss, supabaseClient] = files;
+// Fingerprint each versioned asset so the HTML always references its current
+// content. The Worker caches a file for a year when the request carries its
+// fingerprint, so nobody has to bump ?v= numbers by hand.
 const stats = await readFile("dist/stats.js", "utf8");
 const records = await readFile("worker/records.js", "utf8");
 const accounts = await readFile("worker/accounts.js", "utf8");
 const movement = await readFile("dist/movement.js", "utf8");
 const movementServer = await readFile("worker/movement.js", "utf8");
+const versioned = {
+  "/styles.css": styles, "/theme-blue.css": theme, "/nfl.css": nfl, "/performance.css": performance,
+  "/live.css": liveCss, "/auth.css": authCss, "/landing.css": landingCss,
+  "/supabase.js": supabaseClient, "/auth.js": authClient, "/stats.js": stats,
+  "/movement.js": movement, "/app.js": app, "/live.js": live,
+};
+const assetVersions = Object.fromEntries(Object.entries(versioned).map(([path, body]) =>
+  [path, createHash("sha256").update(body).digest("hex").slice(0, 12)]));
+const stampVersions = page => page.replace(/((?:href|src)="(\/[a-z-]+\.(?:css|js)))\?v=[^"]*"/g,
+  (match, attr, path) => {
+    if (!assetVersions[path]) throw new Error(`${path} is linked with ?v= but has no fingerprint; add it to versioned in scripts/build-worker.mjs`);
+    return `${attr}?v=${assetVersions[path]}"`;
+  });
 const output = template
+  .replace("/*__ASSET_VERSIONS__*/{}", () => JSON.stringify(assetVersions))
   .replaceAll("__SUPABASE_CLIENT__", () => JSON.stringify(supabaseClient))
   .replaceAll("__AUTH_CLIENT__", () => JSON.stringify(authClient))
   .replaceAll("__AUTH_CSS__", () => JSON.stringify(authCss))
@@ -40,8 +58,8 @@ const output = template
   .replaceAll("__LIVE_SERVER__", () => liveServer)
   .replaceAll("__LIVE_CLIENT__", () => JSON.stringify(live))
   .replaceAll("__LIVE_CSS__", () => JSON.stringify(liveCss))
-  .replaceAll("__HTML_PAYLOAD__", () => JSON.stringify(html))
-  .replaceAll("__LANDING_PAYLOAD__", () => JSON.stringify(landing))
+  .replaceAll("__HTML_PAYLOAD__", () => JSON.stringify(stampVersions(html)))
+  .replaceAll("__LANDING_PAYLOAD__", () => JSON.stringify(stampVersions(landing)))
   .replaceAll("__LANDING_CSS_PAYLOAD__", () => JSON.stringify(landingCss))
   .replaceAll("__LEGAL_PAYLOAD__", () => JSON.stringify(legal))
   .replaceAll("__TRUST_PAYLOAD__", () => JSON.stringify(trust))

@@ -872,6 +872,8 @@ async function scheduledMaintenance(request,env,ctx){
   catch(error){console.error('scheduled_maintenance_failed',job);return json({success:false,job,error:'Maintenance failed; retry required'},503)}
 }
 
+// Filled in by scripts/build-worker.mjs with each asset's content fingerprint.
+const ASSET_VERSIONS = /*__ASSET_VERSIONS__*/{};
 const SITE_URL = "https://betthisguy.com";
 const ROBOTS_TXT = `User-agent: *\nAllow: /\nDisallow: /api/\n\nSitemap: ${SITE_URL}/sitemap.xml\n`;
 const SITEMAP_XML = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${["/", "/about", "/trust", "/legal"].map(path => `  <url><loc>${SITE_URL}${path}</loc></url>`).join("\n")}\n</urlset>\n`;
@@ -916,7 +918,11 @@ async function routeRequest(request, env, ctx) {
       return new Response(bytes, { headers: { "content-type": "image/png", "cache-control": "public, max-age=86400" } });
     }
     const asset = STATIC[url.pathname];
-    if (asset) return new Response(asset[1], { headers: { "content-type": asset[0], "cache-control": asset[0].startsWith("text/html") ? "no-cache" : "public, max-age=3600" } });
+    if (asset) {
+      const fingerprinted = ASSET_VERSIONS[url.pathname] && url.searchParams.get("v") === ASSET_VERSIONS[url.pathname];
+      const cacheControl = asset[0].startsWith("text/html") ? "no-cache" : fingerprinted ? "public, max-age=31536000, immutable" : "public, max-age=3600";
+      return new Response(asset[1], { headers: { "content-type": asset[0], "cache-control": cacheControl } });
+    }
     return new Response("Not found", { status: 404 });
 }
 
