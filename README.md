@@ -54,9 +54,9 @@ Cloudflare Workers Builds deploys it, so no Cloudflare credentials are stored in
 - **Build command:** `npm run build`
 - **Deploy command:** `npx wrangler d1 migrations apply DB --remote && npx wrangler deploy`
 - **Root directory:** empty
-- **Preview command** (non-production branches): `npx wrangler versions upload`
+- **Preview command** (non-production branches): `npx wrangler preview`
 
-Each push to `main` applies any new migrations in `drizzle/` and deploys the site. Pull requests get a preview link from Cloudflare instead. Previews run the branch's code against the **live** database and settings, so anything done on a preview link, such as tracking a bet, lands in real data. The Worker's secrets `THE_ODDS_API_KEY`, `BALLDONTLIE_API_KEY` and `MAINTENANCE_TOKEN` are set under **Settings**, then **Variables and Secrets**. betthisguy.com is attached to the Worker as a custom domain. Its DNS is managed in Cloudflare, and the registration stays with Namecheap.
+Each push to `main` applies any new migrations in `drizzle/` and deploys the site. Pull requests get a preview link from Cloudflare instead. Previews use the `previews` block in `wrangler.jsonc`: their own empty `bet-this-guy-preview` database and separate rate-limit counters, so nothing done on a preview link touches the live record. Previews don't inherit the live secrets; to see odds on a preview, set them once with `npx wrangler preview base-config secret put <NAME>`. When a new migration lands in `drizzle/`, apply it to the preview database too. The Worker's secrets `THE_ODDS_API_KEY`, `BALLDONTLIE_API_KEY` and `MAINTENANCE_TOKEN` are set under **Settings**, then **Variables and Secrets**. betthisguy.com is attached to the Worker as a custom domain. Its DNS is managed in Cloudflare, and the registration stays with Namecheap.
 
 ## Database migrations
 
