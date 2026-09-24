@@ -18,6 +18,54 @@ jobs:
     env:
       BTG_MAINTENANCE_TOKEN: ${{ secrets.BTG_MAINTENANCE_TOKEN }}
     steps:
+      - name: Check that betthisguy.com is up
+        shell: python
+        env:
+          ALERT_NTFY_TOPIC: ${{ secrets.ALERT_NTFY_TOPIC }}
+          BTG_SITE_URL: https://betthisguy.com
+        run: |
+          import json, os, time, urllib.parse, urllib.request
+
+          site = os.environ["BTG_SITE_URL"].rstrip("/")
+
+          def check():
+              with urllib.request.urlopen(urllib.request.Request(site + "/", headers={"User-Agent": "BetThisGuy-HealthCheck/1.0"}), timeout=20) as page:
+                  if page.status != 200 or b"Bet This Guy" not in page.read():
+                      return "home page returned unexpected content"
+              with urllib.request.urlopen(urllib.request.Request(site + "/api/record", headers={"User-Agent": "BetThisGuy-HealthCheck/1.0", "Accept": "application/json"}), timeout=20) as record:
+                  if json.load(record).get("success") is not True:
+                      return "results API did not report success"
+              return None
+
+          problem = None
+          for attempt in range(2):
+              try:
+                  problem = check()
+              except Exception as exc:
+                  problem = getattr(exc, "code", None) and "HTTP " + str(exc.code) or type(exc).__name__
+              if not problem:
+                  print("site: up")
+                  raise SystemExit(0)
+              print("site: " + problem)
+              if attempt == 0:
+                  time.sleep(15)
+
+          summary = os.environ.get("GITHUB_STEP_SUMMARY")
+          if summary:
+              with open(summary, "a", encoding="utf-8") as out:
+                  out.write("## Bet This Guy is down\n\n- Problem: **" + problem + "**\n- Checked: " + site + "\n")
+          topic = os.environ.get("ALERT_NTFY_TOPIC", "")
+          if topic:
+              try:
+                  urllib.request.urlopen(urllib.request.Request(
+                      "https://ntfy.sh/" + urllib.parse.quote(topic, safe=""),
+                      data=("betthisguy.com check failed: " + problem + "\nThe scheduler checks again every five minutes.").encode(),
+                      headers={"Title": "Bet This Guy: site is down", "Priority": "urgent", "Tags": "rotating_light"},
+                      method="POST"), timeout=10)
+              except Exception as exc:
+                  print("alert: " + type(exc).__name__)
+          raise SystemExit("betthisguy.com is down: " + problem)
+
       - name: Run publishing, grading and closing-price capture
         shell: python
         run: |

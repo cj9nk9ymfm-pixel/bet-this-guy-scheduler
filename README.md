@@ -35,6 +35,8 @@ The Worker expects these server-side secrets/bindings:
 - `BALLDONTLIE_API_KEY`: box scores and grading data
 - `MAINTENANCE_TOKEN`: authorization for scheduled maintenance endpoints
 
+Provider-cost protection: lookups the cache can't answer are rate limited per visitor through Cloudflare rate-limit bindings in `wrangler.jsonc`. Unknown event IDs are limited to 5 a minute; games on the site's own schedule are never limited. Uncached player-stat lookups are limited to 120 a minute. The site's internal calls are never limited.
+
 Optional variable:
 
 - `VISITOR_MAINTENANCE`: leave unset normally. Publishing, grading and closing-line capture run on the GitHub scheduler and the closing-line cron. Set it to `on` only as a fallback if the scheduler is down. Visitor traffic then triggers that work again, at the cost of extra provider calls.
@@ -86,7 +88,8 @@ The badge above covers publishing and grading. It is green when the latest maint
 - whether the scheduler was in an active NFL window or a quiet period;
 - which maintenance jobs ran;
 - whether publishing and grading completed; and
-- whether a run with no jobs due avoided provider calls.
+- whether a run with no jobs due avoided provider calls; and
+- whether betthisguy.com itself was up. Every run first checks the home page and `/api/record`. If either still fails after one retry, the run fails and the badge turns red, GitHub emails you, and a push alert goes out if the `ALERT_NTFY_TOPIC` Actions secret is set.
 
 For closing-line capture, open the `bet-this-guy-scheduler` Worker in the Cloudflare dashboard and check the log for each cron run. A failed capture is marked as an error there, and when the Worker's `ALERT_NTFY_TOPIC` secret is set, it also sends a push notification through [ntfy](https://ntfy.sh) to phones subscribed to that topic.
 

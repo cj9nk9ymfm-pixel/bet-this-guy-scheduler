@@ -22,7 +22,7 @@ async function loadSharedMovement(request,env,ctx,eventID){
     const saved=await readFeedCache(request,`shared-movement-v2-${eventID}`);
     if(saved.response&&cacheAge(saved.response)<60000)return cachedForClient(saved.response,'fresh');
     const url=new URL('/api/event',request.url);url.searchParams.set('eventID',eventID);url.searchParams.set('movement','1');
-    const response=await eventProps(new Request(url),env,ctx),payload=await response.json();
+    const response=await eventProps(new Request(url,{headers:{'cf-connecting-ip':request.headers.get('cf-connecting-ip')||''}}),env,ctx),payload=await response.json();
     if(!response.ok||!payload.success)throw new Error('Current odds unavailable');
     const event=compactMovementEvent(payload.data[0]),now=Date.now();
     await saveMovementSnapshot(event,env,now);

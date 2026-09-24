@@ -220,6 +220,41 @@ async function futureSchedule(request, env, ctx) {
   }
 }
 
+// Provider-cost guards. Real visitors request games from the site's own schedule,
+// so a paid Odds API lookup for an unknown event ID is either a brand-new listing
+// or abuse; those, and uncached player-stat lookups, are rate limited per visitor
+// IP with Cloudflare's rate-limit bindings. Internal calls (the scheduler and
+// shared movement on its own behalf) carry no visitor IP and are never limited.
+async function allowProviderCall(request, limiter) {
+  const visitor = request.headers.get("cf-connecting-ip") || "";
+  if (!visitor || !limiter) return true;
+  try { return (await limiter.limit({ key: visitor })).success; } catch { return true; }
+}
+
+async function scheduledEventIDs(request, env, ctx) {
+  try {
+    const response = await futureSchedule(new Request(new URL("/api/schedule", request.url)), env, ctx);
+    if (!response.ok) return null;
+    return new Set(((await response.json()).data || []).map(event => event.eventID));
+  } catch {
+    return null;
+  }
+}
+
+// Only visitor requests on the deployed Worker (which has the limiter) pay for
+// the schedule check; scheduled events are never limited.
+async function allowEventLookup(request, env, ctx, eventID) {
+  if (!request.headers.get("cf-connecting-ip") || !env.UNKNOWN_EVENT_LIMITER) return true;
+  const known = await scheduledEventIDs(request, env, ctx);
+  if (known?.has(eventID)) return true;
+  return allowProviderCall(request, env.UNKNOWN_EVENT_LIMITER);
+}
+
+function tooManyRequests(saved) {
+  if (saved?.response) return cachedForClient(saved.response, "stale");
+  return json({ success: false, error: "Too many new lookups right now. Try again in a minute." }, 429, { "retry-after": "60" });
+}
+
 async function eventProps(request, env, ctx) {
   if (!env.THE_ODDS_API_KEY) return json({ success: false, error: "Live feed is not configured." }, 503);
   const eventID = new URL(request.url).searchParams.get("eventID") || "";
@@ -232,6 +267,7 @@ async function eventProps(request, env, ctx) {
   const movement = new URL(request.url).searchParams.get("movement") === "1";
   const saved = await readFeedCache(request, `the-odds-api-event-expanded-v3-${movement ? "movement-" : inPlay ? "live-" : ""}${eventID}`);
   if (saved.response && cacheAge(saved.response) < (inPlay || movement ? 60000 : 600000)) return cachedForClient(saved.response, "fresh");
+  if (!await allowEventLookup(request, env, ctx, eventID)) return tooManyRequests(saved);
   try {
     const selectedSport = movement ? {...sport, markets:["player_pass_yds","player_rush_yds","player_reception_yds","player_receptions","player_pass_tds","player_anytime_td"],expandedMarkets:[]} : sport;
     const data = await fetchEventOdds(selectedSport, providerEventID, env.THE_ODDS_API_KEY, !movement);
@@ -297,10 +333,11 @@ async function playerStats(request, env, ctx) {
   const name = String(url.searchParams.get("player") || "").trim();
   const team = String(url.searchParams.get("team") || "").trim();
   const config = BDL_SPORTS[sportLabel];
-  if (!config || !name || name.length > 90) return json({ success: false, error: "Choose a valid player." }, 400);
+  if (!config || !/^[\p{L}\p{M}][\p{L}\p{M} .'’-]{1,89}$/u.test(name) || team.length > 60) return json({ success: false, error: "Choose a valid player." }, 400);
   if (/\b(d\/st|defense|defensive unit|no scorer)\b/i.test(name)) return json({ success: false, error: "Team and no-scorer markets do not have player game logs." }, 404);
   const saved = await readFeedCache(request, `player-stats-v4-completed-${sportLabel}-${normalizedName(name)}-${normalizedName(team)}`);
   if (saved.response && cacheAge(saved.response) < 24 * 60 * 60 * 1000) return cachedForClient(saved.response, "fresh");
+  if (!await allowProviderCall(request, env.PLAYER_STATS_LIMITER)) return tooManyRequests(saved);
   try {
     // BALLDONTLIE's `search` filter matches within either the first-name or
     // last-name field, so a full display name can legitimately return no rows.
