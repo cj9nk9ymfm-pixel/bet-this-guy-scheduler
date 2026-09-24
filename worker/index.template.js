@@ -794,6 +794,11 @@ async function settlePublicRecords(env) {
 }
 
 let recordMaintenancePromise=null, recordMaintenanceAt=0, closingMaintenanceAt=0;
+// Publishing, grading and closing-line capture run on the GitHub scheduler and
+// the closing-line cron. Visitor traffic only triggers them as a fallback when
+// the Worker variable VISITOR_MAINTENANCE is set to "on", which saves provider calls.
+function visitorMaintenanceEnabled(env){return env.VISITOR_MAINTENANCE==='on'}
+
 function queueRecordMaintenance(env,ctx){
   if(!env.DB||!env.BALLDONTLIE_API_KEY||!ctx?.waitUntil)return;
   if(Date.now()-closingMaintenanceAt>60000){closingMaintenanceAt=Date.now();ctx.waitUntil(captureClosingLines(env).catch(error=>console.warn('closing_capture_failed',error.message)))}
@@ -820,7 +825,7 @@ async function publicRecord(request, env, ctx) {
     try {
       // Preserve legacy rows without seeding or including them in verified totals.
       // Reads must not wait for external providers or be canceled with grading.
-      queueRecordMaintenance(env,ctx);
+      if(visitorMaintenanceEnabled(env))queueRecordMaintenance(env,ctx);
       const [summary, recent, analytics] = await Promise.all([
         env.DB.prepare("SELECT kind, status, result, COUNT(*) AS count FROM public_recommendations WHERE source = 'market-verified-v2' AND kind IN ('prop','parlay') GROUP BY kind, status, result ORDER BY kind, status, result").all(),
         env.DB.prepare("SELECT id, kind, sport, player, market, side, line, odds, combined_odds, edge, game_id, game_time, posted_at, status, result, settled_at, closing_line, closing_odds, closing_captured_at, source, verification_note, legs_json FROM public_recommendations WHERE source = 'market-verified-v2' AND kind IN ('prop','parlay') ORDER BY posted_at DESC LIMIT 500").all(),
@@ -920,8 +925,8 @@ async function routeRequest(request, env, ctx) {
     const url = new URL(request.url);
     if(url.pathname==='/api/me'||url.pathname.startsWith('/api/me/'))return accountApi(request,env,ctx);
     if(url.pathname==="/api/maintenance")return scheduledMaintenance(request,env,ctx);
-    if(request.method==='GET'&&['/api/props','/api/live-games','/api/record'].includes(url.pathname))queueRecordMaintenance(env,ctx);
-    if(request.method==='GET'&&['/api/props','/api/record'].includes(url.pathname))queueOfficialPicks(request,env,ctx);
+    if(visitorMaintenanceEnabled(env)&&request.method==='GET'&&['/api/props','/api/live-games','/api/record'].includes(url.pathname))queueRecordMaintenance(env,ctx);
+    if(visitorMaintenanceEnabled(env)&&request.method==='GET'&&['/api/props','/api/record'].includes(url.pathname))queueOfficialPicks(request,env,ctx);
     if (url.pathname === "/api/props") return liveProps(request, env, ctx);
     if (url.pathname === "/api/movement") return sharedMovement(request, env, ctx);
     if (url.pathname === "/api/schedule") return futureSchedule(request, env, ctx);
