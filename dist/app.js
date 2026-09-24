@@ -672,6 +672,12 @@ function propTrust(p){
   const stats=/first touchdown|last touchdown/i.test(market)?'Order not verified':'Stats on tap';
   return {key,label,books:books?`${books} books`:'Coverage limited',freshness:propFreshnessLabel(),stats};
 }
+// Plain-language version of the card's market check, for visitors who don't bet.
+function plainTrust(trust){
+  const count=parseInt(trust.books,10),books=Number.isFinite(count)?`${count} sportsbook${count===1?'':'s'}`:'a few sportsbooks';
+  const base=trust.key==='demo'?'Demo prices':trust.key==='verified'?`Checked ${books}`:trust.key==='limited'?`Only ${books} so far`:'Saved prices';
+  return `${base} · ${trust.freshness}${trust.stats==='Order not verified'?' · Touchdown order isn’t verified':''}`;
+}
 function readLineHistory(){try{return JSON.parse(localStorage.getItem(lineHistoryKey)||'{}')||{}}catch{return{}}}
 function saveLineHistory(history){try{localStorage.setItem(lineHistoryKey,JSON.stringify(history))}catch{}}
 // Keep line changes and price changes together for the same player/game/market
@@ -965,7 +971,7 @@ async function hydrateFeaturedWhy(panel,p){
 }
 function verifiedCard(p,rank=-1,featured=false){
   const trust=propTrust(p),availability=availabilityLabel(p)?`<span class="availability-badge">${htmlEscape(availabilityLabel(p))}</span>`:'';
-  const evidence=`<div class="card-evidence"><div class="card-stats-link">Tap the odds to add to slip</div><div class="prop-trust ${trust.key}" title="${htmlEscape(trust.key==='verified'?'Fresh market supported by multiple books; this is not a guarantee.':'Market coverage or freshness is limited.')}"><span>${htmlEscape(trust.label)}</span><small>${htmlEscape(trust.books)} · ${htmlEscape(trust.freshness)}</small><small>${htmlEscape(trust.stats)} · Verify the line before betting</small></div>${availability}</div>`;
+  const evidence=`<div class="card-evidence"><div class="card-stats-link">Tap the price to add it to your bet slip</div><div class="prop-trust ${trust.key}" title="${htmlEscape(trust.key==='verified'?'Fresh prices from several sportsbooks; this is not a guarantee.':'Fewer sportsbooks or older prices.')}"><small>${htmlEscape(plainTrust(trust))}</small><small>Double-check the price before you bet</small></div>${availability}</div>`;
   const base=stripLast10(compactCardBase(p,rank,featured));
   return base.replace(/<div class="bet-actions">[\s\S]*?<\/div><\/article>/,`${evidence}${featured?featuredWhyMarkup(p,rank):''}</article>`);
 }
@@ -1109,7 +1115,23 @@ function verdictPriceSentence(p){
 function verdictMarkup(p){
   const verdict=propVerdict(p);if(!verdict)return '';
   const bet=plainBet(p);
-  return `<div class="verdict verdict-${verdict.key}" data-verdict="${verdict.key}"><div class="verdict-badge"><span class="verdict-icon" aria-hidden="true">${verdict.icon}</span><strong>${verdict.label}</strong></div><p class="verdict-line">${htmlEscape(verdict.line)}</p>${bet?`<p class="verdict-bet">${htmlEscape(bet)}</p>`:''}<p class="verdict-trend" data-verdict-trend="${p.id}" hidden></p></div>`;
+  return `<div class="verdict verdict-${verdict.key}" data-verdict="${verdict.key}"><div class="verdict-badge"><span class="verdict-icon" aria-hidden="true">${verdict.icon}</span><strong>${verdict.label}</strong></div><p class="verdict-line">${htmlEscape(verdict.line)}</p>${bet?`<p class="verdict-bet">${htmlEscape(bet)}</p>`:''}<p class="verdict-trend" data-verdict-trend="${p.id}" hidden></p><button type="button" class="verdict-share" data-share-prop="${p.id}">📲 ${verdict.key==='read'?'Warn the chat':'Send to the chat'}</button></div>`;
+}
+// "Send to the chat": a ready-to-paste message through the phone's share sheet,
+// or the clipboard where sharing isn't available. Coin Flips and Left on Reads
+// say so honestly.
+function shareText(p){
+  const verdict=propVerdict(p),bet=plainBet(p),pick=`${p.player} ${p.binary?'':`${p.side} ${p.line} `}${p.market}`.replace(/\s+/g,' ').trim();
+  const price=`${formatOdds(recommendedOdds(p))}${p.bestBook&&p.bestBook!=='Best available'?` at ${p.bestBook}`:''}`;
+  if(verdict?.key==='send')return `✅ Bet This Guy: ${pick} (${price}). ${bet}`.trim();
+  if(verdict?.key==='read')return `👎 Left on Read: ${pick} (${price}). The books are taking extra on this one, so skip it.`;
+  return `🪙 Coin Flip: ${pick} (${price}). Priced about right, no edge either way. ${bet}`.trim();
+}
+async function shareProp(p,button){
+  const text=shareText(p),url=`${location.origin}/app`,label=button.textContent;
+  const flash=message=>{button.textContent=message;setTimeout(()=>{if(button.isConnected)button.textContent=label},2200)};
+  try{if(navigator.share){await navigator.share({text,url});return}}catch(error){if(error?.name==='AbortError')return}
+  try{await navigator.clipboard.writeText(`${text} ${url}`);flash('Copied, paste it in the chat')}catch{flash('Couldn’t copy on this device')}
 }
 const cardBeforeVerdict=card;
 card=function(p,rank=-1,featured=false){
@@ -1138,6 +1160,7 @@ async function hydrateVerdictTrend(host,p){
 const bindCardsBeforeVerdict=bindCards;let verdictObserver=null;
 bindCards=function(){
   bindCardsBeforeVerdict();
+  $$('[data-share-prop]').forEach(button=>button.onclick=event=>{event.stopPropagation();const p=props.find(item=>item.id===+button.dataset.shareProp);if(p)shareProp(p,button)});
   verdictObserver?.disconnect();
   const hosts=$$('[data-verdict-trend]'),start=host=>{const p=props.find(item=>item.id===+host.dataset.verdictTrend);if(p)hydrateVerdictTrend(host,p)};
   if(!hosts.length)return;
@@ -1147,9 +1170,14 @@ bindCards=function(){
   hosts.forEach(host=>observer.observe(host.closest('.verdict')||host));
 };
 // Honest headline: "Bet These Guys" only when at least one bet earned it.
+const verdictGuideKey='btg-verdict-guide-dismissed';
+const verdictGuideDismissed=()=>{try{return localStorage.getItem(verdictGuideKey)==='1'}catch{return false}};
+$('#verdictGuideClose')&&($('#verdictGuideClose').onclick=()=>{try{localStorage.setItem(verdictGuideKey,'1')}catch{}$('#verdictGuide').hidden=true});
 const renderBeforeVerdict=render;
 render=function(){
   renderBeforeVerdict();
+  const guide=$('#verdictGuide');
+  if(guide&&guide.id)guide.hidden=verdictGuideDismissed()||state.view!=='board'||!$$('#propList .verdict').length;
   const title=$('#viewTitle'),count=$('#resultCount');
   if(!title||!count||title.textContent!=='Bet These Guys'||!$$('#propList .prop-card').length)return;
   const earned=$$('#propList .verdict-send').length,updated=count.textContent.split(' · ').pop();

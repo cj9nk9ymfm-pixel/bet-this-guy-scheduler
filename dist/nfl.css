@@ -428,3 +428,18 @@ body.light .top-play{border-color:#6bc5e8!important;box-shadow:0 9px 24px rgba(2
 .nav-more-panel .nav-link::after{display:none!important}
 .desktop-nav .nav-more-toggle .nav-more-caret{all:unset;margin-left:4px;font-size:11px;opacity:.75}
 .nav-more-panel .nav-link:hover,.nav-more-panel .nav-link.active{background:rgba(24,184,255,.12)}
+
+/* Send to the chat, and the one-time badge guide */
+.verdict-share{margin-top:10px;width:100%;min-height:40px;border:1px solid rgba(92,147,211,.35);border-radius:11px;background:rgba(24,184,255,.1);color:#dff3ff;font-family:inherit;font-size:14px;font-weight:700;line-height:1;cursor:pointer}
+.verdict-send .verdict-share{border-color:#1fd88f;background:rgba(31,216,143,.16);color:#bff8de}
+.verdict-share:active{transform:scale(.98)}
+.verdict-guide{margin:0 0 14px;padding:14px 16px;border:1px solid #2b6b9b;border-radius:16px;background:linear-gradient(135deg,#0b294d,#07152d);color:#dbe6f7}
+.verdict-guide[hidden]{display:none}
+.verdict-guide-head{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.verdict-guide-head strong{font:800 15px/1.2 "Space Grotesk",system-ui,sans-serif;color:#f6f9ff}
+.verdict-guide-head button{padding:7px 12px;border:1px solid #2b6b9b;border-radius:999px;background:transparent;color:#bfe6ff;font-weight:700;font-size:12.5px;cursor:pointer}
+.verdict-guide ul{margin:10px 0 0;padding:0;list-style:none;display:grid;gap:7px}
+.verdict-guide li{display:flex;flex-wrap:wrap;gap:4px 8px;font-size:13px;line-height:1.4}
+.verdict-guide li b{white-space:nowrap;color:#f6f9ff}
+.verdict-guide li span{color:#b7c8e6}
+.verdict-guide p{margin:9px 0 0;font-size:12px;color:#8fa6cc}

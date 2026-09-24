@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build-worker.mjs",
-    "test": "node tests/live.test.cjs && node tests/readiness.test.cjs && node tests/accounts.test.cjs && node tests/movement.test.cjs && node tests/shared-movement.test.cjs && node tests/refresh.test.cjs && node tests/bookmark-recovery.test.cjs && node tests/settlement.test.cjs && node tests/official-picks.test.cjs && node tests/official-board.test.cjs && node tests/maintenance.test.cjs && node tests/provider-guards.test.cjs && node tests/verdict.test.cjs && node tests/closing-cron.test.mjs"
+    "test": "node tests/live.test.cjs && node tests/readiness.test.cjs && node tests/accounts.test.cjs && node tests/movement.test.cjs && node tests/shared-movement.test.cjs && node tests/refresh.test.cjs && node tests/bookmark-recovery.test.cjs && node tests/settlement.test.cjs && node tests/official-picks.test.cjs && node tests/official-board.test.cjs && node tests/maintenance.test.cjs && node tests/provider-guards.test.cjs && node tests/verdict.test.cjs && node tests/closing-value.test.cjs && node tests/closing-cron.test.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.117.1"
