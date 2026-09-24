@@ -885,6 +885,28 @@ const SECURITY_HEADERS = {
   "permissions-policy": "camera=(), microphone=(), geolocation=()",
 };
 
+const NOT_FOUND_HTML = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#04091a">
+  <meta name="robots" content="noindex">
+  <title>Page not found — Bet This Guy</title>
+  <style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#04091a;color:#f6f9ff;font:16px/1.6 "DM Sans",system-ui,sans-serif;text-align:center}main{padding:32px 20px;max-width:440px}img{width:190px;height:auto}h1{font:700 30px/1.2 "Space Grotesk",system-ui,sans-serif;margin:28px 0 8px}p{color:#9fb3d9;margin:0 0 26px}a.button{display:inline-block;padding:12px 22px;border-radius:12px;background:linear-gradient(90deg,#1c6cff,#00c7ff);color:#fff;font-weight:700;text-decoration:none}a.home{display:block;margin-top:16px;color:#9fb3d9}</style>
+</head>
+<body>
+  <main>
+    <a href="/"><img src="/bet-this-guy-logo-v3.png" alt="Bet This Guy"></a>
+    <h1>This line isn't on the board.</h1>
+    <p>The page you're looking for doesn't exist or has moved.</p>
+    <a class="button" href="/app">Open the board →</a>
+    <a class="home" href="/about">About Bet This Guy</a>
+  </main>
+</body>
+</html>
+`;
+
 // Copies the response so proxied responses with immutable headers can be changed too.
 function withSecurityHeaders(response) {
   const secured = new Response(response.body, response);
@@ -923,7 +945,8 @@ async function routeRequest(request, env, ctx) {
       const cacheControl = asset[0].startsWith("text/html") ? "no-cache" : fingerprinted ? "public, max-age=31536000, immutable" : "public, max-age=3600";
       return new Response(asset[1], { headers: { "content-type": asset[0], "cache-control": cacheControl } });
     }
-    return new Response("Not found", { status: 404 });
+    if (url.pathname.startsWith("/api/")) return new Response("Not found", { status: 404 });
+    return new Response(NOT_FOUND_HTML, { status: 404, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache" } });
 }
 
 export default {
