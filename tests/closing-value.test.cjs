@@ -7,10 +7,10 @@ const context=vm.createContext({});vm.runInContext(helpers+'\n'+page.slice(start
 const {closingValue,closingSummary,closingVerdict,americanFromDecimal}=context;
 const prop=(odds,closing_odds,extra={})=>({kind:'prop',line:55.5,odds,closing_odds,closing_line:55.5,closing_captured_at:'2026-09-25T00:00:00Z',...extra});
 // -110 posted, best close -125: the posted price paid more, so it beat the close.
-const beat=closingValue(prop(-110,-125));assert.ok(beat.edge>0);assert.equal(closingVerdict(beat).label,'Beat the close');
+const beat=closingValue(prop(-110,-125));assert.ok(beat.edge>0);assert.equal(closingVerdict(beat).label,'Better than the final price');
 assert.ok(Math.abs(beat.edge-((1+100/110)/(1+100/125)-1)*100)<1e-9);
-assert.equal(closingVerdict(closingValue(prop(+120,+140))).label,'Worse than the close');
-assert.equal(closingVerdict(closingValue(prop(-110,-110))).label,'Matched the close');
+assert.equal(closingVerdict(closingValue(prop(+120,+140))).label,'Worse than the final price');
+assert.equal(closingVerdict(closingValue(prop(-110,-110))).label,'Same as the final price');
 assert.equal(closingValue(prop(-110,null)),null,'no closing price, no value');
 assert.equal(closingValue(prop(-110,-125,{closing_captured_at:null})),null,'not captured yet');
 assert.equal(closingValue(prop(-110,-125,{closing_line:57.5})),null,'a different closing line is not compared');
