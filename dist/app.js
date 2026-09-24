@@ -101,7 +101,7 @@ const formatGameTime=(value,live=false)=>{if(!value)return 'Date unavailable';co
 const refreshCachedTime=p=>{const price=recommendedOdds(p),fairChance=Number.isFinite(price)?Math.min(99,(americanProbability(price)+p.edge/100)*100):null,bookMatch=String(p.note||'').match(/(?:Best (?:at|price at)|at) ([^,]+?)(?: vs| price|$)/i);return{...p,time:p.startsAt?formatGameTime(p.startsAt,p.live):p.time,fairChance:p.fairChance||(fairChance?+fairChance.toFixed(1):null),bestBook:p.bestBook||bookMatch?.[1]||'Best available'}};
 function bestBookPrice(odd,line){const entries=Object.entries(odd?.byBookmaker||{}).filter(([,book])=>book.available&&Number.isFinite(+book.odds)&&Math.abs(+book.odds)<=5000&&Number.isFinite(+book.overUnder)&&+book.overUnder===line);if(!entries.length)return null;entries.sort((a,b)=>+b[1].odds-+a[1].odds);return{odds:+entries[0][1].odds,book:titleCase(entries[0][0])}}
 function playerNameFromOdd(odd,market){const id=String(odd.playerID||odd.statEntityID||'').replace(/_\d+_[A-Z0-9_]+$/,'').replace(/_/g,' ').trim();if(id)return titleCase(id);const name=odd.marketName||'';return name.replace(new RegExp(`\\s+${escapeRegExp(market)}.*$`,'i'),'').replace(/\s+Over\/Under.*$/i,'').trim()||'Player'}
-function normalizeOddsApi(events){const out=[];for(const event of events){const groups=new Map();for(const bookmaker of event.bookmakers||[]){for(const market of bookmaker.markets||[]){for(const outcome of market.outcomes||[]){const side=String(outcome.name||'').toLowerCase();const line=Number(outcome.point);const player=String(outcome.description||'').trim();const price=Number(outcome.price);if(!['over','under'].includes(side)||!player||!Number.isFinite(line)||!Number.isFinite(price))continue;const key=`${player}|${market.key}|${line}`,group=groups.get(key)||{player,marketKey:market.key,line,over:[],under:[],byBook:new Map()};const offer={price,book:bookmaker.title||titleCase(bookmaker.key)};group[side].push(offer);const pair=group.byBook.get(bookmaker.key)||{};pair[side]=price;group.byBook.set(bookmaker.key,pair);groups.set(key,group)}}}for(const group of groups.values()){if(!group.over.length||!group.under.length)continue;const paired=[...group.byBook.values()].filter(pair=>Number.isFinite(pair.over)&&Number.isFinite(pair.under));if(!paired.length)continue;const fair=paired.map(pair=>{const over=americanProbability(pair.over),under=americanProbability(pair.under),total=over+under;return{over:over/total,under:under/total}}),fairOver=fair.reduce((sum,pair)=>sum+pair.over,0)/fair.length,fairUnder=fair.reduce((sum,pair)=>sum+pair.under,0)/fair.length,bestOver=group.over.sort((a,b)=>b.price-a.price)[0],bestUnder=group.under.sort((a,b)=>b.price-a.price)[0],overEdge=(fairOver-americanProbability(bestOver.price))*100,underEdge=(fairUnder-americanProbability(bestUnder.price))*100,side=overEdge>=underEdge?'Over':'Under',edge=Math.max(.2,overEdge,underEdge);if(edge>20)continue;const chosen=side==='Over'?bestOver:bestUnder,startsAt=new Date(event.commence_time),live=startsAt.getTime()<=Date.now(),market=marketLabels[group.marketKey]||titleCase(group.marketKey),confidence=Math.round(Math.min(88,52+edge*3));out.push({id:out.length+1,sport:event.sport_label||titleCase(event.sport_key),player:group.player,team:`${event.away_team||'Away'} · @ ${event.home_team||'Home'}`,market,line:group.line,open:group.line,side,over:bestOver.price,under:bestUnder.price,edge:+edge.toFixed(1),conf:confidence,time:formatGameTime(startsAt,live),startsAt:Number.isNaN(startsAt.getTime())?null:startsAt.toISOString(),note:`Best at ${chosen.book} vs no-vig market consensus`,trend:[group.line,group.line,group.line,group.line],eventID:event.eventID||event.id,live})}}return out}
+function normalizeOddsApi(events){const out=[];for(const event of events){const groups=new Map();for(const bookmaker of event.bookmakers||[]){for(const market of bookmaker.markets||[]){for(const outcome of market.outcomes||[]){const side=String(outcome.name||'').toLowerCase();const line=Number(outcome.point);const player=String(outcome.description||'').trim();const price=Number(outcome.price);if(!['over','under'].includes(side)||!player||!Number.isFinite(line)||!Number.isFinite(price))continue;const key=`${player}|${market.key}|${line}`,group=groups.get(key)||{player,marketKey:market.key,line,over:[],under:[],byBook:new Map()};const offer={price,book:bookmaker.title||titleCase(bookmaker.key)};group[side].push(offer);const pair=group.byBook.get(bookmaker.key)||{};pair[side]=price;group.byBook.set(bookmaker.key,pair);groups.set(key,group)}}}for(const group of groups.values()){if(!group.over.length||!group.under.length)continue;const paired=[...group.byBook.values()].filter(pair=>Number.isFinite(pair.over)&&Number.isFinite(pair.under));if(!paired.length)continue;const fair=paired.map(pair=>{const over=americanProbability(pair.over),under=americanProbability(pair.under),total=over+under;return{over:over/total,under:under/total}}),fairOver=fair.reduce((sum,pair)=>sum+pair.over,0)/fair.length,fairUnder=fair.reduce((sum,pair)=>sum+pair.under,0)/fair.length,bestOver=group.over.sort((a,b)=>b.price-a.price)[0],bestUnder=group.under.sort((a,b)=>b.price-a.price)[0],overEdge=(fairOver-americanProbability(bestOver.price))*100,underEdge=(fairUnder-americanProbability(bestUnder.price))*100,side=overEdge>=underEdge?'Over':'Under',edge=Math.max(.2,overEdge,underEdge);if(edge>20)continue;const chosen=side==='Over'?bestOver:bestUnder,startsAt=new Date(event.commence_time),live=startsAt.getTime()<=Date.now(),market=marketLabels[group.marketKey]||titleCase(group.marketKey),confidence=Math.round(Math.min(88,52+edge*3));out.push({id:out.length+1,sport:event.sport_label||titleCase(event.sport_key),player:group.player,team:`${event.away_team||'Away'} · @ ${event.home_team||'Home'}`,market,line:group.line,open:group.line,side,over:bestOver.price,under:bestUnder.price,edge:+edge.toFixed(1),rawEdge:+Math.max(overEdge,underEdge).toFixed(2),pairedBooks:paired.length,conf:confidence,time:formatGameTime(startsAt,live),startsAt:Number.isNaN(startsAt.getTime())?null:startsAt.toISOString(),note:`Best at ${chosen.book} vs no-vig market consensus`,trend:[group.line,group.line,group.line,group.line],eventID:event.eventID||event.id,live})}}return out}
 function normalizeLiveProps(payload){const events=Array.isArray(payload?.data)?payload.data:[];if(events.some(event=>Array.isArray(event?.bookmakers)))return normalizeOddsApi(events).sort((a,b)=>b.edge-a.edge).slice(0,400);const out=[];for(const event of events){const odds=event.odds||{},seen=new Set(),away=event.teams?.away?.names?.short||event.teams?.away?.names?.medium||'Away',home=event.teams?.home?.names?.short||event.teams?.home?.names?.medium||'Home';for(const odd of Object.values(odds)){if(!odd||seen.has(odd.oddID)||['all','home','away'].includes(odd.statEntityID)||odd.betTypeID!=='ou'||!['game','reg'].includes(odd.periodID)||!['over','under'].includes(odd.sideID))continue;const opposing=odds[odd.opposingOddID];if(!opposing)continue;seen.add(odd.oddID);seen.add(opposing.oddID);const over=odd.sideID==='over'?odd:opposing,under=odd.sideID==='under'?odd:opposing,line=+(over.bookOverUnder||under.bookOverUnder||over.fairOverUnder);if(!Number.isFinite(line)||+over.fairOverUnder!==line||+under.fairOverUnder!==line)continue;const overPrice=bestBookPrice(over,line),underPrice=bestBookPrice(under,line);if(!overPrice||!underPrice)continue;const overFair=Number(over.fairOdds),underFair=Number(under.fairOdds);if(!Number.isFinite(overFair)||!Number.isFinite(underFair)||Math.abs(overFair)>5000||Math.abs(underFair)>5000)continue;const overEdge=(americanProbability(overFair)-americanProbability(overPrice.odds))*100,underEdge=(americanProbability(underFair)-americanProbability(underPrice.odds))*100,side=overEdge>=underEdge?'Over':'Under',edge=Math.max(.2,overEdge,underEdge);if(edge>20)continue;const chosen=side==='Over'?overPrice:underPrice,market=marketLabels[over.statID]||titleCase(over.statID),player=playerNameFromOdd(over,market),startsAt=event.status?.startsAt?new Date(event.status.startsAt):null,time=formatGameTime(startsAt,event.status?.live),open=+(over.openBookOverUnder||under.openBookOverUnder||line),confidence=Math.round(Math.min(88,52+edge*3));out.push({id:out.length+1,sport:event.leagueID||event.sportID||'SPORT',player,team:`${away} · @ ${home}`,market,line,open:Number.isFinite(open)?open:line,side,over:overPrice.odds,under:underPrice.odds,edge:+edge.toFixed(1),conf:confidence,time,startsAt:startsAt&&!Number.isNaN(startsAt)?startsAt.toISOString():null,note:`${chosen.book} price vs fair market consensus`,trend:[Number.isFinite(open)?open:line,line,line,line],eventID:event.eventID,live:Boolean(event.status?.live)})}}const counts=new Map();return out.sort((a,b)=>b.edge-a.edge).filter(p=>{const count=counts.get(p.sport)||0;if(count>=100)return false;counts.set(p.sport,count+1);return true}).slice(0,400)}
 const normalizeLivePropsBase=normalizeLiveProps;
 function normalizeOneSidedHomeRuns(events){const out=[];for(const event of events){const groups=new Map();for(const bookmaker of event.bookmakers||[]){for(const market of bookmaker.markets||[]){if(market.key!=='batter_home_runs')continue;for(const outcome of market.outcomes||[]){if(String(outcome.name||'').toLowerCase()!=='over'||!outcome.description||!Number.isFinite(Number(outcome.price)))continue;const line=Number.isFinite(Number(outcome.point))?Number(outcome.point):.5,key=`${outcome.description}|${line}`,group=groups.get(key)||{player:outcome.description,line,offers:[]};group.offers.push({price:Number(outcome.price),book:bookmaker.title||titleCase(bookmaker.key)});groups.set(key,group)}}}for(const group of groups.values()){const best=[...group.offers].sort((a,b)=>b.price-a.price)[0],average=group.offers.reduce((sum,offer)=>sum+americanProbability(offer.price),0)/group.offers.length,edge=Math.max(.2,(average-americanProbability(best.price))*100),startsAt=new Date(event.commence_time),live=startsAt.getTime()<=Date.now();out.push({sport:event.sport_label||'MLB',player:group.player,team:`${event.away_team||'Away'} · @ ${event.home_team||'Home'}`,market:'Home Runs',line:group.line,open:group.line,side:'Over',over:best.price,under:null,edge:+Math.min(edge,20).toFixed(1),conf:Math.round(Math.min(82,52+edge*3)),time:formatGameTime(startsAt,live),startsAt:Number.isNaN(startsAt.getTime())?null:startsAt.toISOString(),note:`Best home run price at ${best.book}`,trend:[group.line,group.line,group.line,group.line],eventID:event.eventID||event.id,live})}}return out}
@@ -941,7 +941,7 @@ function featuredMarketValue(p){
 }
 function featuredWhyMarkup(p,rank){
   const value=featuredMarketValue(p),movement=featuredMovementSummary(p),coverage=Number(p.bookCount)||0,availability=availabilityLabel(p),rankLabel=rank>=0?`#${rank+1} on this board`:'Featured on this board';
-  return `<div class="featured-why"><button class="why-pick-toggle" type="button" data-why-pick="${p.id}" aria-expanded="false" aria-controls="why-pick-${p.id}"><span>Why this guy?</span><b aria-hidden="true">＋</b></button><section class="why-pick-panel" id="why-pick-${p.id}" data-why-panel="${p.id}" hidden><div class="why-pick-grid"><div class="why-stat-card"><small>LAST 10 GAMES</small><strong data-why-recent>Open to see his results</strong><span data-why-recent-detail>We’ll compare every game with today’s line</span></div><div class="why-stat-card"><small>HOW HE'S BEEN DOING</small><strong data-why-average>Loading his average</strong><span data-why-trend>Checking his last five games too</span></div><div class="why-stat-card why-value-card"><small>BEST ODDS WE FOUND</small><strong>${htmlEscape(value.headline)}</strong><span>${htmlEscape(value.detail)}</span></div><div class="why-stat-card"><small>${movement?'ODDS CHANGE':'BOOKS CHECKED'}</small><strong>${htmlEscape(movement?.headline||`Checked ${coverage||'the available'} sportsbook${coverage===1?'':'s'}`)}</strong><span>${htmlEscape(movement?.detail||'We compare several sportsbooks so one unusual price does not decide the pick.')}</span></div></div><div class="why-verdict"><small>WHY WE LIKE IT</small><strong data-why-verdict>Loading his recent games…</strong><span>${htmlEscape(rankLabel)} after comparing the odds and how many sportsbooks offer the same bet.</span></div>${availability?`<div class="why-warning"><strong>Player status:</strong> ${htmlEscape(availability)} · Make sure he is active before betting.</div>`:''}<div class="why-timestamp"><span>Odds checked: ${htmlEscape(featuredSnapshotLabel())}</span><span>Past results help explain the pick, but they cannot predict the next game.</span></div></section></div>`;
+  return `<div class="featured-why"><button class="why-pick-toggle" type="button" data-why-pick="${p.id}" aria-expanded="false" aria-controls="why-pick-${p.id}"><span>Why this guy?</span><b aria-hidden="true">＋</b></button><section class="why-pick-panel" id="why-pick-${p.id}" data-why-panel="${p.id}" hidden><div class="why-pick-grid"><div class="why-stat-card"><small>LAST 10 GAMES</small><strong data-why-recent>Open to see his results</strong><span data-why-recent-detail>We’ll compare every game with today’s line</span></div><div class="why-stat-card"><small>HOW HE'S BEEN DOING</small><strong data-why-average>Loading his average</strong><span data-why-trend>Checking his last five games too</span></div><div class="why-stat-card why-value-card"><small>BEST ODDS WE FOUND</small><strong>${htmlEscape(value.headline)}</strong><span>${htmlEscape(value.detail)}</span></div><div class="why-stat-card"><small>${movement?'ODDS CHANGE':'BOOKS CHECKED'}</small><strong>${htmlEscape(movement?.headline||`Checked ${coverage||'the available'} sportsbook${coverage===1?'':'s'}`)}</strong><span>${htmlEscape(movement?.detail||'We compare several sportsbooks so one unusual price does not decide the pick.')}</span></div></div><div class="why-verdict"><small>OUR TAKE</small><strong data-why-verdict>Loading his recent games…</strong><span>${htmlEscape(rankLabel)} after comparing the odds and how many sportsbooks offer the same bet.</span></div>${availability?`<div class="why-warning"><strong>Player status:</strong> ${htmlEscape(availability)} · Make sure he is active before betting.</div>`:''}<div class="why-timestamp"><span>Odds checked: ${htmlEscape(featuredSnapshotLabel())}</span><span>Past results help explain the pick, but they cannot predict the next game.</span></div></section></div>`;
 }
 async function hydrateFeaturedWhy(panel,p){
   if(panel.dataset.statsLoaded==='true'||panel.dataset.statsLoading==='true')return;
@@ -951,16 +951,16 @@ async function hydrateFeaturedWhy(panel,p){
   try{
     const payload=await playerStatsFor(p),recent=(payload.stats||[]).map(row=>({date:statDate(row),metric:propMetric(p,row)})).filter(item=>item.metric.value!==null).sort((a,b)=>(b.date?.getTime()||0)-(a.date?.getTime()||0)).slice(0,10);
     if(!panel.isConnected)return;
-    if(!recent.length){recentHost.textContent='Recent games are not available';recentDetail.textContent='We cannot match this bet with the stats we receive';averageHost.textContent='No average available';trendHost.textContent='We will not guess or make one up';verdictHost.textContent='We like the sportsbook price, but we do not have enough recent-game data to call his form a reason.';return}
+    if(!recent.length){recentHost.textContent='Recent games are not available';recentDetail.textContent='We cannot match this bet with the stats we receive';averageHost.textContent='No average available';trendHost.textContent='We will not guess or make one up';verdictHost.textContent=`${verdictPriceSentence(p)} We don’t have enough recent games to judge his form.`;return}
     const last5=recent.slice(0,5),hitsFor=list=>list.filter(item=>hitAgainstLine(p,item.metric.value)===true).length,average=list=>list.reduce((sum,item)=>sum+item.metric.value,0)/list.length,hits=hitsFor(recent),hits5=hitsFor(last5),avg=average(recent),avg5=average(last5),sideWord=p.side==='Over'?'above':'below',margin=p.side==='Over'?avg-p.line:p.line-avg,label=recent[0].metric.label||p.market,rate=Math.round(hits/recent.length*100);
     recentHost.textContent=`${hits} of ${recent.length} hit · ${rate}%`;
     recentDetail.textContent=`Last 5: ${hits5} of ${last5.length} · ${label}`;
     averageHost.textContent=`Last 10 average: ${avg.toFixed(1)} · Today’s line: ${p.line}`;
     trendHost.textContent=`Last 5 average: ${avg5.toFixed(1)} · His 10-game average is ${Math.abs(margin).toFixed(1)} ${margin>=0?sideWord:(p.side==='Over'?'below':'above')} today’s line`;
-    const form=hits>=7&&margin>0?`He has hit this in ${hits} of his last ${recent.length}, and his average is on the right side of today’s line.`:hits>=6?`He has hit this in ${hits} of his last ${recent.length}. His recent games give us some support, but it is not a slam dunk.`:hits<=4?`He has only hit this in ${hits} of his last ${recent.length}, so recent form is not why we picked him.`:`He has hit this in ${hits} of his last ${recent.length}, so his recent results are mixed.`;
-    verdictHost.textContent=`${form} We also found ${formatOdds(recommendedOdds(p))} at ${p.bestBook||'the best available sportsbook'}, which pays better than the usual market price.`;
+    const form=hits>=7&&margin>0?`He has hit this in ${hits} of his last ${recent.length}, and his average is on the right side of today’s line.`:hits>=6?`He has hit this in ${hits} of his last ${recent.length}. His recent games give us some support, but it is not a slam dunk.`:hits<=4?`He has only hit this in ${hits} of his last ${recent.length}, so recent form doesn’t help this one.`:`He has hit this in ${hits} of his last ${recent.length}, so his recent results are mixed.`;
+    verdictHost.textContent=`${form} ${verdictPriceSentence(p)}`;
   }catch(error){
-    if(panel.isConnected){recentHost.textContent='Recent games are unavailable';recentDetail.textContent=error.message||'Try again shortly';averageHost.textContent='No average available';trendHost.textContent='We will not guess or make one up';verdictHost.textContent='We still like the sportsbook price, but recent form cannot be used as a reason right now.'}
+    if(panel.isConnected){recentHost.textContent='Recent games are unavailable';recentDetail.textContent=error.message||'Try again shortly';averageHost.textContent='No average available';trendHost.textContent='We will not guess or make one up';verdictHost.textContent=`${verdictPriceSentence(p)} Recent form isn’t available right now.`}
   }finally{panel.dataset.statsLoading='false';panel.dataset.statsLoaded='true'}
 }
 function verifiedCard(p,rank=-1,featured=false){
@@ -1060,3 +1060,100 @@ $('#dismissBookmarkRecovery').onclick=()=>{
   renderBookmarkRecovery();
 };
 renderBookmarkRecovery();
+
+// Verdicts: a plain answer to "is this a good bet?" on every player-prop card.
+// Uses the real edge against the no-vig consensus (p.rawEdge, never floored)
+// and the number of books pricing both sides (p.pairedBooks), with the same
+// 1% / three-book bar as official picks. Nearly every line sits between about
+// -1% and -3.5% (the books' normal cut), so "Left on Read" starts at -3.5%.
+const VERDICTS={
+  send:{key:'send',icon:'✅',label:'Bet This Guy',line:'The numbers back this one. Send it to the chat.'},
+  flip:{key:'flip',icon:'🪙',label:'Coin Flip',line:'Priced about right — no edge either way.'},
+  read:{key:'read',icon:'👀',label:'Left on Read',line:'The books are taking more than usual here. Skip it.'}
+};
+function propVerdict(p){
+  const edge=Number(p?.rawEdge);
+  if(!p||p.teamMarket||!Number.isFinite(edge))return null;
+  if(edge>=1&&(Number(p.pairedBooks)||0)>=3)return VERDICTS.send;
+  if(edge<=-3.5)return VERDICTS.read;
+  return VERDICTS.flip;
+}
+function plainOutcome(p){
+  const market=String(p.market||'').toLowerCase(),line=Number(p.line);
+  if(p.binary){
+    const yes=p.side==='Over';
+    if(/first/.test(market))return yes?'scores the first touchdown':'does not score the first touchdown';
+    if(/last/.test(market))return yes?'scores the last touchdown':'does not score the last touchdown';
+    if(/touchdown|\btd\b/.test(market))return yes?'scores a touchdown':'does not score a touchdown';
+    return null;
+  }
+  if(!market||!Number.isFinite(line))return null;
+  if(p.side==='Over')return Number.isInteger(line)?`has more than ${line} ${market}`:`has ${Math.ceil(line)}+ ${market}`;
+  if(Number.isInteger(line))return `has fewer than ${line} ${market}`;
+  const most=Math.floor(line);
+  return most<=0?`has no ${market}`:`has ${most} or fewer ${market}`;
+}
+function plainBet(p){
+  const odds=Number(recommendedOdds(p)),stake=Math.max(1,Number(preferences.typicalWager)||10),outcome=plainOutcome(p);
+  const payout=odds>=100?odds/100:odds<=-100?100/Math.abs(odds):null;
+  if(!payout||!outcome)return '';
+  const dollars=value=>`$${Number.isInteger(value)?value:value.toFixed(2)}`;
+  return `Bet ${dollars(stake)} → win ${dollars(Math.round(stake*payout*100)/100)} if ${p.player} ${outcome}.`;
+}
+function verdictPriceSentence(p){
+  const verdict=propVerdict(p),price=`${formatOdds(recommendedOdds(p))} at ${p.bestBook||'the best available sportsbook'}`;
+  if(verdict?.key==='send')return `The best price we found (${price}) pays better than the market’s fair price, so it earned a Bet This Guy.`;
+  if(verdict?.key==='read')return `Even the best price we found (${price}) is worse than usual, so we’d leave this one on read.`;
+  return `The best price we found (${price}) is about what the market thinks is fair, so it’s a Coin Flip — no edge either way.`;
+}
+function verdictMarkup(p){
+  const verdict=propVerdict(p);if(!verdict)return '';
+  const bet=plainBet(p);
+  return `<div class="verdict verdict-${verdict.key}" data-verdict="${verdict.key}"><div class="verdict-badge"><span class="verdict-icon" aria-hidden="true">${verdict.icon}</span><strong>${verdict.label}</strong></div><p class="verdict-line">${htmlEscape(verdict.line)}</p>${bet?`<p class="verdict-bet">${htmlEscape(bet)}</p>`:''}<p class="verdict-trend" data-verdict-trend="${p.id}" hidden></p></div>`;
+}
+const cardBeforeVerdict=card;
+card=function(p,rank=-1,featured=false){
+  let html=cardBeforeVerdict(p,rank,featured);
+  if(state.view==='movement'||document.body.dataset.desktopPage==='movement')return html;
+  // Rank badges ("#1 TOP PLAY") are only earned by bets the numbers back.
+  if(propVerdict(p)?.key!=='send')html=html.replace(/<span class="top-play-badge">[\s\S]*?<\/span>/,'').replace(' top-play"','"');
+  return html.replace(/<section class="mockup-pick">[\s\S]*?<\/section>/,section=>section+verdictMarkup(p));
+};
+// Trend notes: recent form as context only. The books already price it in,
+// so it never changes the verdict.
+const verdictTrends=new Map();
+async function hydrateVerdictTrend(host,p){
+  if(host.dataset.loaded)return;host.dataset.loaded='true';
+  try{
+    const key=savedPropKey(p);let text=verdictTrends.get(key);
+    if(text===undefined){
+      const payload=await playerStatsFor(p),recent=(payload.stats||[]).map(row=>({date:statDate(row),metric:propMetric(p,row)})).filter(item=>item.metric.value!==null).sort((a,b)=>(b.date?.getTime()||0)-(a.date?.getTime()||0)).slice(0,10);
+      const hits=recent.filter(item=>hitAgainstLine(p,item.metric.value)===true).length;
+      text=recent.length>=3?`${hits/recent.length>=.6?'📈':hits/recent.length<=.4?'📉':'➖'} Trend: hit this in ${hits} of his last ${recent.length} games. Context only — the odds already account for it.`:'';
+      verdictTrends.set(key,text);
+    }
+    if(text&&host.isConnected){host.textContent=text;host.hidden=false}
+  }catch{}
+}
+const bindCardsBeforeVerdict=bindCards;let verdictObserver=null;
+bindCards=function(){
+  bindCardsBeforeVerdict();
+  verdictObserver?.disconnect();
+  const hosts=$$('[data-verdict-trend]'),start=host=>{const p=props.find(item=>item.id===+host.dataset.verdictTrend);if(p)hydrateVerdictTrend(host,p)};
+  if(!hosts.length)return;
+  if(typeof IntersectionObserver!=='function'){hosts.slice(0,12).forEach(start);return}
+  // The note starts hidden (no size), so watch its visible verdict box instead.
+  const observer=verdictObserver=new IntersectionObserver(entries=>entries.forEach(entry=>{if(entry.isIntersecting){observer.unobserve(entry.target);const host=entry.target.querySelector('[data-verdict-trend]');if(host)start(host)}}),{rootMargin:'200px'});
+  hosts.forEach(host=>observer.observe(host.closest('.verdict')||host));
+};
+// Honest headline: "Bet These Guys" only when at least one bet earned it.
+const renderBeforeVerdict=render;
+render=function(){
+  renderBeforeVerdict();
+  const title=$('#viewTitle'),count=$('#resultCount');
+  if(!title||!count||title.textContent!=='Bet These Guys'||!$$('#propList .prop-card').length)return;
+  const earned=$$('#propList .verdict-send').length,updated=count.textContent.split(' · ').pop();
+  if(earned){count.textContent=`${earned} earned a Bet This Guy · ${count.textContent}`;return}
+  title.textContent='No one’s earned a Bet This Guy yet';
+  count.textContent=`We only stamp it when the numbers back it. Here are today’s closest calls · ${updated}`;
+};
