@@ -872,8 +872,27 @@ async function scheduledMaintenance(request,env,ctx){
   catch(error){console.error('scheduled_maintenance_failed',job);return json({success:false,job,error:'Maintenance failed; retry required'},503)}
 }
 
-export default {
-  async fetch(request, env, ctx) {
+const SITE_URL = "https://betthisguy.com";
+const ROBOTS_TXT = `User-agent: *\nAllow: /\nDisallow: /api/\n\nSitemap: ${SITE_URL}/sitemap.xml\n`;
+const SITEMAP_XML = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${["/", "/about", "/trust", "/legal"].map(path => `  <url><loc>${SITE_URL}${path}</loc></url>`).join("\n")}\n</urlset>\n`;
+const SECURITY_HEADERS = {
+  "x-content-type-options": "nosniff",
+  "x-frame-options": "DENY",
+  "referrer-policy": "strict-origin-when-cross-origin",
+  "strict-transport-security": "max-age=31536000",
+  "permissions-policy": "camera=(), microphone=(), geolocation=()",
+};
+
+// Copies the response so proxied responses with immutable headers can be changed too.
+function withSecurityHeaders(response) {
+  const secured = new Response(response.body, response);
+  for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
+    if (!secured.headers.has(name)) secured.headers.set(name, value);
+  }
+  return secured;
+}
+
+async function routeRequest(request, env, ctx) {
     const url = new URL(request.url);
     if(url.pathname==='/api/me'||url.pathname.startsWith('/api/me/'))return accountApi(request,env,ctx);
     if(url.pathname==="/api/maintenance")return scheduledMaintenance(request,env,ctx);
@@ -890,6 +909,8 @@ export default {
     if (url.pathname === "/api/player-photo") return playerPhoto(request);
     if (url.pathname === "/api/feed-status") return json({ configured: Boolean(env.THE_ODDS_API_KEY), provider: "The Odds API" });
     if (url.pathname === "/api/record") return publicRecord(request, env, ctx);
+    if (url.pathname === "/robots.txt") return new Response(ROBOTS_TXT, { headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=86400" } });
+    if (url.pathname === "/sitemap.xml") return new Response(SITEMAP_XML, { headers: { "content-type": "application/xml; charset=utf-8", "cache-control": "public, max-age=86400" } });
     if (url.pathname === "/bet-this-guy-logo-v3.png") {
       const bytes = Uint8Array.from(atob(LOGO), char => char.charCodeAt(0));
       return new Response(bytes, { headers: { "content-type": "image/png", "cache-control": "public, max-age=86400" } });
@@ -897,5 +918,10 @@ export default {
     const asset = STATIC[url.pathname];
     if (asset) return new Response(asset[1], { headers: { "content-type": asset[0], "cache-control": asset[0].startsWith("text/html") ? "no-cache" : "public, max-age=3600" } });
     return new Response("Not found", { status: 404 });
+}
+
+export default {
+  async fetch(request, env, ctx) {
+    return withSecurityHeaders(await routeRequest(request, env, ctx));
   },
 };
