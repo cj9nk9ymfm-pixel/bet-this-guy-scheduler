@@ -23,4 +23,19 @@ const provisional=summarise(rows.map(r=>({...r,status:'provisional'})),Date.pars
 assert.equal(provisional,null,'unconfirmed results never reach the banner');
 assert.equal(c.eval("mobileSwipeBlocked({closest:selector=>selector.split(',').includes('.hits-row')?{}:null})"),true,'swiping the hits strip scrolls it instead of changing page');
 assert.equal(c.eval("mobileSwipeBlocked({closest:()=>null})"),false,'swiping elsewhere still changes page');
-console.log('PASS: home banner matches the public record (Week 3: 14–7, +$1,014, beat the close 14 of 20, parlays 7–6), shows last week until the new week has volume, ignores unconfirmed results, and the hits strip swipes on its own');
+// Tapping a hit shows exactly what the bet was and how its price moved.
+const goffNabers={id:'official|2026-09-22|reasonable|parlay|x',kind:'parlay',combined_odds:418,status:'final',result:'won',posted_at:'2026-09-27T15:03:15.164Z',legs_json:JSON.stringify([
+  {player:'Jared Goff',market:'Rushing Yards',side:'Over',line:0.5,odds:130,team:'New York Jets · @ Detroit Lions',gameTime:'2026-09-27T17:00:00.000Z',book:'BetRivers',closingLine:0.5,closingOdds:125,closingCapturedAt:'2026-09-27T16:41:28.262Z',result:'won',actualValue:6},
+  {player:'Malik Nabers',market:'Receptions',side:'Over',line:4.5,odds:125,team:'Tennessee Titans · @ New York Giants',gameTime:'2026-09-27T17:00:00.000Z',book:'BetMGM',closingLine:4.5,closingOdds:110,closingCapturedAt:'2026-09-27T16:41:28.262Z',result:'won',actualValue:5}])};
+const parlay=c.eval('window.BTGFirstImpression').hitDetails(goffNabers);
+for(const text of ['2-LEG PARLAY','Jared Goff','Over 0.5 Rushing Yards','6 rushing yards','+130 at BetRivers','Posted +130 → final +125 · Better than the final price','Malik Nabers','5 receptions','+$418'])assert.ok(parlay.includes(text),`parlay details show "${text}"`);
+const jonnu={id:'official|2026-09-22|props|prop|x',kind:'prop',player:'Jonnu Smith',market:'Receptions',side:'Over',line:1.5,odds:175,status:'final',result:'won',posted_at:'2026-09-24T05:01:17.073Z',closing_line:1.5,closing_odds:154,closing_captured_at:'2026-09-24T23:55:25.398Z',legs_json:JSON.stringify([{player:'Jonnu Smith',market:'Receptions',side:'Over',line:1.5,odds:175,team:'Atlanta Falcons · @ Green Bay Packers',gameTime:'2026-09-25T00:15:00.000Z',book:'BetMGM',result:'won',actualValue:2}])};
+const single=c.eval('window.BTGFirstImpression').hitDetails(jonnu);
+for(const text of ['SINGLE','Jonnu Smith','2 receptions','+175 at BetMGM','Posted +175 → final +154 · Better than the final price','+$175'])assert.ok(single.includes(text),`single details show "${text}"`);
+assert.ok(!single.includes('hit-spark"'),'no chart without a price trail');
+const trailed={...jonnu,legs_json:JSON.stringify([{...JSON.parse(jonnu.legs_json)[0],priceTrail:[{t:Date.parse('2026-09-24T12:00:00Z'),o:165,l:1.5,m:165},{t:Date.parse('2026-09-24T18:00:00Z'),o:160,l:1.5,m:160}]}])};
+assert.ok(c.eval('window.BTGFirstImpression').hitDetails(trailed).includes('class="hit-spark"'),'a recorded price trail draws the movement chart');
+const moved=c.eval('window.BTGFirstImpression').hitDetails({...jonnu,side:'Under',line:34.5,market:'Rushing Yards',closing_line:37.5,closing_odds:-111});
+assert.ok(moved.includes('Line moved to 37.5 before kickoff (against you)'));
+assert.ok(c.eval('window.BTGFirstImpression').hitDetails({...jonnu,closing_odds:null,closing_captured_at:null}).includes('wasn’t recorded'),'a missing close says so plainly');
+console.log('PASS: home banner matches the public record (Week 3: 14–7, +$1,014, beat the close 14 of 20, parlays 7–6), shows last week until the new week has volume, ignores unconfirmed results, the hits strip swipes on its own, and each hit opens its exact bet, result and price movement');

@@ -35,6 +35,18 @@ const events=Array.from({length:16},(_,g)=>({id:'game'+g,eventID:'NFL--game'+g,c
  const parlays=db.prepare("SELECT legs_json FROM public_recommendations WHERE kind='parlay'").all().map(r=>JSON.parse(r.legs_json));
  const exposure=new Map();for(const legs of parlays){assert.equal(new Set(legs.map(p=>p.gameId)).size,legs.length);for(const leg of legs)exposure.set(leg.playerKey,(exposure.get(leg.playerKey)||0)+1)}assert.ok([...exposure.values()].every(n=>n<=3));
  for(let i=0;i<parlays.length;i++)for(let j=i+1;j<parlays.length;j++)assert.ok(parlays[i].filter(a=>parlays[j].some(b=>a.playerKey===b.playerKey)).length<=1);
+ // Price trail: publish runs record each pending pick's price without touching other fields.
+ {const pick=db.prepare("SELECT id,legs_json FROM public_recommendations WHERE kind='prop' ORDER BY id LIMIT 1").get(),leg=JSON.parse(pick.legs_json)[0];
+  db.prepare("UPDATE public_recommendations SET legs_json=json_set(legs_json,'$[0].closingNote','keep me') WHERE id=?").run(pick.id);
+  context.trailRows=db.prepare('SELECT * FROM public_recommendations WHERE id=?').all(pick.id);
+  await run('env.DB.batch(officialTrailStatements(events,trailRows,env,Date.now()))');
+  let saved=JSON.parse(db.prepare('SELECT legs_json FROM public_recommendations WHERE id=?').get(pick.id).legs_json)[0];
+  assert.equal(saved.priceTrail.length,1,'a publish run records the current price');
+  assert.equal(saved.priceTrail[0].l,leg.line);assert.equal(saved.priceTrail[0].o,leg.odds,'best price at our line');
+  assert.equal(saved.closingNote,'keep me','the trail write never overwrites other fields');
+  context.trailRows=db.prepare('SELECT * FROM public_recommendations WHERE id=?').all(pick.id);
+  assert.equal(run('officialTrailStatements(events,trailRows,env,Date.now()).length'),0,'an unchanged price is not recorded twice');
+  assert.equal(run("officialTrailStatements(events,trailRows,env,Date.parse('2026-09-27T16:40:00Z')).length"),0,'no trail writes inside 25 minutes of kickoff');}
  run('eventProps=async request=>Response.json({data:events.filter(e=>e.eventID===new URL(request.url).searchParams.get("eventID"))})');
  await assert.rejects(run('verifiedRecordStatements([{kind:"prop",...candidates[0]}],new Request("https://test.invalid/api/record"),env,{waitUntil(){}})'),/server only/,'clients cannot nominate official picks');
  context.existing=db.prepare('SELECT * FROM public_recommendations').all();assert.equal(run("officialPlan(candidates,existing,'2026-09-22').length"),0);
