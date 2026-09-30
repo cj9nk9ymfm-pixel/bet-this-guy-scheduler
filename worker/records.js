@@ -318,9 +318,126 @@ async function weeklySitemap(env){
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${paths.map(path=>`  <url><loc>${SITE_URL}${path}</loc></url>`).join('\n')}\n</urlset>\n`;
 }
 
+// Post kit (/post): ready-to-paste posts for X, Threads and Reddit plus a
+// share image, for today's official picks and for a week's results. Not
+// linked or indexed; the numbers are the same ones the weekly pages show.
+// postKitTexts and postKitClient run in the browser too (sent as source), so
+// they only use their arguments and browser built-ins.
+function postKitTexts(kit){
+  const D='\u0024',money=v=>(v<0?'−':'+')+D+Math.abs(Math.round(v)).toLocaleString('en-US');
+  const odds=o=>{o=Number(o);return Number.isFinite(o)?(o>0?'+'+o:String(o)):''};
+  const SHORT={'passing yards':'pass yds','rushing yards':'rush yds','receiving yards':'rec yds','receptions':'rec','passing touchdowns':'pass TDs','pass completions':'completions','passing completions':'completions','pass attempts':'pass att','passing attempts':'pass att','rushing attempts':'rush att','interceptions':'INTs','rush + rec yards':'rush+rec yds','rushing + receiving yards':'rush+rec yds'};
+  const bet=(l,short)=>{const m=String(l.market||'').toLowerCase();if(/touchdown/.test(m)&&Number(l.line)===0.5)return (l.side==='Under'?'No ':'')+(short?'anytime TD':l.market);return short?`${l.side==='Under'?'u':'o'}${l.line} ${SHORT[m]||m}`:`${l.side} ${l.line} ${m}`};
+  const day=iso=>new Date(iso).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',timeZone:'America/New_York'});
+  const time=iso=>new Date(iso).toLocaleString('en-US',{weekday:'short',hour:'numeric',minute:'2-digit',timeZone:'America/New_York'})+' ET';
+  const mark={won:'✅',lost:'❌',push:'↔️'};
+  const line=(r,short,withResult)=>{
+    const pre=withResult&&mark[r.result]?mark[r.result]+' ':'';
+    if(r.kind==='parlay')return `${pre}${r.legs.length}-leg parlay (${odds(r.combined_odds)}): ${r.legs.map(l=>short?`${String(l.player).split(' ').slice(-1)[0]} ${bet(l,true)}`:`${l.player} ${bet(l,false)}`).join(' + ')}`;
+    const had=withResult&&r.result&&r.legs[0]?.actualValue!=null?` — had ${r.legs[0].actualValue}`:'';
+    return `${pre}${r.player} ${bet(r,short)} (${odds(r.odds)})${had}`;
+  };
+  // Add lines while the post fits; say how many were left out.
+  const fit=(head,lines,foot,limit)=>{const kept=[];for(const l of lines){const more=lines.length-kept.length-1;const trial=[head,...kept,l,...(more?[`+${more} more on the site`]:[]),'',foot].join('\n');if(trial.length>limit)break;kept.push(l)}const left=lines.length-kept.length;return [head,...kept,...(left?[`+${left} more on the site`]:[]),'',foot].join('\n')};
+  const site=kit.site.replace(/^https?:\/\//,'');
+  const out={};
+  const upcoming=kit.upcoming||[];
+  const days=[...new Set(upcoming.map(r=>day(r.game_time)))];
+  const when=days.length===1?days[0]:kit.current.week?`Week ${kit.current.week}`:'this week';
+  out.today={mode:'today',ready:upcoming.length>0,empty:'No official picks are posted for upcoming games yet. Picks post up to 24 hours before kickoff; check back then.',eyebrow:`OFFICIAL PICKS · ${when.toUpperCase()}`,rows:upcoming,
+    x:fit(`✅ Bet This Guy picks · ${when}`,upcoming.map(r=>line(r,true)),`Every pick locked before kickoff, graded in public 👇\n${site}`,275),
+    threads:fit(`✅ Today’s Bet This Guy picks (${when})`,upcoming.map(r=>line(r,false)),`Every pick is locked before kickoff and graded in public, wins and losses. Free picks and alerts:\n${site}`,495),
+    reddit:[`**Bet This Guy official picks: ${when}**`,'',...(upcoming.some(r=>r.kind==='prop')?['| Player | Bet | Odds | Kickoff |','|---|---|---|---|',...upcoming.filter(r=>r.kind==='prop').map(r=>`| ${r.player} | ${bet(r,false)} | ${odds(r.odds)} | ${time(r.game_time)} |`),'']:[]),...upcoming.filter(r=>r.kind==='parlay').map(r=>`**${r.legs.length}-leg parlay (${odds(r.combined_odds)}):** ${r.legs.map(l=>`${l.player} ${bet(l,false)}`).join(' + ')}`),...(upcoming.some(r=>r.kind==='parlay')?['']:[]),`Every pick is locked before kickoff and graded from box scores, wins and losses: ${kit.site}${kit.current.path}`].join('\n')};
+  for(const key of ['current','previous']){
+    const w=kit[key],s=w.summary,graded=w.rows.filter(r=>r.result),label=w.week?`Week ${w.week}`:'This week';
+    const hits=graded.filter(r=>r.result==='won').sort((a,b)=>Number(b.kind==='parlay'?b.combined_odds:b.odds)-Number(a.kind==='parlay'?a.combined_odds:a.odds));
+    const record=`${s.wins}–${s.losses}${s.pushes?`–${s.pushes}`:''}`,parlays=s.parlayWins+s.parlayLosses?`Parlays: ${s.parlayWins}–${s.parlayLosses} (${money(s.parlayProfit)})`:'';
+    const head=`📊 ${label} results: ${record} on player props, ${money(s.profit)} betting ${D}100 a pick`+(key==='current'&&s.pending?' (so far)':'');
+    const url=`${kit.site}${w.path}`,short=url.replace(/^https?:\/\//,'');
+    out[key]={mode:key,ready:graded.length>0,empty:`No graded picks for ${label.toLowerCase()} yet.`,eyebrow:`${label.toUpperCase()} RESULTS`,record,profit:s.profit,parlays,rows:hits.length?hits:graded,
+      x:fit([head,parlays].filter(Boolean).join('\n'),hits.filter(r=>r.kind==='prop').map(r=>line(r,true,true)),`Posted before kickoff. Receipts 👇\n${short}`,275),
+      threads:fit([head,parlays].filter(Boolean).join('\n'),hits.map(r=>line(r,false,true)),`Every pick was posted before kickoff and graded in public, the losses too. Full receipts:\n${short}`,495),
+      reddit:[`**Bet This Guy ${label} results: ${record} on player props (${money(s.profit)} at ${D}100 a pick)**`,...(parlays?['',parlays]:[]),'',...graded.map(r=>`- ${line(r,false,true)}`),'',`Every pick was locked before kickoff and graded from box scores: ${url}`].join('\n')};
+  }
+  return out;
+}
+function postKitClient(kit,texts){
+  const $=s=>document.querySelector(s),D='\u0024';
+  const count=m=>{try{navigator.sendBeacon?.('/api/hit',new Blob([JSON.stringify({m:[m]})],{type:'application/json'}))}catch{}};
+  const odds=o=>{o=Number(o);return Number.isFinite(o)?(o>0?'+'+o:String(o)):''};
+  const logo=new Image();logo.src='/bet-this-guy-logo-v3.png';
+  let mode=texts.today.ready||!texts.current.ready?'today':'current',imageBlob=null;
+  const copy=async(text,button)=>{try{await navigator.clipboard.writeText(text)}catch{const t=document.createElement('textarea');t.value=text;document.body.append(t);t.select();document.execCommand('copy');t.remove()}button.textContent='Copied ✓';setTimeout(()=>button.textContent='Copy',1600);count('post:copy')};
+  const fitText=(ctx,text,max)=>{if(ctx.measureText(text).width<=max)return text;while(text.length>1&&ctx.measureText(text+'…').width>max)text=text.slice(0,-1);return text+'…'};
+  const round=(ctx,x,y,w,h,r)=>{ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath()};
+  async function draw(t){
+    const c=document.createElement('canvas');c.width=1080;c.height=1350;const ctx=c.getContext('2d');
+    try{await document.fonts.load('700 60px "Space Grotesk"');await document.fonts.load('500 30px "DM Sans"')}catch{}
+    if(!logo.complete)await new Promise(r=>{logo.onload=logo.onerror=r});
+    const g=ctx.createLinearGradient(0,0,1080,1350);g.addColorStop(0,'#0b1d44');g.addColorStop(1,'#030814');ctx.fillStyle=g;ctx.fillRect(0,0,1080,1350);
+    if(logo.naturalWidth){const w=560,h=w*logo.naturalHeight/logo.naturalWidth;ctx.drawImage(logo,(1080-w)/2,70,w,h)}
+    ctx.textAlign='center';ctx.fillStyle='#5ff0b5';ctx.font='700 34px "Space Grotesk",sans-serif';ctx.fillText(t.eyebrow,540,300);
+    const rows=t.rows.slice(0,t.mode==='today'?7:5),rowH=112,mark={won:'✅',lost:'❌',push:'↔️'};
+    // Center the record and rows in the space between the title and the footer.
+    const headH=t.mode==='today'?0:t.parlays?290:250,blockH=headH+rows.length*rowH+(t.rows.length>rows.length?50:0);
+    let y=340+Math.max(0,(1180-340-blockH)/3);
+    if(t.mode!=='today'){
+      ctx.fillStyle='#ffffff';ctx.font='700 150px "Space Grotesk",sans-serif';ctx.fillText(t.record,540,y+130);
+      ctx.fillStyle=t.profit>=0?'#5ff0b5':'#ff9d9d';ctx.font='700 46px "Space Grotesk",sans-serif';ctx.fillText(`${t.profit<0?'−':'+'}${D}${Math.abs(Math.round(t.profit)).toLocaleString('en-US')} betting ${D}100 a pick`,540,y+200);
+      if(t.parlays){ctx.fillStyle='#b8cbe4';ctx.font='500 32px "DM Sans",sans-serif';ctx.fillText(t.parlays,540,y+252)}
+      y+=t.parlays?290:250;
+    }
+    ctx.textAlign='left';
+    for(const r of rows){
+      round(ctx,70,y,940,rowH-14,22);ctx.fillStyle='rgba(255,255,255,.06)';ctx.fill();ctx.strokeStyle='rgba(255,255,255,.12)';ctx.lineWidth=2;ctx.stroke();
+      const price=r.kind==='parlay'?odds(r.combined_odds):odds(r.odds);
+      ctx.textAlign='right';ctx.fillStyle='#5ff0b5';ctx.font='700 40px "Space Grotesk",sans-serif';ctx.fillText(price,975,y+60);const pw=ctx.measureText(price).width;
+      ctx.textAlign='left';const icon=t.mode!=='today'&&mark[r.result]?mark[r.result]+' ':'';
+      const name=r.kind==='parlay'?`${icon}${r.legs.length}-leg parlay`:`${icon}${r.player}`;
+      const detail=r.kind==='parlay'?r.legs.map(l=>String(l.player).split(' ').slice(-1)[0]).join(' + '):(()=>{const m=String(r.market||'').toLowerCase();return /touchdown/.test(m)&&Number(r.line)===0.5?(r.side==='Under'?'No ':'')+r.market:`${r.side} ${r.line} ${m}`})()+(t.mode!=='today'&&r.legs?.[0]?.actualValue!=null?` · had ${r.legs[0].actualValue}`:'')+(t.mode==='today'&&r.game_time?` · ${new Date(r.game_time).toLocaleString('en-US',{weekday:'short',hour:'numeric',minute:'2-digit',timeZone:'America/New_York'})} ET`:'');
+      ctx.fillStyle='#ffffff';ctx.font='700 38px "Space Grotesk",sans-serif';ctx.fillText(fitText(ctx,name,880-pw),100,y+46);
+      ctx.fillStyle='#b8cbe4';ctx.font='500 30px "DM Sans",sans-serif';ctx.fillText(fitText(ctx,detail,880-pw),100,y+84);
+      y+=rowH;
+    }
+    ctx.textAlign='center';
+    if(t.rows.length>rows.length){ctx.fillStyle='#9fb6d6';ctx.font='500 30px "DM Sans",sans-serif';ctx.fillText(`+${t.rows.length-rows.length} more at betthisguy.com`,540,y+30)}
+    ctx.fillStyle='#9fb6d6';ctx.font='500 30px "DM Sans",sans-serif';ctx.fillText('Locked before kickoff · graded in public',540,1235);
+    ctx.fillStyle='#ffffff';ctx.font='700 44px "Space Grotesk",sans-serif';ctx.fillText('betthisguy.com',540,1295);
+    return new Promise(r=>c.toBlob(r,'image/png'));
+  }
+  async function show(){
+    document.querySelectorAll('[data-mode]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.mode===mode)));
+    const t=texts[mode];$('#empty').hidden=t.ready;$('#kit').hidden=!t.ready;$('#empty').textContent=t.empty;if(!t.ready)return;
+    for(const k of ['x','threads','reddit']){$(`#${k}Text`).value=t[k];$(`#${k}Count`).textContent=`${t[k].length} characters`}
+    imageBlob=null;$('#preview').removeAttribute('src');imageBlob=await draw(t);$('#preview').src=URL.createObjectURL(imageBlob);
+  }
+  document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{mode=b.dataset.mode;show()});
+  document.querySelectorAll('[data-copy]').forEach(b=>b.onclick=()=>copy($(`#${b.dataset.copy}Text`).value,b));
+  document.querySelectorAll('textarea').forEach(t=>t.oninput=()=>{$(`#${t.id.replace('Text','Count')}`).textContent=`${t.value.length} characters`});
+  $('#openX').onclick=()=>{count('post:open');open('https://x.com/intent/post?text='+encodeURIComponent($('#xText').value),'_blank','noopener')};
+  $('#openThreads').onclick=()=>{count('post:open');open('https://www.threads.net/intent/post?text='+encodeURIComponent($('#threadsText').value),'_blank','noopener')};
+  $('#shareImage').onclick=async()=>{if(!imageBlob)return;const file=new File([imageBlob],`bet-this-guy-${mode}.png`,{type:'image/png'});count('post:image');if(navigator.canShare?.({files:[file]})){try{await navigator.share({files:[file]});return}catch(e){if(e?.name==='AbortError')return}}const a=document.createElement('a');a.href=URL.createObjectURL(imageBlob);a.download=file.name;a.click()};
+  show();
+}
+async function postKitData(env,now=Date.now()){
+  const week=officialWeek(now),previous=new Date(Date.parse(`${week}T00:00:00Z`)-7*86400000).toISOString().slice(0,10);
+  const slim=r=>({kind:r.kind,player:r.player,market:r.market,side:r.side,line:r.line,odds:r.odds,combined_odds:r.combined_odds,game_time:r.game_time,result:weeklyGraded(r)?r.result:null,legs:recordLegs(r).map(l=>({player:l.player,market:l.market,side:l.side,line:l.line,odds:l.odds,actualValue:l.actualValue??null}))});
+  const pack=(start,rows)=>{const nfl=nflWeekOf(start);return {week:nfl?.week||null,season:nfl?.season||null,path:nfl?`/picks/${nfl.season}/week-${nfl.week}`:'/picks',summary:weeklySummary(rows),rows:rows.map(slim)}};
+  const [thisWeek,lastWeek]=await Promise.all([weeklyRows(env,week),weeklyRows(env,previous)]);
+  return {site:SITE_URL,upcoming:thisWeek.filter(r=>Date.parse(r.game_time)>now).map(slim),current:pack(week,thisWeek),previous:pack(previous,lastWeek)};
+}
+async function postKitPage(request,env){
+  if(!env.DB)return new Response('Unavailable',{status:503});
+  const kit=await postKitData(env),json=JSON.stringify(kit).replace(/</g,'\\u003c');
+  const button='min-height:40px;padding:0 16px;border-radius:999px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.06);color:#e8f2ff;font:700 14px "Space Grotesk",sans-serif;cursor:pointer';
+  const card=(id,name,extra)=>`<section class="card"><div class="card-head"><h2>${name}</h2><small id="${id}Count"></small></div><textarea id="${id}Text" rows="${id==='reddit'?10:7}" spellcheck="true"></textarea><div class="row"><button type="button" class="primary" data-copy="${id}">Copy</button>${extra}</div></section>`;
+  const html=`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><meta name="theme-color" content="#04091a"><title>Post kit · Bet This Guy</title><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet"><style>body{margin:0;background:#04091a;color:#e8f2ff;font:15px/1.5 "DM Sans",system-ui,sans-serif}main{max-width:760px;margin:0 auto;padding:20px 16px 48px}a{color:#9fd4ff}header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}header img{width:160px}h1,h2{font-family:"Space Grotesk",sans-serif;color:#fff;line-height:1.15}h1{font-size:clamp(24px,5vw,32px);margin:4px 0}h2{font-size:17px;margin:0}.eyebrow{margin:0;color:#5ff0b5;font:700 11px "Space Grotesk",sans-serif;letter-spacing:.16em}.lead{margin:0 0 16px;color:#9fb6d6}.tabs{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 16px}.tabs button{${button}}.tabs button[aria-pressed="true"]{border-color:rgba(31,216,143,.6);background:rgba(31,216,143,.14);color:#5ff0b5}#empty{padding:16px;border-radius:14px;background:rgba(255,255,255,.05);color:#cfe0f5}.image{display:grid;gap:10px;margin:0 0 18px}.image img{width:100%;max-width:420px;border-radius:16px;border:1px solid rgba(255,255,255,.12);background:#0b1d44;aspect-ratio:4/5}.card{margin:0 0 14px;padding:14px;border-radius:16px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1)}.card-head{display:flex;justify-content:space-between;align-items:baseline;margin:0 0 8px}.card-head small{color:#8fa9c8}textarea{box-sizing:border-box;width:100%;padding:12px;border-radius:12px;border:1px solid rgba(255,255,255,.14);background:#07122b;color:#e8f2ff;font:14px/1.45 "DM Sans",system-ui,sans-serif;resize:vertical}.row{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;align-items:center}.row button,.row a.btn{${button};display:inline-flex;align-items:center;text-decoration:none}.row .primary{border:0;background:linear-gradient(135deg,#1fd88f,#16b6d9);color:#04121f}.tip{color:#8fa9c8;font-size:12.5px;margin:6px 0 0}</style></head><body><main><header><a href="/"><img src="/bet-this-guy-logo-v3.png" alt="Bet This Guy"></a><a href="/picks">Weekly picks</a></header><p class="eyebrow">POST KIT</p><h1>Share the picks</h1><p class="lead">Pick what to post, copy the text for each app, and attach the image. You can edit any text before copying.</p><div class="tabs" role="group" aria-label="What to post"><button type="button" data-mode="today">Today’s picks</button><button type="button" data-mode="current">This week’s results</button><button type="button" data-mode="previous">Last week’s results</button></div><p id="empty" hidden></p><div id="kit" hidden><div class="image"><img id="preview" alt="Share image preview"><div class="row"><button type="button" class="primary" id="shareImage">Share or save image</button></div></div>${card('x','X (Twitter)','<button type="button" id="openX">Open X</button>')}${card('threads','Threads','<button type="button" id="openThreads">Open Threads</button>')}${card('reddit','Reddit','<a class="btn" href="https://www.reddit.com/r/sportsbook/" target="_blank" rel="noopener">Open r/sportsbook</a>')}<p class="tip">Reddit: post in the daily picks thread and check each subreddit’s rules; some remove links, so delete the last line if needed.</p></div></main><script type="application/json" id="kitData">${json}</script><script>${postKitTexts.toString()}\n(${postKitClient.toString()})(JSON.parse(document.getElementById('kitData').textContent),postKitTexts(JSON.parse(document.getElementById('kitData').textContent)));</script></body></html>`;
+  return new Response(html,{headers:{'content-type':'text/html; charset=utf-8','cache-control':'no-store','x-robots-tag':'noindex'}});
+}
+
 // Anonymous usage counts: daily totals per metric. No cookies, IP addresses or
 // per-person identifiers are stored; unknown metric names are ignored.
-const USAGE_METRICS=new Set(['view:home','view:trust','view:picks','view:week','visit:new','visit:return','card:open','slip:add','parlay:add','share','hit:open','profile:open','affiliate:click','alerts:on','alerts:off','gate:shown','gate:signup','gate:login','alerts:email']);
+const USAGE_METRICS=new Set(['view:home','view:trust','view:picks','view:week','visit:new','visit:return','card:open','slip:add','parlay:add','share','hit:open','profile:open','affiliate:click','alerts:on','alerts:off','gate:shown','gate:signup','gate:login','alerts:email','view:post','post:copy','post:open','post:image']);
 const USAGE_BOTS=/bot|crawl|spider|slurp|preview|facebookexternalhit|curl|wget|python|headless|lighthouse/i;
 async function countUsage(env,metrics,request){
   if(!env.DB||USAGE_BOTS.test(request.headers.get('user-agent')||''))return;
