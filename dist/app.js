@@ -1414,6 +1414,11 @@ render=function(){
 // underneath when the card is tapped.
 (function(){
   const expanded=new Set();
+  // Partner links: empty unless the site has approved partners for this
+  // visitor's state (the server decides; see affiliateOffers in the worker).
+  let offers=[];
+  if(typeof fetch==='function')fetch('/api/affiliate').then(r=>r.ok?r.json():null).then(body=>{if(Array.isArray(body?.offers)&&body.offers.length){offers=body.offers;render()}}).catch(()=>{});
+  const offerMarkup=()=>offers.length?`<div class="card-affiliate">${offers.map(o=>`<a href="${htmlEscape(o.url)}" target="_blank" rel="sponsored noopener" data-affiliate="${htmlEscape(o.id)}">Play this on ${htmlEscape(o.name)} →</a>`).join('')}<small>We may earn a commission if you sign up. 21+. Gambling problem? Call 1-800-GAMBLER.</small></div>`:'';
   const shortMoney=v=>`$${v>=10?Math.round(v).toLocaleString('en-US'):v.toFixed(2)}`;
   const moneyLine=p=>{const odds=Number(recommendedOdds(p)),stake=wagerStake(),win=odds>=100?stake*odds/100:odds<=-100?stake*100/Math.abs(odds):null;return win?`${shortMoney(stake)} wins ${shortMoney(win)}`:''};
   const cardBeforeCompact=card;
@@ -1427,7 +1432,7 @@ render=function(){
     const take=opening=>{const start=html.indexOf(opening);if(start<0)return '';let depth=0,i=start;const tag=/<\/?div\b[^>]*>/g;tag.lastIndex=start;for(let m;(m=tag.exec(html));){depth+=m[0][1]==='/'?-1:1;if(!depth){i=tag.lastIndex;break}}const block=html.slice(start,i);html=html.slice(0,start)+html.slice(i);return block};
     const box=take('<div class="verdict verdict-'),evidence=take('<div class="card-evidence">'),why=take('<div class="featured-why">');
     const first=String(p.player||'').split(' ')[0];
-    const more=`<div class="card-more"${open?'':' hidden'}>${box}${evidence}<button type="button" class="card-stats-btn" data-open-profile="${p.id}">${htmlEscape(first)}’s stats & recent games ›</button>${why}</div>`;
+    const more=`<div class="card-more"${open?'':' hidden'}>${box}${evidence}<button type="button" class="card-stats-btn" data-open-profile="${p.id}">${htmlEscape(first)}’s stats & recent games ›</button>${offerMarkup()}${why}</div>`;
     const money=verdict?.key==='read'?'The books are taking extra here':moneyLine(p);
     const pill=verdict?`<span class="verdict-pill verdict-pill-${verdict.key}">${verdict.icon} ${verdict.key==='read'?'Skip':verdict.label}</span>`:'';
     // Function replacers: "$100" in the text must not be read as a $1 group.
@@ -1446,6 +1451,7 @@ render=function(){
       if(header){header.onclick=event=>{event.stopPropagation();toggle()};header.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();toggle()}};header.setAttribute('aria-expanded',String(el.classList.contains('expanded')));header.setAttribute('aria-label',`${p.player}: show or hide details`)}
       el.onclick=event=>{if(event.target.closest('button,a,input,select,.mockup-pick,.card-more,[data-board-progress]'))return;toggle()};
       el.querySelector('[data-open-profile]')?.addEventListener('click',event=>{event.stopPropagation();window.btgCount?.('profile:open');openPlayerProfile(p)});
+      el.querySelectorAll('[data-affiliate]').forEach(link=>link.addEventListener('click',event=>{event.stopPropagation();window.btgCount?.('affiliate:click')}));
     });
   };
 })();

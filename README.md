@@ -104,3 +104,15 @@ The timer checks every five minutes, but provider calls are throttled automatica
 - Manual and workflow-change verification runs on GitHub execute all three jobs, including one closing-line capture.
 
 The repository contains no sportsbook or stats-provider API keys. The maintenance credential is stored only as an encrypted GitHub Actions secret and a Cloudflare Worker secret.
+
+## Partner (affiliate) links
+
+Partner links are off until a partner approves the site. To switch them on, add a **secret** named `AFFILIATES` to the `bet-this-guy` Worker (**Settings**, then **Variables and Secrets**, type **Secret**, so deploys keep it). Its value is a JSON list of approved partners, the tracking link they gave you, and the states where their product is legal and your agreement allows promotion:
+
+```json
+[{"id":"underdog","name":"Underdog","url":"https://…your tracking link…","states":["TX","GA"]}]
+```
+
+- Links appear only inside an opened bet card, only for visitors whose connection Cloudflare places in a listed US state, and always with a commission and 21+ disclosure. The location is read per request and never stored.
+- Entries without an `https` link or without states are ignored. Clicks are counted as `affiliate:click` in `usage_counts`.
+- Delete the secret to switch everything off again. Check state rules with a gaming lawyer before adding sportsbooks.

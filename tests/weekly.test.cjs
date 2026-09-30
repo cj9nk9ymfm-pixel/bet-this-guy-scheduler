@@ -42,5 +42,18 @@ context.env={DB};
   assert.equal((await run("usageHit(new Request('https://betthisguy.com/api/hit'),env,ctx)")).status,405,'reads are refused');
   const routed=await run("routeRequest(new Request('https://betthisguy.com/picks/2026/week-3',{headers:{'user-agent':'Mozilla/5.0'}}),env,ctx)");await Promise.all(context.jobs.splice(0));
   assert.equal(routed.status,200);assert.equal(db.prepare("SELECT count FROM usage_counts WHERE metric='view:week'").get().count,1,'weekly pages count their own views');
-  console.log('PASS: weekly pick pages: NFL week numbering from Labor Day, record and every pick with price, result and closing price, index newest first, 404 for empty weeks, escaped text and sitemap entries, plus anonymous usage totals that ignore bots and unknown metrics (real SQLite)');
+  // Partner links: off with no setting, shown only in listed US states, and
+  // bad entries dropped.
+  const offers=(cf,config)=>JSON.parse(JSON.stringify(run(`affiliateOffers(${JSON.stringify({cf})},${JSON.stringify({AFFILIATES:config})})`)));
+  const partners=JSON.stringify([{id:'underdog',name:'Underdog',url:'https://play.underdogfantasy.com/p-btg',states:['TX','ga']},{id:'bad',name:'Bad',url:'http://insecure.example',states:['TX']},{id:'x',name:'Script',url:'https://a.example/"><script>',states:['TX']},{id:'nostates',name:'None',url:'https://b.example',states:[]}]);
+  assert.deepEqual(offers({country:'US',regionCode:'TX'},undefined),[],'no setting, no partner links');
+  assert.deepEqual(offers({country:'US',regionCode:'TX'},partners),[{id:'underdog',name:'Underdog',url:'https://play.underdogfantasy.com/p-btg'}],'a listed state gets the approved partner only');
+  assert.equal(offers({country:'US',regionCode:'GA'},partners).length,1,'state codes are case-insensitive');
+  assert.deepEqual(offers({country:'US',regionCode:'CA'},partners),[],'an unlisted state gets nothing');
+  assert.deepEqual(offers({country:'CA',regionCode:'ON'},partners),[],'outside the US gets nothing');
+  assert.deepEqual(offers({},partners),[],'unknown location gets nothing');
+  assert.deepEqual(offers({country:'US',regionCode:'TX'},'not json'),[]);
+  const api=await run(`affiliateApi(${JSON.stringify({cf:{country:'US',regionCode:'TX'}})},{})`);
+  assert.equal(api.headers.get('cache-control'),'private, no-store','offers are never cached for other visitors');
+  console.log('PASS: weekly pick pages: NFL week numbering from Labor Day, record and every pick with price, result and closing price, index newest first, 404 for empty weeks, escaped text and sitemap entries, plus anonymous usage totals that ignore bots and unknown metrics, and partner links that stay off unless approved for the visitor state (real SQLite)');
 })().catch(e=>{console.error(e);process.exitCode=1});
