@@ -10,7 +10,7 @@ const SOCIAL_SIGN_IN=false;
 // the account dialog opens. index.html keeps its fingerprinted URL in an inert
 // <template> so it is not downloaded up front.
 let client=null,clientLoading=null;
-const authLinkInUrl=()=>{const query=new URLSearchParams(location.search);return query.has('code')||query.has('auth')||query.has('error_description')||/access_token=|error_description=|type=recovery/.test(location.hash)};
+const authLinkInUrl=()=>{const query=new URLSearchParams(location.search);return query.has('code')||query.has('auth')||query.has('token_hash')||query.has('error_description')||/access_token=|error_description=|type=recovery/.test(location.hash)};
 const hasSavedSession=()=>{try{for(let i=0;i<localStorage.length;i++)if(String(localStorage.key(i)).startsWith(SESSION_KEY))return true}catch{}return false};
 function loadClient(){
   if(client)return Promise.resolve(client);
@@ -144,6 +144,29 @@ async function submitSignup(event){event.preventDefault();const form=event.curre
 async function submitForgot(event){event.preventDefault();const form=event.currentTarget;setBusy(form,true);setStatus('');const email=String(new FormData(form).get('email')).trim();try{const{error}=await (await auth()).resetPasswordForEmail(email,{redirectTo:`${location.origin}/?auth=reset`});if(error)throw error;show('check-email');$('#checkEmailAddress').textContent=email;$('#checkEmailCopy').textContent='Use the secure link in your email to choose a new password.'}catch(error){setStatus(friendly(error),'error')}finally{setBusy(form,false)}}
 async function submitReset(event){event.preventDefault();const form=event.currentTarget;setBusy(form,true);setStatus('');const data=new FormData(form),password=String(data.get('password')),confirm=String(data.get('confirm'));try{if(password.length<8)throw new Error('Use at least 8 characters.');if(password!==confirm)throw new Error('The passwords do not match.');const{error}=await (await auth()).updateUser({password});if(error)throw error;accountMessage='Your password has been updated.';show('account')}catch(error){setStatus(friendly(error),'error')}finally{setBusy(form,false)}}
 async function social(provider){setStatus('');const{error}=await (await auth()).signInWithOAuth({provider,options:{redirectTo:location.origin}});if(error)setStatus(friendly(error),'error')}
+// Account emails (see emails/) link back with a one-time token_hash that is
+// verified here, so the link works in any browser or mail app. The older
+// ?code= links only work in the browser that asked for them.
+async function handleEmailLink(){
+  const query=new URLSearchParams(location.search),tokenHash=query.get('token_hash'),recovery=query.get('type')==='recovery'||query.get('auth')==='reset';
+  if(!tokenHash&&!recovery)return;
+  if(tokenHash){['token_hash','type','auth'].forEach(key=>query.delete(key));const search=query.toString();history.replaceState(history.state,'',location.pathname+(search?`?${search}`:'')+location.hash)}
+  try{
+    const client=await auth();
+    if(tokenHash){
+      const{data,error}=await client.verifyOtp({token_hash:tokenHash,type:recovery?'recovery':'email'});
+      if(error)throw error;
+      session=data.session;updateButton();
+      if(recovery)return open('reset');
+      accountMessage='Your email is confirmed. Welcome to Bet This Guy.';return open('account');
+    }
+    const{data}=await client.getSession();
+    if(data.session&&!dialog().open){session=data.session;open('reset')}
+  }catch(error){
+    await open(recovery?'forgot':'login');
+    setStatus(/expired|invalid/i.test(String(error?.message))?(recovery?'That reset link has expired or was already used. Request a new one below.':'That confirmation link has expired or was already used. Sign in, or sign up again for a new link.'):friendly(error),'error');
+  }
+}
 function init(){
   if(!SOCIAL_SIGN_IN)document.querySelectorAll('.auth-socials,.auth-divider').forEach(element=>element.style.display='none');
   $('#accountBtn').onclick=()=>open();$('#accountClose').onclick=()=>dialog().close();
@@ -154,6 +177,7 @@ function init(){
   $('#openMyRecord').onclick=()=>show('record');$('#recordBack').onclick=()=>show('account');$('#importLegacyBets').onclick=importLegacy;
   if(hasSavedSession()||authLinkInUrl())loadClient().catch(error=>console.warn('auth_unavailable',error.message));
   else handleSession(null);
+  handleEmailLink();
 }
 window.BTGAuth={open,isSignedIn:signedIn,savePreferences,syncSavedProps,trackParlay,refreshBets,renderTrackingPanel};
 addEventListener('load',init,{once:true});
