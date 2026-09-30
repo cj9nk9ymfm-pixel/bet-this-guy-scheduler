@@ -481,9 +481,6 @@ body.has-hero .proof-banners{display:none}
   body.no-slip-legs .workspace{grid-template-columns:minmax(0,1fr)!important}
   body.no-slip-legs .workspace>#slip,body.no-slip-legs .workspace>.slip{display:none!important}
 }
-@media(min-width:1051px){.prop-card.mockup-card>.verdict-top{grid-column:1/-1!important;grid-row:1!important}.prop-card.mockup-card:has(>.verdict-top)>.prop-player,.prop-card.mockup-card:has(>.verdict-top)>.mockup-pick,.prop-card.mockup-card:has(>.verdict-top)>.card-evidence{grid-row:2!important}.prop-card.mockup-card:has(>.verdict-top)>.featured-why{grid-row:3!important}.prop-card.mockup-card:has(>.verdict-top)>[data-board-progress]{grid-row:4!important;grid-column:1/-1}.prop-card.mockup-card>.verdict-top{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;column-gap:16px}.prop-card.mockup-card>.verdict-top .verdict-line,.prop-card.mockup-card>.verdict-top .verdict-trend{grid-column:2}.prop-card.mockup-card>.verdict-top .verdict-bet{grid-column:2;grid-row:1;margin:0}.prop-card.mockup-card>.verdict-top .verdict-share{grid-column:3;grid-row:1}}
-/* Two cards across only where the desktop card's four columns fit. */
-@media(min-width:1600px){body.no-slip-legs .board .prop-list{grid-template-columns:repeat(2,minmax(0,1fr))}body.no-slip-legs .board .prop-list .prop-card.mockup-card{grid-template-columns:minmax(0,1.15fr) minmax(0,1.1fr) minmax(0,1fr)!important}body.no-slip-legs .board .prop-list .prop-card.mockup-card>.verdict-top{grid-template-columns:auto minmax(0,1fr);row-gap:6px}body.no-slip-legs .board .prop-list .prop-card.mockup-card>.verdict-top .verdict-share{grid-column:1/-1;grid-row:auto;justify-self:start}}
 @media(max-width:720px){.hero{padding:16px 14px 12px;border-radius:16px}.hero-title{margin-bottom:10px}.hero-stats{flex-wrap:nowrap;gap:6px;margin-bottom:12px}.hero-stat{flex:1 1 0;padding:8px 8px}.hero-stat strong{font-size:17px}.hero-stat span{font-size:10.5px;line-height:1.25}.hero-actions{gap:10px}.hero-cta{flex:1 1 auto;justify-content:center;min-height:42px;font-size:14px}.hero-link{font-size:13px}.hero-note{margin-top:10px;font-size:10px}.hit-card-mini{flex-basis:160px;padding:10px}.hit-card-mini small{min-height:0}}
 body.light .hero{background:radial-gradient(120% 140% at 0% 0%,rgba(31,216,143,.18),transparent 55%),radial-gradient(120% 140% at 100% 0%,rgba(28,108,255,.18),transparent 60%),#fff;border-color:#d2e0ee;box-shadow:0 12px 28px rgba(43,83,128,.1)}
 body.light .hero-title,body.light .hero-stat strong,body.light .hits-head h2,body.light .hit-card-mini strong,body.light .hit-foot b{color:#10213d}
@@ -536,3 +533,49 @@ body.light .hit-leg{background:#f7faff;border-color:#dbe6f2}body.light .hit-move
 body.light .hit-move.up,body.light .hit-leg-result.won{color:#08875e}body.light .hit-move.down{color:#c43d3d}
 body.light .hit-payout{background:#effbf6;border-color:#b7e6d2}body.light .hit-payout strong{color:#08875e}body.light .hit-payout span{color:#3d5a4d}
 body.light .hit-dialog-close{background:#f4f8fd;border-color:#dbe6f2;color:#10213d}body.light .hit-more,body.light .hit-link{color:#1c5fd0}
+
+/* Compact cards: player + verdict, the bet + price, what $X wins. Tap to open. */
+.prop-list{align-items:start}
+.prop-card.compact-card{position:relative;display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;grid-template-rows:auto!important;grid-template-areas:"head head" "pick pick" "money money"!important;gap:8px 10px!important;padding:12px 14px 12px!important;min-height:0!important;height:auto!important;cursor:pointer}
+.prop-card.compact-card>.prop-player{grid-area:head!important;display:flex!important;align-items:center;gap:10px;min-width:0;margin:0!important;padding:0!important;border:0!important}
+.prop-card.compact-card .player-photo{width:40px!important;height:40px!important;flex:0 0 40px!important;border-radius:10px!important}
+.prop-card.compact-card .player-photo span{font-size:15px!important}
+.prop-card.compact-card .prop-player>div:last-child{min-width:0;display:block}
+.prop-card.compact-card .prop-player strong{display:block;font-size:16px!important;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prop-card.compact-card .prop-player span,.prop-card.compact-card .prop-player small{display:inline!important;font-size:12px!important;color:#8fa9c8}
+.prop-card.compact-card .prop-player small::before{content:' · '}
+.prop-card.compact-card>*:not(.prop-player):not(.mockup-pick):not(.card-money):not(.card-more):not([data-board-progress]):not(.bookmark){display:none!important}
+.prop-card.compact-card>.prop-player{padding-right:34px!important}
+.prop-card.compact-card .prop-player>div:last-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prop-card.compact-card .player-photo span{display:block!important;inset:0!important;line-height:40px!important;text-align:center!important}
+.prop-card.compact-card>.card-money{display:flex!important;align-items:center;justify-content:space-between;gap:8px}
+.prop-card.compact-card>.card-money>span:first-child{min-width:0}
+.prop-card.compact-card>.bookmark{position:absolute!important;top:10px!important;right:10px!important;margin:0!important}
+.verdict-pill{display:inline-flex;align-items:center;gap:4px;padding:4px 9px;border-radius:999px;font:700 12px/1.2 'Space Grotesk',sans-serif;white-space:nowrap;border:1px solid transparent}
+.verdict-pill-send{color:#5ff0b5;background:rgba(31,216,143,.14);border-color:rgba(31,216,143,.5)}
+.verdict-pill-flip{color:#ffd66e;background:rgba(255,196,64,.1);border-color:rgba(255,196,64,.35)}
+.verdict-pill-read{color:#ff9d9d;background:rgba(255,90,90,.1);border-color:rgba(255,90,90,.35)}
+.prop-card.compact-card>.mockup-pick{grid-area:pick!important;display:flex!important;align-items:center;justify-content:space-between;gap:10px;margin:0!important;padding:8px 10px!important;border-radius:12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08)!important}
+.prop-card.compact-card>.mockup-pick>div{display:flex!important;flex-wrap:wrap;align-items:baseline;gap:0 6px;min-width:0}
+.prop-card.compact-card>.mockup-pick>div strong{order:1;font-size:17px!important;line-height:1.2}
+.prop-card.compact-card>.mockup-pick>div span{order:2;text-transform:lowercase;letter-spacing:0!important;font-size:14px!important;font-weight:500!important;color:#b8cbe4}
+.prop-card.compact-card>.mockup-pick>b{flex:0 0 auto;min-width:66px;padding:8px 10px!important;font-size:16px!important;text-align:center}
+.prop-card.compact-card>.card-money{grid-area:money!important;margin:0;color:#9fb6d6;font-size:12.5px;line-height:1.3}
+.prop-card.compact-card>.card-more{position:static!important;inset:auto!important;transform:none!important;grid-area:auto!important;grid-column:1/-1!important;margin-top:2px;padding-top:10px;border-top:1px solid rgba(255,255,255,.08);cursor:default}
+.prop-card.compact-card>.card-more .verdict{margin:0 0 10px!important}
+.prop-card.compact-card>.card-more .card-evidence{display:block!important;margin:0 0 8px!important;padding:0!important;border:0!important}
+.card-stats-btn{display:block;width:100%;margin:0 0 8px;min-height:38px;border-radius:10px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.05);color:#9fd4ff;font-weight:600;font-size:13px;cursor:pointer}
+.prop-card.compact-card>[data-board-progress]{grid-area:auto!important;grid-column:1/-1!important}
+.prop-card.compact-card>[data-board-progress]:empty{display:none}
+.prop-card.compact-card.expanded{border-color:rgba(95,240,181,.45)!important}
+/* Left on Read folds to two short lines. */
+.prop-card.compact-card.compact-read{opacity:.9;padding-top:9px!important;padding-bottom:9px!important}
+.prop-card.compact-card.compact-read:not(.expanded) .player-photo{display:none!important}
+.prop-card.compact-card.compact-read:not(.expanded)>.mockup-pick{padding:6px 10px!important}
+.prop-card.compact-card.compact-read:not(.expanded) .prop-player strong{font-size:15px!important}
+@media(min-width:900px){.board .prop-list{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(min-width:1500px){body.no-slip-legs .board .prop-list{grid-template-columns:repeat(3,minmax(0,1fr))}}
+body.light .prop-card.compact-card .prop-player span,body.light .prop-card.compact-card .prop-player small,body.light .prop-card.compact-card>.card-money{color:#5a6f8c}
+body.light .prop-card.compact-card>.mockup-pick{background:#f4f8fd;border-color:#dbe6f2!important}body.light .prop-card.compact-card>.mockup-pick>div span{color:#40597a}
+body.light .verdict-pill-send{color:#08875e;background:#e3f8ef;border-color:#9fdcc2}body.light .verdict-pill-flip{color:#8a6100;background:#fff5d9;border-color:#f0d58c}body.light .verdict-pill-read{color:#c43d3d;background:#fdeaea;border-color:#f2b9b9}
+body.light .card-stats-btn{background:#f4f8fd;border-color:#dbe6f2;color:#1c5fd0}

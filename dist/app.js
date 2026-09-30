@@ -1162,6 +1162,8 @@ async function hydrateVerdictTrend(host,p){
       verdictTrends.set(key,text);
     }
     if(text&&host.isConnected){host.textContent=text;host.hidden=false}
+    const tag=document.querySelector(`[data-trend-tag="${p.id}"]`),short=String(text||'').match(/^(\S+) Trend: hit this in (\d+) of his last (\d+)/);
+    if(tag&&short)tag.textContent=` · ${short[1]} ${short[2]} of last ${short[3]}`;
   }catch{}
 }
 const bindCardsBeforeVerdict=bindCards;let verdictObserver=null;
@@ -1174,7 +1176,7 @@ bindCards=function(){
   if(typeof IntersectionObserver!=='function'){hosts.slice(0,12).forEach(start);return}
   // The note starts hidden (no size), so watch its visible verdict box instead.
   const observer=verdictObserver=new IntersectionObserver(entries=>entries.forEach(entry=>{if(entry.isIntersecting){observer.unobserve(entry.target);const host=entry.target.querySelector('[data-verdict-trend]');if(host)start(host)}}),{rootMargin:'200px'});
-  hosts.forEach(host=>observer.observe(host.closest('.verdict')||host));
+  hosts.forEach(host=>observer.observe(host.closest('.prop-card')||host.closest('.verdict')||host));
 };
 // Honest headline: "Bet These Guys" only when at least one bet earned it.
 const verdictGuideKey='btg-verdict-guide-dismissed';
@@ -1390,4 +1392,45 @@ render=function(){
   };
   if(typeof renderSlip==='function'){const renderSlipBeforeFirstImpression=renderSlip;renderSlip=function(){renderSlipBeforeFirstImpression.apply(this,arguments);document.body.classList.toggle('no-slip-legs',!(state.slip||[]).length)}}
   document.body.classList.toggle('no-slip-legs',!(state.slip||[]).length);
+})();
+
+// Compact cards: the face answers "is this a good bet?" in four short rows
+// (player + verdict, the bet + price, what $X wins). Everything else opens
+// underneath when the card is tapped.
+(function(){
+  const expanded=new Set();
+  const shortMoney=v=>`$${v>=10?Math.round(v).toLocaleString('en-US'):v.toFixed(2)}`;
+  const moneyLine=p=>{const odds=Number(recommendedOdds(p)),stake=wagerStake(),win=odds>=100?stake*odds/100:odds<=-100?stake*100/Math.abs(odds):null;return win?`${shortMoney(stake)} wins ${shortMoney(win)}`:''};
+  const cardBeforeCompact=card;
+  card=function(p,rank=-1,featured=false){
+    let html=cardBeforeCompact(p,rank,featured);
+    if(state.view==='movement'||document.body.dataset.desktopPage==='movement')return html;
+    const verdict=propVerdict(p),open=expanded.has(savedPropKey(p));
+    html=html.replace(/<span class="top-play-badge">[\s\S]*?<\/span>/,'');
+    html=html.replace(/<div class="card-stats-link">[^<]*<\/div>/,'');
+    // Lift a whole <div> block out of the card by balancing its div tags.
+    const take=opening=>{const start=html.indexOf(opening);if(start<0)return '';let depth=0,i=start;const tag=/<\/?div\b[^>]*>/g;tag.lastIndex=start;for(let m;(m=tag.exec(html));){depth+=m[0][1]==='/'?-1:1;if(!depth){i=tag.lastIndex;break}}const block=html.slice(start,i);html=html.slice(0,start)+html.slice(i);return block};
+    const box=take('<div class="verdict verdict-'),evidence=take('<div class="card-evidence">'),why=take('<div class="featured-why">');
+    const first=String(p.player||'').split(' ')[0];
+    const more=`<div class="card-more"${open?'':' hidden'}>${box}${evidence}<button type="button" class="card-stats-btn" data-open-profile="${p.id}">${htmlEscape(first)}’s stats & recent games ›</button>${why}</div>`;
+    const money=verdict?.key==='read'?'The books are taking extra here':moneyLine(p);
+    const pill=verdict?`<span class="verdict-pill verdict-pill-${verdict.key}">${verdict.icon} ${verdict.key==='read'?'Skip':verdict.label}</span>`:'';
+    // Function replacers: "$100" in the text must not be read as a $1 group.
+    html=html.replace(/(<section class="mockup-pick">[\s\S]*?<\/section>)/,match=>`${match}<p class="card-money"><span>${htmlEscape(money)}<span data-trend-tag="${p.id}"></span></span>${pill}</p>`)
+      .replace(/<\/article>$/,()=>`${more}</article>`)
+      .replace('class="prop-card mockup-card',`class="prop-card mockup-card compact-card${verdict?` compact-${verdict.key}`:''}${open?' expanded':''}`);
+    return html;
+  };
+  const bindBeforeCompact=bindCards;
+  bindCards=function(){
+    bindBeforeCompact();
+    $$('.prop-card.compact-card').forEach(el=>{
+      const p=props.find(item=>item.id===+el.dataset.id);if(!p)return;
+      const key=savedPropKey(p),more=el.querySelector('.card-more'),header=el.querySelector('.prop-player');
+      const toggle=()=>{const opening=!el.classList.contains('expanded');el.classList.toggle('expanded',opening);if(more)more.hidden=!opening;opening?expanded.add(key):expanded.delete(key);header?.setAttribute('aria-expanded',String(opening))};
+      if(header){header.onclick=event=>{event.stopPropagation();toggle()};header.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();toggle()}};header.setAttribute('aria-expanded',String(el.classList.contains('expanded')));header.setAttribute('aria-label',`${p.player}: show or hide details`)}
+      el.onclick=event=>{if(event.target.closest('button,a,input,select,.mockup-pick,.card-more,[data-board-progress]'))return;toggle()};
+      el.querySelector('[data-open-profile]')?.addEventListener('click',event=>{event.stopPropagation();openPlayerProfile(p)});
+    });
+  };
 })();
