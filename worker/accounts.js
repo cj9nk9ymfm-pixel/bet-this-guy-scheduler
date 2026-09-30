@@ -19,7 +19,7 @@ async function accountUser(request){
     if(!response.ok)return null;
     const user=await response.json();
     if(!/^[0-9a-f-]{36}$/i.test(String(user?.id||''))||!user?.email)return null;
-    return{id:user.id,email:accountText(user.email,320),name:accountText(user.user_metadata?.full_name||user.user_metadata?.name||'',80)};
+    return{id:user.id,email:accountText(user.email,320),name:accountText(user.user_metadata?.full_name||user.user_metadata?.name||'',80),emailAlerts:user.user_metadata?.email_alerts===true};
   }catch{return null}
 }
 
@@ -30,6 +30,20 @@ async function ensureAccountProfile(user,env){
     env.DB.prepare("UPDATE user_profiles SET email=?, display_name=COALESCE(display_name,?), updated_at=? WHERE auth_user_id=?").bind(user.email,user.name||null,now,user.id),
   ]);
   return env.DB.prepare('SELECT auth_user_id,email,display_name,plan,subscription_status,entitlement_expires_at,created_at FROM user_profiles WHERE auth_user_id=?').bind(user.id).first();
+}
+
+// Email alerts: the sign-up checkbox is stored on the Supabase user, and the
+// first signed-in request turns it into a row here. After that the row is the
+// only source of truth, so switching alerts off sticks.
+function emailAlertToken(){return (crypto.randomUUID()+crypto.randomUUID()).replace(/-/g,'')}
+async function emailAlertsEnabled(user,env){
+  if(user.emailAlerts){const now=new Date().toISOString();await env.DB.prepare('INSERT OR IGNORE INTO email_alerts (auth_user_id,enabled,token,created_at,updated_at) VALUES (?,1,?,?,?)').bind(user.id,emailAlertToken(),now,now).run()}
+  const row=await env.DB.prepare('SELECT enabled FROM email_alerts WHERE auth_user_id=?').bind(user.id).first();
+  return Boolean(row?.enabled);
+}
+async function setEmailAlerts(user,env,enabled){
+  const now=new Date().toISOString();
+  await env.DB.prepare('INSERT INTO email_alerts (auth_user_id,enabled,token,created_at,updated_at) VALUES (?,?,?,?,?) ON CONFLICT(auth_user_id) DO UPDATE SET enabled=excluded.enabled,updated_at=excluded.updated_at').bind(user.id,enabled?1:0,emailAlertToken(),now,now).run();
 }
 
 async function accountBody(request,max=100000){
@@ -75,7 +89,7 @@ async function accountApi(request,env,ctx){
   const profile=await ensureAccountProfile(user,env),url=new URL(request.url),method=request.method;
 
   if(url.pathname==='/api/me'){
-    if(method==='GET')return accountJson({success:true,profile});
+    if(method==='GET')return accountJson({success:true,profile,emailAlerts:await emailAlertsEnabled(user,env)});
     if(method==='PATCH'){
       try{
         const body=await accountBody(request,4000),displayName=accountText(body.displayName,80);
@@ -85,6 +99,16 @@ async function accountApi(request,env,ctx){
       }catch{return accountJson({success:false,error:'Your profile could not be saved.'},400)}
     }
     return accountJson({success:false,error:'Method not allowed.'},405,{allow:'GET, PATCH'});
+  }
+
+  if(url.pathname==='/api/me/email-alerts'){
+    if(method!=='PUT')return accountJson({success:false,error:'Method not allowed.'},405);
+    try{
+      const body=await accountBody(request,1000);
+      if(typeof body.enabled!=='boolean')throw new Error('Invalid request');
+      await setEmailAlerts(user,env,body.enabled);
+      return accountJson({success:true,emailAlerts:body.enabled});
+    }catch{return accountJson({success:false,error:'Your email alert setting could not be saved.'},400)}
   }
 
   if(url.pathname==='/api/me/preferences'){

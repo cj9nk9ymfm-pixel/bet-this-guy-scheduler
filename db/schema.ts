@@ -120,3 +120,13 @@ export const appSettings=sqliteTable('app_settings',{
   key:text('key').primaryKey(),
   value:text('value').notNull(),
 });
+
+// Email alerts: account holders who asked to be emailed when official picks
+// post. The token makes the one-click unsubscribe link in every email.
+export const emailAlerts=sqliteTable('email_alerts',{
+  authUserId:text('auth_user_id').primaryKey().references(()=>userProfiles.authUserId,{onDelete:'cascade'}),
+  enabled:integer('enabled').notNull().default(1),
+  token:text('token').notNull(),
+  createdAt:text('created_at').notNull(),
+  updatedAt:text('updated_at').notNull(),
+},table=>[uniqueIndex('email_alerts_token').on(table.token)]);

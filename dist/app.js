@@ -1470,7 +1470,9 @@ if(typeof fetch==='function')window.btgCountVisit?.('view:home');
   const keyBytes=key=>{const b=atob(key.replace(/-/g,'+').replace(/_/g,'/')+'='.repeat((4-key.length%4)%4));return Uint8Array.from(b,c=>c.charCodeAt(0))};
   async function current(){try{const reg=await navigator.serviceWorker.getRegistration('/');return reg?await reg.pushManager.getSubscription():null}catch{return null}}
   async function turnOn(){
-    if(ios&&!standalone()){note('On iPhone: tap the Share button, choose “Add to Home Screen”, then open Bet This Guy from your home screen and tap 🔔 again.');return}
+    // iPhones only allow web notifications from the Home Screen, so offer
+    // email alerts first: one step in a free account.
+    if(ios&&!standalone()){window.btgCount?.('alerts:email');const auth=window.BTGAuth;auth?.open?.(auth.hasAccount?.()?'account':'signup');note('On iPhone, email alerts are the easy way: tick “Email me when new picks post” in your free account. Prefer phone notifications? Add Bet This Guy to your Home Screen (Share → Add to Home Screen) and tap 🔔 there.');return}
     if(!supported()){note('This browser can’t show notifications. Try Chrome, Edge, Firefox or Safari.');return}
     const permission=await Notification.requestPermission();
     if(permission!=='granted'){note('Notifications are blocked for this site. Allow them in your browser settings, then tap 🔔 again.');return}
