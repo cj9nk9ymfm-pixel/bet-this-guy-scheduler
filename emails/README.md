@@ -24,8 +24,10 @@ and paste the whole HTML file into the message body.
 | Confirm signup | Confirm your Bet This Guy account | `confirm-signup.html` |
 | Reset password | Reset your Bet This Guy password | `reset-password.html` |
 
-Both use `{{ .ConfirmationURL }}`, which already includes the redirect the
-site asks for (the home page after sign-up, `/?auth=reset` after a reset).
+Both link to `https://betthisguy.com/?token_hash={{ .TokenHash }}&type=...`
+instead of Supabase's `{{ .ConfirmationURL }}`. The site verifies the token
+itself (`handleEmailLink` in `dist/auth.js`), so the link works in any browser
+or mail app. The default link only works in the browser that asked for it.
 The logo loads from `https://betthisguy.com/bet-this-guy-logo-v3.png`, so keep
 that file in `dist/`.
 
