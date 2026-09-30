@@ -582,7 +582,8 @@ async function recordGamePlays(row,env,signal,cache){
 
 async function touchdownMarketValue(leg,row,env,signal,cache){
   if(!row||!(row.scoreboardFinal||nflGameState(row.game||{})==='final'))return null;
-  const plays=await recordGamePlays(row,env,signal,cache);if(!plays)return null;
+  // A finished game always has plays; an empty list is a feed gap, not zero.
+  const plays=await recordGamePlays(row,env,signal,cache);if(!plays?.length)return null;
   const scores=plays.filter(touchdownPlay);if(!scores.length)return 0;
   const market=String(leg.market||'').toLowerCase(),target=/d\/st$/i.test(String(leg.player||''))?null:String(row.player_id??row.player?.id??'');
   const teamName=normalizedName(String(leg.player||'').replace(/\s+d\/st$/i,''));
@@ -599,7 +600,8 @@ async function touchdownMarketValue(leg,row,env,signal,cache){
 
 async function playByPlayMarketValue(leg,row,env,signal,cache){
   if(!row||!(row.scoreboardFinal||nflGameState(row.game||{})==='final'))return null;
-  const plays=await recordGamePlays(row,env,signal,cache);if(!plays)return null;
+  // A finished game always has plays; an empty list is a feed gap, not zero.
+  const plays=await recordGamePlays(row,env,signal,cache);if(!plays?.length)return null;
   const market=({'field goals made':'field goals','extra points':'pats'})[String(leg.market||'').toLowerCase()]||String(leg.market||'').toLowerCase(),target=String(row.player_id??row.player?.id??'');
   const nameParts=String(leg.player||'').replace(/\b(Jr\.?|Sr\.?|II|III|IV)\b/gi,'').trim().split(/\s+/).filter(Boolean);
   const textMarker=normalizedName(`${nameParts[0]?.[0]||''}${nameParts.at(-1)||''}`);

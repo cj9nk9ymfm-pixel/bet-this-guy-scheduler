@@ -112,6 +112,12 @@ run('var originalSettle=settlePublicRecords,originalRecordStats=recordPlayerStat
   assert.equal(kicker.field_goals_made,2,'the box score finds Andy Borregales for an Andres Borregales pick');
   const ambiguous=await run(`recordGameBoxscore({player:'Bo Robinson',team:'Away Team · @ Home Team',gameTime:'2026-09-20T17:00:00Z'},{BALLDONTLIE_API_KEY:'fixture'},undefined,new Map())`);
   assert.equal(ambiguous.missingPlayerStats,true,'two same-initial Robinsons never guess between players');
+  run(`bdlRequest=async path=>path.startsWith('/nfl/v1/plays?')?{data:[],meta:{}}:{data:[]};
+    var emptyFg={kind:'prop',player:'Kicker',gameTime:'2026-09-20T17:00:00Z',market:'Field Goals Made',side:'Over',line:1.5};
+    var emptyTd={kind:'prop',player:'Scorer',gameTime:'2026-09-20T17:00:00Z',market:'Anytime Touchdown',side:'Over',line:.5};
+    var emptyCache=new Map([['Kicker|2026-09-20T17:00:00Z|Field Goals Made',{player_id:13,game:{id:111,status_state:'final'},scoreboardFinal:true}],['Scorer|2026-09-20T17:00:00Z|Anytime Touchdown',{player_id:10,game:{id:111,status_state:'final'},scoreboardFinal:true}]]);`);
+  assert.equal(await run('gradePublicRecord(emptyFg,{BALLDONTLIE_API_KEY:"fixture"},emptyCache)'),null,'an empty play-by-play never grades a kicker as zero field goals');
+  assert.equal(await run('gradePublicRecord(emptyTd,{BALLDONTLIE_API_KEY:"fixture"},emptyCache)'),null,'an empty play-by-play never grades a no-touchdown loss');
   assert.equal(run('BTGStats.metric({market:"Assists"},{total_tackles:9,solo_tackles:6}).value'),3,'assisted tackles derived from reported total and solo');
   console.log('PASS: responsive reads, provisional corrections, shared game box scores, pending Monday parlay loss, individual grading, touchdown evidence and assists');
 })().catch(error=>{console.error(error);process.exitCode=1});
