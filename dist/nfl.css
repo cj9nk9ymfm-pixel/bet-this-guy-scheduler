@@ -599,3 +599,8 @@ body.light .card-stats-btn{background:#f4f8fd;border-color:#dbe6f2;color:#1c5fd0
 body.light .pc-head b,body.light .pc-leg strong,body.light .pc-legs li>b{color:#10213d}
 body.light .pc-head span,body.light .pc-leg small{color:#5a6f8c}body.light .pc-head strong{color:#08875e}
 body.light .pc-legs li{background:#f4f8fd;border-color:#dbe6f2}
+/* Partner link inside an opened card (only when a partner is approved for the visitor's state). */
+.card-affiliate{display:grid;gap:6px;margin:0 0 8px}
+.card-affiliate a{display:block;padding:10px 12px;border-radius:10px;background:rgba(31,216,143,.12);border:1px solid rgba(31,216,143,.4);color:#5ff0b5;font-weight:700;font-size:13.5px;text-align:center;text-decoration:none}
+.card-affiliate small{color:#7f96b8;font-size:11px;line-height:1.35;text-align:center}
+body.light .card-affiliate a{background:#e3f8ef;border-color:#9fdcc2;color:#08875e}body.light .card-affiliate small{color:#5a6f8c}

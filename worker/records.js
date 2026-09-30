@@ -314,7 +314,7 @@ async function weeklySitemap(env){
 
 // Anonymous usage counts: daily totals per metric. No cookies, IP addresses or
 // per-person identifiers are stored; unknown metric names are ignored.
-const USAGE_METRICS=new Set(['view:home','view:trust','view:picks','view:week','visit:new','visit:return','card:open','slip:add','parlay:add','share','hit:open','profile:open']);
+const USAGE_METRICS=new Set(['view:home','view:trust','view:picks','view:week','visit:new','visit:return','card:open','slip:add','parlay:add','share','hit:open','profile:open','affiliate:click']);
 const USAGE_BOTS=/bot|crawl|spider|slurp|preview|facebookexternalhit|curl|wget|python|headless|lighthouse/i;
 async function countUsage(env,metrics,request){
   if(!env.DB||USAGE_BOTS.test(request.headers.get('user-agent')||''))return;
@@ -328,4 +328,22 @@ async function usageHit(request,env,ctx){
   let metrics=[];try{const body=JSON.parse(text);metrics=Array.isArray(body?.m)?body.m.map(String):[]}catch{}
   ctx.waitUntil(countUsage(env,metrics,request).catch(()=>{}));
   return new Response(null,{status:204,headers:{'cache-control':'no-store'}});
+}
+
+// Affiliate offers: off until the AFFILIATES setting (a secret on the Worker)
+// holds approved partners, e.g.
+//   [{"id":"underdog","name":"Underdog","url":"https://…","states":["TX","GA"]}]
+// Links show only in listed US states, read per request from Cloudflare's
+// request.cf.regionCode; the location is never stored.
+function affiliatePartners(env){
+  let list=[];try{list=JSON.parse(env.AFFILIATES||'[]')}catch{return []}
+  return (Array.isArray(list)?list:[]).filter(p=>p&&/^[a-z0-9-]{2,30}$/.test(p.id||'')&&typeof p.name==='string'&&p.name.length<=40&&/^https:\/\/[^\s"'<>]+$/.test(p.url||'')&&Array.isArray(p.states)&&p.states.length).map(p=>({id:p.id,name:p.name,url:p.url,states:p.states.map(s=>String(s).toUpperCase()).filter(s=>/^[A-Z]{2}$/.test(s))}));
+}
+function affiliateOffers(request,env){
+  const country=request.cf?.country,state=String(request.cf?.regionCode||'').toUpperCase();
+  if(country!=='US'||!/^[A-Z]{2}$/.test(state))return [];
+  return affiliatePartners(env).filter(p=>p.states.includes(state)).map(({id,name,url})=>({id,name,url}));
+}
+function affiliateApi(request,env){
+  return new Response(JSON.stringify({success:true,offers:affiliateOffers(request,env)}),{headers:{'content-type':'application/json; charset=utf-8','cache-control':'private, no-store'}});
 }

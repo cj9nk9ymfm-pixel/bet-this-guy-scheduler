@@ -40,6 +40,7 @@ const html=extra=>run(`card(${prop(extra)},0,true)`);
  assert.ok(more.startsWith('<div class="card-more" hidden>'),'details start folded');
  for(const part of ['class="verdict verdict-','Bet $25 → win $33.75','data-share-prop','card-evidence','data-open-profile','featured-why'])assert.ok(more.includes(part),`details keep ${part}`);
  assert.equal((send.match(/class="verdict /g)||[]).length,1,'the verdict box appears once');
+ assert.ok(!send.includes('card-affiliate')&&!send.includes('rel="sponsored'),'no partner links unless the site has an approved partner for this state');
  assert.ok(!/Tap the (odds|price) to add/.test(send),'the add-to-slip tip is not repeated on every card');
  assert.ok(/player-photo" style="--avatar-hue:\d+"/.test(send),'avatars get a colour when no photo loads');
  assert.ok(flip.includes('verdict-pill-flip">🪙 Coin Flip'));
