@@ -29,7 +29,10 @@ assert.match(run(`verdictPriceSentence(${prop({})})`),/earned a Bet This Guy/);
 const html=extra=>run(`card(${prop(extra)},0,true)`);
 assert.ok(!html({rawEdge:-1}).includes('top-play-badge'),'no "#1 TOP PLAY" without an edge');
 assert.ok(html({}).includes('verdict-send'));
-assert.ok(/<\/section><div class="verdict verdict-flip"/.test(html({rawEdge:-1})),'verdict sits right after the pick');
+{const flip=html({rawEdge:-1});assert.ok(flip.indexOf('class="verdict verdict-top verdict-flip"')>-1&&flip.indexOf('class="verdict verdict-top')<flip.indexOf('<header class="player prop-player"'),'verdict comes first, above the player and the pick');
+ assert.equal((flip.match(/class="verdict /g)||[]).length,1,'the verdict appears once');
+ assert.ok(!flip.includes('Tap the odds to add to slip'),'the add-to-slip tip is not repeated on every card');
+ assert.ok(/player-photo" style="--avatar-hue:\d+"/.test(flip),'avatars get a colour when no photo loads')}
 assert.ok(html({}).includes('Bet $25 → win $33.75'),'dollar amounts are inserted literally');
 // Send to the chat: honest, ready-to-paste messages.
 run('preferences.typicalWager=10');

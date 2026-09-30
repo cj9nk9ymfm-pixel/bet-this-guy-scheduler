@@ -1221,3 +1221,120 @@ render=function(){
   if(typeof MutationObserver==='function')new MutationObserver(syncMoreActive).observe(document.body,{attributes:true,attributeFilter:['data-mobile-page','data-desktop-page']});
   syncMoreActive();
 })();
+
+// First impression: a banner with last week's official record, a strip of
+// last week's hits, a positive headline, verdict-first cards and a desktop
+// board that uses the space an empty bet slip would take.
+(function(){
+  const oddsDecimal=o=>{o=Number(o);return o>=100?1+o/100:o<=-100?1+100/Math.abs(o):null};
+  const money=v=>`${v<0?'−':'+'}$${Math.abs(Math.round(v)).toLocaleString('en-US')}`;
+  const graded=r=>r.status!=='provisional'&&['won','lost','push'].includes(r.result);
+  const weekOf=r=>(String(r.id||'').match(/^official\|(\d{4}-\d{2}-\d{2})\|/)||[])[1]||null;
+  // Mirrors the server: official weeks run Tuesday noon UTC to Tuesday noon UTC.
+  const currentWeek=(now=Date.now())=>{const d=new Date(now-12*3600000);d.setUTCHours(0,0,0,0);d.setUTCDate(d.getUTCDate()-(d.getUTCDay()+5)%7);return d.toISOString().slice(0,10)};
+  const recordLegs=r=>{try{const legs=JSON.parse(r.legs_json||'[]');return Array.isArray(legs)?legs:[]}catch{return []}};
+  const payout=r=>{const d=oddsDecimal(r.kind==='parlay'?r.combined_odds:r.odds);return r.result==='won'&&d?100*(d-1):r.result==='lost'?-100:0};
+  // Same comparison as the results page: same line only, 0.05% tolerance.
+  const beatClose=r=>{
+    if(r.kind!=='prop'||!r.closing_captured_at||r.closing_odds==null)return null;
+    if(r.closing_line!=null&&r.line!=null&&Math.abs(Number(r.closing_line)-Number(r.line))>0.01)return null;
+    const posted=oddsDecimal(r.odds),close=oddsDecimal(r.closing_odds);
+    return posted&&close?(posted/close-1)*100>0.05:null;
+  };
+  const pickName=r=>{
+    if(r.kind==='parlay'){const legs=recordLegs(r);return {title:`${legs.length}-leg parlay`,detail:legs.map(l=>l.player).join(' + ')}}
+    const binary=/touchdown/i.test(r.market||'')&&Number(r.line)===0.5;
+    return {title:r.player,detail:binary?`${r.side==='Under'?'No ':''}${r.market}`:`${r.side} ${r.line} ${r.market}`};
+  };
+  const weekLabel=(week,current)=>{
+    const last=new Date(Date.parse(current+'T00:00:00Z')-7*86400000).toISOString().slice(0,10);
+    if(week===current)return 'THIS WEEK SO FAR';
+    if(week===last)return 'LAST WEEK';
+    return `WEEK OF ${new Date(week+'T12:00:00Z').toLocaleDateString('en-US',{month:'short',day:'numeric',timeZone:'UTC'}).toUpperCase()}`;
+  };
+  function summarise(rows,now=Date.now()){
+    const current=currentWeek(now),weeks=new Map();
+    for(const r of rows){const w=weekOf(r);if(w)(weeks.get(w)||weeks.set(w,[]).get(w)).push(r)}
+    const ordered=[...weeks.keys()].sort().reverse();
+    // A finished earlier week first; the current week only once it has real volume.
+    const week=ordered.find(w=>w<current&&weeks.get(w).some(r=>r.kind==='prop'&&graded(r)))||ordered.find(w=>weeks.get(w).filter(r=>r.kind==='prop'&&graded(r)).length>=5);
+    if(!week)return null;
+    const list=weeks.get(week),props=list.filter(r=>r.kind==='prop'&&graded(r)),parlays=list.filter(r=>r.kind==='parlay'&&graded(r));
+    const count=(items,res)=>items.filter(r=>r.result===res).length;
+    const closes=props.map(beatClose).filter(v=>v!==null);
+    return {
+      week,label:weekLabel(week,current),
+      wins:count(props,'won'),losses:count(props,'lost'),pushes:count(props,'push'),profit:props.reduce((s,r)=>s+payout(r),0),
+      parlayWins:count(parlays,'won'),parlayLosses:count(parlays,'lost'),parlayProfit:parlays.reduce((s,r)=>s+payout(r),0),
+      beat:closes.filter(Boolean).length,tracked:closes.length,
+      // Singles and parlays alternate, biggest payouts first in each.
+      hits:(()=>{const won=kind=>list.filter(r=>r.kind===kind&&graded(r)&&r.result==='won').sort((a,b)=>payout(b)-payout(a)),a=won('prop'),b=won('parlay'),out=[];for(let i=0;out.length<12&&(i<a.length||i<b.length);i++){if(a[i])out.push(a[i]);if(b[i]&&out.length<12)out.push(b[i])}return out})()
+    };
+  }
+  window.BTGFirstImpression={summarise,currentWeek};
+  const hitShareText=r=>{const n=pickName(r),odds=formatOdds(r.kind==='parlay'?r.combined_odds:r.odds);return `✅ Called it: ${n.title} ${r.kind==='parlay'?`(${n.detail})`:n.detail} at ${odds} hit. Bet This Guy posts every pick before kickoff.`};
+  function renderHero(s){
+    const hero=$('#heroBanner'),strip=$('#hitsStrip');if(!hero)return;
+    if(!s){hero.hidden=false;return}
+    $('#heroEyebrow').textContent=`${s.label} · OFFICIAL PICKS`;
+    $('#heroTitle').textContent=`${s.wins}–${s.losses}${s.pushes?`–${s.pushes}`:''} on our picks`;
+    const stats=[[money(s.profit),'betting $100 a pick',s.profit>=0?'up':'down']];
+    if(s.tracked)stats.push([`${s.beat} of ${s.tracked}`,'beat the closing line','']);
+    if(s.parlayWins+s.parlayLosses)stats.push([`${s.parlayWins}–${s.parlayLosses}`,`parlays · ${money(s.parlayProfit)}`,s.parlayProfit>=0?'up':'down']);
+    $('#heroStats').innerHTML=stats.map(([value,label,tone])=>`<div class="hero-stat ${tone}"><strong>${htmlEscape(value)}</strong><span>${htmlEscape(label)}</span></div>`).join('');
+    $('#heroNote').textContent='Singles at $100 each at the posted price. Every pick is locked before kickoff and graded in public. Past results don’t guarantee future ones.';
+    hero.hidden=false;document.body.classList.add('has-hero');
+    if(!strip||!s.hits.length)return;
+    $('#hitsTitle').textContent=s.label==='LAST WEEK'?'Last week’s hits':s.label==='THIS WEEK SO FAR'?'This week’s hits':'Recent hits';
+    $('#hitsRow').innerHTML=s.hits.map((r,i)=>{const n=pickName(r),odds=r.kind==='parlay'?r.combined_odds:r.odds;return `<article class="hit-card-mini"><span class="hit-tag">✅ HIT</span><strong>${htmlEscape(n.title)}</strong><small>${htmlEscape(n.detail)}</small><div class="hit-foot"><b>${htmlEscape(formatOdds(odds))}</b><span>$100 → ${htmlEscape(money(payout(r)))}</span></div><button type="button" class="hit-share" data-hit="${i}">📲 Send it</button></article>`}).join('');
+    $$('#hitsRow [data-hit]').forEach(button=>button.onclick=async()=>{
+      const text=hitShareText(s.hits[+button.dataset.hit]),url=location.origin,label=button.textContent;
+      try{if(navigator.share){await navigator.share({text,url});return}}catch(error){if(error?.name==='AbortError')return}
+      try{await navigator.clipboard.writeText(`${text} ${url}`);button.textContent='Copied'}catch{button.textContent='Couldn’t copy'}
+      setTimeout(()=>{if(button.isConnected)button.textContent=label},2200);
+    });
+    strip.hidden=false;
+  }
+  async function loadHero(){
+    try{
+      const response=await fetch('/api/record?view=home',{signal:AbortSignal.timeout(10000)});
+      if(!response.ok)throw new Error();
+      const body=await response.json();renderHero(body.success?summarise(body.recent||[]):null);
+    }catch{renderHero(null)}
+  }
+  $('#heroCta')&&($('#heroCta').onclick=event=>{event.preventDefault();$('#propsSection')?.scrollIntoView({behavior:'smooth',block:'start'})});
+  if(typeof fetch==='function'&&$('#heroBanner'))loadHero();
+
+  // Positive headline when nothing has earned a Bet This Guy yet.
+  const kickoffIn=()=>{
+    const times=props.map(p=>Date.parse(p.startsAt||'')).filter(t=>Number.isFinite(t)&&t>Date.now()).sort((a,b)=>a-b);
+    if(!times.length)return '';
+    const mins=Math.round((times[0]-Date.now())/60000),h=Math.floor(mins/60),m=mins%60;
+    return mins<60?`Next kickoff in ${mins}m`:h<24?`Next kickoff in ${h}h ${m}m`:`Next kickoff ${new Date(times[0]).toLocaleDateString([],{weekday:'short'})} ${new Date(times[0]).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}`;
+  };
+  // Verdict first, one tip for the whole board, colour avatars when no photo loads.
+  const hue=name=>[...String(name||'')].reduce((h,c)=>(h*31+c.charCodeAt(0))%360,7);
+  const cardBeforeFirstImpression=card;
+  card=function(p,rank=-1,featured=false){
+    let html=cardBeforeFirstImpression(p,rank,featured);
+    if(state.view==='movement'||document.body.dataset.desktopPage==='movement')return html;
+    html=html.replace('<div class="card-stats-link">Tap the odds to add to slip</div>','').replace('<div class="avatar player-photo">',`<div class="avatar player-photo" style="--avatar-hue:${hue(p.player)}">`);
+    const verdict=html.match(/<div class="verdict verdict-[\s\S]*?<\/button><\/div>/);
+    if(verdict)html=html.replace(verdict[0],'').replace(/<header class="player prop-player"/,match=>verdict[0].replace('class="verdict ','class="verdict verdict-top ')+match);
+    return html;
+  };
+  const renderBeforeFirstImpression=render;
+  render=function(){
+    renderBeforeFirstImpression();
+    document.body.classList.toggle('no-slip-legs',!(state.slip||[]).length);
+    document.body.classList.toggle('hero-off',state.view!=='board');
+    const title=$('#viewTitle'),count=$('#resultCount');
+    if(title&&count&&title.textContent==='No one’s earned a Bet This Guy yet'){
+      const updated=count.textContent.split(' · ').pop(),next=kickoffIn();
+      title.textContent='Today’s closest calls';
+      count.textContent=`Nothing has cleared our bar yet. Official picks post the moment one does.${next?` ${next}.`:''} · ${updated}`;
+    }
+  };
+  if(typeof renderSlip==='function'){const renderSlipBeforeFirstImpression=renderSlip;renderSlip=function(){renderSlipBeforeFirstImpression.apply(this,arguments);document.body.classList.toggle('no-slip-legs',!(state.slip||[]).length)}}
+  document.body.classList.toggle('no-slip-legs',!(state.slip||[]).length);
+})();
