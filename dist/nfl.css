@@ -498,3 +498,11 @@ body.light .hit-share{background:#fff;border-color:#cfe0ee;color:#10213d}
 body.hero-off .hero,body.hero-off .hits-strip{display:none!important}
 @media(min-width:721px){body[data-desktop-page]:not([data-desktop-page="props"]) .hero,body[data-desktop-page]:not([data-desktop-page="props"]) .hits-strip{display:none!important}}
 @media(max-width:720px){body[data-mobile-page]:not([data-mobile-page="props"]) .hero,body[data-mobile-page]:not([data-mobile-page="props"]) .hits-strip{display:none!important}}
+/* Hits strip: swipe on phones, arrows for mouse users, fade hints there is more. */
+.hits-row{-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;touch-action:pan-x pan-y;-webkit-mask-image:linear-gradient(90deg,#000 88%,transparent);mask-image:linear-gradient(90deg,#000 88%,transparent)}
+.hits-head h2{margin-right:auto!important}
+.hits-nav{display:none;gap:6px}
+.hits-nav button{width:34px;height:34px;border-radius:50%;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.06);color:#e8f2ff;font-size:20px;line-height:1;cursor:pointer}
+.hits-nav button:disabled{opacity:.3;cursor:default}
+@media(hover:hover) and (pointer:fine){.hits-nav{display:flex}}
+body.light .hits-nav button{background:#fff;border-color:#cfe0ee;color:#10213d}
