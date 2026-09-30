@@ -38,4 +38,13 @@ assert.ok(c.eval('window.BTGFirstImpression').hitDetails(trailed).includes('clas
 const moved=c.eval('window.BTGFirstImpression').hitDetails({...jonnu,side:'Under',line:34.5,market:'Rushing Yards',closing_line:37.5,closing_odds:-111});
 assert.ok(moved.includes('Line moved to 37.5 before kickoff (against you)'));
 assert.ok(c.eval('window.BTGFirstImpression').hitDetails({...jonnu,closing_odds:null,closing_captured_at:null}).includes('wasn’t recorded'),'a missing close says so plainly');
-console.log('PASS: home banner matches the public record (Week 3: 14–7, +$1,014, beat the close 14 of 20, parlays 7–6), shows last week until the new week has volume, ignores unconfirmed results, the hits strip swipes on its own, and each hit opens its exact bet, result and price movement');
+// $100 is the default wager everywhere; viewers on the old $10 default move once,
+// and a wager chosen afterwards is kept.
+assert.equal(client().eval('preferences.typicalWager'),100,'new visitors start at $100');
+assert.equal(client(390,{'bet-this-guy-preferences':JSON.stringify({typicalWager:10})}).eval('preferences.typicalWager'),100,'the old $10 default moves to $100');
+assert.equal(client(390,{'bet-this-guy-preferences':JSON.stringify({typicalWager:10,wagerDefault100:true})}).eval('preferences.typicalWager'),10,'a $10 wager chosen after the switch is kept');
+assert.equal(client(390,{'bet-this-guy-preferences':JSON.stringify({typicalWager:25})}).eval('preferences.typicalWager'),25,'custom wagers are kept');
+const twenty=summarise(rows,Date.parse('2026-09-30T04:00:00Z'),20);
+assert.equal(Math.round(twenty.profit),203,'the banner follows the viewer wager: +$203 at $20 a pick');
+assert.equal(Math.round(summarise(rows,Date.parse('2026-09-30T04:00:00Z')).profit),1014,'and stays +$1,014 at the $100 default');
+console.log('PASS: home banner matches the public record (Week 3: 14–7, +$1,014, beat the close 14 of 20, parlays 7–6), shows last week until the new week has volume, ignores unconfirmed results, the hits strip swipes on its own, and each hit opens its exact bet, result and price movement, all at the viewer wager ($100 by default)');

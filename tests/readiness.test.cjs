@@ -40,7 +40,7 @@ trust.ctx.fixture=[{kind:'prop',source:'market-verified-v2',player:'<img src=x o
 trust.eval('paint(fixture);showResultSection("props")');equal(trust.nodes.get('#propRecordList').innerHTML.includes('<img'),false,'escape stored fields');equal(trust.nodes.get('#propRecordList').innerHTML.includes('&lt;img'),true,'show escaped text');equal(trust.eval('money(-10)'),'−$10.00');
 equal(trust.eval('verified({kind:"parlay",source:"historical-replay"})'),false,'exclude replay');
 equal(trust.eval('verified({kind:"prop",source:null})'),false,'exclude unauthenticated legacy');
-equal(trust.eval('profit({result:"won",combined_odds:300,legs:[{odds:100,result:"won"},{odds:100,result:"push"}]})'),10,'push leg voided for estimated payout');
+equal(trust.eval('profit({result:"won",combined_odds:300,legs:[{odds:100,result:"won"},{odds:100,result:"push"}]})'),100,'push leg voided for estimated payout at the $100 default');
 trust.eval('localStorage.setItem("bet-this-guy-preferences",JSON.stringify({typicalWager:25}))');
 equal(trust.eval('profit({result:"won",odds:200})'),50,'custom stake pays correct plus-odds net');
 equal(trust.eval('profit({result:"lost",odds:-150})'),-25,'loss subtracts the custom stake');

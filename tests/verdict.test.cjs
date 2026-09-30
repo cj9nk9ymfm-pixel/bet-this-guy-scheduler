@@ -15,11 +15,11 @@ assert.equal(verdict({rawEdge:undefined}),undefined,'no real edge (older cache o
 assert.equal(verdict({teamMarket:true}),undefined,'team markets get no player verdict');
 // Plain-English bet sentence, using the visitor's typical wager.
 const bet=extra=>run(`plainBet(${prop(extra)})`);
-assert.equal(bet({}),'Bet $10 → win $13.50 if Drake London has 5 or fewer receptions.');
-assert.equal(bet({side:'Over',over:-120}),'Bet $10 → win $8.33 if Drake London has 6+ receptions.');
-assert.equal(bet({player:'Michael Penix Jr.',market:'Passing Touchdowns',line:0.5,under:205}),'Bet $10 → win $20.50 if Michael Penix Jr. has no passing touchdowns.');
-assert.equal(bet({line:5,side:'Over',over:100}),'Bet $10 → win $10 if Drake London has more than 5 receptions.');
-assert.equal(bet({market:'Anytime Touchdown',binary:true,side:'Over',over:150}),'Bet $10 → win $15 if Drake London scores a touchdown.');
+assert.equal(bet({}),'Bet $100 → win $135 if Drake London has 5 or fewer receptions.','$100 is the default wager, so +135 reads as win $135');
+assert.equal(bet({side:'Over',over:-120}),'Bet $100 → win $83.33 if Drake London has 6+ receptions.');
+assert.equal(bet({player:'Michael Penix Jr.',market:'Passing Touchdowns',line:0.5,under:205}),'Bet $100 → win $205 if Michael Penix Jr. has no passing touchdowns.');
+assert.equal(bet({line:5,side:'Over',over:100}),'Bet $100 → win $100 if Drake London has more than 5 receptions.');
+assert.equal(bet({market:'Anytime Touchdown',binary:true,side:'Over',over:150}),'Bet $100 → win $150 if Drake London scores a touchdown.');
 run('preferences.typicalWager=25');
 assert.equal(bet({}),'Bet $25 → win $33.75 if Drake London has 5 or fewer receptions.');
 // "Why this guy?" never claims value the price doesn't have.
