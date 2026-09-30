@@ -25,15 +25,27 @@ assert.equal(bet({}),'Bet $25 → win $33.75 if Drake London has 5 or fewer rece
 // "Why this guy?" never claims value the price doesn't have.
 assert.match(run(`verdictPriceSentence(${prop({rawEdge:-1})})`),/Coin Flip — no edge either way/);
 assert.match(run(`verdictPriceSentence(${prop({})})`),/earned a Bet This Guy/);
-// Rank badges are only kept for stamped bets, and the verdict follows the pick row.
+// Compact cards: player, the bet + price, what $X wins and a verdict pill on
+// the face; the full verdict, sources and "Why this guy?" open on tap.
 const html=extra=>run(`card(${prop(extra)},0,true)`);
-assert.ok(!html({rawEdge:-1}).includes('top-play-badge'),'no "#1 TOP PLAY" without an edge');
-assert.ok(html({}).includes('verdict-send'));
-{const flip=html({rawEdge:-1});assert.ok(flip.indexOf('class="verdict verdict-top verdict-flip"')>-1&&flip.indexOf('class="verdict verdict-top')<flip.indexOf('<header class="player prop-player"'),'verdict comes first, above the player and the pick');
- assert.equal((flip.match(/class="verdict /g)||[]).length,1,'the verdict appears once');
- assert.ok(!flip.includes('Tap the odds to add to slip'),'the add-to-slip tip is not repeated on every card');
- assert.ok(/player-photo" style="--avatar-hue:\d+"/.test(flip),'avatars get a colour when no photo loads')}
-assert.ok(html({}).includes('Bet $25 → win $33.75'),'dollar amounts are inserted literally');
+{const send=html({}),flip=html({rawEdge:-1}),read=html({rawEdge:-4});
+ assert.ok(!send.includes('top-play-badge'),'the ✅ pill replaces the "#1 TOP PLAY" badge');
+ assert.ok(send.includes('compact-card compact-send'));
+ const face=send.slice(0,send.indexOf('<div class="card-more"'));
+ assert.ok(face.includes('verdict-pill verdict-pill-send">✅ Bet This Guy'),'the verdict is a pill on the face');
+ assert.ok(face.indexOf('<section class="mockup-pick">')<face.indexOf('class="card-money"'),'the money line follows the bet');
+ assert.ok(face.includes('$25 wins $34'),'the face says what the usual wager wins, in whole dollars');
+ assert.ok(!face.includes('class="verdict '),'the full verdict box is not on the face');
+ const more=send.slice(send.indexOf('<div class="card-more"'));
+ assert.ok(more.startsWith('<div class="card-more" hidden>'),'details start folded');
+ for(const part of ['class="verdict verdict-','Bet $25 → win $33.75','data-share-prop','card-evidence','data-open-profile','featured-why'])assert.ok(more.includes(part),`details keep ${part}`);
+ assert.equal((send.match(/class="verdict /g)||[]).length,1,'the verdict box appears once');
+ assert.ok(!/Tap the (odds|price) to add/.test(send),'the add-to-slip tip is not repeated on every card');
+ assert.ok(/player-photo" style="--avatar-hue:\d+"/.test(send),'avatars get a colour when no photo loads');
+ assert.ok(flip.includes('verdict-pill-flip">🪙 Coin Flip'));
+ assert.ok(read.includes('compact-read')&&read.includes('verdict-pill-read">👎 Skip')&&read.includes('The books are taking extra here'),'Left on Read folds to a skip line');
+ const nested=send.match(/<div class="card-more"[\s\S]*<\/article>$/)[0],opens=(nested.match(/<div\b/g)||[]).length,closes=(nested.match(/<\/div>/g)||[]).length;
+ assert.equal(opens,closes,'the lifted blocks keep their markup balanced')}
 // Send to the chat: honest, ready-to-paste messages.
 run('preferences.typicalWager=10');
 assert.equal(run(`shareText(${prop({bestBook:'FanDuel'})})`),'✅ Bet This Guy: Drake London Under 5.5 Receptions (+135 at FanDuel). Bet $10 → win $13.50 if Drake London has 5 or fewer receptions.');
