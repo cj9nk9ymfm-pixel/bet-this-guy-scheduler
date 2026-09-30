@@ -123,6 +123,17 @@ run('var originalSettle=settlePublicRecords,originalRecordStats=recordPlayerStat
     var namedBet={kind:'prop',player:'Adam Trautman',gameTime:'2026-09-20T17:00:00Z',market:'Receptions',side:'Under',line:.5};
     var namedCache=new Map([['Adam Trautman|2026-09-20T17:00:00Z|Receptions',{game:{id:222,status_state:'final'},scoreboardFinal:true,missingPlayerStats:true}]]);`);
   assert.equal(await run('gradePublicRecord(namedBet,{BALLDONTLIE_API_KEY:"fixture"},namedCache)'),'lost','play text that spells out the full name counts as the player');
+  run(`var kalebEvent={bookmakers:[
+      {key:'draftkings',markets:[{key:'player_rush_yds',outcomes:[{name:'Under',description:'Kaleb Johnson',point:37.5,price:-111},{name:'Over',description:'Kaleb Johnson',point:37.5,price:-113}]}]},
+      {key:'fanduel',markets:[{key:'player_rush_yds',outcomes:[{name:'Under',description:'Kaleb Johnson',point:37.5,price:-113}]}]},
+      {key:'betmgm',markets:[{key:'player_rush_yds',outcomes:[{name:'Under',description:'Kaleb Johnson',point:37.5,price:-111}]}]},
+      {key:'betrivers',markets:[{key:'player_rush_yds',outcomes:[{name:'Under',description:'Kaleb Johnson',point:38.5,price:-112}]}]},
+      {key:'bovada',markets:[{key:'player_rush_yds_alternate',outcomes:[{name:'Under',description:'Kaleb Johnson',point:29.5,price:180}]}]}]};
+    var kalebLeg={player:'Kaleb Johnson',market:'Rushing Yards',side:'Under',line:34.5};`);
+  assert.deepEqual(JSON.parse(run('JSON.stringify(closingOffer(kalebEvent,kalebLeg))')),{line:37.5,odds:-111},'a gone line records where most books moved, with the best price there');
+  run(`kalebEvent.bookmakers[4].markets[0].outcomes.push({name:'Under',description:'Kaleb Johnson',point:34.5,price:125})`);
+  assert.deepEqual(JSON.parse(run('JSON.stringify(closingOffer(kalebEvent,kalebLeg))')),{line:34.5,odds:125},'our exact line, even as an alternate, still wins over a moved line');
+  assert.equal(run('closingOffer({bookmakers:[]},kalebLeg)'),null);
   assert.equal(run('BTGStats.metric({market:"Assists"},{total_tackles:9,solo_tackles:6}).value'),3,'assisted tackles derived from reported total and solo');
   console.log('PASS: responsive reads, provisional corrections, shared game box scores, pending Monday parlay loss, individual grading, touchdown evidence and assists');
 })().catch(error=>{console.error(error);process.exitCode=1});
