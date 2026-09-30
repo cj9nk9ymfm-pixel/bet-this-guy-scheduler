@@ -118,6 +118,11 @@ run('var originalSettle=settlePublicRecords,originalRecordStats=recordPlayerStat
     var emptyCache=new Map([['Kicker|2026-09-20T17:00:00Z|Field Goals Made',{player_id:13,game:{id:111,status_state:'final'},scoreboardFinal:true}],['Scorer|2026-09-20T17:00:00Z|Anytime Touchdown',{player_id:10,game:{id:111,status_state:'final'},scoreboardFinal:true}]]);`);
   assert.equal(await run('gradePublicRecord(emptyFg,{BALLDONTLIE_API_KEY:"fixture"},emptyCache)'),null,'an empty play-by-play never grades a kicker as zero field goals');
   assert.equal(await run('gradePublicRecord(emptyTd,{BALLDONTLIE_API_KEY:"fixture"},emptyCache)'),null,'an empty play-by-play never grades a no-touchdown loss');
+  run(`var namedPlay={scoring_play:false,type_slug:'pass-reception',type_text:'Pass Reception',text:'Bo Nix pass short left to Adam Trautman for 6 yards',participants:[]};
+    bdlRequest=async path=>path.startsWith('/nfl/v1/plays?')?{data:[namedPlay],meta:{}}:{data:[]};
+    var namedBet={kind:'prop',player:'Adam Trautman',gameTime:'2026-09-20T17:00:00Z',market:'Receptions',side:'Under',line:.5};
+    var namedCache=new Map([['Adam Trautman|2026-09-20T17:00:00Z|Receptions',{game:{id:222,status_state:'final'},scoreboardFinal:true,missingPlayerStats:true}]]);`);
+  assert.equal(await run('gradePublicRecord(namedBet,{BALLDONTLIE_API_KEY:"fixture"},namedCache)'),'lost','play text that spells out the full name counts as the player');
   assert.equal(run('BTGStats.metric({market:"Assists"},{total_tackles:9,solo_tackles:6}).value'),3,'assisted tackles derived from reported total and solo');
   console.log('PASS: responsive reads, provisional corrections, shared game box scores, pending Monday parlay loss, individual grading, touchdown evidence and assists');
 })().catch(error=>{console.error(error);process.exitCode=1});

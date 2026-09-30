@@ -609,7 +609,9 @@ async function playByPlayMarketValue(leg,row,env,signal,cache){
     const participants=Array.isArray(play?.participants)?play.participants:[];
     if(target&&participants.some(item=>String(item?.player_id??item?.player?.id??'')===target&&(!role||role.test(String(item?.type||'')))))return true;
     const playText=normalizedName(`${play?.text||''} ${play?.short_text||''}`);
-    return Boolean(textMarker&&playText.includes(textMarker));
+    // Feeds write either "A.Trautman" or "Adam Trautman" in play text.
+    const fullName=normalizedName(nameParts.join(' '));
+    return Boolean(textMarker&&playText.includes(textMarker)||fullName.length>5&&playText.includes(fullName));
   };
   if(market==='sacks')return plays.filter(play=>/sack/i.test(`${play?.type_slug||''} ${play?.type_text||''}`)&&hasPlayer(play,/sack|tackler|defender/i)).length;
   const fieldGoals=plays.filter(play=>play?.scoring_play&&/field.?goal/i.test(`${play?.type_slug||''} ${play?.type_text||''} ${play?.text||''}`)&&hasPlayer(play,/kick/i)).length;
