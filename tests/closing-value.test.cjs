@@ -3,8 +3,8 @@ const {read}=require('./helpers/client.cjs');
 const page=read('dist/trust.html'),start=page.indexOf('// CLV-START'),end=page.indexOf('// CLV-END');
 assert.ok(start>0&&end>start,'closing-value block is marked in trust.html');
 const helpers=page.match(/const parsedLegs=[^\n]*;/)[0]+'\n'+page.match(/const decimal=[^\n]*;/)[0];
-const context=vm.createContext({});vm.runInContext(helpers+'\n'+page.slice(start,end)+'\nthis.closingValue=closingValue;this.closingSummary=closingSummary;this.closingVerdict=closingVerdict;this.americanFromDecimal=americanFromDecimal;',context);
-const {closingValue,closingSummary,closingVerdict,americanFromDecimal}=context;
+const context=vm.createContext({});vm.runInContext(helpers+'\n'+page.slice(start,end)+'\nthis.closingValue=closingValue;this.closingSummary=closingSummary;this.closingVerdict=closingVerdict;this.americanFromDecimal=americanFromDecimal;this.lineMove=lineMove;this.moveText=moveText;',context);
+const {closingValue,closingSummary,closingVerdict,americanFromDecimal,lineMove,moveText}=context;
 const prop=(odds,closing_odds,extra={})=>({kind:'prop',line:55.5,odds,closing_odds,closing_line:55.5,closing_captured_at:'2026-09-25T00:00:00Z',...extra});
 // -110 posted, best close -125: the posted price paid more, so it beat the close.
 const beat=closingValue(prop(-110,-125));assert.ok(beat.edge>0);assert.equal(closingVerdict(beat).label,'Better than the final price');
@@ -22,4 +22,14 @@ assert.equal(closingValue({kind:'parlay',legs_json:JSON.stringify([legs[0],{odds
 const summary=closingSummary([prop(-110,-125),prop(+120,+140),prop(-110,-110),prop(-110,null)]);
 assert.equal(summary.tracked,3);assert.equal(summary.beat,1);
 assert.equal(americanFromDecimal(2.5),'150');assert.equal(americanFromDecimal(1+100/110),'-110');
-console.log('PASS: closing-line value compares posted and best closing prices for props and parlays, and skips picks without a comparable close');
+// Moved lines: an Over is helped by a rise, an Under hurt by it.
+assert.equal(lineMove(34.5,37.5,'Under').ourWay,false,'Under 34.5 closing at 37.5 moved against us');
+assert.equal(lineMove(34.5,37.5,'Over').ourWay,true,'Over 34.5 closing at 37.5 moved our way');
+assert.equal(lineMove(4.5,3.5,'Under').ourWay,true);
+assert.equal(lineMove(55.5,55.5,'Over'),null,'same line is not a move');
+assert.equal(lineMove(55.5,null,'Over'),null);
+assert.equal(moveText(lineMove(34.5,37.5,'Under')),'Line moved to 37.5 before kickoff (against you)');
+const moved=closingSummary([prop(-110,-125),prop(+110,-111,{side:'Under',line:34.5,closing_line:37.5}),prop(-110,-120,{side:'Over',line:4.5,closing_line:5.5})]);
+assert.equal(moved.tracked,1,'moved lines never count as beating or losing to the final price');assert.equal(moved.moved,2);assert.equal(moved.movedOurWay,1);
+assert.equal(closingValue({kind:'parlay',legs_json:JSON.stringify([legs[0],{odds:+150,closingOdds:+130,line:1.5,closingLine:2.5,side:'Over'}])}),null,'a parlay with a moved leg is not compared on price');
+console.log('PASS: closing-line value compares posted and best closing prices for props and parlays, skips picks without a comparable close, and reports moved lines by direction');

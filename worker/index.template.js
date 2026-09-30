@@ -764,7 +764,7 @@ function closingOffer(event, leg) {
   if(!keys.length)return null;
   const wantedPlayer = normalizedName(leg.player);
   const wantedSide = String(leg.side || "").toLowerCase() === "under" ? "under" : "over";
-  const offers = [];
+  const offers = [], moved = [], wantedLine = Number(leg.line);
   for (const bookmaker of event?.bookmakers || []) {
     for (const market of bookmaker.markets || []) {
       if (keys.length && !keys.includes(market.key)) continue;
@@ -773,13 +773,26 @@ function closingOffer(event, leg) {
         const side = String(outcome.name || "").toLowerCase();
         const point = BTGStats.number(outcome.point);
         if (!player || !wantedPlayer || !(player === wantedPlayer || player.includes(wantedPlayer) || wantedPlayer.includes(player))) continue;
-        if (!side.includes(wantedSide) || Number.isFinite(Number(leg.line)) && Number.isFinite(point) && Math.abs(point - Number(leg.line)) > 0.01) continue;
+        if (!side.includes(wantedSide)) continue;
         const price = Number(outcome.price);
-        if (Number.isFinite(price)) offers.push({ line: Number.isFinite(point) ? point : Number(leg.line), odds: price });
+        if (!Number.isFinite(price)) continue;
+        if (Number.isFinite(wantedLine) && Number.isFinite(point) && Math.abs(point - wantedLine) > 0.01) {
+          // Main (non-alternate) lines only: they are where the market settled.
+          if (!market.key.endsWith("_alternate")) moved.push({ book: bookmaker.key || bookmaker.title, line: point, odds: price });
+          continue;
+        }
+        offers.push({ line: Number.isFinite(point) ? point : wantedLine, odds: price });
       }
     }
   }
-  return offers.sort((a, b) => b.odds - a.odds)[0] || null;
+  const exact = offers.sort((a, b) => b.odds - a.odds)[0];
+  if (exact || !moved.length) return exact || null;
+  // Our line is gone: record the line most books moved to (nearest ours on a
+  // tie) and the best price there, so the record can say the line moved.
+  const books = new Map();
+  for (const offer of moved) books.set(offer.line, new Set([...(books.get(offer.line) || []), offer.book]));
+  const line = [...books.keys()].sort((a, b) => books.get(b).size - books.get(a).size || Math.abs(a - wantedLine) - Math.abs(b - wantedLine))[0];
+  return { line, odds: Math.max(...moved.filter(offer => offer.line === line).map(offer => offer.odds)) };
 }
 
 async function captureClosingLines(env) {
