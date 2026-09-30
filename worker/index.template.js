@@ -1023,8 +1023,10 @@ async function routeRequest(request, env, ctx) {
     if (url.pathname === "/api/player-photo") return playerPhoto(request);
     if (url.pathname === "/api/feed-status") return json({ configured: Boolean(env.THE_ODDS_API_KEY), provider: "The Odds API" });
     if (url.pathname === "/api/record") return publicRecord(request, env, ctx);
+    if (url.pathname === "/api/hit") return usageHit(request, env, ctx);
     if (url.pathname === "/robots.txt") return new Response(ROBOTS_TXT, { headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=86400" } });
-    if (url.pathname === "/sitemap.xml") return new Response(SITEMAP_XML, { headers: { "content-type": "application/xml; charset=utf-8", "cache-control": "public, max-age=86400" } });
+    if (url.pathname === "/sitemap.xml") return new Response(env.DB ? await weeklySitemap(env) : SITEMAP_XML, { headers: { "content-type": "application/xml; charset=utf-8", "cache-control": "public, max-age=3600" } });
+    if (url.pathname === "/picks" || url.pathname.startsWith("/picks/")) { const page = await weeklyPage(request, env).catch(() => null); if (page) { ctx.waitUntil(countUsage(env, [url.pathname.replace(/\/$/, "") === "/picks" ? "view:picks" : "view:week"], request).catch(() => {})); return page; } }
     if (url.pathname === "/bet-this-guy-logo-v3.png") {
       const bytes = Uint8Array.from(atob(LOGO), char => char.charCodeAt(0));
       return new Response(bytes, { headers: { "content-type": "image/png", "cache-control": "public, max-age=86400" } });

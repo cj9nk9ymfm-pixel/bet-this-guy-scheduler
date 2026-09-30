@@ -63,7 +63,7 @@
 </section>
 <p id="loadStatus" class="subtle" role="status">Loading posted results…</p>
 </main>
-<footer><span>Bet This Guy</span><a href="#methodology">How results are graded</a><a href="/legal#terms">Terms & privacy</a></footer>
+<footer><span>Bet This Guy</span><a href="/picks">Picks by week</a><a href="#methodology">How results are graded</a><a href="/legal#terms">Terms & privacy</a></footer>
 <script>
 const resultNode=selector=>document.querySelector(selector);
 const escape=value=>String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
@@ -130,5 +130,8 @@ resultNode('#gradeFilter').onchange=renderDetail;
 resultNode('#recordScope').onchange=()=>paint(allResultRows);
 addEventListener('hashchange',()=>{resultNode('#gradeFilter').value='all';showResultSection(location.hash.slice(1));window.scrollTo({top:0,behavior:'auto'})});
 showResultSection(location.hash.slice(1));refreshRecord();setInterval(refreshRecord,15000);document.addEventListener('visibilitychange',refreshRecord);
+
+// Anonymous page count (no cookies or IDs); see the privacy policy.
+try{const seen=localStorage.getItem('btg-seen'),first=!sessionStorage.getItem('btg-visit'),m=['view:trust',...(first?[seen?'visit:return':'visit:new']:[])];if(first){sessionStorage.setItem('btg-visit','1');localStorage.setItem('btg-seen','1')}const body=JSON.stringify({m});navigator.sendBeacon?.('/api/hit',new Blob([body],{type:'application/json'}))||fetch('/api/hit',{method:'POST',body,keepalive:true}).catch(()=>{})}catch{}
 </script>
 </body></html>

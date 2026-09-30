@@ -1,5 +1,5 @@
 import {sql} from 'drizzle-orm';
-import {sqliteTable,text,integer,index,uniqueIndex,check} from 'drizzle-orm/sqlite-core';
+import {sqliteTable,text,integer,index,uniqueIndex,check,primaryKey} from 'drizzle-orm/sqlite-core';
 export const movementSnapshots=sqliteTable('movement_snapshots',{
   id:text('id').primaryKey(),
   eventId:text('event_id').notNull(),
@@ -95,3 +95,11 @@ export const userBetLegs=sqliteTable('user_bet_legs',{
   index('user_bet_legs_user_game').on(table.authUserId,table.gameStart),
   check('user_bet_legs_result_check',sql`${table.result} in ('pending','won','lost','push','void')`),
 ]);
+
+// Anonymous daily totals (page views and a few actions). No cookies, IPs or
+// per-person identifiers are stored.
+export const usageCounts=sqliteTable('usage_counts',{
+  day:text('day').notNull(),
+  metric:text('metric').notNull(),
+  count:integer('count').notNull().default(0),
+},table=>[primaryKey({columns:[table.day,table.metric]})]);
