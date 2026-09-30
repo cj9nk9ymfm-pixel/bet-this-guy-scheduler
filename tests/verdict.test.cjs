@@ -46,6 +46,11 @@ const html=extra=>run(`card(${prop(extra)},0,true)`);
  assert.ok(read.includes('compact-read')&&read.includes('verdict-pill-read">👎 Skip')&&read.includes('The books are taking extra here'),'Left on Read folds to a skip line');
  const nested=send.match(/<div class="card-more"[\s\S]*<\/article>$/)[0],opens=(nested.match(/<div\b/g)||[]).length,closes=(nested.match(/<\/div>/g)||[]).length;
  assert.equal(opens,closes,'the lifted blocks keep their markup balanced')}
+// Premade parlays never include a leg the board tells people to skip.
+{const future=new Date(Date.now()+3*3600000).toISOString();
+ assert.equal(run(`premadeEligible(${prop({rawEdge:-4,startsAt:future})})`),false,'a 👎 Left on Read leg never goes into a premade parlay');
+ assert.equal(run(`premadeEligible(${prop({rawEdge:-1,startsAt:future})})`),true,'Coin Flips can');
+ assert.equal(run(`premadeEligible(${prop({startsAt:future})})`),true,'Bet This Guy legs can')}
 // Send to the chat: honest, ready-to-paste messages.
 run('preferences.typicalWager=10');
 assert.equal(run(`shareText(${prop({bestBook:'FanDuel'})})`),'✅ Bet This Guy: Drake London Under 5.5 Receptions (+135 at FanDuel). Bet $10 → win $13.50 if Drake London has 5 or fewer receptions.');
