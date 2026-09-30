@@ -172,6 +172,52 @@ async function writeOfficialPlan(plan,week,env){
   }
   if(statements.length)await env.DB.batch(statements);
 }
+// Price trail: every publish run records each pending pick's current price,
+// so a pick's line movement can be shown after the game. Each point is
+// {t: time, o: best price at our line or null, l: main line, m: best price
+// at the main line}. Stops 25 minutes before kickoff so it never races the
+// closing-line capture, and writes one field so it never overwrites it.
+function officialTrailPoint(event,leg,now){
+  const offers=[];
+  for(const book of event.bookmakers||[])for(const market of book.markets||[]){
+    const raw=String(market.key||'').replace(/_alternate$/,''),label=recordLabels[raw];
+    if(label!==leg.market)continue;
+    const updated=Date.parse(market.last_update||book.last_update||'');
+    if(!Number.isFinite(updated)||now-updated>15*60000||updated>now+60000)continue;
+    const binary=['player_anytime_td','player_1st_td','player_last_td'].includes(raw);
+    for(const outcome of market.outcomes||[]){
+      const name=String(outcome.name||''),direction=name.toLowerCase();
+      const player=String(outcome.description||(binary&&!['yes','no'].includes(direction)?name:'')).trim();
+      const side=binary?(direction==='no'?'Under':'Over'):direction==='over'?'Over':direction==='under'?'Under':null;
+      const line=binary?.5:BTGStats.number(outcome.point),odds=BTGStats.number(outcome.price);
+      if(player!==leg.player||side!==leg.side||line===null||odds===null||Math.abs(odds)<100)continue;
+      offers.push({line,odds,book:book.key,alternate:market.key.endsWith('_alternate')});
+    }
+  }
+  const best=list=>list.length?list.reduce((a,b)=>recordDecimal(b.odds)>recordDecimal(a.odds)?b:a).odds:null;
+  const ours=best(offers.filter(o=>o.line===Number(leg.line)));
+  const books=new Map();for(const o of offers.filter(o=>!o.alternate))books.set(o.line,new Set([...(books.get(o.line)||[]),o.book]));
+  const main=[...books.keys()].sort((a,b)=>books.get(b).size-books.get(a).size||Math.abs(a-leg.line)-Math.abs(b-leg.line))[0];
+  if(ours===null&&main===undefined)return null;
+  const line=main===undefined?Number(leg.line):main;
+  return {t:now,o:ours,l:line,m:best(offers.filter(o=>!o.alternate&&o.line===line))};
+}
+function officialTrailStatements(boards,existing,env,now=Date.now()){
+  const events=new Map(boards.map(e=>[e.eventID||`NFL--${e.id}`,e])),statements=[];
+  for(const row of existing){
+    if(row.status!=='pending')continue;
+    recordLegs(row).forEach((leg,i)=>{
+      const event=events.get(leg.gameId);
+      if(!event||!(Date.parse(leg.gameTime)>now+25*60000))return;
+      const point=officialTrailPoint(event,leg,now);if(!point)return;
+      const trail=Array.isArray(leg.priceTrail)?leg.priceTrail:[],last=trail.at(-1);
+      // Unchanged prices are only re-recorded every three hours.
+      if(last&&last.o===point.o&&last.l===point.l&&last.m===point.m&&now-last.t<3*3600000)return;
+      statements.push(env.DB.prepare(`UPDATE public_recommendations SET legs_json=json_set(legs_json,'$[${i}].priceTrail',json(?)) WHERE id=? AND status='pending' AND json_valid(legs_json)`).bind(JSON.stringify([...trail,point].slice(-48)),row.id));
+    });
+  }
+  return statements;
+}
 let officialPublishing=null,officialCheckedAt=0;
 function queueOfficialPicks(request,env,ctx){
   if(!env.DB||!env.THE_ODDS_API_KEY||!ctx?.waitUntil||Date.now()<OFFICIAL_START)return;
@@ -190,6 +236,7 @@ async function publishOfficialPicks(request,env,ctx){
     for(let i=0;i<events.length;i+=4){const results=await Promise.allSettled(events.slice(i,i+4).map(async e=>{const url=new URL('/api/event',request.url);url.searchParams.set('eventID',e.eventID);const r=await eventProps(new Request(url),env,ctx);if(!r.ok||r.headers.get('x-feed-cache')==='stale')throw new Error('Official board unavailable');return (await r.json()).data||[]}));for(const r of results)if(r.status==='fulfilled')boards.push(...r.value);else failedBoards++}
     const existing=await env.DB.prepare('SELECT * FROM public_recommendations WHERE id>=? AND id<?').bind(prefix,prefix+'\uffff').all();
     const candidates=officialCandidates(boards,Date.now());await writeOfficialPlan(officialPlan(candidates,existing.results||[],week,Date.now()),week,env);
+    const trail=officialTrailStatements(boards,existing.results||[],env,Date.now());if(trail.length)await env.DB.batch(trail);
 
   if(failedBoards)throw new Error('Some official boards were unavailable; retry required');
   return {state:"completed"};

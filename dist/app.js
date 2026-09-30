@@ -1271,8 +1271,49 @@ render=function(){
       hits:(()=>{const won=kind=>list.filter(r=>r.kind===kind&&graded(r)&&r.result==='won').sort((a,b)=>payout(b)-payout(a)),a=won('prop'),b=won('parlay'),out=[];for(let i=0;out.length<12&&(i<a.length||i<b.length);i++){if(a[i])out.push(a[i]);if(b[i]&&out.length<12)out.push(b[i])}return out})()
     };
   }
-  window.BTGFirstImpression={summarise,currentWeek};
-  const hitShareText=r=>{const n=pickName(r),odds=formatOdds(r.kind==='parlay'?r.combined_odds:r.odds);return `✅ Called it: ${n.title} ${r.kind==='parlay'?`(${n.detail})`:n.detail} at ${odds} hit. Bet This Guy posts every pick before kickoff.`};
+  window.BTGFirstImpression={summarise,currentWeek,hitDetails:r=>hitDetails(r)};
+  // Details sheet for a finished pick: the exact bet, the result, and how the
+  // price moved from posting to kickoff.
+  const when=iso=>{const d=new Date(iso);return Number.isFinite(d.getTime())?d.toLocaleString([],{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):''};
+  const legText=l=>{const binary=/touchdown/i.test(l.market||'')&&Number(l.line)===0.5;return binary?`${l.side==='Under'?'No ':''}${l.market}`:`${l.side} ${l.line} ${l.market}`};
+  const moveOf=(line,close,side)=>{const a=Number(line),b=Number(close);if(line==null||close==null||!Number.isFinite(a)||!Number.isFinite(b)||Math.abs(a-b)<=.01)return null;return {line:b,ourWay:String(side).toLowerCase()==='under'?b<a:b>a}};
+  function sparkline(points){
+    const pts=points.filter(p=>Number.isFinite(p.t)&&oddsDecimal(p.o));if(pts.length<3)return '';
+    const w=280,h=64,t0=pts[0].t,t1=pts.at(-1).t||t0+1,ds=pts.map(p=>oddsDecimal(p.o)),lo=Math.min(...ds),hi=Math.max(...ds),span=hi-lo||1;
+    const xy=pts.map((p,i)=>[8+(w-16)*((p.t-t0)/((t1-t0)||1)),8+(h-16)*(1-(ds[i]-lo)/span)]);
+    return `<svg class="hit-spark" viewBox="0 0 ${w} ${h}" role="img" aria-label="Price from ${formatOdds(pts[0].o)} to ${formatOdds(pts.at(-1).o)}"><polyline points="${xy.map(p=>p.map(v=>v.toFixed(1)).join(',')).join(' ')}"/>${xy.map((p,i)=>`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="${i===0||i===xy.length-1?3.5:2}"/>`).join('')}</svg><div class="hit-spark-labels"><span>Posted ${htmlEscape(formatOdds(pts[0].o))}</span><span>Higher = pays more</span><span>Final ${htmlEscape(formatOdds(pts.at(-1).o))}</span></div>`;
+  }
+  function legMovement(leg,postedAt,closeOdds,closeLine,closeAt){
+    const rows=[];
+    const trail=(Array.isArray(leg.priceTrail)?leg.priceTrail:[]).filter(p=>p.o!=null).map(p=>({t:p.t,o:p.o}));
+    const points=[{t:Date.parse(postedAt),o:leg.odds},...trail,...(closeOdds!=null&&!moveOf(leg.line,closeLine,leg.side)?[{t:Date.parse(closeAt)||Date.parse(leg.gameTime),o:closeOdds}]:[])];
+    const chart=sparkline(points);
+    const move=moveOf(leg.line,closeLine,leg.side);
+    if(move)rows.push(`<p class="hit-move ${move.ourWay?'up':'down'}">Line moved to ${htmlEscape(move.line)} before kickoff (${move.ourWay?'in your favour':'against you'})</p>`);
+    else if(closeOdds!=null){
+      const a=oddsDecimal(leg.odds),b=oddsDecimal(closeOdds),edge=a&&b?(a/b-1)*100:0,label=edge>.05?'Better than the final price':edge<-.05?'Worse than the final price':'Same as the final price';
+      rows.push(`<p class="hit-move ${edge>.05?'up':edge<-.05?'down':''}">Posted ${htmlEscape(formatOdds(leg.odds))} → final ${htmlEscape(formatOdds(closeOdds))} · ${label}${Math.abs(edge)>.05?` (${edge>0?'+':'−'}${Math.abs(edge).toFixed(1)}% payout)`:''}</p>`);
+    }else rows.push('<p class="hit-move">Final price before kickoff wasn’t recorded for this one.</p>');
+    return chart+rows.join('');
+  }
+  function hitDetails(r){
+    const legs=recordLegs(r),isParlay=r.kind==='parlay',n=pickName(r),odds=isParlay?r.combined_odds:r.odds;
+    const legBlock=(leg,closeOdds,closeLine,closeAt)=>`<section class="hit-leg"><header><strong>${htmlEscape(isParlay?leg.player:legText(leg))}</strong>${isParlay?`<span>${htmlEscape(legText(leg))}</span>`:''}<b class="hit-leg-result ${leg.result==='won'?'won':''}">${leg.result==='won'?'✅ Hit':htmlEscape(leg.result||'')}</b></header>
+      <dl><div><dt>Game</dt><dd>${htmlEscape(String(leg.team||'').replace(' · ',' '))} · ${htmlEscape(when(leg.gameTime))}</dd></div>
+      <div><dt>Result</dt><dd>${leg.actualValue!=null?`${leg.minimumOnly?'At least ':''}${htmlEscape(leg.actualValue)} ${htmlEscape(String(leg.market||'').toLowerCase())}`:'—'}</dd></div>
+      <div><dt>Our price</dt><dd>${htmlEscape(formatOdds(leg.odds))}${leg.book?` at ${htmlEscape(leg.book)}`:''}</dd></div></dl>
+      ${legMovement(leg,r.posted_at,closeOdds,closeLine,closeAt)}${leg.gradingNote?`<p class="hit-note">${htmlEscape(leg.gradingNote)}</p>`:''}</section>`;
+    const body=isParlay?legs.map(l=>legBlock(l,l.closingOdds,l.closingLine,l.closingCapturedAt)).join(''):legs[0]?legBlock({...legs[0],odds:r.odds,line:r.line,side:r.side,market:r.market},r.closing_odds,r.closing_line,r.closing_captured_at):'';
+    return `<p class="hit-tag">✅ HIT · ${htmlEscape(isParlay?`${legs.length}-LEG PARLAY`:'SINGLE')}</p><h2>${htmlEscape(isParlay?n.detail:n.title)}</h2><p class="hit-sub">${isParlay?`Every leg hit at ${htmlEscape(formatOdds(odds))} combined`:htmlEscape(n.detail)} · posted ${htmlEscape(when(r.posted_at))}</p>
+      <div class="hit-payout"><span>$100 bet</span><strong>${htmlEscape(money(payout(r)))}</strong><span>at ${htmlEscape(formatOdds(odds))}</span></div>${body}
+      ${isParlay?'<p class="hit-note">Parlay payout is the product of each leg’s posted price.</p>':''}<a class="hit-link" href="/trust#official">See every pick on the full record →</a>`;
+  }
+  function openHit(r){
+    const dialog=$('#hitDialog');if(!dialog||!r)return;
+    $('#hitDialogBody').innerHTML=hitDetails(r);
+    if(typeof dialog.showModal==='function')dialog.showModal();else dialog.setAttribute('open','');
+  }
+  if($('#hitDialog')){const dialog=$('#hitDialog');$('#hitDialogClose').onclick=()=>dialog.close?.();dialog.addEventListener('click',event=>{if(event.target===dialog)dialog.close?.()})}
   function renderHero(s){
     const hero=$('#heroBanner'),strip=$('#hitsStrip');if(!hero)return;
     if(!s){hero.hidden=false;return}
@@ -1286,13 +1327,8 @@ render=function(){
     hero.hidden=false;document.body.classList.add('has-hero');
     if(!strip||!s.hits.length)return;
     $('#hitsTitle').textContent=s.label==='LAST WEEK'?'Last week’s hits':s.label==='THIS WEEK SO FAR'?'This week’s hits':'Recent hits';
-    $('#hitsRow').innerHTML=s.hits.map((r,i)=>{const n=pickName(r),odds=r.kind==='parlay'?r.combined_odds:r.odds;return `<article class="hit-card-mini"><span class="hit-tag">✅ HIT</span><strong>${htmlEscape(n.title)}</strong><small>${htmlEscape(n.detail)}</small><div class="hit-foot"><b>${htmlEscape(formatOdds(odds))}</b><span>$100 → ${htmlEscape(money(payout(r)))}</span></div><button type="button" class="hit-share" data-hit="${i}">📲 Send it</button></article>`}).join('');
-    $$('#hitsRow [data-hit]').forEach(button=>button.onclick=async()=>{
-      const text=hitShareText(s.hits[+button.dataset.hit]),url=location.origin,label=button.textContent;
-      try{if(navigator.share){await navigator.share({text,url});return}}catch(error){if(error?.name==='AbortError')return}
-      try{await navigator.clipboard.writeText(`${text} ${url}`);button.textContent='Copied'}catch{button.textContent='Couldn’t copy'}
-      setTimeout(()=>{if(button.isConnected)button.textContent=label},2200);
-    });
+    $('#hitsRow').innerHTML=s.hits.map((r,i)=>{const n=pickName(r),odds=r.kind==='parlay'?r.combined_odds:r.odds;return `<button type="button" class="hit-card-mini" data-hit="${i}" aria-label="Details for ${htmlEscape(n.title)}"><span class="hit-tag">✅ HIT</span><strong>${htmlEscape(n.title)}</strong><small>${htmlEscape(n.detail)}</small><div class="hit-foot"><b>${htmlEscape(formatOdds(odds))}</b><span>$100 → ${htmlEscape(money(payout(r)))}</span></div><em class="hit-more">Tap for details ›</em></button>`}).join('');
+    $$('#hitsRow [data-hit]').forEach(button=>button.onclick=()=>openHit(s.hits[+button.dataset.hit]));
     strip.hidden=false;
     // Arrows for mouse users; phones swipe the row directly.
     const row=$('#hitsRow'),prev=$('#hitsPrev'),next=$('#hitsNext'),sync=()=>{if(!prev||!next)return;prev.disabled=row.scrollLeft<=4;next.disabled=row.scrollLeft+row.clientWidth>=row.scrollWidth-4};
