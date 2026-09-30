@@ -137,7 +137,7 @@ async function importLegacy(){
   for(const item of items){try{const legs=(item.liveLegs||[]).map(leg=>({...leg,gameStart:leg.startsAt,odds:leg.odds}));if(!legs.length)continue;await trackParlay({legs,wager:item.wager||10,source:'imported'});imported++}catch{}}
   if(imported){localStorage.removeItem('bet-this-guy-tracked');accountMessage=`Imported ${imported} saved pick${imported===1?'':'s'}.`;await refreshBets();renderAccount();setStatus(accountMessage,'success');accountMessage=''}else setStatus('Those older picks could not be imported.','error');button.disabled=false;
 }
-async function handleSession(next){session=next;profile=null;updateButton();if(session){await loadAccount().catch(error=>setStatus(friendly(error),'error'))}else{bets=[];if(dialog()?.open)show('login')}}
+async function handleSession(next){session=next;profile=null;updateButton();dispatchEvent(new Event('btg-auth'));if(session){await loadAccount().catch(error=>setStatus(friendly(error),'error'))}else{bets=[];if(dialog()?.open)show('login')}}
 
 async function submitLogin(event){event.preventDefault();const form=event.currentTarget;setBusy(form,true);setStatus('');const data=new FormData(form);try{const{error}=await (await auth()).signInWithPassword({email:String(data.get('email')).trim(),password:String(data.get('password'))});if(error)throw error;accountMessage='Welcome back.';show('account')}catch(error){setStatus(friendly(error),'error')}finally{setBusy(form,false)}}
 async function submitSignup(event){event.preventDefault();const form=event.currentTarget;setBusy(form,true);setStatus('');const data=new FormData(form),email=String(data.get('email')).trim(),password=String(data.get('password')),confirm=String(data.get('confirm')),name=String(data.get('name')).trim();try{if(name.length<2)throw new Error('Enter your name.');if(password.length<8)throw new Error('Use at least 8 characters.');if(password!==confirm)throw new Error('The passwords do not match.');if(!data.get('terms'))throw new Error('Agree to the Terms and Privacy Policy to create an account.');const{data:result,error}=await (await auth()).signUp({email,password,options:{data:{full_name:name},emailRedirectTo:`${location.origin}/?auth=confirmed`}});if(error)throw error;if(result.session){accountMessage='Your account is ready.';show('account')}else{show('check-email');$('#checkEmailAddress').textContent=email}}catch(error){setStatus(friendly(error),'error')}finally{setBusy(form,false)}}
@@ -179,6 +179,8 @@ function init(){
   else handleSession(null);
   handleEmailLink();
 }
-window.BTGAuth={open,isSignedIn:signedIn,savePreferences,syncSavedProps,trackParlay,refreshBets,renderTrackingPanel};
+// A saved session counts before the sign-in library has loaded, so members
+// never see the free-account gate flash on page load.
+window.BTGAuth={open,isSignedIn:signedIn,hasAccount:()=>signedIn()||hasSavedSession(),savePreferences,syncSavedProps,trackParlay,refreshBets,renderTrackingPanel};
 addEventListener('load',init,{once:true});
 })();

@@ -1538,3 +1538,71 @@ if(typeof fetch==='function')window.btgCountVisit?.('view:home');
     return shareBefore(p,button);
   };
 })();
+
+// Free-account gate. Signed-out visitors see every ✅ Bet This Guy card, the
+// first few other rated props, and three card breakdowns a day; a free
+// account unlocks the rest of the board and the line-movement charts. The
+// public record, parlays, last week's hits and the weekly pages stay open.
+(function(){
+  const FREE_OTHERS=3,FREE_OPENS=3,FREE_MOVERS=3,OPENS_KEY='btg-free-opens';
+  const hasAccount=()=>Boolean(window.BTGAuth?.hasAccount?.());
+  const today=()=>new Date().toLocaleDateString('en-CA');
+  const readOpens=()=>{try{const saved=JSON.parse(localStorage.getItem(OPENS_KEY)||'null');return saved?.day===today()&&Array.isArray(saved.keys)?saved.keys:[]}catch{return []}};
+  // Reopening a card already opened today is free. Without storage, allow.
+  const allowOpen=key=>{try{const keys=readOpens();if(keys.includes(key))return true;if(keys.length>=FREE_OPENS)return false;keys.push(key);localStorage.setItem(OPENS_KEY,JSON.stringify({day:today(),keys}));return true}catch{return true}};
+  let shownCounted=false;
+  const countShown=()=>{if(!shownCounted){shownCounted=true;window.btgCount?.('gate:shown')}};
+  const signup=view=>{window.btgCount?.(view==='signup'?'gate:signup':'gate:login');window.BTGAuth?.open?.(view)};
+  const bindGate=root=>root.querySelectorAll('[data-gate]').forEach(button=>button.onclick=event=>{event.preventDefault();event.stopPropagation();signup(button.dataset.gate)});
+  const buttons=`<div class="gate-actions"><button type="button" class="gate-primary" data-gate="signup">Create a free account</button><button type="button" class="gate-secondary" data-gate="login">Sign in</button></div>`;
+  const plural=(n,word)=>`${n} ${word}${n===1?'':'s'}`;
+  const movementPage=()=>state.view==='movement'||document.body.dataset.desktopPage==='movement';
+  function gateList(){
+    const list=$('#propList');if(!list)return;
+    list.querySelector('.board-gate')?.remove();
+    if(hasAccount()||selectedPlayer)return;
+    const moving=movementPage();if(!moving&&state.view!=='board')return;
+    const cards=[...list.querySelectorAll(':scope>.prop-card')];let others=0;
+    const locked=cards.filter(el=>{if(!moving&&el.classList.contains('compact-send'))return false;others++;return others>(moving?FREE_MOVERS:FREE_OTHERS)});
+    if(!locked.length)return;
+    const more=list.querySelector('#loadMoreProps'),unrendered=!moving&&more?Math.max(0,(Number(visiblePropTotal)||0)-cards.length):0,hidden=locked.length+unrendered;
+    more?.remove();
+    // Locked cards move below everything free, so no free card sits under the panel.
+    locked.forEach(el=>list.append(el));
+    locked.forEach((el,index)=>{el.hidden=index>=2;el.classList.toggle('gate-blur',index<2);el.setAttribute('aria-hidden','true');el.inert=true});
+    const panel=document.createElement('div');panel.className='board-gate';
+    panel.innerHTML=`<p class="gate-eyebrow">🔒 FREE ACCOUNT</p><h3>${plural(hidden,moving?'more line move':'more rated prop')} on this board</h3><p>${moving?'See every line and price move with the full history chart.':'See every prop we rated, including the Coin Flips and the ones we’d leave on read, with the reasons behind each.'} Free, no card needed.</p>${buttons}`;
+    (locked[1]||locked[0]).after(panel);bindGate(panel);countShown();
+  }
+  const renderBeforeGate=render;
+  render=function(){renderBeforeGate();gateList()};
+  const bindBeforeGate=bindCards;
+  bindCards=function(){
+    bindBeforeGate();
+    $$('.prop-card.compact-card').forEach(el=>{
+      const p=props.find(item=>item.id===+el.dataset.id);if(!p)return;
+      const key=savedPropKey(p),header=el.querySelector('.prop-player');
+      const guard=handler=>handler&&function(event){
+        if(event.target.closest?.('button,a,input,select,.mockup-pick,.card-more,[data-board-progress]')&&this===el)return handler.call(this,event);
+        if(hasAccount()||el.classList.contains('expanded')||allowOpen(key)){el.querySelector('.card-gate')?.remove();return handler.call(this,event)}
+        event.stopPropagation();
+        if(el.querySelector('.card-gate'))return el.querySelector('.card-gate').remove();
+        const note=document.createElement('div');note.className='card-gate';
+        note.innerHTML=`<p><strong>You’ve used today’s ${FREE_OPENS} free breakdowns.</strong> Create a free account to open every card, any time.</p>${buttons}`;
+        el.append(note);bindGate(note);countShown();
+      };
+      if(header)header.onclick=guard(header.onclick);
+      el.onclick=guard(el.onclick);
+    });
+  };
+  const movementDetailBeforeGate=openMovementDetail;
+  openMovementDetail=function(id){
+    if(hasAccount())return movementDetailBeforeGate(id);
+    const dialog=$('#movementDialog'),host=$('#movementDetail');if(!dialog||!host)return;
+    host.innerHTML=`<div class="board-gate board-gate-dialog"><p class="gate-eyebrow">🔒 FREE ACCOUNT</p><h3>See the full line history</h3><p>Every price and line change we recorded for this bet, charted from open to kickoff. Free, no card needed.</p>${buttons}</div>`;
+    bindGate(host);countShown();
+    host.querySelectorAll('[data-gate]').forEach(button=>button.addEventListener('click',()=>dialog.close?.()));
+    if(typeof dialog.showModal==='function')dialog.showModal();else dialog.setAttribute('open','');
+  };
+  addEventListener('btg-auth',()=>render());
+})();
