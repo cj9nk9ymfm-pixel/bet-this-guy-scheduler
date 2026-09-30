@@ -604,3 +604,9 @@ body.light .pc-legs li{background:#f4f8fd;border-color:#dbe6f2}
 .card-affiliate a{display:block;padding:10px 12px;border-radius:10px;background:rgba(31,216,143,.12);border:1px solid rgba(31,216,143,.4);color:#5ff0b5;font-weight:700;font-size:13.5px;text-align:center;text-decoration:none}
 .card-affiliate small{color:#7f96b8;font-size:11px;line-height:1.35;text-align:center}
 body.light .card-affiliate a{background:#e3f8ef;border-color:#9fdcc2;color:#08875e}body.light .card-affiliate small{color:#5a6f8c}
+/* Pick alerts button and note */
+.alerts-btn{min-height:46px;padding:0 18px;border-radius:999px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.07);color:#e8f2ff;font:700 14px 'Space Grotesk',sans-serif;cursor:pointer}
+.alerts-btn[aria-pressed="true"]{border-color:rgba(31,216,143,.55);color:#5ff0b5;background:rgba(31,216,143,.12)}
+.alerts-note{margin:10px 0 0;padding:9px 12px;border-radius:10px;background:rgba(255,255,255,.06);color:#cfe0f5;font-size:12.5px;line-height:1.4}
+@media(max-width:720px){.alerts-btn{flex:1 1 auto;min-height:42px;font-size:13.5px}}
+body.light .alerts-btn{background:#fff;border-color:#cfe0ee;color:#10213d}body.light .alerts-btn[aria-pressed="true"]{color:#08875e;border-color:#9fdcc2;background:#e3f8ef}body.light .alerts-note{background:#eef4fb;color:#10213d}

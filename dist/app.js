@@ -1457,3 +1457,84 @@ render=function(){
 })();
 
 if(typeof fetch==='function')window.btgCountVisit?.('view:home');
+
+// Pick alerts: a browser push notification whenever a new official pick
+// posts. iPhones need the site added to the Home Screen first (iOS 16.4+).
+(function(){
+  const buttons=()=>$$('[data-alerts-toggle]');
+  const supported=()=>'serviceWorker' in navigator&&'PushManager' in window&&'Notification' in window;
+  const ios=/iPhone|iPad|iPod/.test(navigator.userAgent||'');
+  const standalone=()=>window.matchMedia?.('(display-mode: standalone)').matches||navigator.standalone===true;
+  const note=text=>{const el=$('#alertsNote');if(!el)return;el.textContent=text;el.hidden=!text};
+  const show=on=>buttons().forEach(button=>{const label=on?'🔔 Alerts on':'🔔 Get pick alerts';if(button.dataset.alertsSheet!==undefined){const strong=button.querySelector('strong');if(strong)strong.textContent=on?'🔔 Pick alerts are on':'🔔 Pick alerts';const span=button.querySelector('span');if(span)span.textContent=on?'Tap to turn them off':'Get a notification when a new official pick drops'}else button.textContent=label;button.setAttribute('aria-pressed',String(on))});
+  const keyBytes=key=>{const b=atob(key.replace(/-/g,'+').replace(/_/g,'/')+'='.repeat((4-key.length%4)%4));return Uint8Array.from(b,c=>c.charCodeAt(0))};
+  async function current(){try{const reg=await navigator.serviceWorker.getRegistration('/');return reg?await reg.pushManager.getSubscription():null}catch{return null}}
+  async function turnOn(){
+    if(ios&&!standalone()){note('On iPhone: tap the Share button, choose “Add to Home Screen”, then open Bet This Guy from your home screen and tap 🔔 again.');return}
+    if(!supported()){note('This browser can’t show notifications. Try Chrome, Edge, Firefox or Safari.');return}
+    const permission=await Notification.requestPermission();
+    if(permission!=='granted'){note('Notifications are blocked for this site. Allow them in your browser settings, then tap 🔔 again.');return}
+    const reg=await navigator.serviceWorker.register('/sw.js');await navigator.serviceWorker.ready;
+    const {publicKey}=await (await fetch('/api/alerts/key')).json();
+    const sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:keyBytes(publicKey)});
+    const response=await fetch('/api/alerts/subscribe',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(sub.toJSON())});
+    if(!response.ok){await sub.unsubscribe().catch(()=>{});note('Couldn’t turn alerts on right now. Try again in a minute.');return}
+    show(true);note('Alerts are on. We’ll ping you when a new official pick drops.');window.btgCount?.('alerts:on');
+  }
+  async function turnOff(sub){
+    await fetch('/api/alerts/unsubscribe',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({endpoint:sub.endpoint})}).catch(()=>{});
+    await sub.unsubscribe().catch(()=>{});show(false);note('Alerts are off.');window.btgCount?.('alerts:off');
+  }
+  buttons().forEach(button=>button.addEventListener('click',async()=>{
+    if(button.dataset.alertsSheet!==undefined)$('#moreSheet')?.close?.();
+    try{const sub=supported()?await current():null;sub?await turnOff(sub):await turnOn()}catch{note('Couldn’t change alerts right now. Try again in a minute.')}
+  }));
+  if(supported())current().then(sub=>show(Boolean(sub)));
+})();
+
+// Share cards: "Send to the chat" attaches a 1080×1080 image of the pick. The
+// image is drawn when a card opens, because phones only allow sharing files
+// straight after a tap.
+(function(){
+  const logo=new Image();logo.src='/bet-this-guy-logo-v3.png';
+  const ready=new Map();
+  const palette={send:{fg:'#5ff0b5',bg:'rgba(31,216,143,.16)',line:'rgba(31,216,143,.6)'},flip:{fg:'#ffd66e',bg:'rgba(255,196,64,.14)',line:'rgba(255,196,64,.5)'},read:{fg:'#ff9d9d',bg:'rgba(255,90,90,.14)',line:'rgba(255,90,90,.5)'}};
+  const shareKey=p=>JSON.stringify([p.id,p.side,p.line,recommendedOdds(p),p.bestBook,propVerdict(p)?.key,wagerStake()]);
+  const fit=(ctx,text,max,size,weight='700',family="'Space Grotesk', 'DM Sans', sans-serif")=>{let s=size;do{ctx.font=`${weight} ${s}px ${family}`;s-=2}while(ctx.measureText(text).width>max&&s>20);return s};
+  function drawPickCard(p){
+    const verdict=propVerdict(p)||VERDICTS.flip,c=palette[verdict.key],W=1080,canvas=document.createElement('canvas');canvas.width=W;canvas.height=W;const ctx=canvas.getContext('2d');
+    const bg=ctx.createLinearGradient(0,0,W,W);bg.addColorStop(0,'#0b1d3f');bg.addColorStop(1,'#050b1d');ctx.fillStyle=bg;ctx.fillRect(0,0,W,W);
+    const glow=ctx.createRadialGradient(W*.15,W*.1,10,W*.15,W*.1,W*.8);glow.addColorStop(0,verdict.key==='send'?'rgba(31,216,143,.28)':'rgba(28,108,255,.3)');glow.addColorStop(1,'rgba(0,0,0,0)');ctx.fillStyle=glow;ctx.fillRect(0,0,W,W);
+    if(logo.complete&&logo.naturalWidth)ctx.drawImage(logo,72,64,360,360*logo.naturalHeight/logo.naturalWidth);
+    // Verdict badge
+    const label=`${verdict.icon}  ${verdict.label.toUpperCase()}`;ctx.font="700 44px 'Space Grotesk', sans-serif";const bw=ctx.measureText(label).width+72;
+    ctx.fillStyle=c.bg;ctx.strokeStyle=c.line;ctx.lineWidth=4;ctx.beginPath();ctx.roundRect(72,250,bw,96,48);ctx.fill();ctx.stroke();ctx.fillStyle=c.fg;ctx.textBaseline='middle';ctx.fillText(label,108,300);
+    // Player and bet
+    ctx.textBaseline='alphabetic';ctx.fillStyle='#ffffff';fit(ctx,p.player,W-144,108);ctx.fillText(p.player,72,478);
+    const bet=p.binary?p.market:`${p.side} ${p.line} ${String(p.market||'').toLowerCase()}`;ctx.fillStyle='#cfe0f5';fit(ctx,bet,W-144,64,'600',"'DM Sans', sans-serif");ctx.fillText(bet,72,566);
+    // Price box
+    ctx.fillStyle='rgba(255,255,255,.06)';ctx.strokeStyle='rgba(255,255,255,.14)';ctx.lineWidth=3;ctx.beginPath();ctx.roundRect(72,620,W-144,190,32);ctx.fill();ctx.stroke();
+    ctx.fillStyle='#ffffff';ctx.font="700 96px 'Space Grotesk', sans-serif";const odds=formatOdds(recommendedOdds(p));ctx.fillText(odds,112,742);
+    const price=ctx.measureText(odds).width;ctx.fillStyle='#9fb6d6';ctx.font="500 36px 'DM Sans', sans-serif";const book=p.bestBook&&p.bestBook!=='Best available'&&p.bestBook!=='Demo market'?`at ${p.bestBook}`:'best price we found';ctx.fillText(book,136+price,712);
+    const odd=Number(recommendedOdds(p)),stake=wagerStake(),win=odd>=100?stake*odd/100:odd<=-100?stake*100/Math.abs(odd):0;ctx.fillStyle=c.fg;ctx.font="700 36px 'DM Sans', sans-serif";ctx.fillText(verdict.key==='read'?'The books are taking extra. Skip it.':`$${stake.toLocaleString('en-US')} wins $${Math.round(win).toLocaleString('en-US')}`,136+price,760);
+    // Game and footer
+    ctx.fillStyle='#9fb6d6';ctx.font="500 34px 'DM Sans', sans-serif";const game=`${String(p.team||'').replace(' · ',' ')}${p.time?` · ${p.time}`:''}`;fit(ctx,game,W-144,34,'500',"'DM Sans', sans-serif");ctx.fillText(game,72,880);
+    ctx.fillStyle='#ffffff';ctx.font="700 38px 'Space Grotesk', sans-serif";ctx.fillText('betthisguy.com',72,990);
+    ctx.fillStyle='#7f96b8';ctx.font="500 26px 'DM Sans', sans-serif";ctx.textAlign='right';ctx.fillText('21+ · Odds change. Check before you bet.',W-72,990);ctx.textAlign='left';
+    return new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(new File([blob],`bet-this-guy-${String(p.player).toLowerCase().replace(/[^a-z0-9]+/g,'-')}.jpg`,{type:'image/jpeg'})):reject(new Error('no image')),'image/jpeg',.9));
+  }
+  window.BTGShareCard={drawPickCard};
+  const prepare=p=>{const key=shareKey(p),have=ready.get(p.id);if(have?.key===key)return;ready.set(p.id,{key,file:null});drawPickCard(p).then(file=>{const entry=ready.get(p.id);if(entry?.key===key)entry.file=file}).catch(()=>{})};
+  // Draw the image as soon as a card opens (or on hover/press on desktop).
+  document.addEventListener('click',event=>{const card=event.target.closest?.('.prop-card.compact-card');if(!card)return;setTimeout(()=>{if(!card.classList.contains('expanded'))return;const p=props.find(x=>x.id===+card.dataset.id);if(p)prepare(p)},0)},true);
+  document.addEventListener('pointerover',event=>{const button=event.target.closest?.('[data-share-prop]');if(!button)return;const p=props.find(x=>x.id===+button.dataset.shareProp);if(p)prepare(p)});
+  const shareBefore=shareProp;
+  shareProp=async function(p,button){
+    const entry=ready.get(p.id),file=entry?.key===shareKey(p)?entry.file:null;
+    if(file&&navigator.canShare?.({files:[file]})){
+      window.btgCount?.('share');
+      try{await navigator.share({files:[file],text:`${shareText(p)} ${location.origin}`});return}catch(error){if(error?.name==='AbortError')return}
+    }
+    return shareBefore(p,button);
+  };
+})();

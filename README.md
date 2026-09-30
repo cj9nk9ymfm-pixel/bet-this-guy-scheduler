@@ -116,3 +116,11 @@ Partner links are off until a partner approves the site. To switch them on, add 
 - Links appear only inside an opened bet card, only for visitors whose connection Cloudflare places in a listed US state, and always with a commission and 21+ disclosure. The location is read per request and never stored.
 - Entries without an `https` link or without states are ignored. Clicks are counted as `affiliate:click` in `usage_counts`.
 - Delete the secret to switch everything off again. Check state rules with a gaming lawyer before adding sportsbooks.
+
+## Pick alerts
+
+The "🔔 Get pick alerts" button subscribes a browser to push notifications (standard Web Push). There is nothing to configure: on first use the Worker generates its own signing key and keeps it in the `app_settings` table.
+
+- When the publish job posts new official picks, subscribers get one notification per 15 minutes naming the newest picks. The push carries no data; the service worker (`/sw.js`) fetches the text from `/api/alerts/latest`.
+- Subscriptions live in `push_subscriptions` and are removed when a browser unsubscribes, when the push service reports them gone, or after five failed sends.
+- iPhones need iOS 16.4+ and the site added to the Home Screen (the site shows those steps). `/manifest.webmanifest` and the home-screen icons make that work.

@@ -27,10 +27,10 @@ const events=Array.from({length:16},(_,g)=>({id:'game'+g,eventID:'NFL--game'+g,c
  assert.ok(run('satTiers.includes("swing")&&satTiers.includes("moonshot")'),'a full slate now reaches both bigger tiers');
  assert.ok(run('satTiers.includes("reasonable")'),'2-leg parlays still post alongside them');
  assert.ok(run('sat.filter(p=>p.tier!=="props").every((a,i,all)=>all.every((b,j)=>i===j||a.legs.filter(x=>b.legs.some(y=>y.playerKey===x.playerKey)).length<=1))'),'no two parlays share more than one leg');
- await run("writeOfficialPlan(plan,'2026-09-22',env)");
+ assert.equal(await run("writeOfficialPlan(plan,'2026-09-22',env)"),130,'the writer reports how many picks it posted (this is what triggers pick alerts)');
  assert.equal(db.prepare('SELECT COUNT(*) n FROM public_recommendations').get().n,130);
  const before=db.prepare('SELECT id,odds,combined_odds,posted_at,legs_json FROM public_recommendations ORDER BY id').all();
- await run("writeOfficialPlan(plan,'2026-09-22',env)");assert.deepEqual(db.prepare('SELECT id,odds,combined_odds,posted_at,legs_json FROM public_recommendations ORDER BY id').all(),before,'repeat/concurrent-plan publication cannot replace or multiply picks');
+ assert.equal(await run("writeOfficialPlan(plan,'2026-09-22',env)"),0,'a repeat run posts nothing, so no alert');assert.deepEqual(db.prepare('SELECT id,odds,combined_odds,posted_at,legs_json FROM public_recommendations ORDER BY id').all(),before,'repeat/concurrent-plan publication cannot replace or multiply picks');
  assert.ok(db.prepare("SELECT COUNT(*) n FROM public_recommendations WHERE kind='prop' GROUP BY game_id").all().every(r=>r.n<=8));
  const parlays=db.prepare("SELECT legs_json FROM public_recommendations WHERE kind='parlay'").all().map(r=>JSON.parse(r.legs_json));
  const exposure=new Map();for(const legs of parlays){assert.equal(new Set(legs.map(p=>p.gameId)).size,legs.length);for(const leg of legs)exposure.set(leg.playerKey,(exposure.get(leg.playerKey)||0)+1)}assert.ok([...exposure.values()].every(n=>n<=3));

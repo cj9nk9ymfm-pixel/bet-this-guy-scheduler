@@ -13,6 +13,12 @@
   <meta property="og:url" content="https://betthisguy.com/app" />
   <meta property="og:image" content="https://betthisguy.com/bet-this-guy-logo-v3.png" />
   <meta name="twitter:card" content="summary" />
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Bet This Guy">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
@@ -112,7 +118,8 @@
           <p class="hero-eyebrow" id="heroEyebrow">OFFICIAL PICKS</p>
           <h2 class="hero-title" id="heroTitle">Every pick locked before kickoff</h2>
           <div class="hero-stats" id="heroStats"></div>
-          <div class="hero-actions"><a class="hero-cta" id="heroCta" href="#propsSection">See this week’s picks</a><a class="hero-link" href="/trust#overview">Full track record →</a></div>
+          <div class="hero-actions"><a class="hero-cta" id="heroCta" href="#propsSection">See this week’s picks</a><button type="button" class="alerts-btn" data-alerts-toggle>🔔 Get pick alerts</button><a class="hero-link" href="/trust#overview">Full track record →</a></div>
+          <p class="alerts-note" id="alertsNote" role="status" hidden></p>
           <p class="hero-note" id="heroNote">Every pick is locked before kickoff and graded in public. Past results don’t guarantee future ones.</p>
         </section>
         <section class="hits-strip" id="hitsStrip" aria-labelledby="hitsTitle" hidden>
@@ -227,6 +234,7 @@
     <a href="/trust#official"><strong>Official Picks</strong><span>This week’s locked picks</span></a>
     <a href="/trust"><strong>Track Record</strong><span>Every graded result</span></a>
     <a href="/picks"><strong>Weekly Picks</strong><span>Every official pick, week by week</span></a>
+    <button type="button" data-alerts-toggle data-alerts-sheet><strong>🔔 Pick alerts</strong><span>Get a notification when a new official pick drops</span></button>
     <button type="button" data-more-action="settings"><strong>Settings</strong><span>Bet amount, odds limits and more</span></button>
   </dialog>
   <footer class="app-footer"><span>Research and entertainment · No guaranteed outcomes</span><nav><a href="/picks">Weekly picks</a><a href="/trust">Trust Center</a><a href="/legal#privacy">Privacy</a><a href="/legal#terms">Terms</a></nav></footer>
