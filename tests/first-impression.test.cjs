@@ -21,4 +21,6 @@ assert.equal(early.week,'2026-09-22');
 assert.equal(summarise([],Date.now()),null,'no record, no numbers');
 const provisional=summarise(rows.map(r=>({...r,status:'provisional'})),Date.parse('2026-09-30T04:00:00Z'));
 assert.equal(provisional,null,'unconfirmed results never reach the banner');
-console.log('PASS: home banner matches the public record (Week 3: 14–7, +$1,014, beat the close 14 of 20, parlays 7–6), shows last week until the new week has volume, and ignores unconfirmed results');
+assert.equal(c.eval("mobileSwipeBlocked({closest:selector=>selector.split(',').includes('.hits-row')?{}:null})"),true,'swiping the hits strip scrolls it instead of changing page');
+assert.equal(c.eval("mobileSwipeBlocked({closest:()=>null})"),false,'swiping elsewhere still changes page');
+console.log('PASS: home banner matches the public record (Week 3: 14–7, +$1,014, beat the close 14 of 20, parlays 7–6), shows last week until the new week has volume, ignores unconfirmed results, and the hits strip swipes on its own');
