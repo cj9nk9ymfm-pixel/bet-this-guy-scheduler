@@ -20,6 +20,7 @@ const STATIC = {
   "/performance.css": ["text/css; charset=utf-8", __PERFORMANCE_PAYLOAD__],
 };
 const LOGO = __LOGO_PAYLOAD__;
+const ICONS = __ICONS_PAYLOAD__;
 const API_BASE = "https://api.the-odds-api.com/v4";
 const BDL_BASE = "https://api.balldontlie.io";
 const BDL_SPORTS = {
@@ -1025,6 +1026,10 @@ async function routeRequest(request, env, ctx) {
     if (url.pathname === "/api/record") return publicRecord(request, env, ctx);
     if (url.pathname === "/api/hit") return usageHit(request, env, ctx);
     if (url.pathname === "/api/affiliate") return affiliateApi(request, env);
+    if (url.pathname.startsWith("/api/alerts/")) return alertsApi(request, env);
+    if (url.pathname === "/sw.js") return new Response(SERVICE_WORKER_JS, { headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-cache" } });
+    if (url.pathname === "/manifest.webmanifest") return new Response(WEB_MANIFEST, { headers: { "content-type": "application/manifest+json", "cache-control": "public, max-age=3600" } });
+    if (typeof ICONS !== "undefined" && ICONS[url.pathname]) return new Response(Uint8Array.from(atob(ICONS[url.pathname]), char => char.charCodeAt(0)), { headers: { "content-type": "image/png", "cache-control": "public, max-age=86400" } });
     if (url.pathname === "/robots.txt") return new Response(ROBOTS_TXT, { headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=86400" } });
     if (url.pathname === "/sitemap.xml") return new Response(env.DB ? await weeklySitemap(env) : SITEMAP_XML, { headers: { "content-type": "application/xml; charset=utf-8", "cache-control": "public, max-age=3600" } });
     if (url.pathname === "/picks" || url.pathname.startsWith("/picks/")) { const page = await weeklyPage(request, env).catch(() => null); if (page) { ctx.waitUntil(countUsage(env, [url.pathname.replace(/\/$/, "") === "/picks" ? "view:picks" : "view:week"], request).catch(() => {})); return page; } }

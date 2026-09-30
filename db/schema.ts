@@ -103,3 +103,20 @@ export const usageCounts=sqliteTable('usage_counts',{
   metric:text('metric').notNull(),
   count:integer('count').notNull().default(0),
 },table=>[primaryKey({columns:[table.day,table.metric]})]);
+
+// Pick alerts: one row per browser push subscription (a push-service address,
+// not a person). Turning alerts off deletes the row.
+export const pushSubscriptions=sqliteTable('push_subscriptions',{
+  endpoint:text('endpoint').primaryKey(),
+  p256dh:text('p256dh').notNull(),
+  auth:text('auth').notNull(),
+  createdAt:text('created_at').notNull(),
+  failures:integer('failures').notNull().default(0),
+});
+
+// Small key/value store for site settings the Worker creates itself, such as
+// the pick-alert signing key and when the last alert went out.
+export const appSettings=sqliteTable('app_settings',{
+  key:text('key').primaryKey(),
+  value:text('value').notNull(),
+});

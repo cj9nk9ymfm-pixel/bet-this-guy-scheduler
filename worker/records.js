@@ -170,7 +170,10 @@ async function writeOfficialPlan(plan,week,env){
         AND NOT EXISTS(SELECT 1 FROM json_each(?) n WHERE (SELECT COUNT(*) FROM public_recommendations r,json_each(r.legs_json) l WHERE r.id>=? AND r.id<? AND r.kind='parlay' AND json_extract(l.value,'$.playerKey')=json_extract(n.value,'$.playerKey'))>=3)))`)
       .bind(id,kind,kind==='prop'?first.player:null,kind==='prop'?first.market:null,kind==='prop'?first.side:null,kind==='prop'?first.line:null,kind==='prop'?first.odds:null,combined,first.gameId,legs.map(p=>p.gameTime).sort().at(-1),JSON.stringify(legs),new Date(now).toISOString(),VERIFIED_RECORD_SOURCE,'Official weekly selection. Pregame odds locked; multi-book price signal, not a player projection. Parlay payout is an estimate.',prefix+pick.tier+'|',prefix+pick.tier+'|\uffff',OFFICIAL_CAPS[pick.tier],kind,prefix+'props|',prefix+'props|\uffff',first.gameId,prefix+'props|',prefix+'props|\uffff',first.playerKey,kind,prefix,prefix+'\uffff',JSON.stringify(legs),JSON.stringify(legs),prefix,prefix+'\uffff'));
   }
-  if(statements.length)await env.DB.batch(statements);
+  if(!statements.length)return 0;
+  // Returns how many picks were actually inserted (the rest were duplicates or over a cap).
+  const results=await env.DB.batch(statements);
+  return (results||[]).reduce((n,r)=>n+(Number(r?.meta?.changes??r?.changes)||0),0);
 }
 // Price trail: every publish run records each pending pick's current price,
 // so a pick's line movement can be shown after the game. Each point is
@@ -235,7 +238,8 @@ async function publishOfficialPicks(request,env,ctx){
     const boards=[];let failedBoards=0;
     for(let i=0;i<events.length;i+=4){const results=await Promise.allSettled(events.slice(i,i+4).map(async e=>{const url=new URL('/api/event',request.url);url.searchParams.set('eventID',e.eventID);const r=await eventProps(new Request(url),env,ctx);if(!r.ok||r.headers.get('x-feed-cache')==='stale')throw new Error('Official board unavailable');return (await r.json()).data||[]}));for(const r of results)if(r.status==='fulfilled')boards.push(...r.value);else failedBoards++}
     const existing=await env.DB.prepare('SELECT * FROM public_recommendations WHERE id>=? AND id<?').bind(prefix,prefix+'\uffff').all();
-    const candidates=officialCandidates(boards,Date.now());await writeOfficialPlan(officialPlan(candidates,existing.results||[],week,Date.now()),week,env);
+    const candidates=officialCandidates(boards,Date.now());const posted=await writeOfficialPlan(officialPlan(candidates,existing.results||[],week,Date.now()),week,env);
+    if(posted){const alerts=sendPickAlerts(env).catch(error=>console.warn('pick_alerts_failed',error.message));if(ctx?.waitUntil)ctx.waitUntil(alerts);else await alerts}
     const trail=officialTrailStatements(boards,existing.results||[],env,Date.now());if(trail.length)await env.DB.batch(trail);
 
   if(failedBoards)throw new Error('Some official boards were unavailable; retry required');
@@ -314,7 +318,7 @@ async function weeklySitemap(env){
 
 // Anonymous usage counts: daily totals per metric. No cookies, IP addresses or
 // per-person identifiers are stored; unknown metric names are ignored.
-const USAGE_METRICS=new Set(['view:home','view:trust','view:picks','view:week','visit:new','visit:return','card:open','slip:add','parlay:add','share','hit:open','profile:open','affiliate:click']);
+const USAGE_METRICS=new Set(['view:home','view:trust','view:picks','view:week','visit:new','visit:return','card:open','slip:add','parlay:add','share','hit:open','profile:open','affiliate:click','alerts:on','alerts:off']);
 const USAGE_BOTS=/bot|crawl|spider|slurp|preview|facebookexternalhit|curl|wget|python|headless|lighthouse/i;
 async function countUsage(env,metrics,request){
   if(!env.DB||USAGE_BOTS.test(request.headers.get('user-agent')||''))return;
@@ -347,3 +351,92 @@ function affiliateOffers(request,env){
 function affiliateApi(request,env){
   return new Response(JSON.stringify({success:true,offers:affiliateOffers(request,env)}),{headers:{'content-type':'application/json; charset=utf-8','cache-control':'private, no-store'}});
 }
+
+// Pick alerts: standard Web Push with no payload. The push only wakes the
+// service worker, which fetches /api/alerts/latest for the text, so nothing
+// needs encrypting. The Worker creates its own VAPID signing key on first use.
+const PUSH_HOSTS=/(^|\.)(fcm\.googleapis\.com|push\.services\.mozilla\.com|push\.apple\.com|notify\.windows\.com)$/;
+const b64url=bytes=>btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+async function appSetting(env,key){const row=await env.DB.prepare('SELECT value FROM app_settings WHERE key=?').bind(key).all();return row.results?.[0]?.value??null}
+async function setAppSetting(env,key,value){await env.DB.prepare('INSERT INTO app_settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').bind(key,value).run()}
+async function vapidKeys(env){
+  let saved=await appSetting(env,'vapid-v1');
+  if(!saved){
+    const pair=await crypto.subtle.generateKey({name:'ECDSA',namedCurve:'P-256'},true,['sign','verify']);
+    const value=JSON.stringify({publicKey:b64url(await crypto.subtle.exportKey('raw',pair.publicKey)),jwk:await crypto.subtle.exportKey('jwk',pair.privateKey)});
+    // INSERT OR IGNORE: concurrent first requests keep whichever key landed first.
+    await env.DB.prepare('INSERT OR IGNORE INTO app_settings (key,value) VALUES (?,?)').bind('vapid-v1',value).run();
+    saved=await appSetting(env,'vapid-v1');
+  }
+  return JSON.parse(saved);
+}
+async function vapidAuthorization(env,endpoint,now=Date.now()){
+  const keys=await vapidKeys(env),enc=new TextEncoder();
+  const header=b64url(enc.encode(JSON.stringify({typ:'JWT',alg:'ES256'}))),claims=b64url(enc.encode(JSON.stringify({aud:new URL(endpoint).origin,exp:Math.floor(now/1000)+12*3600,sub:SITE_URL})));
+  const key=await crypto.subtle.importKey('jwk',keys.jwk,{name:'ECDSA',namedCurve:'P-256'},false,['sign']);
+  const signature=await crypto.subtle.sign({name:'ECDSA',hash:'SHA-256'},key,enc.encode(`${header}.${claims}`));
+  return `vapid t=${header}.${claims}.${b64url(signature)}, k=${keys.publicKey}`;
+}
+function validPushEndpoint(value){try{const url=new URL(value);return url.protocol==='https:'&&PUSH_HOSTS.test(url.hostname)&&value.length<=800}catch{return false}}
+async function latestAlert(env,now=Date.now()){
+  const rows=await env.DB.prepare("SELECT kind,player,market,side,line,odds,combined_odds,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND posted_at>=? ORDER BY posted_at DESC LIMIT 3").bind(new Date(now-3*3600000).toISOString()).all();
+  const picks=rows.results||[];
+  if(!picks.length)return {title:'New Bet This Guy picks',body:'Fresh official picks are on the board.',url:'/'};
+  const line=r=>r.kind==='parlay'?`${recordLegs(r).length}-leg parlay (${weeklyOdds(r.combined_odds)}): ${recordLegs(r).map(l=>l.player).join(' + ')}`:`${r.player} ${weeklyLegText(r)} (${weeklyOdds(r.odds)})`;
+  return {title:picks.length===1?'✅ New Bet This Guy pick':`✅ ${picks.length} new Bet This Guy picks`,body:picks.map(line).join('\n'),url:'/'};
+}
+async function sendPickAlerts(env,now=Date.now()){
+  if(!env.DB)return {sent:0};
+  // One alert per 15 minutes: a batch of picks becomes one notification.
+  const last=Date.parse(await appSetting(env,'last-alert-at')||'');
+  if(Number.isFinite(last)&&now-last<15*60000)return {sent:0,throttled:true};
+  await setAppSetting(env,'last-alert-at',new Date(now).toISOString());
+  const subs=(await env.DB.prepare('SELECT endpoint,failures FROM push_subscriptions LIMIT 2000').all()).results||[];
+  let sent=0;
+  for(let i=0;i<subs.length;i+=20){
+    await Promise.all(subs.slice(i,i+20).map(async sub=>{
+      try{
+        const response=await fetch(sub.endpoint,{method:'POST',headers:{TTL:'21600',Urgency:'normal','Content-Length':'0',Authorization:await vapidAuthorization(env,sub.endpoint,now)},signal:AbortSignal.timeout(10000)});
+        if(response.status===404||response.status===410)return env.DB.prepare('DELETE FROM push_subscriptions WHERE endpoint=?').bind(sub.endpoint).run();
+        if(response.ok){sent++;return sub.failures?env.DB.prepare('UPDATE push_subscriptions SET failures=0 WHERE endpoint=?').bind(sub.endpoint).run():null}
+        throw new Error('push failed');
+      }catch{
+        return sub.failures>=4?env.DB.prepare('DELETE FROM push_subscriptions WHERE endpoint=?').bind(sub.endpoint).run():env.DB.prepare('UPDATE push_subscriptions SET failures=failures+1 WHERE endpoint=?').bind(sub.endpoint).run();
+      }
+    }));
+  }
+  return {sent,total:subs.length};
+}
+async function alertsApi(request,env){
+  const url=new URL(request.url),headers={'content-type':'application/json; charset=utf-8','cache-control':'no-store'},reply=(body,status=200)=>new Response(JSON.stringify(body),{status,headers});
+  if(!env.DB)return reply({success:false},503);
+  if(url.pathname==='/api/alerts/key'&&request.method==='GET')return reply({success:true,publicKey:(await vapidKeys(env)).publicKey});
+  if(url.pathname==='/api/alerts/latest'&&request.method==='GET')return reply(await latestAlert(env));
+  if(request.method!=='POST')return reply({success:false},405);
+  let body={};try{body=JSON.parse((await request.text()).slice(0,2000))}catch{}
+  const endpoint=String(body?.endpoint||'');
+  if(!validPushEndpoint(endpoint))return reply({success:false,error:'Unsupported push service.'},400);
+  if(url.pathname==='/api/alerts/unsubscribe'){await env.DB.prepare('DELETE FROM push_subscriptions WHERE endpoint=?').bind(endpoint).run();return reply({success:true})}
+  if(url.pathname==='/api/alerts/subscribe'){
+    const p256dh=String(body?.keys?.p256dh||''),auth=String(body?.keys?.auth||'');
+    if(!/^[A-Za-z0-9_-]{40,200}$/.test(p256dh)||!/^[A-Za-z0-9_-]{8,60}$/.test(auth))return reply({success:false,error:'Invalid subscription.'},400);
+    await env.DB.prepare('INSERT INTO push_subscriptions (endpoint,p256dh,auth,created_at,failures) VALUES (?,?,?,?,0) ON CONFLICT(endpoint) DO UPDATE SET p256dh=excluded.p256dh,auth=excluded.auth,failures=0').bind(endpoint,p256dh,auth,new Date().toISOString()).run();
+    return reply({success:true});
+  }
+  return reply({success:false},404);
+}
+const SERVICE_WORKER_JS=`self.addEventListener('install',()=>self.skipWaiting());
+self.addEventListener('activate',event=>event.waitUntil(self.clients.claim()));
+self.addEventListener('push',event=>event.waitUntil((async()=>{
+  let note={title:'New Bet This Guy pick',body:'A new official pick is on the board.',url:'/'};
+  try{const response=await fetch('/api/alerts/latest',{cache:'no-store'});if(response.ok)note=Object.assign(note,await response.json())}catch(error){}
+  return self.registration.showNotification(note.title,{body:note.body,icon:'/icon-192.png',badge:'/icon-192.png',tag:'btg-pick',renotify:true,data:{url:note.url||'/'}});
+})()));
+self.addEventListener('notificationclick',event=>{event.notification.close();event.waitUntil((async()=>{
+  const target=new URL((event.notification.data&&event.notification.data.url)||'/',self.location.origin).href;
+  const open=await self.clients.matchAll({type:'window',includeUncontrolled:true});
+  for(const client of open){if(client.url.indexOf(self.location.origin)===0){await client.focus();if(client.navigate)return client.navigate(target);return}}
+  return self.clients.openWindow(target);
+})())});
+`;
+const WEB_MANIFEST=JSON.stringify({name:'Bet This Guy',short_name:'Bet This Guy',description:'NFL player prop picks, locked before kickoff and graded in public.',start_url:'/?source=home-screen',scope:'/',display:'standalone',background_color:'#04091a',theme_color:'#04091a',icons:[{src:'/icon-192.png',sizes:'192x192',type:'image/png',purpose:'any'},{src:'/icon-512.png',sizes:'512x512',type:'image/png',purpose:'any'}]});
