@@ -15,9 +15,18 @@ const events=Array.from({length:16},(_,g)=>({id:'game'+g,eventID:'NFL--game'+g,c
  context.weak=JSON.parse(JSON.stringify(events));context.weak.forEach(e=>e.bookmakers.forEach(b=>b.markets.forEach(m=>m.outcomes.forEach(o=>o.price=-110))));
  assert.equal(run('officialCandidates(weak).length'),0,'no forced quota without edge');
  context.thin=events.map(e=>({...e,bookmakers:e.bookmakers.slice(0,2)}));assert.equal(run('officialCandidates(thin).length'),0);
- run("var candidates=officialCandidates(events),plan=officialPlan(candidates,[],'2026-09-22')");
+ run("var candidates=officialCandidates(events),early=officialPlan(candidates,[],'2026-09-22')");
+ assert.equal(run('early.filter(p=>p.tier!=="props").length'),0,'no parlays until the first leg is two hours from kickoff');
+ run("var plan=officialPlan(candidates,[],'2026-09-22',Date.parse('2026-09-27T15:30:00Z'))");
  assert.equal(run('plan.filter(p=>p.tier==="props").length'),100);
  for(const [tier,cap] of [['reasonable',15],['swing',10],['moonshot',5]])assert.equal(run(`plan.filter(p=>p.tier==='${tier}').length`),cap);
+ // Last Saturday: four picks in four games. Pairs posted as each pick arrived
+ // used every combination, so no 3- or 4-leg parlay could ever form.
+ context.saturday=[['Borregales','a',110],['Shough','b',120],['Jones','c',200],['JWilliams','d',104],['Slye','e',115],['Lawrence','f',105]].map(([player,game,odds],i)=>({player,gameId:'NFL--'+game,gameTime:'2026-09-27T17:00:00Z',market:['Field Goals Made','Interceptions Thrown','Passing Touchdowns','Longest Reception','Field Goals Made','Passing Touchdowns'][i],side:'Over',line:1.5,odds,edge:2-i/10,playerKey:'NFL--'+game+'|'+player.toLowerCase()}));
+ run("var sat=officialPlan(saturday,[],'2026-09-22',Date.parse('2026-09-27T15:30:00Z')),satTiers=sat.map(p=>p.tier)");
+ assert.ok(run('satTiers.includes("swing")&&satTiers.includes("moonshot")'),'a full slate now reaches both bigger tiers');
+ assert.ok(run('satTiers.includes("reasonable")'),'2-leg parlays still post alongside them');
+ assert.ok(run('sat.filter(p=>p.tier!=="props").every((a,i,all)=>all.every((b,j)=>i===j||a.legs.filter(x=>b.legs.some(y=>y.playerKey===x.playerKey)).length<=1))'),'no two parlays share more than one leg');
  await run("writeOfficialPlan(plan,'2026-09-22',env)");
  assert.equal(db.prepare('SELECT COUNT(*) n FROM public_recommendations').get().n,130);
  const before=db.prepare('SELECT id,odds,combined_odds,posted_at,legs_json FROM public_recommendations ORDER BY id').all();

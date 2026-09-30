@@ -117,13 +117,20 @@ function officialCandidates(events,now=Date.now()){
   // from multiplying the official sample. Highest qualifying edge wins.
   const seen=new Set();return result.sort((a,b)=>b.edge-a.edge||a.playerKey.localeCompare(b.playerKey)).filter(p=>{if(seen.has(p.playerKey))return false;seen.add(p.playerKey);return true});
 }
-function officialPlan(candidates,existing,week){
+// Parlays wait until the first leg is this close to kickoff, when the most
+// picks qualify. Built earlier, the 2-leg tier used every pair as soon as two
+// picks existed, and the one-shared-leg rule then blocked every bigger parlay.
+const PARLAY_WINDOW=2*3600000;
+function officialPlan(candidates,existing,week,now=Date.now()){
   const saved=existing.map(r=>({...r,legs:recordLegs(r)})),counts=Object.fromEntries(Object.keys(OFFICIAL_CAPS).map(t=>[t,saved.filter(r=>r.id.startsWith(`official|${week}|${t}|`)).length]));
   const plan=[],singles=saved.filter(r=>r.kind==='prop'),games=new Map(),used=new Set(singles.flatMap(r=>r.legs.map(officialPlayer)));
   singles.forEach(r=>games.set(r.game_id,(games.get(r.game_id)||0)+1));
   for(const p of candidates){if(counts.props>=100)break;if(used.has(p.playerKey)||(games.get(p.gameId)||0)>=8)continue;plan.push({tier:'props',legs:[p]});counts.props++;used.add(p.playerKey);games.set(p.gameId,(games.get(p.gameId)||0)+1)}
   const prior=saved.filter(r=>r.kind==='parlay').map(r=>r.legs.map(officialPlayer)),exposure=new Map();prior.flat().forEach(k=>exposure.set(k,(exposure.get(k)||0)+1));
-  const tiers=[['reasonable',2,4,100,999],['swing',3,6,1000,2500],['moonshot',4,7,2501,15000]];
+  // Hardest tiers first: they need the most unshared legs.
+  const tiers=[['moonshot',4,7,2501,15000],['swing',3,6,1000,2500],['reasonable',2,4,100,999]];
+  const soon=p=>Date.parse(p.gameTime)<=now+PARLAY_WINDOW;
+  if(!candidates.some(soon))return plan;
   for(const [tier,min,max,low,high] of tiers){
     for(let attempt=0;attempt<500&&counts[tier]<OFFICIAL_CAPS[tier];attempt++){
       const size=min+attempt%(max-min+1),legs=[],gameIds=new Set(),markets=new Map();
@@ -132,9 +139,11 @@ function officialPlan(candidates,existing,week){
       for(let j=0;j<pool.length&&legs.length<size;j++){
         const p=pool[(j+Math.floor(attempt/(max-min+1)))%pool.length];
         if((exposure.get(p.playerKey)||0)>=3||gameIds.has(p.gameId)||(markets.get(p.market)||0)>=2)continue;
+        // Skip a leg that would make this parlay share two players with a posted one.
+        if(prior.some(keys=>keys.includes(p.playerKey)&&legs.some(l=>keys.includes(l.playerKey))))continue;
         legs.push(p);gameIds.add(p.gameId);markets.set(p.market,(markets.get(p.market)||0)+1);
       }
-      if(legs.length!==size)continue;
+      if(legs.length!==size||!legs.some(soon))continue;
       const odds=recordAmerican(legs.reduce((d,p)=>d*recordDecimal(p.odds),1)),keys=legs.map(p=>p.playerKey);
       if(odds<low||odds>high||prior.some(p=>p.filter(k=>keys.includes(k)).length>1))continue;
       plan.push({tier,legs});counts[tier]++;prior.push(keys);keys.forEach(k=>exposure.set(k,(exposure.get(k)||0)+1));
@@ -180,7 +189,7 @@ async function publishOfficialPicks(request,env,ctx){
     const boards=[];let failedBoards=0;
     for(let i=0;i<events.length;i+=4){const results=await Promise.allSettled(events.slice(i,i+4).map(async e=>{const url=new URL('/api/event',request.url);url.searchParams.set('eventID',e.eventID);const r=await eventProps(new Request(url),env,ctx);if(!r.ok||r.headers.get('x-feed-cache')==='stale')throw new Error('Official board unavailable');return (await r.json()).data||[]}));for(const r of results)if(r.status==='fulfilled')boards.push(...r.value);else failedBoards++}
     const existing=await env.DB.prepare('SELECT * FROM public_recommendations WHERE id>=? AND id<?').bind(prefix,prefix+'\uffff').all();
-    const candidates=officialCandidates(boards,Date.now());await writeOfficialPlan(officialPlan(candidates,existing.results||[],week),week,env);
+    const candidates=officialCandidates(boards,Date.now());await writeOfficialPlan(officialPlan(candidates,existing.results||[],week,Date.now()),week,env);
 
   if(failedBoards)throw new Error('Some official boards were unavailable; retry required');
   return {state:"completed"};
