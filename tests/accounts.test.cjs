@@ -12,6 +12,7 @@ vm.runInContext(source,sandbox);
 const database=new DatabaseSync(':memory:');
 database.exec('PRAGMA foreign_keys=ON');
 database.exec(read('drizzle/0004_user_accounts.sql').replaceAll('--> statement-breakpoint',''));
+database.exec(read('drizzle/0007_email_alerts.sql'));
 const wrap=(prepared,args=[])=>({bind(...values){return wrap(prepared,values)},async first(){return prepared.get(...args)||null},async all(){return{results:prepared.all(...args)}},async run(){prepared.run(...args);return{success:true}}});
 const DB={prepare(sql){return wrap(database.prepare(sql))},async batch(statements){for(const statement of statements)await statement.run();return statements.map(()=>({success:true}))}};
 const env={DB},ctx={waitUntil(){}};
