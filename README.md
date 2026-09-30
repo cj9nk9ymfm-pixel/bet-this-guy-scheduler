@@ -133,3 +133,7 @@ Account holders can get an email when official picks post: a checkbox at sign-up
 - Every publish run checks for official picks posted since the last email whose games haven't started. One email lists them all. Emails go out at most once an hour, or every 10 minutes when one of the picks kicks off within 90 minutes.
 - Opt-ins live in `email_alerts` (migration 0007). Each row has a token for the unsubscribe link and the one-click `List-Unsubscribe` header; opening the link shows a button, so link scanners can't unsubscribe anyone.
 - Resend's free plan covers 100 emails a day and 3,000 a month, so upgrade before the list gets near that.
+
+## Post kit
+
+`/post` (not linked or indexed) builds ready-to-paste posts from the official record: today's upcoming picks, this week's results so far, or last week's results. It shows editable text for X (kept under 280 characters, trimmed with a "+N more" count), Threads and Reddit (a table, with losses listed too). It also draws a 1080×1350 share image that can be shared from a phone or saved. The numbers come from the same functions as the weekly pages, at $100 a pick. Usage counts: `view:post`, `post:copy`, `post:open`, `post:image`.
