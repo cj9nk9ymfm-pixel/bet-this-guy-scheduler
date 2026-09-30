@@ -443,3 +443,58 @@ body.light .top-play{border-color:#6bc5e8!important;box-shadow:0 9px 24px rgba(2
 .verdict-guide li b{white-space:nowrap;color:#f6f9ff}
 .verdict-guide li span{color:#b7c8e6}
 .verdict-guide p{margin:9px 0 0;font-size:12px;color:#8fa6cc}
+
+/* First impression: banner, hits strip, verdict-first cards, colour avatars, desktop board */
+.hero{position:relative;overflow:hidden;text-align:left;margin:0 0 14px;padding:22px 22px 18px;border-radius:18px;border:1px solid rgba(71,186,255,.35);background:radial-gradient(120% 140% at 0% 0%,rgba(31,216,143,.22),transparent 55%),radial-gradient(120% 140% at 100% 0%,rgba(28,108,255,.35),transparent 60%),linear-gradient(160deg,#0b1d3f,#060f24);box-shadow:0 18px 40px rgba(0,0,0,.35)}
+.hero-eyebrow{margin:0 0 6px;color:#5ff0b5;font:700 11px/1 'Space Grotesk',sans-serif;letter-spacing:.16em}
+.hero-title{margin:0 0 14px;color:#fff;font:700 clamp(28px,5vw,44px)/1.05 'Space Grotesk',sans-serif;letter-spacing:-.02em}
+.hero-stats{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px}
+.hero-stat{flex:1 1 150px;min-width:0;padding:12px 14px;border-radius:14px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1)}
+.hero-stat strong{display:block;color:#fff;font:700 24px/1.1 'Space Grotesk',sans-serif}
+.hero-stat.up strong{color:#5ff0b5}.hero-stat.down strong{color:#ff8a8a}
+.hero-stat span{display:block;margin-top:3px;color:#9fb6d6;font-size:12px}
+.hero-actions{display:flex;flex-wrap:wrap;align-items:center;gap:14px}
+.hero-cta{display:inline-flex;align-items:center;min-height:46px;padding:0 22px;border-radius:999px;background:linear-gradient(135deg,#1fd88f,#16b6d9);color:#04121f;font:700 15px 'Space Grotesk',sans-serif;text-decoration:none;box-shadow:0 8px 22px rgba(31,216,143,.3)}
+.hero-cta:hover{filter:brightness(1.08)}
+.hero-link{color:#9fd4ff;font-weight:600;font-size:14px;text-decoration:none}
+.hero-note{margin:14px 0 0;color:#7f96b8;font-size:11px;line-height:1.45}
+body.has-hero .proof-banners{display:none}
+.hits-strip{margin:0 0 16px}
+.hits-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:0 2px 8px}
+.hits-head h2{margin:0;color:#fff;font:700 18px 'Space Grotesk',sans-serif}
+.hits-head a{color:#9fd4ff;font-size:13px;text-decoration:none}
+.hits-row{display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:6px;scrollbar-width:thin}
+.hit-card-mini{flex:0 0 190px;scroll-snap-align:start;display:flex;flex-direction:column;gap:4px;padding:12px;border-radius:14px;border:1px solid rgba(31,216,143,.45);background:linear-gradient(160deg,rgba(18,94,66,.45),rgba(7,25,45,.9))}
+.hit-tag{color:#5ff0b5;font:700 10px 'Space Grotesk',sans-serif;letter-spacing:.12em}
+.hit-card-mini strong{color:#fff;font-size:15px;line-height:1.2}
+.hit-card-mini small{color:#9fb6d6;font-size:12px;line-height:1.3;min-height:31px}
+.hit-foot{display:flex;justify-content:space-between;align-items:baseline;margin-top:auto;padding-top:6px}
+.hit-foot b{color:#fff;font:700 16px 'Space Grotesk',sans-serif}.hit-foot span{color:#5ff0b5;font-size:12px;font-weight:700}
+.hit-share{margin-top:6px;min-height:34px;border-radius:10px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:#e8f2ff;font-size:12px;font-weight:600;cursor:pointer}
+.prop-card .verdict.verdict-top{margin:0 0 12px}
+.prop-card .verdict-top .verdict-badge strong{font-size:17px}
+.prop-card .verdict-top .verdict-bet{font-size:15px}
+.prop-card .verdict-top .verdict-line{font-size:12px;opacity:.85}
+.player-photo{background:linear-gradient(135deg,hsl(var(--avatar-hue,210) 65% 42%),hsl(calc(var(--avatar-hue,210) + 45) 70% 22%))!important}
+.player-photo span{position:absolute;inset:0;display:grid!important;place-items:center;color:#fff!important;font:700 20px/1 'Space Grotesk',sans-serif!important;letter-spacing:.02em;text-shadow:0 1px 3px rgba(0,0,0,.35)}
+@media(min-width:1051px){
+  body.no-slip-legs .workspace{grid-template-columns:minmax(0,1fr)!important}
+  body.no-slip-legs .workspace>#slip,body.no-slip-legs .workspace>.slip{display:none!important}
+}
+@media(min-width:1051px){.prop-card.mockup-card>.verdict-top{grid-column:1/-1!important;grid-row:1!important}.prop-card.mockup-card:has(>.verdict-top)>.prop-player,.prop-card.mockup-card:has(>.verdict-top)>.mockup-pick,.prop-card.mockup-card:has(>.verdict-top)>.card-evidence{grid-row:2!important}.prop-card.mockup-card:has(>.verdict-top)>.featured-why{grid-row:3!important}.prop-card.mockup-card:has(>.verdict-top)>[data-board-progress]{grid-row:4!important;grid-column:1/-1}.prop-card.mockup-card>.verdict-top{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;column-gap:16px}.prop-card.mockup-card>.verdict-top .verdict-line,.prop-card.mockup-card>.verdict-top .verdict-trend{grid-column:2}.prop-card.mockup-card>.verdict-top .verdict-bet{grid-column:2;grid-row:1;margin:0}.prop-card.mockup-card>.verdict-top .verdict-share{grid-column:3;grid-row:1}}
+/* Two cards across only where the desktop card's four columns fit. */
+@media(min-width:1600px){body.no-slip-legs .board .prop-list{grid-template-columns:repeat(2,minmax(0,1fr))}body.no-slip-legs .board .prop-list .prop-card.mockup-card{grid-template-columns:minmax(0,1.15fr) minmax(0,1.1fr) minmax(0,1fr)!important}body.no-slip-legs .board .prop-list .prop-card.mockup-card>.verdict-top{grid-template-columns:auto minmax(0,1fr);row-gap:6px}body.no-slip-legs .board .prop-list .prop-card.mockup-card>.verdict-top .verdict-share{grid-column:1/-1;grid-row:auto;justify-self:start}}
+@media(max-width:720px){.hero{padding:16px 14px 12px;border-radius:16px}.hero-title{margin-bottom:10px}.hero-stats{flex-wrap:nowrap;gap:6px;margin-bottom:12px}.hero-stat{flex:1 1 0;padding:8px 8px}.hero-stat strong{font-size:17px}.hero-stat span{font-size:10.5px;line-height:1.25}.hero-actions{gap:10px}.hero-cta{flex:1 1 auto;justify-content:center;min-height:42px;font-size:14px}.hero-link{font-size:13px}.hero-note{margin-top:10px;font-size:10px}.hit-card-mini{flex-basis:160px;padding:10px}.hit-card-mini small{min-height:0}}
+body.light .hero{background:radial-gradient(120% 140% at 0% 0%,rgba(31,216,143,.18),transparent 55%),radial-gradient(120% 140% at 100% 0%,rgba(28,108,255,.18),transparent 60%),#fff;border-color:#d2e0ee;box-shadow:0 12px 28px rgba(43,83,128,.1)}
+body.light .hero-title,body.light .hero-stat strong,body.light .hits-head h2,body.light .hit-card-mini strong,body.light .hit-foot b{color:#10213d}
+body.light .hero-eyebrow,body.light .hit-tag,body.light .hit-foot span{color:#08875e}
+body.light .hero-stat.up strong{color:#08875e}body.light .hero-stat.down strong{color:#c43d3d}
+body.light .hero-stat{background:#f4f8fd;border-color:#dbe6f2}body.light .hero-stat span,body.light .hero-note,body.light .hit-card-mini small{color:#5a6f8c}
+body.light .hero-link,body.light .hits-head a{color:#1c5fd0}
+body.light .hit-card-mini{background:#effbf6;border-color:#b7e6d2}
+body.light .hit-share{background:#fff;border-color:#cfe0ee;color:#10213d}
+@media(max-width:380px){.top-actions #feedBtn{display:none}}
+/* The banner and hits strip belong to the Bets board only. */
+body.hero-off .hero,body.hero-off .hits-strip{display:none!important}
+@media(min-width:721px){body[data-desktop-page]:not([data-desktop-page="props"]) .hero,body[data-desktop-page]:not([data-desktop-page="props"]) .hits-strip{display:none!important}}
+@media(max-width:720px){body[data-mobile-page]:not([data-mobile-page="props"]) .hero,body[data-mobile-page]:not([data-mobile-page="props"]) .hits-strip{display:none!important}}

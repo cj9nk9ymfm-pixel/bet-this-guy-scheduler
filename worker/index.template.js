@@ -895,6 +895,17 @@ function recordOddsBucket(value) {
 
 async function publicRecord(request, env, ctx) {
   if (!env.DB) return json({ success: false, error: "The public record database is not connected yet." }, 503);
+  if (request.method === "GET" && new URL(request.url).searchParams.get("view") === "home") {
+    // The home page banner needs only recent official picks, so it stays small
+    // and edge-cacheable instead of pulling the whole record.
+    try {
+      const since = new Date(Date.now() - 21 * 86400000).toISOString();
+      const rows = await env.DB.prepare("SELECT id, kind, player, market, side, line, odds, combined_odds, game_time, posted_at, status, result, closing_line, closing_odds, closing_captured_at, legs_json FROM public_recommendations WHERE source = 'market-verified-v2' AND kind IN ('prop','parlay') AND id LIKE 'official|%' AND posted_at >= ? ORDER BY posted_at DESC LIMIT 400").bind(since).all();
+      return json({ success: true, recent: rows.results || [], updatedAt: new Date().toISOString() }, 200, { "cache-control": "public, max-age=300" });
+    } catch (error) {
+      return json({ success: false, error: "The public record is temporarily unavailable." }, 503);
+    }
+  }
   if (request.method === "GET") {
     try {
       // Preserve legacy rows without seeding or including them in verified totals.

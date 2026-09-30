@@ -107,6 +107,17 @@
           </div>
           <div class="advanced-filter-actions"><span>These filters apply only to Parlays and the Parlay Generator.</span><button id="resetAdvancedFilters" type="button">Reset all</button></div>
         </details>
+        <section class="hero" id="heroBanner" aria-labelledby="heroTitle" hidden>
+          <p class="hero-eyebrow" id="heroEyebrow">OFFICIAL PICKS</p>
+          <h2 class="hero-title" id="heroTitle">Every pick locked before kickoff</h2>
+          <div class="hero-stats" id="heroStats"></div>
+          <div class="hero-actions"><a class="hero-cta" id="heroCta" href="#propsSection">See this week’s picks</a><a class="hero-link" href="/trust#overview">Full track record →</a></div>
+          <p class="hero-note" id="heroNote">Every pick is locked before kickoff and graded in public. Past results don’t guarantee future ones.</p>
+        </section>
+        <section class="hits-strip" id="hitsStrip" aria-labelledby="hitsTitle" hidden>
+          <div class="hits-head"><h2 id="hitsTitle">Last week’s hits</h2><a href="/trust#official">See every pick →</a></div>
+          <div class="hits-row" id="hitsRow"></div>
+        </section>
         <div class="player-finder" id="playerFinder">
           <div class="player-finder-icon">⌕</div>
           <label for="playerSearch"><span>Find a player</span><input id="playerSearch" type="search" placeholder="Start typing a player’s name…" autocomplete="off" aria-autocomplete="list" aria-controls="playerSearchResults" /></label>
@@ -138,7 +149,7 @@
           <button class="filter-toggle" id="highEdgeBtn">🔥 Red Hot only</button>
         </div>
 
-        <section class="verdict-guide" id="verdictGuide" aria-label="How to read the badges" hidden><div class="verdict-guide-head"><strong>How to read this board</strong><button type="button" id="verdictGuideClose">Got it</button></div><ul><li><b>✅ Bet This Guy</b><span>The price beats the market. Rare, so send it to the chat.</span></li><li><b>🪙 Coin Flip</b><span>Priced about right. No edge either way.</span></li><li><b>👎 Left on Read</b><span>The books are taking extra. Skip it.</span></li></ul><p>Every card shows what you’d win on your usual bet. Recent games are shown for context only.</p></section>
+        <section class="verdict-guide" id="verdictGuide" aria-label="How to read the badges" hidden><div class="verdict-guide-head"><strong>How to read this board</strong><button type="button" id="verdictGuideClose">Got it</button></div><ul><li><b>✅ Bet This Guy</b><span>The price beats the market. Rare, so send it to the chat.</span></li><li><b>🪙 Coin Flip</b><span>Priced about right. No edge either way.</span></li><li><b>👎 Left on Read</b><span>The books are taking extra. Skip it.</span></li></ul><p>Every card shows what you’d win on your usual bet. Tap any price to add it to your slip. Recent games are shown for context only.</p></section>
         <div class="prop-list" id="propList"></div>
         <div class="empty" id="emptyState" hidden><strong>No props match these filters.</strong><span>Try another sport, market, or search.</span></div>
 
