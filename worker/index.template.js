@@ -473,6 +473,12 @@ function sameRecordGame(row, gameTime) {
   return Math.abs(actual - expected) <= 36 * 60 * 60 * 1000;
 }
 
+function sameInitialAndSurname(a,b){
+  const parts=name=>String(name||'').replace(/,?\s+(Jr|Sr|II|III|IV|V)\.?$/i,'').trim().split(/\s+/).filter(Boolean);
+  const x=parts(a),y=parts(b);
+  return x.length>1&&y.length>1&&normalizedName(x.at(-1))===normalizedName(y.at(-1))&&normalizedName(x[0])[0]===normalizedName(y[0])[0];
+}
+
 async function recordGameBoxscore(record,env,signal,cache){
   const time=Date.parse(record.gameTime||''),teams=String(record.team||'').split(/\s*·\s*(?:@|vs)\s*/).map(normalizedName);
   if(!Number.isFinite(time)||teams.length!==2||teams.some(team=>!team))return undefined;
@@ -495,7 +501,11 @@ async function recordGameBoxscore(record,env,signal,cache){
     }
     throw new Error('Incomplete grading box score');
   })());
-  const rows=await cache.get(boxKey),wanted=normalizedName(record.player),found=rows.filter(row=>normalizedName(playerLabel(row.player))===wanted);
+  const rows=await cache.get(boxKey),wanted=normalizedName(record.player);
+  let found=rows.filter(row=>normalizedName(playerLabel(row.player))===wanted);
+  // Feeds disagree on first names (Andres vs Andy). Within one game, a unique
+  // last name plus first initial is the same player.
+  if(!found.length)found=rows.filter(row=>sameInitialAndSurname(playerLabel(row.player),record.player));
   if(found.length!==1)return {game,scoreboardFinal:nflGameState(game)==='final',scoreboardState:nflGameState(game),missingPlayerStats:true};
   return {...found[0],scoreboardFinal:nflGameState(game)==='final',scoreboardState:nflGameState(game)};
 }
@@ -590,7 +600,7 @@ async function touchdownMarketValue(leg,row,env,signal,cache){
 async function playByPlayMarketValue(leg,row,env,signal,cache){
   if(!row||!(row.scoreboardFinal||nflGameState(row.game||{})==='final'))return null;
   const plays=await recordGamePlays(row,env,signal,cache);if(!plays)return null;
-  const market=String(leg.market||'').toLowerCase(),target=String(row.player_id??row.player?.id??'');
+  const market=({'field goals made':'field goals','extra points':'pats'})[String(leg.market||'').toLowerCase()]||String(leg.market||'').toLowerCase(),target=String(row.player_id??row.player?.id??'');
   const nameParts=String(leg.player||'').replace(/\b(Jr\.?|Sr\.?|II|III|IV)\b/gi,'').trim().split(/\s+/).filter(Boolean);
   const textMarker=normalizedName(`${nameParts[0]?.[0]||''}${nameParts.at(-1)||''}`);
   const hasPlayer=(play,role)=>{
@@ -601,13 +611,21 @@ async function playByPlayMarketValue(leg,row,env,signal,cache){
   };
   if(market==='sacks')return plays.filter(play=>/sack/i.test(`${play?.type_slug||''} ${play?.type_text||''}`)&&hasPlayer(play,/sack|tackler|defender/i)).length;
   const fieldGoals=plays.filter(play=>play?.scoring_play&&/field.?goal/i.test(`${play?.type_slug||''} ${play?.type_text||''} ${play?.text||''}`)&&hasPlayer(play,/kick/i)).length;
-  const extraPoints=plays.filter(play=>play?.scoring_play&&/extra.?point|pat/i.test(`${play?.type_slug||''} ${play?.type_text||''} ${play?.text||''}`)&&hasPlayer(play,/kick/i)).length;
+  const extraPoints=plays.filter(play=>play?.scoring_play&&/extra.?point|\bpat\b/i.test(`${play?.type_slug||''} ${play?.type_text||''} ${play?.text||''}`)&&hasPlayer(play,/kick/i)).length;
   if(market==='field goals')return fieldGoals;
   if(market==='pats')return extraPoints;
   if(market==='kicking points')return fieldGoals*3+extraPoints;
+  const catches=plays.filter(play=>/pass.?reception|complete/i.test(`${play?.type_slug||''} ${play?.type_text||''}`)&&hasPlayer(play,/receiver|reception/i));
   if(market==='longest reception'){
-    const yards=plays.filter(play=>/pass.?reception|complete/i.test(`${play?.type_slug||''} ${play?.type_text||''}`)&&hasPlayer(play,/receiver|reception/i)).map(play=>BTGStats.number(play?.stat_yardage)).filter(value=>value!==null);
+    const yards=catches.map(play=>BTGStats.number(play?.stat_yardage)).filter(value=>value!==null);
     return yards.length?Math.max(...yards):0;
+  }
+  if(market==='receptions'){
+    // Zero catches only counts when the player is known to have played: a
+    // box-score row of his own or any play naming him. Otherwise he may have
+    // been inactive, which books void.
+    if(catches.length)return catches.length;
+    return !row.missingPlayerStats||plays.some(play=>hasPlayer(play))?0:null;
   }
   return null;
 }
@@ -651,7 +669,7 @@ async function gradePublicRecord(record, env, statsCache, signal) {
       const playValue=await touchdownMarketValue(leg,row,env,signal,statsCache);
       if(playValue!==null)observedValue=playValue;
     }
-    if(finished&&observedValue===null&&/^(sacks|field goals|pats|kicking points|longest reception)$/i.test(leg.market)){
+    if(finished&&observedValue===null&&/^(sacks|field goals|field goals made|pats|extra points|kicking points|longest reception|receptions)$/i.test(leg.market)){
       const playValue=await playByPlayMarketValue(leg,row,env,signal,statsCache);
       if(playValue!==null)observedValue=playValue;
     }
