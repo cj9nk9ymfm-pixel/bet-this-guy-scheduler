@@ -506,7 +506,7 @@ async function recordGameBoxscore(record,env,signal,cache){
   // Feeds disagree on first names (Andres vs Andy). Within one game, a unique
   // last name plus first initial is the same player.
   if(!found.length)found=rows.filter(row=>sameInitialAndSurname(playerLabel(row.player),record.player));
-  if(found.length!==1)return {game,scoreboardFinal:nflGameState(game)==='final',scoreboardState:nflGameState(game),missingPlayerStats:true};
+  if(found.length!==1)return {game,scoreboardFinal:nflGameState(game)==='final',scoreboardState:nflGameState(game),missingPlayerStats:true,boxMatches:found.length,boxRowCount:rows.length};
   return {...found[0],scoreboardFinal:nflGameState(game)==='final',scoreboardState:nflGameState(game)};
 }
 
@@ -687,7 +687,9 @@ async function gradePublicRecord(record, env, statsCache, signal) {
     const provisional=gradeRecordSide(leg.side,leg.line,observedValue);
     provisionalResults.push(provisional);
     const pendingReason=!provisional?(Date.parse(leg.gameTime)>Date.now()?'Game not started':!row?'Player stats not available':!finished?'Game in progress':!BTGStats.supports(leg)?'Market needs play-by-play verification':'Required stat not reported'):null;
-    record.gradedLegs.push({...leg, result:provisional||'pending', actualValue:observedValue, minimumOnly,pendingReason,boxScoreFinal:Boolean(row&&nflGameState(row.game||{})==='final')});
+    // A short, stat-free note on why a finished leg could not be graded.
+    const evidence=pendingReason&&row?{box:row.missingPlayerStats?`no unique row (${row.boxMatches??'?'} of ${row.boxRowCount??'?'})`:'matched',playerId:row.player_id??row.player?.id??null,statFields:Object.keys(row).filter(key=>/field_goal|extra_point|recept|kicking|total_points/.test(key)).map(key=>`${key}=${row[key]}`).slice(0,8),plays:row.game?.id?(await recordGamePlays(row,env,signal,statsCache))?.length??null:null}:undefined;
+    record.gradedLegs.push({...leg, result:provisional||'pending', actualValue:observedValue, minimumOnly,pendingReason,...(evidence?{evidence}:{}),boxScoreFinal:Boolean(row&&nflGameState(row.game||{})==='final')});
   }
   const aggregate=values=>values.includes('lost')?'lost':values.every(value=>value==='push')?'push':values.every(value=>value==='won'||value==='push')?'won':null;
   record.provisionalResult=record.kind==='parlay'?aggregate(provisionalResults):provisionalResults[0];
