@@ -465,7 +465,7 @@ renderPlayerProfile=function(p,payload){
 let playerProfileRequest=0;
 async function openPlayerProfile(p){
   const request=++playerProfileRequest,dialog=$('#playerDialog'),content=$('#playerProfile');
-  dialog.showModal();
+  dialog.showModal();dialog.setAttribute('tabindex','-1');dialog.focus({preventScroll:true});
   content.innerHTML=`<div class="profile-loading"><div class="avatar">${htmlEscape(p.player.split(' ').map(part=>part[0]).join(''))}</div><strong>Loading ${htmlEscape(p.player)}…</strong><span>Pulling regular and postseason game logs.</span><i></i><i></i><i></i></div>`;
   try{
     const payload=await playerStatsFor(p);
@@ -1706,4 +1706,176 @@ if(typeof fetch==='function')window.btgCountVisit?.('view:home');
       legs:r.legs.map(p=>({title:p.player,text:`${p.side} ${p.line} ${String(p.market||'').toLowerCase()}`,odds:formatOdds(recommendedOdds(p)),onClick:()=>openParlayLegPlayer(p,r)})),
       actions:[{label:'Add this parlay to slip',primary:true,onClick:(b,dialog)=>{dialog?.close?.();loadSuggestedParlay(r)}}]},'#parlayDetailDialog','#parlayDetailContent');
   };
+})();
+
+// Player stats screen. One renderer replaces the earlier layered versions.
+// Field names follow the BALLDONTLIE NFL stats model; stat groups follow the
+// player's position so defenders, kickers and punters see their own numbers.
+(()=>{
+  const esc=htmlEscape,num=v=>BTGStats.number(v),get=(row,k)=>num(row?.[k]);
+  const sumOf=(row,keys)=>{const vals=keys.map(k=>get(row,k));return vals.some(v=>v!==null)?vals.reduce((a,v)=>a+(v||0),0):null};
+  const pct=(a,b)=>b?Math.round(1000*a/b)/10:null;
+  // kind: sum (season total), max (season best), avg (game average), or a
+  // ratio built from two season totals.
+  const S={
+    cmp:{label:'Comp',name:'Completions',k:'passing_completions'},att:{label:'Att',name:'Attempts',k:'passing_attempts'},
+    cmpPct:{label:'Comp %',name:'Completion %',ratio:['cmp','att',100],suffix:'%'},
+    passYds:{label:'Pass Yds',name:'Passing yards',k:'passing_yards'},ypa:{label:'Y/A',name:'Yards per attempt',ratio:['passYds','att']},
+    passTd:{label:'Pass TD',name:'Passing TD',k:'passing_touchdowns'},int:{label:'INT',name:'Interceptions thrown',k:'passing_interceptions'},
+    sacked:{label:'Sacked',name:'Times sacked',k:'sacks'},rating:{label:'Rating',name:'Passer rating',k:'qb_rating',kind:'avg'},
+    car:{label:'Car',name:'Carries',k:'rushing_attempts'},rushYds:{label:'Rush Yds',name:'Rushing yards',k:'rushing_yards'},
+    ypc:{label:'Y/C',name:'Yards per carry',ratio:['rushYds','car']},rushTd:{label:'Rush TD',name:'Rushing TD',k:'rushing_touchdowns'},
+    rushLong:{label:'Long',name:'Longest rush',k:'long_rushing',kind:'max'},
+    tgt:{label:'Tgt',name:'Targets',k:'receiving_targets'},rec:{label:'Rec',name:'Receptions',k:'receptions'},
+    recYds:{label:'Rec Yds',name:'Receiving yards',k:'receiving_yards'},ypr:{label:'Y/R',name:'Yards per catch',ratio:['recYds','rec']},
+    recTd:{label:'Rec TD',name:'Receiving TD',k:'receiving_touchdowns'},recLong:{label:'Long',name:'Longest catch',k:'long_reception',kind:'max'},
+    catchPct:{label:'Catch %',name:'Catch rate',ratio:['rec','tgt',100],suffix:'%'},
+    fum:{label:'Fum',name:'Fumbles',k:'fumbles'},fumLost:{label:'Lost',name:'Fumbles lost',k:'fumbles_lost'},
+    tkl:{label:'Tkl',name:'Total tackles',k:'total_tackles'},solo:{label:'Solo',name:'Solo tackles',k:'solo_tackles'},
+    ast:{label:'Ast',name:'Assisted tackles',get:row=>{const t=get(row,'total_tackles'),s=get(row,'solo_tackles');return t!==null&&s!==null&&t>=s?t-s:null}},
+    tfl:{label:'TFL',name:'Tackles for loss',k:'tackles_for_loss'},sck:{label:'Sacks',name:'Sacks',k:'defensive_sacks'},
+    qbHits:{label:'QB Hits',name:'QB hits',k:'qb_hits'},defInt:{label:'INT',name:'Interceptions',k:'defensive_interceptions'},
+    pd:{label:'PD',name:'Passes defended',k:'passes_defended'},fumRec:{label:'FR',name:'Fumble recoveries',k:'fumbles_recovered'},
+    defTd:{label:'Def TD',name:'Defensive TD',get:row=>sumOf(row,['interception_touchdowns','fumbles_touchdowns'])},
+    fgm:{label:'FGM',name:'Field goals made',k:'field_goals_made'},fga:{label:'FGA',name:'Field goal attempts',k:'field_goal_attempts'},
+    fgPct:{label:'FG %',name:'Field goal %',ratio:['fgm','fga',100],suffix:'%'},fgLong:{label:'Long',name:'Longest field goal',k:'long_field_goal_made',kind:'max'},
+    xp:{label:'XP',name:'Extra points made',k:'extra_points_made'},kPts:{label:'Pts',name:'Kicking points',k:'total_points'},
+    punts:{label:'Punts',name:'Punts',k:'punts'},puntYds:{label:'Yds',name:'Punt yards',k:'punt_yards'},
+    puntAvg:{label:'Avg',name:'Yards per punt',ratio:['puntYds','punts']},in20:{label:'In 20',name:'Inside the 20',k:'punts_inside_20'},
+    tb:{label:'TB',name:'Touchbacks',k:'touchbacks'},puntLong:{label:'Long',name:'Longest punt',k:'long_punt',kind:'max'},
+    kr:{label:'KR',name:'Kick returns',k:'kick_returns'},krYds:{label:'KR Yds',name:'Kick return yards',k:'kick_return_yards'},
+    pr:{label:'PR',name:'Punt returns',k:'punt_returns'},prYds:{label:'PR Yds',name:'Punt return yards',k:'punt_return_yards'},
+    retTd:{label:'Ret TD',name:'Return TD',get:row=>sumOf(row,['kick_return_touchdowns','punt_return_touchdowns'])},
+    td:{label:'TD',name:'Total TD',get:row=>sumOf(row,['rushing_touchdowns','receiving_touchdowns','kick_return_touchdowns','punt_return_touchdowns','interception_touchdowns','fumbles_touchdowns'])},
+  };
+  const statValue=(key,row)=>{const s=S[key];return s.get?s.get(row):get(row,s.k)};
+  const GROUPS={
+    passing:{title:'Passing',stats:['cmp','att','cmpPct','passYds','ypa','passTd','int','sacked','rating']},
+    rushing:{title:'Rushing',stats:['car','rushYds','ypc','rushTd','rushLong']},
+    receiving:{title:'Receiving',stats:['tgt','rec','recYds','ypr','recTd','recLong','catchPct']},
+    defense:{title:'Defense',stats:['tkl','solo','ast','tfl','sck','qbHits','defInt','pd','fumRec','defTd']},
+    kicking:{title:'Kicking',stats:['fgm','fga','fgPct','fgLong','xp','kPts']},
+    punting:{title:'Punting',stats:['punts','puntYds','puntAvg','in20','tb','puntLong']},
+    returns:{title:'Returns',stats:['kr','krYds','pr','prYds','retTd']},
+    ballSecurity:{title:'Ball security',stats:['fum','fumLost']},
+  };
+  const ROLES={
+    QB:{name:'Quarterback',groups:['passing','rushing','ballSecurity'],tiles:['passYds','passTd','int','cmpPct'],log:['cmpAtt','passYds','passTd','int','rating','rushYds']},
+    RB:{name:'Running back',groups:['rushing','receiving','returns','ballSecurity'],tiles:['rushYds','ypc','rec','td'],log:['car','rushYds','rushTd','rec','recYds','recTd']},
+    WR:{name:'Wide receiver',groups:['receiving','rushing','returns','ballSecurity'],tiles:['rec','recYds','tgt','recTd'],log:['tgt','rec','recYds','recTd','recLong']},
+    TE:{name:'Tight end',groups:['receiving','rushing','ballSecurity'],tiles:['rec','recYds','tgt','recTd'],log:['tgt','rec','recYds','recTd','recLong']},
+    DEF:{name:'Defense',groups:['defense','returns'],tiles:['tkl','sck','defInt','pd'],log:['tkl','solo','tfl','sck','qbHits','defInt','pd']},
+    K:{name:'Kicker',groups:['kicking'],tiles:['fgPct','fgm','fgLong','kPts'],log:['fgMA','fgLong','xp','kPts']},
+    P:{name:'Punter',groups:['punting'],tiles:['puntAvg','punts','in20','puntLong'],log:['punts','puntYds','in20','puntLong']},
+  };
+  // Combined columns used only in the game log.
+  const LOGCOL={cmpAtt:{label:'C/Att',cell:row=>{const c=get(row,'passing_completions'),a=get(row,'passing_attempts');return c===null&&a===null?null:`${c??0}/${a??0}`}},fgMA:{label:'FG',cell:row=>{const m=get(row,'field_goals_made'),a=get(row,'field_goal_attempts');return m===null&&a===null?null:`${m??0}/${a??0}`}}};
+  function roleOf(player,rows){
+    const ab=String(player?.position_abbreviation||'').toUpperCase(),full=String(player?.position||'').toUpperCase();
+    if(ab==='QB'||/QUARTERBACK/.test(full))return 'QB';
+    if(['RB','HB','FB'].includes(ab)||/RUNNING BACK|FULLBACK/.test(full))return 'RB';
+    if(ab==='WR'||/WIDE RECEIVER/.test(full))return 'WR';
+    if(ab==='TE'||/TIGHT END/.test(full))return 'TE';
+    if(['K','PK'].includes(ab)||/KICKER/.test(full)&&!/PUNT/.test(full))return 'K';
+    if(ab==='P'||/PUNTER/.test(full))return 'P';
+    if(['DE','DT','NT','DL','EDGE','LB','ILB','OLB','MLB','CB','S','FS','SS','DB','SAF'].includes(ab)||/LINEBACKER|CORNER|SAFETY|DEFENSIVE|NOSE TACKLE/.test(full))return 'DEF';
+    // Unknown position: use whichever box score the player actually fills.
+    const volume={QB:'passing_attempts',RB:'rushing_attempts',WR:'receiving_targets',DEF:'total_tackles',K:'field_goal_attempts',P:'punts'};
+    const totals=Object.entries(volume).map(([r,k])=>[r,rows.reduce((a,x)=>a+(get(x.row,k)||0),0)]).sort((a,b)=>b[1]-a[1]);
+    return totals[0][1]>0?totals[0][0]:'WR';
+  }
+  function seasonTotals(rows,key){
+    const s=S[key];
+    if(s.ratio){const [a,b,m]=s.ratio,ta=seasonTotals(rows,a).total,tb=seasonTotals(rows,b).total;return {total:ta!==null&&tb?Math.round(10*(m||1)*ta/tb)/10:null,ratio:true}}
+    const vals=rows.map(x=>statValue(key,x.row)).filter(v=>v!==null);
+    if(!vals.length)return {total:null,perGame:null};
+    if(s.kind==='max')return {total:Math.max(...vals),perGame:null};
+    if(s.kind==='avg'){const a=vals.reduce((x,y)=>x+y,0)/vals.length;return {total:Math.round(a*10)/10,perGame:null,avg:true}}
+    const total=vals.reduce((x,y)=>x+y,0);return {total,perGame:Math.round(10*total/rows.length)/10};
+  }
+  const fmt=(v,suffix='')=>v===null||v===undefined?'—':`${Number.isInteger(v)?v:(+v).toFixed(1)}${suffix}`;
+  function teamOf(row,player){return row?.team||player?.team||null}
+  function gameInfo(row,player){
+    const g=row?.game||{},own=teamOf(row,player),home=g.home_team,away=g.visitor_team;
+    const isHome=own&&home&&(own.id!==undefined&&home.id!==undefined?own.id===home.id:matchupTeamsEqual(own,home));
+    const opp=isHome?away:home,mine=isHome?num(g.home_team_score):num(g.visitor_team_score),theirs=isHome?num(g.visitor_team_score):num(g.home_team_score);
+    const result=mine===null||theirs===null?'':mine>theirs?'W':mine<theirs?'L':'T';
+    return {opp:opp?.abbreviation||compactTeamName(opp?.full_name||opp?.name||''),oppName:opp?.full_name||opp?.name||'',at:isHome?'vs':'@',result,score:result?`${mine}–${theirs}`:'',week:num(g.week),post:!!g.postseason,season:num(g.season)};
+  }
+  // The bet's own number for one game. Touchdown markets fall back to the
+  // total-touchdown sum because the feed has no single scorer field.
+  function betMetric(p,row){
+    const m=propMetric(p,row);if(m.value!==null)return m.value;
+    if(/touchdown|scorer/i.test(p.market||''))return statValue('td',row);
+    return null;
+  }
+  const betName=p=>p.binary||/anytime|scorer/i.test(p.market||'')?'Scores a touchdown':`${p.side} ${p.line} ${String(p.market||'').toLowerCase()}`;
+  const betLine=p=>p.binary||/anytime|scorer/i.test(p.market||'')?.5:num(p.line);
+  const shortDate=d=>d?d.toLocaleDateString([],{month:'short',day:'numeric'}):'';
+  function chart(p,games){
+    const line=betLine(p),list=games.slice(0,10).reverse();if(!list.length||line===null)return '';
+    const top=Math.max(line,...list.map(x=>x.v))*1.18||1,h=v=>Math.max(3,Math.round(100*v/top));
+    return `<div class="pp-chart" role="img" aria-label="Last ${list.length} games against the line of ${line}"><i class="pp-line" style="bottom:${h(line)}%"></i>${list.map(x=>`<div class="pp-bar ${x.hit===true?'hit':x.hit===false?'miss':'push'}"><span style="height:${h(x.v)}%"><em>${fmt(x.v)}</em></span><small>${esc(x.info.opp)}</small></div>`).join('')}</div>`;
+  }
+  function betBlock(p,rows,player){
+    const graded=rows.map(x=>({...x,v:betMetric(p,x.row),info:gameInfo(x.row,player)})).filter(x=>x.v!==null).map(x=>({...x,hit:hitAgainstLine({...p,line:betLine(p)},x.v)}));
+    if(!graded.length)return `<section class="pp-card"><h3 class="pp-h">This bet</h3><p class="pp-bet">${esc(betName(p))}</p><p class="pp-note">The stats feed doesn’t report this market, so there’s no game-by-game history for it.</p></section>`;
+    const l10=graded.slice(0,10),l5=graded.slice(0,5),hits=l=>l.filter(x=>x.hit===true).length,avg=l=>fmt(Math.round(10*l.reduce((a,x)=>a+x.v,0)/l.length)/10);
+    const cur=graded[0].info.season,season=graded.filter(x=>x.info.season===cur),opp=profileOpponentName(p,player),vs=opp?graded.filter(x=>matchupOpponentMatches(x.row,p,player)):[];
+    let odds='';try{odds=formatOdds(recommendedOdds(p))}catch{}
+    return `<section class="pp-card"><div class="pp-bethead"><div><h3 class="pp-h">This bet</h3><p class="pp-bet">${esc(betName(p))}</p></div>${odds?`<b class="pp-odds">${esc(odds)}</b>`:''}</div>
+      ${chart(p,l10)}<p class="pp-legend"><i></i> Line ${betLine(p)} <span class="hit"></span> Cleared <span class="miss"></span> Missed</p>
+      <div class="pp-kpis"><div><span>Last 10</span><strong>${hits(l10)}/${l10.length}</strong></div><div><span>Last 5</span><strong>${hits(l5)}/${l5.length}</strong></div><div><span>L10 avg</span><strong>${avg(l10)}</strong></div><div><span>${cur||'Season'} avg</span><strong>${avg(season)}</strong></div></div>
+      ${vs.length?`<div class="pp-vs"><p>Last ${Math.min(vs.length,5)} vs ${esc(opp)} <b>${hits(vs.slice(0,5))} of ${Math.min(vs.length,5)} cleared</b></p><div>${vs.slice(0,5).map(x=>`<span class="${x.hit===true?'hit':x.hit===false?'miss':''}"><b>${fmt(x.v)}</b>${esc(String(x.info.season||''))}</span>`).join('')}</div></div>`:''}
+    </section>`;
+  }
+  function seasonBlock(role,rows,season,seasons){
+    const list=rows.filter(x=>gameInfo(x.row).season===season),reg=list.filter(x=>!x.row?.game?.postseason).length,post=list.length-reg;
+    const r=ROLES[role],groups=r.groups.filter((g,i)=>i===0||GROUPS[g].stats.some(k=>{const t=seasonTotals(list,k).total;return t!==null&&t!==0}));
+    const tile=k=>{const t=seasonTotals(list,k),s=S[k];return `<div><strong>${fmt(t.total,s.suffix)}</strong><span>${esc(s.name)}</span>${t.perGame!==null&&t.perGame!==undefined&&!t.ratio&&!t.avg?`<small>${fmt(t.perGame)} per game</small>`:''}</div>`};
+    const table=g=>`<table class="pp-table"><caption>${GROUPS[g].title}</caption><thead><tr><th scope="col">Stat</th><th scope="col">Total</th><th scope="col">Per game</th></tr></thead><tbody>${GROUPS[g].stats.map(k=>{const t=seasonTotals(list,k),s=S[k];if(t.total===null)return '';return `<tr><th scope="row">${esc(s.name)}</th><td>${fmt(t.total,s.suffix)}</td><td>${t.perGame===null||t.perGame===undefined?'—':fmt(t.perGame)}</td></tr>`}).join('')}</tbody></table>`;
+    return `<section class="pp-card"><div class="pp-seasonhead"><h3 class="pp-h">Season stats</h3><div class="pp-seg" role="group" aria-label="Season">${seasons.map(y=>`<button type="button" data-pp-season="${y}" aria-pressed="${y===season}">${y}</button>`).join('')}</div></div>
+      <p class="pp-note">${list.length} game${list.length===1?'':'s'}${post?` (${reg} regular season, ${post} playoff)`:''}</p>
+      ${list.length?`<div class="pp-tiles">${r.tiles.map(tile).join('')}</div>${groups.map(table).join('')}`:'<p class="pp-note">No games this season yet.</p>'}</section>`;
+  }
+  function logBlock(p,role,rows,player,showAll){
+    const cols=ROLES[role].log.map(k=>LOGCOL[k]||{label:S[k].label,cell:row=>{const v=statValue(k,row);return v===null?null:fmt(v)}});
+    const seasons=[...new Set(rows.map(x=>gameInfo(x.row,player).season))],shown=showAll?seasons:seasons.slice(0,2);
+    const line=betLine(p),betHead=p.binary||/anytime|scorer/i.test(p.market||'')?'Any TD':`${p.side==='Under'?'U':'O'} ${line}`;
+    const body=shown.map(season=>`<tr class="pp-season"><th colspan="${cols.length+3}" scope="colgroup">${season} season</th></tr>`+rows.filter(x=>gameInfo(x.row,player).season===season).map(x=>{const i=gameInfo(x.row,player),v=betMetric(p,x.row),hit=v===null?null:hitAgainstLine({...p,line},v);
+      return `<tr><th scope="row"><b>${i.post?'Playoffs':`Wk ${i.week??'—'}`}</b><small>${esc(shortDate(x.date))}</small></th><td class="pp-opp">${i.at} ${esc(i.opp)}<small class="${i.result==='W'?'w':i.result==='L'?'l':''}">${i.result} ${i.score}</small></td><td class="pp-betcol ${hit===true?'hit':hit===false?'miss':''}">${v===null?'—':fmt(v)}</td>${cols.map(c=>`<td>${c.cell(x.row)??'—'}</td>`).join('')}</tr>`}).join('')).join('');
+    return `<section class="pp-card pp-logcard"><div class="pp-scroll" tabindex="0" role="region" aria-label="Game log, scrolls sideways"><table class="pp-log"><thead><tr><th scope="col">Game</th><th scope="col">Opp</th><th scope="col" class="pp-betcol">${esc(betHead)}</th>${cols.map(c=>`<th scope="col">${esc(c.label)}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div>
+      <p class="pp-note">Green and red show whether each game cleared this bet’s line. Regular season and playoffs; preseason excluded.</p>${seasons.length>shown.length?`<button type="button" class="pp-more" data-pp-more>Show ${seasons.slice(2).join(' and ')}</button>`:''}</section>`;
+  }
+  function propsBlock(p){
+    const list=props.filter(q=>q.player===p.player).sort((a,b)=>a.market.localeCompare(b.market)||a.line-b.line);
+    if(!list.length)return '<section class="pp-card"><p class="pp-note">No other props are posted for this player right now.</p></section>';
+    return `<section class="pp-card"><h3 class="pp-h">Posted props</h3><p class="pp-note">Tap a price to add it to your slip.</p><div class="pp-props">${list.map(q=>`<div class="pp-prop" data-pp-prop="${q.id}"><div><strong>${esc(q.market)}</strong><small>Line ${q.line??'—'}</small></div><div class="pp-oddbtns">${['Over','Under'].map(side=>{const price=side==='Over'?q.over:q.under;return price==null?'':`<button type="button" data-side="${side}" aria-label="Add ${side} ${esc(String(q.line))} ${esc(q.market)}">${side==='Over'?'O':'U'} <b>${formatOdds(price)}</b></button>`}).join('')}</div></div>`).join('')}</div></section>`;
+  }
+  function header(p,player,role){
+    const name=esc(p.player),initials=esc(String(p.player).split(' ').map(s=>s[0]).join('').slice(0,2)),team=player?.team?.full_name||'';
+    const bio=[player?.height,player?.weight,player?.age?`Age ${Math.floor(player.age)}`:'',player?.experience,player?.college].filter(Boolean).map(esc).join(' · ');
+    const pos=player?.position_abbreviation||ROLES[role]?.name||'';
+    let when='';try{when=p.startsAt?formatCompactKickoff(p.startsAt):p.time||''}catch{when=p.time||''}
+    return `<header class="pp-head"><div class="pp-photo"><img src="/api/player-photo?name=${encodeURIComponent(p.player)}" alt="" onerror="this.remove()"><span>${initials}</span></div><div><h2 id="ppName">${name}</h2><p class="pp-sub">${[pos,player?.jersey_number?`#${esc(player.jersey_number)}`:'',esc(team)].filter(Boolean).join(' · ')}</p>${bio?`<p class="pp-bio">${bio}</p>`:''}</div></header>
+      ${p.team?`<p class="pp-next"><span>Next game</span> ${esc(compactGameName(String(p.team).replace(' · ',' ')))}${when?` · ${esc(when)}`:''}</p>`:''}`;
+  }
+  function render(p,payload){
+    const host=$('#playerProfile');if(!host)return;
+    const player=payload.player||{},rows=(payload.stats||[]).map(row=>({row,date:statDate(row)})).sort((a,b)=>(b.date?.getTime()||0)-(a.date?.getTime()||0));
+    const role=roleOf(player,rows),seasons=[...new Set(rows.map(x=>gameInfo(x.row,player).season).filter(v=>v!==null))].sort((a,b)=>b-a);
+    const view={tab:'overview',season:seasons[0],all:false},count=props.filter(q=>q.player===p.player).length;
+    const draw=()=>{
+      const panel=view.tab==='log'?logBlock(p,role,rows,player,view.all):view.tab==='props'?propsBlock(p):(rows.length?betBlock(p,rows,player)+seasonBlock(role,rows,view.season,seasons):`<section class="pp-card"><p class="pp-note">No completed NFL games are available for this player yet.</p></section>`);
+      host.innerHTML=`<div class="pp" aria-labelledby="ppName">${header(p,player,role)}<div class="pp-tabs" role="tablist">${[['overview','Overview'],['log','Game log'],['props',`Props${count?` <b>${count}</b>`:''}`]].map(([k,l])=>`<button type="button" role="tab" data-pp-tab="${k}" aria-selected="${view.tab===k}">${l}</button>`).join('')}</div>${panel}<p class="pp-source">Box scores from BALLDONTLIE.</p></div>`;
+      host.querySelectorAll('[data-pp-tab]').forEach(b=>b.onclick=()=>{view.tab=b.dataset.ppTab;draw()});
+      host.querySelectorAll('[data-pp-season]').forEach(b=>b.onclick=()=>{view.season=+b.dataset.ppSeason;draw()});
+      host.querySelector('[data-pp-more]')?.addEventListener('click',()=>{view.all=true;draw()});
+      const sync=()=>host.querySelectorAll('[data-pp-prop]').forEach(rowEl=>{const q=props.find(x=>x.id===+rowEl.dataset.ppProp);rowEl.querySelectorAll('button').forEach(b=>b.classList.toggle('on',!!q&&state.slip.some(leg=>savedPropKey(leg.p)===savedPropKey(q)&&leg.side===b.dataset.side)))});
+      host.querySelectorAll('[data-pp-prop] button').forEach(b=>b.onclick=()=>{const q=props.find(x=>x.id===+b.closest('[data-pp-prop]').dataset.ppProp);if(q){toggleLeg(q,b.dataset.side);sync()}});sync();
+    };
+    draw();
+  }
+  renderPlayerProfile=render;
+  window.BTGPlayer={roleOf,seasonTotals,gameInfo,betMetric,render};
 })();
