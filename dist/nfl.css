@@ -764,19 +764,63 @@ body::before{background-image:none!important;display:none!important}
 #heroCta,.hero-cta{box-shadow:none!important}
 .sub-tab.active,button.sub-tab.active{box-shadow:none!important}
 .topbar{box-shadow:none!important}
-/* Dark theme: flat surfaces instead of gradients */
-body:not(.light){background:#060d1c!important}
-body:not(.light) .board{background:transparent!important;border-color:transparent!important;box-shadow:none!important}
-body:not(.light) #heroBanner.hero{background:#0c1830!important;border:1px solid #1d2f50!important;box-shadow:none!important}
-body:not(.light) #heroCta{background:#22c98a!important;color:#04121f!important}
-body:not(.light) .hit-card-mini{background:#0c1a2c!important;border-color:#1f4a3d!important}
-body:not(.light) .player-finder{background:#0c1830!important;border-color:#1d2f50!important;box-shadow:none!important}
-body:not(.light) .player-finder-icon{background:#163a6e!important;color:#cfe3ff}
-body:not(.light) .sub-tab.active{background:#14305c!important}
-body:not(.light) .advanced-filters{background:#0c1830!important;box-shadow:none!important}
 @media(max-width:720px){body:not(.light) .board{padding-left:0!important;padding-right:0!important}}
 .hero-eyebrow,.filter-row>span,.chip-row-label,[class*="eyebrow"]{letter-spacing:.08em!important;text-shadow:none!important}
 .verdict-guide li span{display:block}
-body:not(.light) .prop-card{background:#0c1830!important;box-shadow:none!important}
-body:not(.light) .verdict-guide{background:#0c1830!important;box-shadow:none!important}
-#heroCta,.hero-cta{background:#22c98a!important;color:#04121f!important}
+/* ---- Colour scheme A: charcoal base, one blue accent, green/red only for results ---- */
+:root{--bg:#0e1013;--panel:#16191e;--panel2:#1e222a;--line:#272c35;--text:#f2f4f7;--muted:#98a1ad;--lime:#2f7bf5;--green:#22c55e;--red:#f06060;--shadow:none}
+html body:not(.light){background:#0e1013!important;color:#f2f4f7}
+html body:not(.light)::before,html body:not(.light)::after{display:none!important}
+html body:not(.light) .topbar{background:#0e1013!important;border-bottom:1px solid #272c35!important;box-shadow:none!important;backdrop-filter:none!important}
+html body:not(.light) .mobile-nav{background:#0e1013!important;border-top:1px solid #272c35!important;box-shadow:none!important}
+html body:not(.light) .mobile-nav a,html body:not(.light) .mobile-nav button{background:transparent!important;background-image:none!important;border-color:transparent!important;color:#98a1ad!important;box-shadow:none!important}
+html body:not(.light) .mobile-nav a.active,html body:not(.light) .mobile-nav button.active{background:#1e222a!important;color:#f2f4f7!important}
+html body:not(.light) .mobile-nav a span,html body:not(.light) .saved-header-btn span{background:#2f7bf5!important;color:#fff!important}
+html body:not(.light) .icon-btn,html body:not(.light) .account-btn,html body:not(.light) .feed-status{background:#16191e!important;border-color:#272c35!important;color:#f2f4f7!important;box-shadow:none!important}
+html body:not(.light) .board{background:transparent!important;border-color:transparent!important;box-shadow:none!important}
+html body:not(.light) #heroBanner.hero,html body:not(.light) .hero,html body:not(.light) .player-finder,html body:not(.light) .prop-card,html body:not(.light) .verdict-guide,html body:not(.light) .hit-card-mini,html body:not(.light) .advanced-filters,html body:not(.light) .board-gate,html body:not(.light) .card-gate{background:#16191e!important;background-image:none!important;border:1px solid #272c35!important;box-shadow:none!important}
+html body:not(.light) .hero-stat,html body:not(.light) .mockup-pick{background:#1e222a!important;border-color:transparent!important}
+html body:not(.light) .hero-eyebrow,html body:not(.light) .eyebrow,html body:not(.light) [class*=eyebrow]{color:#98a1ad!important}
+html body:not(.light) .hero-stat strong{color:#f2f4f7!important}
+html body:not(.light) .hero-stat.up strong{color:#22c55e!important}
+html body:not(.light) .hero-note,html body:not(.light) .card-money,html body:not(.light) .board-title p,html body:not(.light) .app-footer{color:#98a1ad!important}
+html body:not(.light) #heroCta,html body:not(.light) .hero-cta,html body:not(.light) .gate-primary{background:#2f7bf5!important;background-image:none!important;color:#fff!important;box-shadow:none!important}
+html body:not(.light) .alerts-btn,html body:not(.light) .gate-secondary,html body:not(.light) .hits-nav button{background:transparent!important;border:1px solid #272c35!important;color:#f2f4f7!important}
+html body:not(.light) .hero-link,html body:not(.light) .hits-head a,html body:not(.light) .hit-more,html body:not(.light) .app-footer nav a{color:#6aa8ff!important}
+html body:not(.light) .hit-tag{color:#22c55e!important}
+html body:not(.light) .sub-tab{background:transparent!important;background-image:none!important;border-color:#272c35!important;color:#98a1ad!important;box-shadow:none!important}
+html body:not(.light) .sub-tab.active{background:#2f7bf5!important;border-color:#2f7bf5!important;color:#fff!important}
+html body:not(.light) .sub-tab span,html body:not(.light) .sub-tab time{color:inherit!important}
+html body:not(.light) .game-tabs{border-color:#272c35!important}
+html body:not(.light) .player-finder-icon{background:#1e222a!important;background-image:none!important;color:#98a1ad!important}
+html body:not(.light) .prop-card .player-photo,html body:not(.light) .player-photo{background:#1e222a!important;background-image:none!important;border-color:#272c35!important;color:#98a1ad!important}
+html body:not(.light) .mockup-pick b,html body:not(.light) .mockup-pick button{background:#16191e!important;border-color:#272c35!important;color:#f2f4f7!important;box-shadow:none!important}
+html body:not(.light) .verdict-pill-send{background:#22c55e1f!important;border-color:transparent!important;color:#22c55e!important}
+html body:not(.light) .verdict-pill-flip{background:#1e222a!important;border-color:transparent!important;color:#98a1ad!important}
+html body:not(.light) .verdict-pill-read{background:#f060601a!important;border-color:transparent!important;color:#f06060!important}
+html body:not(.light) .ico-send{color:#22c55e}html body:not(.light) .ico-flip{color:#98a1ad}html body:not(.light) .ico-read{color:#f06060}
+html body:not(.light) .bookmark{color:#98a1ad!important}
+html body:not(.light) .nav-link{color:#98a1ad!important}
+html body:not(.light) .nav-link.active{color:#f2f4f7!important}
+html body:not(.light) .nav-link.active::after,html body:not(.light) .nav-link.active::before{background:#2f7bf5!important;box-shadow:none!important}
+html body:not(.light) dialog,html body:not(.light) .sheet,html body:not(.light) .nav-more-panel{background:#16191e!important;background-image:none!important;border-color:#272c35!important}
+html body:not(.light) input:not([type=checkbox]):not([type=radio]):not([type=range]),html body:not(.light) select,html body:not(.light) textarea{background:#1e222a!important;background-image:none!important;border-color:#272c35!important;color:#f2f4f7!important;box-shadow:none!important}
+html body:not(.light) .player-finder input{background:transparent!important}
+html body:not(.light) .more-sheet a,html body:not(.light) .more-sheet button:not(.more-sheet-close),html body:not(.light) .nav-more-panel a{background:#1e222a!important;background-image:none!important;border-color:transparent!important;box-shadow:none!important}
+html body:not(.light) .more-sheet,html body:not(.light) .more-sheet-head{background:#16191e!important}
+html body:not(.light) .settings-section,html body:not(.light) .settings-footer,html body:not(.light) .account-head,html body:not(.light) .auth-security,html body:not(.light) .empty,html body:not(.light) #emptyState,html body:not(.light) .parlay-card,html body:not(.light) .parlay-preview,html body:not(.light) .pull-refresh-indicator{background:#16191e!important;background-image:none!important;border-color:#272c35!important;box-shadow:none!important}
+html body:not(.light) .parlay-card li,html body:not(.light) .parlay-card .pc-leg,html body:not(.light) .pc-legs li{background:#1e222a!important;border-color:transparent!important}
+html body:not(.light) .parlay-level-tabs,html body:not(.light) .settings-tabs{background:transparent!important;border-color:#272c35!important}
+html body:not(.light) .parlay-level-tabs button,html body:not(.light) .settings-tabs button,html body:not(.light) .pc-add,html body:not(.light) #resetAdvancedFilters,html body:not(.light) .shuffle-btn,html body:not(.light) [data-more-parlays]{background:#1e222a!important;background-image:none!important;border-color:#272c35!important;color:#f2f4f7!important;box-shadow:none!important}
+html body:not(.light) .parlay-level-tabs button.active,html body:not(.light) .parlay-level-tabs button[aria-selected=true],html body:not(.light) .settings-tabs button.active,html body:not(.light) .settings-tabs button[aria-selected=true]{background:#2f7bf5!important;border-color:#2f7bf5!important;color:#fff!important}
+html body:not(.light) .parlay-level-tabs button span{color:inherit!important;opacity:.85}
+html body:not(.light) .dialog-close,html body:not(.light) .more-sheet-close,html body:not(.light) .account-close{background:#1e222a!important;border:1px solid #272c35!important;color:#f2f4f7!important;box-shadow:none!important;outline-color:#2f7bf5}
+html body:not(.light) button.primary,html body:not(.light) .primary,html body:not(.light) #savePreferences{background:#2f7bf5!important;background-image:none!important;color:#fff!important;box-shadow:none!important;border-color:#2f7bf5!important}
+html body:not(.light) .filter-summary,html body:not(.light) .advanced-filters summary{background:transparent!important}
+html body:not(.light) .app-footer a,html body:not(.light) a.category-results-link,html body:not(.light) .auth-link-button,html body:not(.light) #filterMatchCount,html body:not(.light) .advanced-filters summary small,html body:not(.light) .advanced-filters summary b+*{color:#6aa8ff!important}
+html body:not(.light) .parlay-filter-summary{background:#16191e!important;background-image:none!important;border-color:#2f7bf5!important;color:#98a1ad!important}
+html body:not(.light) .settings-section label,html body:not(.light) .settings-checks label,html body:not(.light) .sport-toggle{background:#1e222a!important;border-color:#272c35!important}
+html body:not(.light) :is(.dialog-close,.more-sheet-close,.account-close):focus:not(:focus-visible){outline:none!important;border-color:#272c35!important}
+html body:not(.light) .player-finder input#playerSearch{background:transparent!important;border-color:transparent!important}
+html body:not(.light) .player-finder label>span{color:#98a1ad!important}
+html body:not(.light) .parlay-card,html body:not(.light) [class*=parlay-feed]{border-color:#272c35!important}

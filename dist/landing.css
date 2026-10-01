@@ -15,3 +15,8 @@
 .eyebrow{letter-spacing:.08em!important;text-shadow:none!important}
 .hero h1 em{color:#55dfff!important;-webkit-text-stroke:0!important}
 .primary,a.primary{background:#1f6fe0!important;box-shadow:none!important}
+/* Colour scheme A: charcoal, one blue accent */
+:root{--bg:#0e1013;--panel:#16191e;--panel2:#1e222a;--line:#272c35;--text:#f2f4f7;--muted:#98a1ad;--cyan:#6aa8ff;--blue:#2f7bf5}
+body{background:#0e1013!important}
+.eyebrow{color:#98a1ad!important}
+.hero h1 em{color:#6aa8ff!important}
