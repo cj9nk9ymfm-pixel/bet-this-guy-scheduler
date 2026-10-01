@@ -38,6 +38,13 @@ assert.ok(c.eval('window.BTGFirstImpression').hitDetails(trailed).includes('clas
 const moved=c.eval('window.BTGFirstImpression').hitDetails({...jonnu,side:'Under',line:34.5,market:'Rushing Yards',closing_line:37.5,closing_odds:-111});
 assert.ok(moved.includes('Line moved to 37.5 before kickoff (against you)'));
 assert.ok(c.eval('window.BTGFirstImpression').hitDetails({...jonnu,closing_odds:null,closing_captured_at:null}).includes('wasn’t recorded'),'a missing close says so plainly');
+// Every pick in this week's list opens: a locked pick shows its price, book, why it qualified and where the price is now.
+{const fi=c.eval('window.BTGFirstImpression'),locked={id:'official|2026-09-29|props|prop|y',kind:'prop',player:'Saquon Barkley',market:'Anytime Touchdown',side:'Over',line:.5,odds:-140,status:'pending',result:null,posted_at:'2026-10-01T15:00:00Z',game_time:'2026-10-04T17:00:00Z',legs_json:JSON.stringify([{player:'Saquon Barkley',market:'Anytime Touchdown',side:'Over',line:.5,odds:-140,book:'FanDuel',edge:2.3,team:'Philadelphia Eagles · @ Dallas Cowboys',gameTime:'2026-10-04T17:00:00Z',priceTrail:[{t:Date.parse('2026-10-01T16:00:00Z'),o:-150},{t:Date.parse('2026-10-01T17:00:00Z'),o:-155}]}])};
+ const html=fi.pickDetails(locked);
+ for(const text of ['LOCKED · SINGLE','Saquon Barkley','Anytime Touchdown','-140 at FanDuel','Beat the market’s fair price by 2.3%','-155','you locked a better price','wins $71','class="hit-spark"'])assert.ok(html.includes(text),`locked pick details show "${text}"`);
+ assert.ok(!html.includes('HIT ·'),'a locked pick is not labelled a hit');
+ assert.ok(fi.pickDetails({...locked,status:'final',result:'lost'}).includes('LOST · SINGLE'),'a lost pick says so');
+ assert.ok(fi.pickDetails({...locked,status:'final',result:'won'}).includes('HIT · SINGLE'),'a won pick keeps the hit sheet');}
 // $100 is the default wager everywhere; viewers on the old $10 default move once,
 // and a wager chosen afterwards is kept.
 assert.equal(client().eval('preferences.typicalWager'),100,'new visitors start at $100');

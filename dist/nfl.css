@@ -922,3 +922,9 @@ body.light .on-won{color:#15803d}body.light .on-lost{color:#c62828}
 .official-now{margin:20px 0 4px!important}
 .board-title{margin-top:18px!important}
 .player-finder{margin-top:18px!important}
+/* Detail sheet for locked / lost picks */
+.pick-tag.pick-locked{color:#98a1ad!important}.pick-tag.pick-lost{color:#f06060!important}.pick-tag.pick-push,.pick-tag.pick-pending{color:#98a1ad!important}
+.pick-move{color:#98a1ad;font-size:12.5px}.pick-move.up{color:#22c55e}.pick-move.down{color:#98a1ad}
+button.on-row:hover{background:var(--panel2)}
+html body .hit-tag.pick-tag.pick-locked,html body .hit-tag.pick-tag.pick-push,html body .hit-tag.pick-tag.pick-pending{color:#98a1ad!important}
+html body .hit-tag.pick-tag.pick-lost{color:#f06060!important}
