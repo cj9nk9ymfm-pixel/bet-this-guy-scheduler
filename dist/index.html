@@ -31,26 +31,12 @@
   <link rel="stylesheet" href="/performance.css?v=2" />
   <link rel="stylesheet" href="/live.css?v=110" />
   <link rel="stylesheet" href="/auth.css?v=2" />
-  <style>html.warm-resume .app-loader{display:none!important}</style>
   <script>try{const last=Number(localStorage.getItem('btg-last-active')||0);if(last&&Date.now()-last<1800000)document.documentElement.classList.add('warm-resume')}catch{}</script>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%232f7bf5'/%3E%3Ctext x='32' y='41' text-anchor='middle' font-family='Arial,Helvetica,sans-serif' font-weight='800' font-size='24' letter-spacing='-1' fill='white'%3EBTG%3C/text%3E%3C/svg%3E" />
   <!--HOME_DATA-->
 </head>
 <body>
   <script>try{if(localStorage.getItem('btg-theme')==='light')document.body.classList.add('light')}catch(e){}</script>
-  <div class="app-loader" id="appLoader" role="status" aria-live="polite" aria-label="Loading all posted player props">
-    <div class="loader-grid"></div>
-    <div class="loader-content">
-      <div class="loader-emblem">
-        <span class="loader-orbit orbit-one"></span><span class="loader-orbit orbit-two"></span>
-        <img src="/logo.png" alt="Bet This Guy" />
-      </div>
-            <div class="loader-chat" id="loaderChat" aria-live="polite"></div>
-      <p id="loaderText">Loading this week’s lines…</p>
-      <div class="loader-track"><span></span></div>
-          <small>NFL PROPS&nbsp;&nbsp;·&nbsp;&nbsp; PLAYER TRENDS&nbsp;&nbsp;·&nbsp;&nbsp; PARLAYS</small>
-    </div>
-  </div>
   <header class="topbar">
     <a class="brand" href="/" aria-label="Bet This Guy home"><img class="brand-logo" src="/logo.png" alt="Bet This Guy" /></a>
     <nav class="desktop-nav" aria-label="Main navigation">
