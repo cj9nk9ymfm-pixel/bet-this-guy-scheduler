@@ -629,3 +629,13 @@ body.light .board-gate{background:linear-gradient(160deg,#ffffff,#f1f7fd);border
 body.light .board-gate h3,body.light .card-gate strong{color:#10213d}body.light .board-gate>p:not(.gate-eyebrow),body.light .card-gate p{color:#40597a}
 body.light .gate-eyebrow{color:#08875e}body.light .gate-secondary{background:#fff;border-color:#cfe0ee;color:#10213d}body.light .card-gate{background:#eefaf4;border-color:#9fdcc2}
 .prop-list>.prop-card[hidden]{display:none!important}
+/* Home-screen app on iPhone: the status bar is see-through and drawn over the
+   page (black-translucent), so the top bar and anything pinned under it move
+   down by the status bar's height. In a normal browser tab the inset is 0. */
+@media (display-mode: standalone) and (max-width:720px){
+  .topbar{height:calc(50px + env(safe-area-inset-top))!important;padding-top:env(safe-area-inset-top)!important}
+  .mobile-swipe-preview{top:calc(60px + env(safe-area-inset-top))}
+  .player-search-results{top:calc(122px + env(safe-area-inset-top))}
+  .slip.mobile-visible{top:calc(76px + env(safe-area-inset-top))}
+  .pull-refresh-indicator{margin-top:env(safe-area-inset-top)}
+}
