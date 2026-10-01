@@ -1099,3 +1099,51 @@ body.light .pp-photo span,body.light .pp-season th{color:#5b6472!important}.pp-s
 @media(max-width:720px){
   html body dialog.player-dialog{padding-top:env(safe-area-inset-top)!important}
 }
+/* Last week's results live in the record bar and on Results; no hits strip. */
+html body #hitsStrip{display:none!important}
+/* Header search */
+.search-btn{display:inline-grid!important;place-items:center}
+html body .search-panel{position:fixed;z-index:60;top:calc(var(--search-top,64px));left:0;right:0;padding:10px 12px 12px;background:#0e1013;border-bottom:1px solid #272c35;box-shadow:0 18px 40px rgba(0,0,0,.45)}
+html body .search-panel[hidden]{display:none}
+@media(min-width:721px){html body .search-panel{left:auto;right:16px;width:420px;border:1px solid #272c35;border-radius:14px;top:calc(var(--search-top,64px) + 6px)}}
+html body .search-panel .player-finder{position:static!important;display:flex!important;align-items:center;gap:8px;margin:0!important;padding:0!important;background:none!important;background-image:none!important;border:0!important;box-shadow:none!important;flex-wrap:wrap}
+html body .search-panel .player-finder-icon{display:none!important}
+html body .search-panel .player-finder label{flex:1;min-width:0;position:relative;display:block;margin:0}
+html body .search-panel .player-finder label>span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+html body .search-panel .player-finder label input#playerSearch{width:100%;height:42px;margin:0;padding:0 38px 0 38px;border-radius:10px;border:1px solid #272c35!important;background:#16191e url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2398a1ad' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-4-4'/%3E%3C/svg%3E") no-repeat 12px center/17px!important;color:#f2f4f7!important;font:500 16px "DM Sans",sans-serif!important;box-shadow:none!important;outline:none;-webkit-appearance:none;appearance:none}
+html body .search-panel .player-finder label input#playerSearch:focus{border-color:#2563eb!important}
+html body .search-panel #playerSearch::-webkit-search-cancel-button{-webkit-appearance:none;display:none}
+html body .search-panel #playerSearch::placeholder{color:#98a1ad}
+html body .search-panel #clearPlayerSearch{position:absolute;right:calc(var(--cancel-w,72px) + 14px);top:10px;width:26px;height:26px;display:grid;place-items:center;padding:0;border:0;border-radius:50%;background:#272c35;color:#f2f4f7;cursor:pointer}
+html body .search-panel #clearPlayerSearch[hidden]{display:none}
+html body .search-panel .search-cancel{height:42px;padding:0 6px;border:0;background:none;color:#6aa8ff;font:600 15px "DM Sans",sans-serif;cursor:pointer}
+html body .search-panel .player-search-results{position:static!important;inset:auto!important;width:100%;max-height:min(60vh,420px);overflow:auto;margin:8px 0 0!important;padding:0!important;background:none!important;border:0!important;box-shadow:none!important;border-radius:0!important}
+html body .search-panel .player-search-results[hidden]{display:none!important}
+html body .search-panel .search-hint{margin:4px 2px 4px;font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#98a1ad}
+html body .search-panel [data-player-choice]{display:flex!important;align-items:center;gap:12px;width:100%;min-height:56px;padding:8px 4px!important;margin:0!important;border:0!important;border-bottom:1px solid #272c35!important;border-radius:0!important;background:none!important;color:#f2f4f7!important;text-align:left;cursor:pointer;box-shadow:none!important}
+html body .search-panel [data-player-choice]:last-child{border-bottom:0!important}
+html body .search-panel [data-player-choice]:hover,html body .search-panel [data-player-choice]:focus-visible{background:#16191e!important;outline:none}
+html body .search-panel [data-player-choice] i{flex:none;width:36px;height:36px;display:grid;place-items:center;border-radius:50%;background:#1e222a!important;color:#98a1ad!important;font:700 13px "Space Grotesk",sans-serif;font-style:normal}
+html body .search-panel [data-player-choice] span{flex:1;min-width:0}
+html body .search-panel [data-player-choice] strong{display:block;font-size:15px;font-weight:600;color:#f2f4f7}
+html body .search-panel [data-player-choice] small{display:block;margin-top:1px;font-size:12.5px;color:#98a1ad}
+html body .search-panel [data-player-choice] .ico{flex:none;color:#98a1ad}
+html body .search-panel .player-search-empty{padding:18px 4px;color:#98a1ad;font-size:14px;background:none!important;border:0!important}
+.player-filter-chip{display:inline-flex;align-items:center;gap:6px;margin:8px 0 0;height:30px;padding:0 12px;border-radius:999px;border:1px solid #2563eb;background:rgba(37,99,235,.14);color:#f2f4f7;font:600 13px "DM Sans",sans-serif;cursor:pointer}
+.player-filter-chip[hidden]{display:none}.player-filter-chip span{font-size:16px;line-height:1;color:#6aa8ff}
+body.light .search-panel{background:#fff!important;border-color:#e2e6ec!important;box-shadow:0 18px 40px rgba(15,23,42,.12)!important}
+html body.light .search-panel .player-finder label input#playerSearch{background-color:#f4f6f9!important;border-color:#e2e6ec!important;color:#0f172a!important}
+body.light .search-panel #clearPlayerSearch{background:#e2e6ec;color:#0f172a}
+body.light .search-panel .search-cancel{color:#1d4ed8}
+body.light .search-panel [data-player-choice]{color:#0f172a!important;border-color:#e2e6ec!important}
+body.light .search-panel [data-player-choice] strong{color:#0f172a}
+body.light .search-panel [data-player-choice] i{background:#f0f2f5!important;color:#5b6472!important}
+body.light .search-panel [data-player-choice]:hover,body.light .search-panel [data-player-choice]:focus-visible{background:#f4f6f9!important}
+body.light .search-panel [data-player-choice] small,body.light .search-panel .search-hint,body.light .search-panel .player-search-empty,body.light .search-panel #playerSearch::placeholder{color:#5b6472}
+body.light .player-filter-chip{background:#e8eefc;color:#0f172a}body.light .player-filter-chip span{color:#1d4ed8}
+/* Four header buttons on the smallest phones */
+@media(max-width:360px){html body .brand-logo{width:122px!important;height:auto!important}html body .topbar .top-actions{gap:4px!important}html body .topbar .top-actions>.icon-btn{width:38px!important;min-width:38px!important;height:38px!important;padding:0!important}}
+/* Dim the page behind the open search on phones */
+@media(max-width:720px){body.search-open::after{content:"";position:fixed;inset:0;z-index:55;background:rgba(0,0,0,.5)}body.light.search-open::after{background:rgba(15,23,42,.25)}}
+html body .search-panel .player-finder label input#playerSearch{padding:0 40px 0 38px!important;text-indent:0!important}
+html body .search-panel #clearPlayerSearch{right:8px!important;top:8px!important}
