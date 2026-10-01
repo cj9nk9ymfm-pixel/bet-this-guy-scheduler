@@ -10,7 +10,7 @@ const app = fs.readFileSync(path.join(root, 'dist/app.js'), 'utf8');
 
 assert.match(home, /href="\/trust#official"/);
 assert.match(home, /Official Picks/);
-assert.match(home, /<h2 id="viewTitle">Bet These Guys<\/h2>/);
+assert.match(home, /<h2 id="viewTitle">Top props this week<\/h2>/);
 assert.match(home, /id="savedHeaderCount"/);
 assert.match(app, /top-play-badge/);
 assert.match(app, /function verifiedCard\(p,rank=-1,featured=false\)/);

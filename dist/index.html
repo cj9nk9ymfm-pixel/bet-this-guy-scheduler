@@ -45,9 +45,8 @@
         <span class="loader-orbit orbit-one"></span><span class="loader-orbit orbit-two"></span>
         <img src="bet-this-guy-logo-v3.png" alt="Bet This Guy" />
       </div>
-      <b class="loader-chat-label">VERIFYING THE GROUP CHAT</b>
-      <div class="loader-chat" id="loaderChat" aria-live="polite"></div>
-      <p id="loaderText">Running the “this time is different” model…</p>
+            <div class="loader-chat" id="loaderChat" aria-live="polite"></div>
+      <p id="loaderText">Loading this week’s lines…</p>
       <div class="loader-track"><span></span></div>
           <small>NFL PROPS&nbsp;&nbsp;·&nbsp;&nbsp; PLAYER TRENDS&nbsp;&nbsp;·&nbsp;&nbsp; PARLAYS</small>
     </div>
@@ -64,8 +63,8 @@
         <button class="nav-link" data-view="movement">Line Movement<small>See which lines are moving</small></button>
         <button class="nav-link" data-view="saved">Watchlist <span id="watchCount">0</span><small>Props you starred</small></button>
         <a class="nav-link" href="/trust#official">Official Picks<small>This week’s locked picks</small></a>
-        <a class="nav-link" href="/trust">Track Record<small>Every graded result</small></a>
-        <a class="nav-link" href="/picks">Weekly Picks<small>Every official pick, week by week</small></a>
+        <a class="nav-link" href="/trust">Results<small>Every graded pick</small></a>
+        <a class="nav-link" href="/picks">Picks by Week<small>Every official pick, week by week</small></a>
       </div>
     </nav>
     <div class="top-actions">
@@ -102,7 +101,7 @@
           <p class="hero-eyebrow" id="heroEyebrow">OFFICIAL PICKS</p>
           <h2 class="hero-title" id="heroTitle">Every pick locked before kickoff</h2>
           <div class="hero-stats" id="heroStats"></div>
-          <div class="hero-actions"><a class="hero-cta" id="heroCta" href="#propsSection">See this week’s picks</a><button type="button" class="alerts-btn" data-alerts-toggle>🔔 Get pick alerts</button><a class="hero-link" href="/trust#overview">Full track record →</a></div>
+          <div class="hero-actions"><a class="hero-cta" id="heroCta" href="#propsSection">See this week’s picks</a><button type="button" class="alerts-btn" data-alerts-toggle>🔔 Get pick alerts</button><a class="hero-link" href="/trust#overview">All results →</a></div>
           <p class="alerts-note" id="alertsNote" role="status" hidden></p>
           <p class="hero-note" id="heroNote">Singles at $100 each at the posted price (change your usual wager in Settings). Every pick is locked before kickoff and graded in public. Past results don’t guarantee future ones.</p>
         </section>
@@ -124,13 +123,13 @@
             <span class="track-record-arrow" aria-hidden="true">›</span>
           </a>
           <a class="track-record-banner" href="/trust#overview">
-            <span><strong>Track Record</strong><small>Every result + profit/loss</small></span>
+            <span><strong>Results</strong><small>Every graded pick + profit/loss</small></span>
             <span class="track-record-arrow" aria-hidden="true">›</span>
           </a>
         </div>
 
         <div class="section-head board-title" id="propsSection">
-          <div><p class="eyebrow">FEATURED PROPS</p><h2 id="viewTitle">Bet These Guys</h2><p id="resultCount">Balanced across the strongest available markets</p></div>
+          <div><p class="eyebrow">FEATURED PROPS</p><h2 id="viewTitle">Top props this week</h2><p id="resultCount">Balanced across the strongest available markets</p></div>
         </div>
 
         <div class="prop-sub-tabs" id="propTypeTabs" role="tablist" aria-label="Popular prop types" hidden></div>
@@ -139,10 +138,10 @@
         <div class="controls">
           <select id="marketFilter" aria-label="Market type"><option value="All">All NFL markets</option></select>
           <select id="sortFilter" aria-label="Sort props"><option value="edge">Highest edge</option><option value="move">Biggest move</option><option value="confidence">Confidence</option><option value="time">Start time</option></select>
-          <button class="filter-toggle" id="highEdgeBtn">🔥 Red Hot only</button>
+          <button class="filter-toggle" id="highEdgeBtn">Top edge only</button>
         </div>
 
-        <section class="verdict-guide" id="verdictGuide" aria-label="How to read the badges" hidden><div class="verdict-guide-head"><strong>How to read this board</strong><button type="button" id="verdictGuideClose">Got it</button></div><ul><li><b>✅ Bet This Guy</b><span>The price beats the market. Rare, so send it to the chat.</span></li><li><b>🪙 Coin Flip</b><span>Priced about right. No edge either way.</span></li><li><b>👎 Left on Read</b><span>The books are taking extra. Skip it.</span></li></ul><p>Every card shows what you’d win on your usual bet. Tap any price to add it to your slip. Recent games are shown for context only.</p></section>
+        <section class="verdict-guide" id="verdictGuide" aria-label="How to read the badges" hidden><div class="verdict-guide-head"><strong>How to read this board</strong><button type="button" id="verdictGuideClose">Got it</button></div><ul><li><b>✅ Good value</b><span>The best price beats the market’s fair price. Rare.</span></li><li><b>⚖️ Fair price</b><span>Priced about right. No edge either way.</span></li><li><b>⛔ Overpriced</b><span>The sportsbooks are charging more than usual. Pass.</span></li></ul><p>Every card shows what you’d win on your usual bet. Tap any price to add it to your slip. Recent games are shown for context only.</p></section>
         <div class="prop-list" id="propList"></div>
         <div class="empty" id="emptyState" hidden><strong>No props match these filters.</strong><span>Try another sport, market, or search.</span></div>
 
@@ -159,7 +158,7 @@
             <label>Start time<select id="timeFilterAdvanced" aria-label="Filter by game time"><option value="All">Any time</option><option>Morning</option><option>Afternoon</option><option>Evening</option><option>Late</option></select></label>
             <label>Prop type<select id="propFilterAdvanced" aria-label="Filter by prop type"></select></label>
             <label>Recommended side<select id="sideFilterAdvanced" aria-label="Filter by recommended side"><option value="All">Over or under</option><option>Over</option><option>Under</option></select></label>
-            <label class="tier-filter-hidden">Bet temperature<select id="heatFilterAdvanced" aria-label="Filter by bet temperature"><option value="All">Any temperature</option><option value="inferno">🔥 Red Hot</option><option value="hot">💨 Steaming</option><option value="warm">♨️ Luke Warm</option><option value="chilly">◆ Chilly</option><option value="ice">❄ Ice Cold</option></select></label>
+            <label class="tier-filter-hidden">Edge strength<select id="heatFilterAdvanced" aria-label="Filter by edge strength"><option value="All">Any edge</option><option value="inferno">Top edge</option><option value="hot">Strong edge</option><option value="warm">Moderate edge</option><option value="chilly">Small edge</option><option value="ice">No edge</option></select></label>
             <label>Line movement<select id="moveFilterAdvanced" aria-label="Filter by line movement"><option value="All">Any movement</option><option value="Up">Line up</option><option value="Down">Line down</option><option value="Hold">No movement</option></select></label>
             <label>Minimum model edge<select id="edgeFilterAdvanced" aria-label="Minimum model edge"><option value="0">Any edge</option><option value="4">4%+</option><option value="6">6%+</option><option value="8">8%+</option><option value="10">10%+</option></select></label>
             <label>Minimum confidence<select id="confidenceFilterAdvanced" aria-label="Minimum confidence"><option value="0">Any confidence</option><option value="60">60+</option><option value="65">65+</option><option value="70">70+</option><option value="75">75+</option></select></label>
@@ -189,7 +188,7 @@
           </div>
           <div class="mixer-result" id="mixerResult"></div>
           <div class="mixer-actions">
-            <button class="shuffle-btn" id="mixerShuffle">⟳ Shuffle another</button>
+            <button class="shuffle-btn" id="mixerShuffle">⟳ Show another</button>
             <button class="primary mixer-load" id="mixerLoad">Load into bet slip</button>
           </div>
         </section>
@@ -201,9 +200,9 @@
           </div>
           <p class="parlay-filter-summary" data-parlay-filter-summary aria-live="polite">All games · All prop types</p>
           <div class="parlay-level-tabs" role="tablist" aria-label="Parlay payout level">
-            <button class="active" role="tab" data-parlay-level="2" aria-selected="true" aria-controls="parlayCards"><strong>Okay, Hear Me Out</strong><span>+100 to +1000</span></button>
-            <button role="tab" data-parlay-level="1" aria-selected="false" aria-controls="parlayCards"><strong>What If?</strong><span>+1000 to +2500</span></button>
-            <button role="tab" data-parlay-level="0" aria-selected="false" aria-controls="parlayCards"><strong>Could You Imagine?</strong><span>+2500 to +15000</span></button>
+            <button class="active" role="tab" data-parlay-level="2" aria-selected="true" aria-controls="parlayCards"><strong>Conservative</strong><span>+100 to +1000</span></button>
+            <button role="tab" data-parlay-level="1" aria-selected="false" aria-controls="parlayCards"><strong>Mid-range</strong><span>+1000 to +2500</span></button>
+            <button role="tab" data-parlay-level="0" aria-selected="false" aria-controls="parlayCards"><strong>Long shot</strong><span>+2500 to +15000</span></button>
           </div>
           <div class="parlay-cards" id="parlayCards"></div>
           <p class="parlay-disclaimer">Suggested combinations use the current listed odds. Parlays multiply risk quickly—verify every line before betting.</p>
@@ -220,15 +219,15 @@
           <div><span>Est. probability</span><strong id="parlayProb">0%</strong></div>
           <label>Wager <span>Potential payout</span><div><b>$</b><input id="wager" inputmode="decimal" value="100" /><strong id="payout">$0.00</strong></div></label>
           <div class="budget-warning" id="budgetWarning" hidden></div>
-          <button class="primary group-chat-share" id="shareParlay" data-share-state="ready" aria-label="Send parlay screenshot and Bet This Guy website link to the group chat">
+          <button class="primary group-chat-share" id="shareParlay" data-share-state="ready" aria-label="Share a screenshot of this parlay with a link to Bet This Guy">
             <span class="share-icon" aria-hidden="true">🔥</span>
-            <span class="share-copy"><strong>Send It to the Chat</strong><small>I need someone to tell me this is a good idea.</small></span>
+            <span class="share-copy"><strong>Share this parlay</strong><small>Send a screenshot and link</small></span>
             <span class="share-typing" aria-hidden="true"><i></i><i></i><i></i></span>
           </button>
           <button class="track-parlay" id="trackParlay">＋ Track this parlay</button>
-          <small>Odds are illustrative. Verify every line at your licensed sportsbook before betting.</small>
+          <small>Odds shown are the best available price when last checked. Confirm every line at your licensed sportsbook before betting.</small>
         </div>
-        <div class="responsible"><strong>Keep it entertainment.</strong><span>Set a budget. Never chase losses. 21+ where legal.</span></div>
+        <div class="responsible"><strong>Bet responsibly.</strong><span>Set a budget. Never chase losses. 21+ where legal.</span></div>
       </aside>
     </section>
   </main>
@@ -239,14 +238,14 @@
     <a href="?page=movement" data-page-link="movement"><strong>Line Movement</strong><span>See which lines are moving</span></a>
     <button type="button" data-more-action="saved"><strong>Watchlist</strong><span>Props you starred</span></button>
     <a href="/trust#official"><strong>Official Picks</strong><span>This week’s locked picks</span></a>
-    <a href="/trust"><strong>Track Record</strong><span>Every graded result</span></a>
-    <a href="/picks"><strong>Weekly Picks</strong><span>Every official pick, week by week</span></a>
+    <a href="/trust"><strong>Results</strong><span>Every graded pick</span></a>
+    <a href="/picks"><strong>Picks by Week</strong><span>Every official pick, week by week</span></a>
     <button type="button" data-alerts-toggle data-alerts-sheet><strong>🔔 Pick alerts</strong><span>Get a notification when a new official pick drops</span></button>
     <button type="button" data-more-action="settings"><strong>Settings</strong><span>Bet amount, odds limits and more</span></button>
     <button type="button" class="more-phone-only" data-more-action="theme"><strong>☼ Light or dark mode</strong><span>Switch the site’s colours</span></button>
     <button type="button" class="more-phone-only" data-more-action="feed"><strong>Odds feed status</strong><span id="moreFeedStatus">Where the prices come from and when they updated</span></button>
   </dialog>
-  <footer class="app-footer"><span>Research and entertainment · No guaranteed outcomes · 21+ where legal · Gambling problem? Call <a href="tel:18004262537">1-800-GAMBLER</a></span><nav><a href="/picks">Weekly picks</a><a href="/trust">Trust Center</a><a href="/legal#privacy">Privacy</a><a href="/legal#terms">Terms</a><a href="mailto:support@betthisguy.com">Contact</a></nav></footer>
+  <footer class="app-footer"><span>Research and entertainment · No guaranteed outcomes · 21+ where legal · Gambling problem? Call <a href="tel:18004262537">1-800-GAMBLER</a></span><nav><a href="/picks">Picks by week</a><a href="/trust">Results</a><a href="/legal#privacy">Privacy</a><a href="/legal#terms">Terms</a><a href="mailto:support@betthisguy.com">Contact</a></nav><small class="copyright">© 2026 Bet This Guy</small></footer>
 
   <dialog id="detailDialog"><button class="dialog-close" aria-label="Close">×</button><div id="detailContent"></div></dialog>
   <dialog id="parlayDetailDialog" class="parlay-detail-dialog"><button class="dialog-close" aria-label="Close parlay details">×</button><div id="parlayDetailContent"></div></dialog>
@@ -263,7 +262,7 @@
     <p class="auth-status" id="authStatus" role="status" hidden></p>
   </div></dialog>
   <dialog id="feedDialog"><button class="dialog-close" aria-label="Close">×</button><p class="eyebrow">NFL DATA CONNECTION</p><h2>Live and upcoming NFL lines</h2><p id="feedDescription">The current NFL board loads first. Additional game prop trees load only when you open that game, keeping startup quick.</p><div class="feed-detail"><span>Odds</span><strong>The Odds API · multi-book comparison</strong><span>Player stats</span><strong>BALLDONTLIE · live NFL box scores</strong><span>Refresh</span><strong>Live scores & stats ~5s · in-play props ~60s</strong><span>Coverage</span><strong>NFL only</strong></div><p class="trust-inline"><a href="/trust">See how verification, model edge, and results are defined →</a></p><div class="dialog-actions"><button id="resetFeed">View demo board</button><button class="primary" id="saveFeed">Refresh NFL lines</button></div><small id="feedMessage"></small></dialog>
-  <dialog id="settingsDialog" class="settings-dialog"><div class="settings-shell"><header class="settings-head"><div><p class="eyebrow">YOUR BET THIS GUY</p><h2>Settings</h2></div><button class="dialog-close" aria-label="Close">×</button></header><nav class="settings-tabs" role="tablist" aria-label="Settings sections"><button class="active" type="button" data-settings-tab="personal">Personal</button><button type="button" data-settings-tab="books">Sportsbooks</button><button type="button" data-settings-tab="tracking">Tracking</button><button type="button" data-settings-tab="safety">Safety & Share</button></nav><div class="settings-body"><section class="settings-panel" data-settings-panel="personal"><h3>Make the board yours</h3><p>Choose what appears first and how generated parlays should behave.</p><div class="settings-section"><h3>Favorite sports</h3><div class="book-grid" id="sportPreferences"></div></div><div class="settings-grid"><label>Risk level<select id="riskPreference"><option value="conservative">Conservative</option><option value="balanced">Balanced</option><option value="aggressive">Aggressive</option></select></label><label>Typical wager<input id="typicalWager" type="number" min="0" step="1" /></label><label>Minimum book coverage<select id="minBookCoverage"><option value="1">1 sportsbook</option><option value="2">2 sportsbooks</option><option value="3">3 sportsbooks</option><option value="4">4 sportsbooks</option></select></label><label>Maximum parlay legs<select id="maxParlayLegs"><option value="4">4 legs</option><option value="6">6 legs</option><option value="8">8 legs</option><option value="10">10 legs</option></select></label></div><div class="settings-checks"><label><input id="hideInactive" type="checkbox" /> Hide sports without posted props</label><label><input id="lineAlerts" type="checkbox" /> Highlight saved props that move 0.5+</label><label><input id="avoidSameGame" type="checkbox" /> Limit correlated legs from the same game</label><label><input id="hideLongshots" type="checkbox" /> Hide long-shot scorer props from Best of the Best</label><label><input id="browserAlerts" type="checkbox" /> Alert me when a new Fire bet appears</label></div></section><section class="settings-panel" data-settings-panel="books" hidden><h3>My sportsbooks</h3><p>Recommendations and generated parlays will use prices from your selected books.</p><div class="settings-section"><div class="book-grid" id="bookPreferences"></div></div><small>Leave every book unchecked to compare all available sportsbooks.</small></section><section class="settings-panel" data-settings-panel="tracking" hidden><h3>My results</h3><p>Grade tracked parlays manually and keep an honest record on this device.</p><div class="tracking-summary" id="trackingSummary"></div><div class="tracked-list" id="trackedList"></div><a class="trust-inline" href="/trust">View the public methodology and accuracy dashboard →</a><button class="track-parlay settings-clear" id="clearTracking">Clear tracking history</button></section><section class="settings-panel" data-settings-panel="safety" hidden><h3>Safety & sharing</h3><p>Set your entertainment limit and choose how shared parlay cards look.</p><div class="settings-grid"><label>Weekly entertainment budget<input id="weeklyBudget" type="number" min="0" step="5" /></label><label>Share-card theme<select id="shareTheme"><option value="classic">Classic Blue</option><option value="heat">Orange Heat</option><option value="group">Group Chat</option></select></label></div><div class="settings-checks"><label><input id="noWeeklyLimit" type="checkbox" /> No weekly limit</label></div><div class="settings-note"><strong>Keep it entertainment.</strong><span>Pricing recommendations are market-derived. Verified projections, injuries, weather and confirmed lineups will appear only when those feeds are connected.</span></div></section></div><footer class="settings-footer"><span id="settingsSaveStatus">Changes stay on this device.</span><button class="primary" id="savePreferences">Save settings</button></footer></div></dialog>
+  <dialog id="settingsDialog" class="settings-dialog"><div class="settings-shell"><header class="settings-head"><div><p class="eyebrow">YOUR BET THIS GUY</p><h2>Settings</h2></div><button class="dialog-close" aria-label="Close">×</button></header><nav class="settings-tabs" role="tablist" aria-label="Settings sections"><button class="active" type="button" data-settings-tab="personal">Personal</button><button type="button" data-settings-tab="books">Sportsbooks</button><button type="button" data-settings-tab="tracking">Tracking</button><button type="button" data-settings-tab="safety">Safety & Share</button></nav><div class="settings-body"><section class="settings-panel" data-settings-panel="personal"><h3>Make the board yours</h3><p>Choose what appears first and how generated parlays should behave.</p><div class="settings-section"><h3>Favorite sports</h3><div class="book-grid" id="sportPreferences"></div></div><div class="settings-grid"><label>Risk level<select id="riskPreference"><option value="conservative">Conservative</option><option value="balanced">Balanced</option><option value="aggressive">Aggressive</option></select></label><label>Typical wager<input id="typicalWager" type="number" min="0" step="1" /></label><label>Minimum book coverage<select id="minBookCoverage"><option value="1">1 sportsbook</option><option value="2">2 sportsbooks</option><option value="3">3 sportsbooks</option><option value="4">4 sportsbooks</option></select></label><label>Maximum parlay legs<select id="maxParlayLegs"><option value="4">4 legs</option><option value="6">6 legs</option><option value="8">8 legs</option><option value="10">10 legs</option></select></label></div><div class="settings-checks"><label><input id="hideInactive" type="checkbox" /> Hide sports without posted props</label><label><input id="lineAlerts" type="checkbox" /> Highlight saved props that move 0.5+</label><label><input id="avoidSameGame" type="checkbox" /> Limit correlated legs from the same game</label><label><input id="hideLongshots" type="checkbox" /> Hide long-shot scorer props from Best of the Best</label><label><input id="browserAlerts" type="checkbox" /> Alert me when a new Fire bet appears</label></div></section><section class="settings-panel" data-settings-panel="books" hidden><h3>My sportsbooks</h3><p>Recommendations and generated parlays will use prices from your selected books.</p><div class="settings-section"><div class="book-grid" id="bookPreferences"></div></div><small>Leave every book unchecked to compare all available sportsbooks.</small></section><section class="settings-panel" data-settings-panel="tracking" hidden><h3>My results</h3><p>Grade tracked parlays manually and keep an honest record on this device.</p><div class="tracking-summary" id="trackingSummary"></div><div class="tracked-list" id="trackedList"></div><a class="trust-inline" href="/trust">View the public methodology and accuracy dashboard →</a><button class="track-parlay settings-clear" id="clearTracking">Clear tracking history</button></section><section class="settings-panel" data-settings-panel="safety" hidden><h3>Safety & sharing</h3><p>Set your entertainment limit and choose how shared parlay cards look.</p><div class="settings-grid"><label>Weekly entertainment budget<input id="weeklyBudget" type="number" min="0" step="5" /></label><label>Share-card theme<select id="shareTheme"><option value="classic">Classic Blue</option><option value="heat">Orange</option><option value="group">Purple</option></select></label></div><div class="settings-checks"><label><input id="noWeeklyLimit" type="checkbox" /> No weekly limit</label></div><div class="settings-note"><strong>Bet responsibly.</strong><span>Pricing recommendations are market-derived. Verified projections, injuries, weather and confirmed lineups will appear only when those feeds are connected.</span></div></section></div><footer class="settings-footer"><span id="settingsSaveStatus">Changes stay on this device.</span><button class="primary" id="savePreferences">Save settings</button></footer></div></dialog>
 
   <template id="supabaseScript"><script src="/supabase.js?v=2.117.1"></script></template>
   <script src="/auth.js?v=4"></script>
