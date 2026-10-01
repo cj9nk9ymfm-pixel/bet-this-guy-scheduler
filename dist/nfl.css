@@ -458,7 +458,8 @@ body.light .top-play{border-color:#6bc5e8!important;box-shadow:0 9px 24px rgba(2
 .hero-cta:hover{filter:brightness(1.08)}
 .hero-link{color:#9fd4ff;font-weight:600;font-size:14px;text-decoration:none}
 .hero-note{margin:14px 0 0;color:#7f96b8;font-size:11px;line-height:1.45}
-body.has-hero .proof-banners{display:none}
+/* The record banner (always shown now) links to both pages these boxes do. */
+.proof-banners{display:none}
 .hits-strip{margin:0 0 16px}
 .hits-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:0 2px 8px}
 .hits-head h2{margin:0;color:#fff;font:700 18px 'Space Grotesk',sans-serif}
@@ -656,3 +657,9 @@ body.light{background-color:#eef4fb}
   /* The feed status shows only its dot on phones; keep its words for screen readers. */
   .feed-status span{display:inline!important;position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap}
 }
+/* Reserve the record banner's stat row and the hits strip before the app
+   fills them in (the Worker marks the page when it knows they will appear),
+   so the page doesn't jump down as it loads. */
+.home-stats #heroStats:empty{min-height:73px}
+.home-hits #hitsStrip[hidden]{display:block!important;visibility:hidden;min-height:201px}
+@media(max-width:720px){.home-stats #heroStats:empty{min-height:71px}.home-hits #hitsStrip[hidden]{min-height:200px}}

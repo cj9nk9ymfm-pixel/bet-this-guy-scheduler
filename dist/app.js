@@ -1364,6 +1364,9 @@ render=function(){
   }
   let heroRows=null;
   async function loadHero(){
+    // The home page HTML usually carries the rows already (window.BTG_HOME),
+    // so the banner and hits draw with the page instead of popping in later.
+    if(Array.isArray(window.BTG_HOME)){heroRows=window.BTG_HOME;renderHero(summarise(heroRows,Date.now(),viewerStake()));return}
     try{
       const response=await fetch('/api/record?view=home',{signal:AbortSignal.timeout(10000)});
       if(!response.ok)throw new Error();
