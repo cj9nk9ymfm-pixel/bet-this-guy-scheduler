@@ -1307,7 +1307,7 @@ render=function(){
     const hero=$('#heroBanner'),strip=$('#hitsStrip');if(!hero)return;
     if(!s){hero.hidden=false;return}
     $('#heroEyebrow').textContent='OFFICIAL RECORD';
-    $('#heroTitle').textContent=`${s.label==='LAST WEEK'?'Last week':s.label==='THIS WEEK SO FAR'?'This week so far':s.label.charAt(0)+s.label.slice(1).toLowerCase()}: ${s.wins}–${s.losses}${s.pushes?`–${s.pushes}`:''}`;
+    $('#heroTitle').innerHTML=`${htmlEscape(s.label==='LAST WEEK'?'Last week':s.label==='THIS WEEK SO FAR'?'This week so far':s.label.charAt(0)+s.label.slice(1).toLowerCase())} <b>${s.wins}–${s.losses}${s.pushes?`–${s.pushes}`:''}</b> <span class="hero-profit ${s.profit>=0?'up':'down'}">${htmlEscape(money(s.profit))}</span>`;
     const stats=[[money(s.profit),`betting ${stakeText()} a pick`,s.profit>=0?'up':'down']];
     if(s.tracked)stats.push([`${s.beat} of ${s.tracked}`,'beat the closing line','']);
     if(s.parlayWins+s.parlayLosses)stats.push([`${s.parlayWins}–${s.parlayLosses}`,`parlays · ${money(s.parlayProfit)}`,s.parlayProfit>=0?'up':'down']);
@@ -1344,8 +1344,8 @@ render=function(){
   function renderOfficialNow(rows){
     const host=$('#officialNow');if(!host||!Array.isArray(rows))return;
     const list=officialNow(rows);
-    $('#officialNowCount').textContent=list.length?`${list.length} pick${list.length===1?'':'s'} so far`:'';
-    $('#officialNowList').innerHTML=list.length?list.map(officialRow).join(''):'<div class="on-empty"><strong>No official picks yet this week.</strong><span>Picks post in the 24 hours before kickoff, only when a price beats the market. Turn on alerts to hear the moment one drops.</span></div>';
+    $('#officialNowCount').textContent=list.length?String(list.length):'';
+    $('#officialNowList').innerHTML=list.length?list.map(officialRow).join(''):'<div class="on-empty"><strong>No picks yet this week.</strong><span>They post in the 24 hours before kickoff.</span></div>';
     $$('#officialNowList button[data-on]').forEach(b=>b.onclick=()=>openHit(list[+b.dataset.on]));
     host.hidden=false;
   }

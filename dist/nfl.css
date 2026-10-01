@@ -892,3 +892,33 @@ body.light .on-won{color:#15803d}body.light .on-lost{color:#c62828}
 .prop-card .bookmark{top:12px!important;right:12px!important}
 .prop-card .card-money{font-size:13px!important}
 .verdict-guide li{display:block!important}.verdict-guide li b{display:flex;align-items:center;gap:6px}
+/* ---- One-glance home: fewer words, details behind taps ---- */
+#heroBanner.hero{display:flex!important;align-items:center!important;justify-content:space-between!important;flex-wrap:wrap;gap:8px 14px;padding:12px 16px!important}
+#heroBanner #heroEyebrow,#heroBanner #heroStats,#heroBanner .hero-note,#heroBanner .alerts-btn,#heroBanner #heroCta,#heroBanner .alerts-note{display:none!important}
+.home-stats #heroStats:empty{min-height:0!important}
+#heroBanner .hero-title{margin:0!important;font:600 16px/1.3 "DM Sans",sans-serif!important;color:var(--muted)!important;letter-spacing:0!important}
+#heroBanner .hero-title b{color:var(--text);font:700 18px "Space Grotesk",sans-serif;margin:0 4px}
+#heroBanner .hero-profit{font:700 18px "Space Grotesk",sans-serif}#heroBanner .hero-profit.up{color:#22c55e}#heroBanner .hero-profit.down{color:#f06060}
+#heroBanner .hero-actions{display:block!important;margin:0!important}
+#heroBanner .hero-link{font-size:14px!important;font-weight:600!important;white-space:nowrap}
+.on-head{align-items:center!important}
+.on-head h2{display:flex;align-items:center;gap:8px}
+.on-count{display:inline-grid;place-items:center;min-width:24px;height:24px;padding:0 7px;border-radius:999px;background:var(--panel2);color:var(--text)!important;font:700 13px "DM Sans",sans-serif!important}
+.on-count:empty{display:none}
+.on-alerts{height:34px!important;min-height:34px!important;padding:0 12px!important;font-size:13.5px!important;white-space:nowrap}
+.hits-head>a{display:none!important}
+.board-title .eyebrow,#resultCount{display:none!important}
+.player-finder label>span{display:none!important}
+/* Rating legend: icons and names only */
+.verdict-guide{padding:10px 14px!important}
+.verdict-guide-head strong,.verdict-guide li span,.verdict-guide>p{display:none!important}
+.verdict-guide-head{position:absolute;right:10px;top:50%;transform:translateY(-50%);margin:0!important}
+.verdict-guide{position:relative}
+.verdict-guide-head button{height:28px!important;min-height:28px!important;padding:0 10px!important;font-size:12.5px!important}
+.verdict-guide ul{display:flex!important;flex-wrap:wrap;gap:6px 16px;margin:0!important;padding:0 70px 0 0!important}
+.verdict-guide li{display:block!important;margin:0!important;padding:0!important}
+.verdict-guide li b{font-size:13.5px!important}
+#hitsStrip.hits-strip{margin-top:22px!important}
+.official-now{margin:20px 0 4px!important}
+.board-title{margin-top:18px!important}
+.player-finder{margin-top:18px!important}
