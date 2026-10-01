@@ -741,3 +741,7 @@ body[data-mobile-page="parlays"] #propsSection,body[data-mobile-page="generator"
 /* Smallest phones (320px wide): shrink the logo so all three header buttons fit. */
 @media(max-width:360px){.brand-logo{width:140px!important;height:auto!important}.top-actions{gap:6px!important}}
 .top-actions .account-btn span{font-size:15px;font-weight:700}
+/* Copyright line in the app footer; feed outage reads as a calm status, not an alarm. */
+.app-footer .copyright{display:block;width:100%;margin-top:6px;color:var(--muted,#7f96b8);font-size:12px}
+#feedBtn.error{border-color:rgba(255,255,255,.14)!important;color:#9fb3d9!important}
+#feedBtn.error i{background:#9fb3d9!important;box-shadow:none!important}
