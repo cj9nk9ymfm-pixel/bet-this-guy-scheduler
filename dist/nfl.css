@@ -1095,3 +1095,7 @@ body.light .pp-legend{color:#5b6472}body.light .pp-legend i{border-color:#0f172a
 body.light .pp-bar em{background:#fff}body.light .pp-vs span{background:#f0f2f5;color:#5b6472}body.light .pp-vs span b,body.light .pp-vs p b{color:#0f172a}body.light .pp-vs span.hit{border-color:#16a34a}body.light .pp-vs span.miss{border-color:#dc2626}
 body.light .pp-tabs button b{background:#e2e6ec;color:#0f172a}body.light .pp-tabs button[aria-selected=true] b{background:rgba(255,255,255,.25);color:#fff}
 body.light .pp-photo span,body.light .pp-season th{color:#5b6472!important}.pp-scroll:focus-visible{outline:2px solid #6aa8ff;outline-offset:-2px}
+/* Player screen sits below the iPhone status bar when opened from the Home Screen. */
+@media(max-width:720px){
+  html body dialog.player-dialog{padding-top:env(safe-area-inset-top)!important}
+}
