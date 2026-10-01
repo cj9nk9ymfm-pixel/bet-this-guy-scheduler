@@ -6,13 +6,16 @@
   <meta name="theme-color" content="#050b1d" />
   <meta name="description" content="NFL player prop value, recent performance, line movement, and smarter parlay building." />
   <title>Bet This Guy — NFL Prop Intelligence</title>
+  <link rel="canonical" href="https://betthisguy.com/" />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="Bet This Guy" />
   <meta property="og:title" content="Bet This Guy — NFL Prop Intelligence" />
   <meta property="og:description" content="NFL player prop value, recent performance, line movement, and smarter parlay building." />
   <meta property="og:url" content="https://betthisguy.com/app" />
-  <meta property="og:image" content="https://betthisguy.com/bet-this-guy-logo-v3.png" />
-  <meta name="twitter:card" content="summary" />
+  <meta property="og:image" content="https://betthisguy.com/og-image.jpg" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta name="twitter:card" content="summary_large_image" />
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -24,13 +27,14 @@
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/styles.css?v=175" />
   <link rel="stylesheet" href="/theme-blue.css?v=107" />
-  <link rel="stylesheet" href="/nfl.css?v=190" />
+  <link rel="stylesheet" href="/nfl.css?v=191" />
   <link rel="stylesheet" href="/performance.css?v=2" />
   <link rel="stylesheet" href="/live.css?v=110" />
   <link rel="stylesheet" href="/auth.css?v=2" />
   <style>html.warm-resume .app-loader{display:none!important}</style>
   <script>try{const last=Number(localStorage.getItem('btg-last-active')||0);if(last&&Date.now()-last<1800000)document.documentElement.classList.add('warm-resume')}catch{}</script>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23050b1d'/%3E%3Cpath d='M14 14h25l11 11v25H14z' fill='%231c6cff'/%3E%3Cpath d='M22 43V25h13l7 7-7 7h-7v4z' fill='white'/%3E%3Ccircle cx='35' cy='32' r='3' fill='%2300d4ff'/%3E%3C/svg%3E" />
+  <!--HOME_DATA-->
 </head>
 <body>
   <div class="app-loader" id="appLoader" role="status" aria-live="polite" aria-label="Loading all posted player props">
@@ -92,35 +96,14 @@
           <div class="live-empty" id="liveCenterEmpty"><strong>No NFL games are live right now.</strong><span>Live props, scores, stat progress, and parlay legs will appear here automatically at kickoff.</span></div>
           <p class="live-disclaimer">Live results are unofficial. Overs may show as hit when the threshold is crossed; unders and all final grades wait for confirmed game statistics.</p>
         </section>
-        <details class="advanced-filters" id="advancedFilters">
-          <summary>
-            <span><b>⚙ Smart Filters</b><small id="filterSummary">NFL · All games · All props</small></span>
-            <span class="filter-summary-right"><em id="filterMatchCount">18 matches</em><i id="activeFilterCount">0 active</i></span>
-          </summary>
-          <div class="advanced-filter-grid">
-            <label class="nfl-fixed-filter">League<select id="sportFilterAdvanced" aria-label="League"><option value="NFL">NFL</option></select></label>
-            <label>Game<select id="gameFilterAdvanced" aria-label="Filter by game"></select></label>
-            <label>Team<select id="teamFilterAdvanced" aria-label="Filter by team"></select></label>
-            <label>Day<select id="dayFilterAdvanced" aria-label="Filter by game day"></select></label>
-            <label>Start time<select id="timeFilterAdvanced" aria-label="Filter by game time"><option value="All">Any time</option><option>Morning</option><option>Afternoon</option><option>Evening</option><option>Late</option></select></label>
-            <label>Prop type<select id="propFilterAdvanced" aria-label="Filter by prop type"></select></label>
-            <label>Recommended side<select id="sideFilterAdvanced" aria-label="Filter by recommended side"><option value="All">Over or under</option><option>Over</option><option>Under</option></select></label>
-            <label class="tier-filter-hidden">Bet temperature<select id="heatFilterAdvanced" aria-label="Filter by bet temperature"><option value="All">Any temperature</option><option value="inferno">🔥 Red Hot</option><option value="hot">💨 Steaming</option><option value="warm">♨️ Luke Warm</option><option value="chilly">◆ Chilly</option><option value="ice">❄ Ice Cold</option></select></label>
-            <label>Line movement<select id="moveFilterAdvanced" aria-label="Filter by line movement"><option value="All">Any movement</option><option value="Up">Line up</option><option value="Down">Line down</option><option value="Hold">No movement</option></select></label>
-            <label>Minimum model edge<select id="edgeFilterAdvanced" aria-label="Minimum model edge"><option value="0">Any edge</option><option value="4">4%+</option><option value="6">6%+</option><option value="8">8%+</option><option value="10">10%+</option></select></label>
-            <label>Minimum confidence<select id="confidenceFilterAdvanced" aria-label="Minimum confidence"><option value="0">Any confidence</option><option value="60">60+</option><option value="65">65+</option><option value="70">70+</option><option value="75">75+</option></select></label>
-            <label>Recommended odds<select id="oddsFilterAdvanced" aria-label="Filter by recommended odds"><option value="All">Any odds</option><option value="Plus">Plus money</option><option value="Standard">Standard price</option><option value="Heavy">Heavy favorite</option></select></label>
-            <label>Sort by<select id="sortFilterAdvanced" aria-label="Sort filtered props"><option value="edge">Highest edge</option><option value="move">Biggest move</option><option value="confidence">Confidence</option><option value="time">Start time</option></select></label>
-          </div>
-          <div class="advanced-filter-actions"><span>These filters apply only to Parlays and the Parlay Generator.</span><button id="resetAdvancedFilters" type="button">Reset all</button></div>
-        </details>
-        <section class="hero" id="heroBanner" aria-labelledby="heroTitle" hidden>
+        
+        <section class="hero" id="heroBanner" aria-labelledby="heroTitle">
           <p class="hero-eyebrow" id="heroEyebrow">OFFICIAL PICKS</p>
           <h2 class="hero-title" id="heroTitle">Every pick locked before kickoff</h2>
           <div class="hero-stats" id="heroStats"></div>
           <div class="hero-actions"><a class="hero-cta" id="heroCta" href="#propsSection">See this week’s picks</a><button type="button" class="alerts-btn" data-alerts-toggle>🔔 Get pick alerts</button><a class="hero-link" href="/trust#overview">Full track record →</a></div>
           <p class="alerts-note" id="alertsNote" role="status" hidden></p>
-          <p class="hero-note" id="heroNote">Every pick is locked before kickoff and graded in public. Past results don’t guarantee future ones.</p>
+          <p class="hero-note" id="heroNote">Singles at $100 each at the posted price (change your usual wager in Settings). Every pick is locked before kickoff and graded in public. Past results don’t guarantee future ones.</p>
         </section>
         <section class="hits-strip" id="hitsStrip" aria-labelledby="hitsTitle" hidden>
           <div class="hits-head"><h2 id="hitsTitle">Last week’s hits</h2><div class="hits-nav"><button type="button" id="hitsPrev" aria-label="Previous hits">‹</button><button type="button" id="hitsNext" aria-label="More hits">›</button></div><a href="/trust#official">See every pick →</a></div>
@@ -161,6 +144,29 @@
         <section class="verdict-guide" id="verdictGuide" aria-label="How to read the badges" hidden><div class="verdict-guide-head"><strong>How to read this board</strong><button type="button" id="verdictGuideClose">Got it</button></div><ul><li><b>✅ Bet This Guy</b><span>The price beats the market. Rare, so send it to the chat.</span></li><li><b>🪙 Coin Flip</b><span>Priced about right. No edge either way.</span></li><li><b>👎 Left on Read</b><span>The books are taking extra. Skip it.</span></li></ul><p>Every card shows what you’d win on your usual bet. Tap any price to add it to your slip. Recent games are shown for context only.</p></section>
         <div class="prop-list" id="propList"></div>
         <div class="empty" id="emptyState" hidden><strong>No props match these filters.</strong><span>Try another sport, market, or search.</span></div>
+
+        <details class="advanced-filters" id="advancedFilters">
+          <summary>
+            <span><b>⚙ Smart Filters</b><small id="filterSummary">NFL · All games · All props</small></span>
+            <span class="filter-summary-right"><em id="filterMatchCount">18 matches</em><i id="activeFilterCount">0 active</i></span>
+          </summary>
+          <div class="advanced-filter-grid">
+            <label class="nfl-fixed-filter">League<select id="sportFilterAdvanced" aria-label="League"><option value="NFL">NFL</option></select></label>
+            <label>Game<select id="gameFilterAdvanced" aria-label="Filter by game"></select></label>
+            <label>Team<select id="teamFilterAdvanced" aria-label="Filter by team"></select></label>
+            <label>Day<select id="dayFilterAdvanced" aria-label="Filter by game day"></select></label>
+            <label>Start time<select id="timeFilterAdvanced" aria-label="Filter by game time"><option value="All">Any time</option><option>Morning</option><option>Afternoon</option><option>Evening</option><option>Late</option></select></label>
+            <label>Prop type<select id="propFilterAdvanced" aria-label="Filter by prop type"></select></label>
+            <label>Recommended side<select id="sideFilterAdvanced" aria-label="Filter by recommended side"><option value="All">Over or under</option><option>Over</option><option>Under</option></select></label>
+            <label class="tier-filter-hidden">Bet temperature<select id="heatFilterAdvanced" aria-label="Filter by bet temperature"><option value="All">Any temperature</option><option value="inferno">🔥 Red Hot</option><option value="hot">💨 Steaming</option><option value="warm">♨️ Luke Warm</option><option value="chilly">◆ Chilly</option><option value="ice">❄ Ice Cold</option></select></label>
+            <label>Line movement<select id="moveFilterAdvanced" aria-label="Filter by line movement"><option value="All">Any movement</option><option value="Up">Line up</option><option value="Down">Line down</option><option value="Hold">No movement</option></select></label>
+            <label>Minimum model edge<select id="edgeFilterAdvanced" aria-label="Minimum model edge"><option value="0">Any edge</option><option value="4">4%+</option><option value="6">6%+</option><option value="8">8%+</option><option value="10">10%+</option></select></label>
+            <label>Minimum confidence<select id="confidenceFilterAdvanced" aria-label="Minimum confidence"><option value="0">Any confidence</option><option value="60">60+</option><option value="65">65+</option><option value="70">70+</option><option value="75">75+</option></select></label>
+            <label>Recommended odds<select id="oddsFilterAdvanced" aria-label="Filter by recommended odds"><option value="All">Any odds</option><option value="Plus">Plus money</option><option value="Standard">Standard price</option><option value="Heavy">Heavy favorite</option></select></label>
+            <label>Sort by<select id="sortFilterAdvanced" aria-label="Sort filtered props"><option value="edge">Highest edge</option><option value="move">Biggest move</option><option value="confidence">Confidence</option><option value="time">Start time</option></select></label>
+          </div>
+          <div class="advanced-filter-actions"><span>These filters apply only to Parlays and the Parlay Generator.</span><button id="resetAdvancedFilters" type="button">Reset all</button></div>
+        </details>
 
         <section class="parlay-mixer" id="parlayMixer" aria-labelledby="mixerTitle">
           <div class="mixer-intro">
@@ -237,7 +243,7 @@
     <button type="button" data-alerts-toggle data-alerts-sheet><strong>🔔 Pick alerts</strong><span>Get a notification when a new official pick drops</span></button>
     <button type="button" data-more-action="settings"><strong>Settings</strong><span>Bet amount, odds limits and more</span></button>
   </dialog>
-  <footer class="app-footer"><span>Research and entertainment · No guaranteed outcomes</span><nav><a href="/picks">Weekly picks</a><a href="/trust">Trust Center</a><a href="/legal#privacy">Privacy</a><a href="/legal#terms">Terms</a></nav></footer>
+  <footer class="app-footer"><span>Research and entertainment · No guaranteed outcomes · 21+ where legal · Gambling problem? Call <a href="tel:18004262537">1-800-GAMBLER</a></span><nav><a href="/picks">Weekly picks</a><a href="/trust">Trust Center</a><a href="/legal#privacy">Privacy</a><a href="/legal#terms">Terms</a></nav></footer>
 
   <dialog id="detailDialog"><button class="dialog-close" aria-label="Close">×</button><div id="detailContent"></div></dialog>
   <dialog id="parlayDetailDialog" class="parlay-detail-dialog"><button class="dialog-close" aria-label="Close parlay details">×</button><div id="parlayDetailContent"></div></dialog>

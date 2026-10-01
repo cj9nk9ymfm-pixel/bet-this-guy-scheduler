@@ -894,15 +894,37 @@ function recordOddsBucket(value) {
   return "-150 or shorter";
 }
 
+// Official picks from the last three weeks, for the home page banner and hits
+// strip. Cached for a minute per Worker instance; the home page HTML carries
+// the same rows so the banner renders without waiting for a second request.
+let homeRowsCache = { at: 0, rows: null };
+async function homeRecentRows(env, now = Date.now()) {
+  if (homeRowsCache.rows && now - homeRowsCache.at < 60000) return homeRowsCache.rows;
+  const since = new Date(now - 21 * 86400000).toISOString();
+  const rows = await env.DB.prepare("SELECT id, kind, player, market, side, line, odds, combined_odds, game_time, posted_at, status, result, closing_line, closing_odds, closing_captured_at, legs_json FROM public_recommendations WHERE source = 'market-verified-v2' AND kind IN ('prop','parlay') AND id LIKE 'official|%' AND posted_at >= ? ORDER BY posted_at DESC LIMIT 400").bind(since).all();
+  homeRowsCache = { at: now, rows: rows.results || [] };
+  return homeRowsCache.rows;
+}
+
+// Which parts of the home banner will fill in once the app runs (the same week
+// choice as summarise() in dist/app.js), so the page can reserve their space.
+function homeLayout(rows, now = Date.now()) {
+  const graded = r => r.status !== "provisional" && ["won", "lost", "push"].includes(r.result);
+  const current = officialWeek(now), weeks = new Map();
+  for (const r of rows) { const w = (String(r.id || "").match(/^official\|(\d{4}-\d{2}-\d{2})\|/) || [])[1]; if (w) (weeks.get(w) || weeks.set(w, []).get(w)).push(r); }
+  const ordered = [...weeks.keys()].sort().reverse();
+  const week = ordered.find(w => w < current && weeks.get(w).some(r => r.kind === "prop" && graded(r))) || ordered.find(w => weeks.get(w).filter(r => r.kind === "prop" && graded(r)).length >= 5);
+  if (!week) return { stats: false, hits: false };
+  return { stats: true, hits: weeks.get(week).some(r => graded(r) && r.result === "won") };
+}
+
 async function publicRecord(request, env, ctx) {
   if (!env.DB) return json({ success: false, error: "The public record database is not connected yet." }, 503);
   if (request.method === "GET" && new URL(request.url).searchParams.get("view") === "home") {
     // The home page banner needs only recent official picks, so it stays small
     // and edge-cacheable instead of pulling the whole record.
     try {
-      const since = new Date(Date.now() - 21 * 86400000).toISOString();
-      const rows = await env.DB.prepare("SELECT id, kind, player, market, side, line, odds, combined_odds, game_time, posted_at, status, result, closing_line, closing_odds, closing_captured_at, legs_json FROM public_recommendations WHERE source = 'market-verified-v2' AND kind IN ('prop','parlay') AND id LIKE 'official|%' AND posted_at >= ? ORDER BY posted_at DESC LIMIT 400").bind(since).all();
-      return json({ success: true, recent: rows.results || [], updatedAt: new Date().toISOString() }, 200, { "cache-control": "public, max-age=300" });
+      return json({ success: true, recent: await homeRecentRows(env), updatedAt: new Date().toISOString() }, 200, { "cache-control": "public, max-age=300" });
     } catch (error) {
       return json({ success: false, error: "The public record is temporarily unavailable." }, 503);
     }
@@ -1030,7 +1052,7 @@ async function routeRequest(request, env, ctx) {
     if (url.pathname === "/api/email-alerts/unsubscribe") return emailUnsubscribe(request, env);
     if (url.pathname === "/sw.js") return new Response(SERVICE_WORKER_JS, { headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-cache" } });
     if (url.pathname === "/manifest.webmanifest") return new Response(WEB_MANIFEST, { headers: { "content-type": "application/manifest+json", "cache-control": "public, max-age=3600" } });
-    if (typeof ICONS !== "undefined" && ICONS[url.pathname]) return new Response(Uint8Array.from(atob(ICONS[url.pathname]), char => char.charCodeAt(0)), { headers: { "content-type": "image/png", "cache-control": "public, max-age=86400" } });
+    if (typeof ICONS !== "undefined" && ICONS[url.pathname]) return new Response(Uint8Array.from(atob(ICONS[url.pathname]), char => char.charCodeAt(0)), { headers: { "content-type": url.pathname.endsWith(".jpg") ? "image/jpeg" : "image/png", "cache-control": "public, max-age=86400" } });
     if (url.pathname === "/robots.txt") return new Response(ROBOTS_TXT, { headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=86400" } });
     if (url.pathname === "/sitemap.xml") return new Response(env.DB ? await weeklySitemap(env) : SITEMAP_XML, { headers: { "content-type": "application/xml; charset=utf-8", "cache-control": "public, max-age=3600" } });
     if (url.pathname === "/post") { ctx.waitUntil(countUsage(env, ["view:post"], request).catch(() => {})); return postKitPage(request, env); }
@@ -1041,9 +1063,15 @@ async function routeRequest(request, env, ctx) {
     }
     // The results page is built in the browser; a server-written summary of
     // the record gives search engines and link previews real content too.
-    if (url.pathname === "/trust" && env.DB && typeof STATIC !== "undefined") {
+    if (["/", "/app", "/index.html"].includes(url.pathname) && env.DB && typeof STATIC !== "undefined") {
+      const rows = await homeRecentRows(env).catch(() => null);
+      const layout = rows ? homeLayout(rows) : null, classes = layout ? ["home-data", ...(layout.stats ? ["home-stats"] : []), ...(layout.hits ? ["home-hits"] : [])] : [];
+      const data = rows ? `<script>window.BTG_HOME=${JSON.stringify(rows).replace(/</g, "\\u003c")};document.documentElement.classList.add(${classes.map(c => JSON.stringify(c)).join(",")})</script>` : "";
+      return new Response(STATIC[url.pathname][1].replace("<!--HOME_DATA-->", () => data), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache" } });
+    }
+    if ((url.pathname === "/trust" || url.pathname === "/about") && env.DB && typeof STATIC !== "undefined") {
       const snapshot = await trustSnapshot(env).catch(() => "");
-      return new Response(STATIC["/trust"][1].replace("<!--RECORD_SNAPSHOT-->", () => snapshot), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache" } });
+      return new Response(STATIC[url.pathname][1].replace("<!--RECORD_SNAPSHOT-->", () => snapshot), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache" } });
     }
     const asset = STATIC[url.pathname];
     if (asset) {

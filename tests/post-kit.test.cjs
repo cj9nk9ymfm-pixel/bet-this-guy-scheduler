@@ -49,5 +49,9 @@ add(week,'s',{player:'Started Guy',market:'Receptions',side:'Over',line:3.5,odds
   assert.ok(trust.includes('<p class="record-snapshot"><strong>Official record: 2–1 on player props, +\u0024101 betting \u0024100 a pick.</strong> Parlays: 1–0 <span class="nowrap">(+\u0024264)</span>.'),trust.match(/<p class="record-snapshot">[\s\S]*?<\/p>/)?.[0]);
   const robots=await (await run("routeRequest(new Request('https://betthisguy.com/robots.txt'),env,{waitUntil(){}})")).text();
   assert.ok(robots.includes('Allow: /api/record\nDisallow: /api/'));
-  console.log('PASS: post kit and /trust summary: upcoming picks only, X posts that fit, short and long bet text, anytime TDs, weekly results with $100 profit, parlays and actual stats, Reddit lists losses too, trimming with a count, noindex page whose script parses');
+  // The home page knows last week's banner will have stats and hits, and reserves their space.
+  const layout=JSON.parse(JSON.stringify(await run(`homeRecentRows(env).then(rows=>homeLayout(rows,${now}))`)));
+  assert.deepEqual(layout,{stats:true,hits:true});
+  assert.deepEqual(JSON.parse(JSON.stringify(run('homeLayout([])'))),{stats:false,hits:false});
+  console.log('PASS: post kit and /trust summary, home layout: upcoming picks only, X posts that fit, short and long bet text, anytime TDs, weekly results with $100 profit, parlays and actual stats, Reddit lists losses too, trimming with a count, noindex page whose script parses');
 })().catch(e=>{console.error(e);process.exitCode=1});
