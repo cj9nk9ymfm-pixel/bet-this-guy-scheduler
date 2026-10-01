@@ -1879,3 +1879,35 @@ if(typeof fetch==='function')window.btgCountVisit?.('view:home');
   renderPlayerProfile=render;
   window.BTGPlayer={roleOf,seasonTotals,gameInfo,betMetric,render};
 })();
+
+// Player search lives behind the header search button. The panel opens under
+// the header with results directly below the input; picking a player filters
+// the board and shows a chip that clears the filter.
+(()=>{
+  const panel=$('#searchPanel'),btn=$('#searchBtn'),input=$('#playerSearch');if(!panel||!btn||!input)return;
+  const chevron='<svg class="ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>';
+  const matchup=name=>{const q=props.find(x=>x.player===name);try{return q?compactGameName(String(q.team||'').replace(' · ',' ')):''}catch{return ''}};
+  const openSearch=()=>{panel.hidden=false;btn.setAttribute('aria-expanded','true');document.body.classList.add('search-open');input.focus();showPlayerChoices()};
+  const closeSearch=()=>{if(panel.hidden)return;panel.hidden=true;btn.setAttribute('aria-expanded','false');document.body.classList.remove('search-open');closePlayerResults()};
+  window.BTGSearch={open:openSearch,close:closeSearch};
+  btn.addEventListener('click',()=>panel.hidden?openSearch():closeSearch());
+  $('#searchCancel')?.addEventListener('click',closeSearch);
+  input.addEventListener('keydown',event=>{if(event.key==='Escape')closeSearch()});
+  panel.addEventListener('keydown',event=>{if(event.key==='Escape')closeSearch()});
+  document.addEventListener('pointerdown',event=>{if(!panel.hidden&&!panel.contains(event.target)&&!btn.contains(event.target))closeSearch()});
+  showPlayerChoices=function(){
+    const results=$('#playerSearchResults'),query=input.value.trim(),choices=playerChoices(query);
+    $('#clearPlayerSearch').hidden=!query;
+    if(!choices.length&&!query){results.innerHTML='<div class="player-search-empty">Player props appear here once sportsbooks post lines.</div>'}
+    else results.innerHTML=(query?'':'<p class="search-hint">Most props posted</p>')+(choices.length?choices.map(([name,count])=>`<button type="button" role="option" data-player-choice="${htmlEscape(name)}" aria-selected="false"><i>${htmlEscape(name.split(' ').map(part=>part[0]).slice(0,2).join(''))}</i><span><strong>${htmlEscape(name)}</strong><small>${[matchup(name),`${count} prop${count===1?'':'s'}`].filter(Boolean).map(htmlEscape).join(' · ')}</small></span>${chevron}</button>`).join(''):`<div class="player-search-empty">No player with posted props matches “${htmlEscape(query)}”.</div>`);
+    results.hidden=false;results.querySelectorAll('[data-player-choice]').forEach(button=>button.onclick=()=>choosePlayer(button.dataset.playerChoice));input.setAttribute('aria-expanded','true');
+  };
+  const chooseBase=choosePlayer;choosePlayer=name=>{closeSearch();chooseBase(name)};
+  $('#clearPlayerSearch').onclick=()=>{input.value='';$('#clearPlayerSearch').hidden=true;if(selectedPlayer){selectedPlayer='';render()}showPlayerChoices();input.focus()};
+  const chip=$('#playerFilterClear');
+  const syncChip=()=>{if(!chip)return;chip.hidden=!selectedPlayer;chip.innerHTML=selectedPlayer?`Showing ${htmlEscape(selectedPlayer)} <span aria-hidden="true">×</span>`:'';chip.setAttribute('aria-label',selectedPlayer?`Clear the ${selectedPlayer} filter`:'')};
+  chip?.addEventListener('click',()=>{selectedPlayer='';input.value='';render()});
+  const renderBase=render;render=function(...args){const out=renderBase.apply(this,args);syncChip();return out};
+  const bookmarkBase=openBookmarkBoard;openBookmarkBoard=saved=>{bookmarkBase(saved);if(!saved)openSearch()};
+})();
+(()=>{const set=()=>{const h=document.querySelector('.topbar');if(h)document.documentElement.style.setProperty('--search-top',Math.round(h.getBoundingClientRect().bottom)+'px')};set();addEventListener('resize',set);$('#searchBtn')?.addEventListener('click',set,true)})();
