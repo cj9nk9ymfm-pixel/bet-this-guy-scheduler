@@ -745,3 +745,82 @@ body[data-mobile-page="parlays"] #propsSection,body[data-mobile-page="generator"
 .app-footer .copyright{display:block;width:100%;margin-top:6px;color:var(--muted,#7f96b8);font-size:12px}
 #feedBtn.error{border-color:rgba(255,255,255,.14)!important;color:#9fb3d9!important}
 #feedBtn.error i{background:#9fb3d9!important;box-shadow:none!important}
+/* ---- Visual refresh: one line-icon set, flatter surfaces, calmer labels ---- */
+.ico{display:inline-block;width:1.1em;height:1.1em;vertical-align:-.18em;flex:none}
+.icon-btn .ico{width:20px;height:20px;vertical-align:middle}
+.ico-send{color:#2fd59a}.ico-flip{color:#9fb3d9}.ico-read{color:#ff8a8a}
+.bookmark .ico{width:20px;height:20px}
+.bookmark.saved .ico{fill:currentColor;color:#ffc94d}
+.saved-header-btn .ico{width:19px;height:19px}
+.player-finder-icon .ico{width:20px;height:20px}
+.share-icon .ico{width:20px;height:20px}
+.hit-tag .ico,.gate-eyebrow .ico{width:1.15em;height:1.15em;vertical-align:-.22em}
+.verdict-pill .ico{width:1.05em;height:1.05em;vertical-align:-.17em}
+.alerts-btn:not([data-alerts-sheet])::before{content:"";display:inline-block;width:16px;height:16px;margin-right:7px;vertical-align:-3px;background:currentColor;-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9'/%3E%3Cpath d='M10.3 21a1.94 1.94 0 0 0 3.4 0'/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9'/%3E%3Cpath d='M10.3 21a1.94 1.94 0 0 0 3.4 0'/%3E%3C/svg%3E") center/contain no-repeat}
+/* No tech grid, no neon glows */
+body::before{background-image:none!important;display:none!important}
+.brand-logo{filter:none!important}
+.eyebrow,.hit-tag,.gate-eyebrow{text-shadow:none!important;letter-spacing:.08em!important}
+#heroCta,.hero-cta{box-shadow:none!important}
+.sub-tab.active,button.sub-tab.active{box-shadow:none!important}
+.topbar{box-shadow:none!important}
+@media(max-width:720px){body:not(.light) .board{padding-left:0!important;padding-right:0!important}}
+.hero-eyebrow,.filter-row>span,.chip-row-label,[class*="eyebrow"]{letter-spacing:.08em!important;text-shadow:none!important}
+.verdict-guide li span{display:block}
+/* ---- Colour scheme A: charcoal base, one blue accent, green/red only for results ---- */
+:root{--bg:#0e1013;--panel:#16191e;--panel2:#1e222a;--line:#272c35;--text:#f2f4f7;--muted:#98a1ad;--lime:#2f7bf5;--green:#22c55e;--red:#f06060;--shadow:none}
+html body:not(.light){background:#0e1013!important;color:#f2f4f7}
+html body:not(.light)::before,html body:not(.light)::after{display:none!important}
+html body:not(.light) .topbar{background:#0e1013!important;border-bottom:1px solid #272c35!important;box-shadow:none!important;backdrop-filter:none!important}
+html body:not(.light) .mobile-nav{background:#0e1013!important;border-top:1px solid #272c35!important;box-shadow:none!important}
+html body:not(.light) .mobile-nav a,html body:not(.light) .mobile-nav button{background:transparent!important;background-image:none!important;border-color:transparent!important;color:#98a1ad!important;box-shadow:none!important}
+html body:not(.light) .mobile-nav a.active,html body:not(.light) .mobile-nav button.active{background:#1e222a!important;color:#f2f4f7!important}
+html body:not(.light) .mobile-nav a span,html body:not(.light) .saved-header-btn span{background:#2f7bf5!important;color:#fff!important}
+html body:not(.light) .icon-btn,html body:not(.light) .account-btn,html body:not(.light) .feed-status{background:#16191e!important;border-color:#272c35!important;color:#f2f4f7!important;box-shadow:none!important}
+html body:not(.light) .board{background:transparent!important;border-color:transparent!important;box-shadow:none!important}
+html body:not(.light) #heroBanner.hero,html body:not(.light) .hero,html body:not(.light) .player-finder,html body:not(.light) .prop-card,html body:not(.light) .verdict-guide,html body:not(.light) .hit-card-mini,html body:not(.light) .advanced-filters,html body:not(.light) .board-gate,html body:not(.light) .card-gate{background:#16191e!important;background-image:none!important;border:1px solid #272c35!important;box-shadow:none!important}
+html body:not(.light) .hero-stat,html body:not(.light) .mockup-pick{background:#1e222a!important;border-color:transparent!important}
+html body:not(.light) .hero-eyebrow,html body:not(.light) .eyebrow,html body:not(.light) [class*=eyebrow]{color:#98a1ad!important}
+html body:not(.light) .hero-stat strong{color:#f2f4f7!important}
+html body:not(.light) .hero-stat.up strong{color:#22c55e!important}
+html body:not(.light) .hero-note,html body:not(.light) .card-money,html body:not(.light) .board-title p,html body:not(.light) .app-footer{color:#98a1ad!important}
+html body:not(.light) #heroCta,html body:not(.light) .hero-cta,html body:not(.light) .gate-primary{background:#2f7bf5!important;background-image:none!important;color:#fff!important;box-shadow:none!important}
+html body:not(.light) .alerts-btn,html body:not(.light) .gate-secondary,html body:not(.light) .hits-nav button{background:transparent!important;border:1px solid #272c35!important;color:#f2f4f7!important}
+html body:not(.light) .hero-link,html body:not(.light) .hits-head a,html body:not(.light) .hit-more,html body:not(.light) .app-footer nav a{color:#6aa8ff!important}
+html body:not(.light) .hit-tag{color:#22c55e!important}
+html body:not(.light) .sub-tab{background:transparent!important;background-image:none!important;border-color:#272c35!important;color:#98a1ad!important;box-shadow:none!important}
+html body:not(.light) .sub-tab.active{background:#2f7bf5!important;border-color:#2f7bf5!important;color:#fff!important}
+html body:not(.light) .sub-tab span,html body:not(.light) .sub-tab time{color:inherit!important}
+html body:not(.light) .game-tabs{border-color:#272c35!important}
+html body:not(.light) .player-finder-icon{background:#1e222a!important;background-image:none!important;color:#98a1ad!important}
+html body:not(.light) .prop-card .player-photo,html body:not(.light) .player-photo{background:#1e222a!important;background-image:none!important;border-color:#272c35!important;color:#98a1ad!important}
+html body:not(.light) .mockup-pick b,html body:not(.light) .mockup-pick button{background:#16191e!important;border-color:#272c35!important;color:#f2f4f7!important;box-shadow:none!important}
+html body:not(.light) .verdict-pill-send{background:#22c55e1f!important;border-color:transparent!important;color:#22c55e!important}
+html body:not(.light) .verdict-pill-flip{background:#1e222a!important;border-color:transparent!important;color:#98a1ad!important}
+html body:not(.light) .verdict-pill-read{background:#f060601a!important;border-color:transparent!important;color:#f06060!important}
+html body:not(.light) .ico-send{color:#22c55e}html body:not(.light) .ico-flip{color:#98a1ad}html body:not(.light) .ico-read{color:#f06060}
+html body:not(.light) .bookmark{color:#98a1ad!important}
+html body:not(.light) .nav-link{color:#98a1ad!important}
+html body:not(.light) .nav-link.active{color:#f2f4f7!important}
+html body:not(.light) .nav-link.active::after,html body:not(.light) .nav-link.active::before{background:#2f7bf5!important;box-shadow:none!important}
+html body:not(.light) dialog,html body:not(.light) .sheet,html body:not(.light) .nav-more-panel{background:#16191e!important;background-image:none!important;border-color:#272c35!important}
+html body:not(.light) input:not([type=checkbox]):not([type=radio]):not([type=range]),html body:not(.light) select,html body:not(.light) textarea{background:#1e222a!important;background-image:none!important;border-color:#272c35!important;color:#f2f4f7!important;box-shadow:none!important}
+html body:not(.light) .player-finder input{background:transparent!important}
+html body:not(.light) .more-sheet a,html body:not(.light) .more-sheet button:not(.more-sheet-close),html body:not(.light) .nav-more-panel a{background:#1e222a!important;background-image:none!important;border-color:transparent!important;box-shadow:none!important}
+html body:not(.light) .more-sheet,html body:not(.light) .more-sheet-head{background:#16191e!important}
+html body:not(.light) .settings-section,html body:not(.light) .settings-footer,html body:not(.light) .account-head,html body:not(.light) .auth-security,html body:not(.light) .empty,html body:not(.light) #emptyState,html body:not(.light) .parlay-card,html body:not(.light) .parlay-preview,html body:not(.light) .pull-refresh-indicator{background:#16191e!important;background-image:none!important;border-color:#272c35!important;box-shadow:none!important}
+html body:not(.light) .parlay-card li,html body:not(.light) .parlay-card .pc-leg,html body:not(.light) .pc-legs li{background:#1e222a!important;border-color:transparent!important}
+html body:not(.light) .parlay-level-tabs,html body:not(.light) .settings-tabs{background:transparent!important;border-color:#272c35!important}
+html body:not(.light) .parlay-level-tabs button,html body:not(.light) .settings-tabs button,html body:not(.light) .pc-add,html body:not(.light) #resetAdvancedFilters,html body:not(.light) .shuffle-btn,html body:not(.light) [data-more-parlays]{background:#1e222a!important;background-image:none!important;border-color:#272c35!important;color:#f2f4f7!important;box-shadow:none!important}
+html body:not(.light) .parlay-level-tabs button.active,html body:not(.light) .parlay-level-tabs button[aria-selected=true],html body:not(.light) .settings-tabs button.active,html body:not(.light) .settings-tabs button[aria-selected=true]{background:#2f7bf5!important;border-color:#2f7bf5!important;color:#fff!important}
+html body:not(.light) .parlay-level-tabs button span{color:inherit!important;opacity:.85}
+html body:not(.light) .dialog-close,html body:not(.light) .more-sheet-close,html body:not(.light) .account-close{background:#1e222a!important;border:1px solid #272c35!important;color:#f2f4f7!important;box-shadow:none!important;outline-color:#2f7bf5}
+html body:not(.light) button.primary,html body:not(.light) .primary,html body:not(.light) #savePreferences{background:#2f7bf5!important;background-image:none!important;color:#fff!important;box-shadow:none!important;border-color:#2f7bf5!important}
+html body:not(.light) .filter-summary,html body:not(.light) .advanced-filters summary{background:transparent!important}
+html body:not(.light) .app-footer a,html body:not(.light) a.category-results-link,html body:not(.light) .auth-link-button,html body:not(.light) #filterMatchCount,html body:not(.light) .advanced-filters summary small,html body:not(.light) .advanced-filters summary b+*{color:#6aa8ff!important}
+html body:not(.light) .parlay-filter-summary{background:#16191e!important;background-image:none!important;border-color:#2f7bf5!important;color:#98a1ad!important}
+html body:not(.light) .settings-section label,html body:not(.light) .settings-checks label,html body:not(.light) .sport-toggle{background:#1e222a!important;border-color:#272c35!important}
+html body:not(.light) :is(.dialog-close,.more-sheet-close,.account-close):focus:not(:focus-visible){outline:none!important;border-color:#272c35!important}
+html body:not(.light) .player-finder input#playerSearch{background:transparent!important;border-color:transparent!important}
+html body:not(.light) .player-finder label>span{color:#98a1ad!important}
+html body:not(.light) .parlay-card,html body:not(.light) [class*=parlay-feed]{border-color:#272c35!important}

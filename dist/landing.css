@@ -8,3 +8,15 @@
 .final-note{margin:18px auto 0;max-width:460px;color:#9fb6d6;font-size:15px}
 /* The product preview's small labels stay readable (12px minimum). */
 .window-bar b,.window-bar em,.window-body header span,.preview-card .pick small,.preview-card .player span,.builder span{font-size:12px}
+/* Visual refresh: line icons, calmer labels */
+.ico{display:inline-block;width:1.1em;height:1.1em;vertical-align:-.18em}
+.avatar .ico{width:24px;height:24px}.step-icon .ico{width:24px;height:24px}
+.ico-send{color:#2fd59a}.ico-flip{color:#9fb3d9}.ico-read{color:#ff8a8a}
+.eyebrow{letter-spacing:.08em!important;text-shadow:none!important}
+.hero h1 em{color:#55dfff!important;-webkit-text-stroke:0!important}
+.primary,a.primary{background:#1f6fe0!important;box-shadow:none!important}
+/* Colour scheme A: charcoal, one blue accent */
+:root{--bg:#0e1013;--panel:#16191e;--panel2:#1e222a;--line:#272c35;--text:#f2f4f7;--muted:#98a1ad;--cyan:#6aa8ff;--blue:#2f7bf5}
+body{background:#0e1013!important}
+.eyebrow{color:#98a1ad!important}
+.hero h1 em{color:#6aa8ff!important}
