@@ -249,7 +249,7 @@ async function tickLiveBoard() {
 const pullRefresh={startY:0,active:false,ready:false,running:false,indicator:null};
 function setupPullRefresh(){
   if(!('ontouchstart' in window))return;
-  const indicator=document.createElement('div'); indicator.className='pull-refresh-indicator'; indicator.setAttribute('aria-label','Refreshing live data');
+  const indicator=document.createElement('div'); indicator.className='pull-refresh-indicator'; indicator.setAttribute('role','status'); indicator.setAttribute('aria-label','Refreshing live data');
   document.body.append(indicator); pullRefresh.indicator=indicator;
   document.addEventListener('touchstart',event=>{
     if(window.scrollY>4||event.touches.length!==1||pullRefresh.running)return;
