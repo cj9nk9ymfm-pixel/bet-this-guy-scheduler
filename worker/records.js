@@ -242,6 +242,7 @@ async function publishOfficialPicks(request,env,ctx){
     if(posted){const alerts=sendPickAlerts(env).catch(error=>console.warn('pick_alerts_failed',error.message));if(ctx?.waitUntil)ctx.waitUntil(alerts);else await alerts}
     // Emails check every run: picks held back by the hourly limit go out on a later run.
     {const emails=sendEmailAlerts(env).catch(error=>console.warn('email_alerts_failed',error.message));if(ctx?.waitUntil)ctx.waitUntil(emails);else await emails}
+    {const mine=sendBookAlerts(env,boards).catch(error=>console.warn('book_alerts_failed',error.message));if(ctx?.waitUntil)ctx.waitUntil(mine);else await mine}
     const trail=officialTrailStatements(boards,existing.results||[],env,Date.now());if(trail.length)await env.DB.batch(trail);
 
   if(failedBoards)throw new Error('Some official boards were unavailable; retry required');
@@ -513,7 +514,12 @@ async function vapidAuthorization(env,endpoint,now=Date.now()){
   return `vapid t=${header}.${claims}.${b64url(signature)}, k=${keys.publicKey}`;
 }
 function validPushEndpoint(value){try{const url=new URL(value);return url.protocol==='https:'&&PUSH_HOSTS.test(url.hostname)&&value.length<=800}catch{return false}}
-async function latestAlert(env,now=Date.now()){
+async function latestAlert(env,now=Date.now(),endpoint=null){
+  if(endpoint&&validPushEndpoint(endpoint)){
+    const mine=(await env.DB.prepare('SELECT sent_at,message_json FROM book_alerts WHERE recipient=? AND sent_at>? ORDER BY sent_at DESC LIMIT 1').bind(`push:${endpoint}`,new Date(now-15*60000).toISOString()).all()).results?.[0];
+    const official=(await env.DB.prepare("SELECT posted_at FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' ORDER BY posted_at DESC LIMIT 1").all()).results?.[0];
+    if(mine&&(!official||mine.sent_at>official.posted_at)){try{const m=JSON.parse(mine.message_json);return {title:m.title,body:m.body,url:m.url||'/'}}catch{}}
+  }
   const rows=await env.DB.prepare("SELECT kind,player,market,side,line,odds,combined_odds,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND posted_at>=? ORDER BY posted_at DESC LIMIT 3").bind(new Date(now-3*3600000).toISOString()).all();
   const picks=rows.results||[];
   if(!picks.length)return {title:'New Bet This Guy picks',body:'Fresh official picks are on the board.',url:'/'};
@@ -546,16 +552,16 @@ async function alertsApi(request,env){
   const url=new URL(request.url),headers={'content-type':'application/json; charset=utf-8','cache-control':'no-store'},reply=(body,status=200)=>new Response(JSON.stringify(body),{status,headers});
   if(!env.DB)return reply({success:false},503);
   if(url.pathname==='/api/alerts/key'&&request.method==='GET')return reply({success:true,publicKey:(await vapidKeys(env)).publicKey});
-  if(url.pathname==='/api/alerts/latest'&&request.method==='GET')return reply(await latestAlert(env));
+  if(url.pathname==='/api/alerts/latest'&&request.method==='GET')return reply(await latestAlert(env,Date.now(),url.searchParams.get('endpoint')));
   if(request.method!=='POST')return reply({success:false},405);
-  let body={};try{body=JSON.parse((await request.text()).slice(0,2000))}catch{}
+  let body={};try{body=JSON.parse((await request.text()).slice(0,4000))}catch{}
   const endpoint=String(body?.endpoint||'');
   if(!validPushEndpoint(endpoint))return reply({success:false,error:'Unsupported push service.'},400);
   if(url.pathname==='/api/alerts/unsubscribe'){await env.DB.prepare('DELETE FROM push_subscriptions WHERE endpoint=?').bind(endpoint).run();return reply({success:true})}
   if(url.pathname==='/api/alerts/subscribe'){
     const p256dh=String(body?.keys?.p256dh||''),auth=String(body?.keys?.auth||'');
     if(!/^[A-Za-z0-9_-]{40,200}$/.test(p256dh)||!/^[A-Za-z0-9_-]{8,60}$/.test(auth))return reply({success:false,error:'Invalid subscription.'},400);
-    await env.DB.prepare('INSERT INTO push_subscriptions (endpoint,p256dh,auth,created_at,failures) VALUES (?,?,?,?,0) ON CONFLICT(endpoint) DO UPDATE SET p256dh=excluded.p256dh,auth=excluded.auth,failures=0').bind(endpoint,p256dh,auth,new Date().toISOString()).run();
+    await env.DB.prepare('INSERT INTO push_subscriptions (endpoint,p256dh,auth,created_at,failures,books_json) VALUES (?,?,?,?,0,?) ON CONFLICT(endpoint) DO UPDATE SET p256dh=excluded.p256dh,auth=excluded.auth,failures=0,books_json=excluded.books_json').bind(endpoint,p256dh,auth,new Date().toISOString(),JSON.stringify(cleanBooks(body?.books))).run();
     return reply({success:true});
   }
   return reply({success:false},404);
@@ -582,13 +588,13 @@ function emailPickRow(r){
   const book=recordLegs(r)[0]?.book;
   return `<tr><td style="${cell}"><div style="font-size:16px;font-weight:700;color:#10213d;">${weeklyEscape(r.player)} <span style="float:right;color:#08875e;">${weeklyEscape(weeklyOdds(r.odds))}</span></div><div style="margin-top:4px;font-size:15px;color:#10213d;">${weeklyEscape(weeklyLegText(r))}${book?` <span style="color:#5a6f8c;">at ${weeklyEscape(book)}</span>`:''}</div>${when}</td></tr><tr><td style="height:10px;"></td></tr>`;
 }
-function emailAlertHtml(picks,unsubscribeUrl,postal){
+function emailAlertHtml(picks,unsubscribeUrl,postal,opts={}){
   const font="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
-  const heading=picks.length===1?'A new official pick just posted':`${picks.length} new official picks just posted`;
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>${weeklyEscape(emailSubject(picks))}</title></head><body style="margin:0;padding:0;background:#eef3f9;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#eef3f9;"><tr><td align="center" style="padding:28px 12px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;"><tr><td align="center" style="background:#0e1013;border-radius:18px 18px 0 0;padding:24px;"><a href="${SITE_URL}" style="text-decoration:none;"><img src="${SITE_URL}/logo.png" width="220" alt="Bet This Guy" style="display:block;width:200px;max-width:70%;height:auto;border:0;color:#ffffff;font-family:Arial,sans-serif;font-size:22px;font-weight:700;"></a></td></tr><tr><td style="background:#ffffff;border-radius:0 0 18px 18px;padding:28px 24px;font-family:${font};color:#10213d;"><p style="margin:0 0 6px;font-size:12px;font-weight:700;letter-spacing:.14em;color:#08875e;">PICK ALERT</p><h1 style="margin:0 0 8px;font-size:24px;line-height:1.25;">${heading}</h1><p style="margin:0 0 20px;font-size:15px;line-height:1.5;color:#40597a;">Locked before kickoff and graded in public on our results page.</p><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${picks.map(emailPickRow).join('')}</table><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:14px 0 0;"><tr><td style="border-radius:999px;background:#1fd88f;"><a href="${SITE_URL}/" style="display:inline-block;padding:14px 28px;font-size:16px;font-weight:700;color:#04121f;text-decoration:none;border-radius:999px;">See the picks</a></td></tr></table><p style="margin:18px 0 0;font-size:13px;line-height:1.5;color:#5a6f8c;">Odds move. Check the price at your sportsbook before you bet.</p></td></tr><tr><td align="center" style="padding:20px 16px 0;font-family:${font};font-size:12px;line-height:1.6;color:#7f96b8;">You’re getting this because you turned on email alerts for your Bet This Guy account. Questions? Just reply.<br><a href="${weeklyEscape(unsubscribeUrl)}" style="color:#7f96b8;">Unsubscribe</a> · 21+ where legal. Gambling problem? Call 1-800-GAMBLER.${postal?`<br>${weeklyEscape(postal)}`:''}</td></tr></table></td></tr></table></body></html>`;
+  const heading=opts.heading||(picks.length===1?'A new official pick just posted':`${picks.length} new official picks just posted`);
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>${weeklyEscape(opts.subject||emailSubject(picks))}</title></head><body style="margin:0;padding:0;background:#eef3f9;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#eef3f9;"><tr><td align="center" style="padding:28px 12px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;"><tr><td align="center" style="background:#0e1013;border-radius:18px 18px 0 0;padding:24px;"><a href="${SITE_URL}" style="text-decoration:none;"><img src="${SITE_URL}/logo.png" width="220" alt="Bet This Guy" style="display:block;width:200px;max-width:70%;height:auto;border:0;color:#ffffff;font-family:Arial,sans-serif;font-size:22px;font-weight:700;"></a></td></tr><tr><td style="background:#ffffff;border-radius:0 0 18px 18px;padding:28px 24px;font-family:${font};color:#10213d;"><p style="margin:0 0 6px;font-size:12px;font-weight:700;letter-spacing:.14em;color:#08875e;">${weeklyEscape(opts.eyebrow||'PICK ALERT')}</p><h1 style="margin:0 0 8px;font-size:24px;line-height:1.25;">${heading}</h1><p style="margin:0 0 20px;font-size:15px;line-height:1.5;color:#40597a;">${weeklyEscape(opts.lede||'Locked before kickoff and graded in public on our results page.')}</p><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${picks.map(emailPickRow).join('')}</table><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:14px 0 0;"><tr><td style="border-radius:999px;background:#1fd88f;"><a href="${SITE_URL}/" style="display:inline-block;padding:14px 28px;font-size:16px;font-weight:700;color:#04121f;text-decoration:none;border-radius:999px;">See the picks</a></td></tr></table><p style="margin:18px 0 0;font-size:13px;line-height:1.5;color:#5a6f8c;">Odds move. Check the price at your sportsbook before you bet.</p></td></tr><tr><td align="center" style="padding:20px 16px 0;font-family:${font};font-size:12px;line-height:1.6;color:#7f96b8;">You’re getting this because you turned on email alerts for your Bet This Guy account. Questions? Just reply.<br><a href="${weeklyEscape(unsubscribeUrl)}" style="color:#7f96b8;">Unsubscribe</a> · 21+ where legal. Gambling problem? Call 1-800-GAMBLER.${postal?`<br>${weeklyEscape(postal)}`:''}</td></tr></table></td></tr></table></body></html>`;
 }
-function emailAlertText(picks,unsubscribeUrl,postal){
-  return `${picks.length===1?'A new official pick just posted':`${picks.length} new official picks just posted`}:\n\n${picks.map(r=>`- ${emailPickText(r)} · ${weeklyDay(r.game_time)}`).join('\n')}\n\nSee the picks: ${SITE_URL}/\n\nOdds move. Check the price at your sportsbook before you bet.\n\nUnsubscribe: ${unsubscribeUrl}\n21+ where legal. Gambling problem? Call 1-800-GAMBLER.${postal?`\n${postal}`:''}\n`;
+function emailAlertText(picks,unsubscribeUrl,postal,opts={}){
+  return `${opts.heading||(picks.length===1?'A new official pick just posted':`${picks.length} new official picks just posted`)}:${opts.lede?`\n${opts.lede}`:''}\n\n${picks.map(r=>`- ${emailPickText(r)} · ${weeklyDay(r.game_time)}`).join('\n')}\n\nSee the picks: ${SITE_URL}/\n\nOdds move. Check the price at your sportsbook before you bet.\n\nUnsubscribe: ${unsubscribeUrl}\n21+ where legal. Gambling problem? Call 1-800-GAMBLER.${postal?`\n${postal}`:''}\n`;
 }
 async function sendEmailAlerts(env,now=Date.now()){
   if(!env.DB||!env.RESEND_API_KEY)return {sent:0,disabled:true};
@@ -617,6 +623,97 @@ async function sendEmailAlerts(env,now=Date.now()){
   }
   return {sent,total:people.length,picks:picks.length};
 }
+// "My book" alerts: a good-value price at one of someone's own sportsbooks.
+// The fair price always comes from every book (3+ pricing both sides, the same
+// bar as official picks); a book qualifies when its own price beats that fair
+// price by 1% or more. These are never official picks and never touch the record.
+// At most one message an hour and 3 props a day per person, never the same prop twice.
+const BOOK_ALERT_DAILY=3,BOOK_ALERT_GAP=60*60000;
+const bookKey=value=>{const key=String(value||'').toLowerCase().replace(/[^a-z0-9]/g,'');return key==='espnbet'?'thescorebet':key==='williamhillus'?'caesars':key};
+function cleanBooks(list){return Array.isArray(list)?[...new Set(list.map(b=>String(b||'').slice(0,40)).filter(b=>/^[A-Za-z0-9 .&'+-]{2,40}$/.test(b)))].slice(0,20):[]}
+function bookValueCandidates(events,now=Date.now()){
+  const out=[];
+  for(const event of events){
+    const kickoff=Date.parse(event.commence_time);
+    if(kickoff<OFFICIAL_START||kickoff<=now+5*60000||kickoff>now+24*3600000)continue;
+    const groups=new Map();
+    for(const book of event.bookmakers||[])for(const market of book.markets||[]){
+      const label=recordLabels[market.key],updated=Date.parse(market.last_update||book.last_update||'');
+      if(!label||/_alternate$/.test(market.key)||!Number.isFinite(updated)||now-updated>15*60000||updated>now+60000)continue;
+      for(const outcome of market.outcomes||[]){
+        const side=String(outcome.name).toLowerCase(),line=BTGStats.number(outcome.point),odds=BTGStats.number(outcome.price),player=String(outcome.description||'').trim();
+        if(!['over','under'].includes(side)||!player||line===null||odds===null||Math.abs(odds)<100||Math.abs(odds)>10000)continue;
+        const key=JSON.stringify([player,label,line]),group=groups.get(key)||{player,market:label,line,books:new Map()};
+        const pair=group.books.get(book.key)||{title:book.title||book.key,key:book.key};pair[side]=odds;group.books.set(book.key,pair);groups.set(key,group);
+      }
+    }
+    for(const group of groups.values()){
+      const pairs=[...group.books.values()].filter(p=>p.over!=null&&p.under!=null);
+      if(pairs.length<3)continue;
+      const fair=pairs.reduce((sum,p)=>{const o=1/recordDecimal(p.over),u=1/recordDecimal(p.under);return sum+o/(o+u)},0)/pairs.length;
+      for(const p of group.books.values())for(const side of ['over','under']){
+        if(p[side]==null)continue;
+        const edge=100*((side==='over'?fair:1-fair)-1/recordDecimal(p[side]));
+        if(edge<1||edge>12)continue;
+        out.push({propKey:`${event.eventID||event.id}|${group.player}|${group.market}|${group.line}|${side}`,player:group.player,market:group.market,line:group.line,side:side==='over'?'Over':'Under',odds:p[side],book:p.title,bookKey:bookKey(p.key),bookTitleKey:bookKey(p.title),edge,game_time:new Date(kickoff).toISOString(),matchup:`${event.away_team||''} @ ${event.home_team||''}`.trim()});
+      }
+    }
+  }
+  return out;
+}
+// The props worth telling one person about: best of their own books per prop,
+// one prop per player and game, not an official pick, not sent before.
+function bookAlertPicks(candidates,books,sentKeys,officialKeys,limit){
+  const wanted=new Set(books.map(bookKey)),best=new Map();
+  for(const c of candidates){
+    if(!wanted.has(c.bookKey)&&!wanted.has(c.bookTitleKey))continue;
+    const key=c.propKey.toLowerCase();if(sentKeys.has(c.propKey)||officialKeys.has(key))continue;
+    const prior=best.get(c.propKey);if(!prior||c.edge>prior.edge)best.set(c.propKey,c);
+  }
+  const seenPlayer=new Set();
+  return [...best.values()].sort((a,b)=>b.edge-a.edge).filter(c=>{const k=`${c.propKey.split('|')[0]}|${c.player}`;if(seenPlayer.has(k))return false;seenPlayer.add(k);return true}).slice(0,Math.max(0,limit));
+}
+const bookAlertRow=c=>({kind:'prop',player:c.player,market:c.market,side:c.side,line:c.line,odds:c.odds,game_time:c.game_time,legs_json:JSON.stringify([{book:c.book}])});
+function bookAlertMessage(picks){
+  const books=[...new Set(picks.map(c=>c.book))],where=books.length===1?books[0]:'your sportsbooks';
+  return {title:`Good value at ${where}`,body:picks.map(c=>`${c.player} ${weeklyLegText(c)} (${weeklyOdds(c.odds)}${books.length>1?` at ${c.book}`:''})`).join('\n')+'\nNot an official pick.',url:'/',where};
+}
+async function sendBookAlerts(env,events,now=Date.now()){
+  if(!env.DB)return {sent:0};
+  const candidates=bookValueCandidates(events,now);if(!candidates.length)return {sent:0,candidates:0};
+  const week=officialWeek(now),prefix=`official|${week}|`;
+  const official=(await env.DB.prepare("SELECT id,player,market,line,side,game_time FROM public_recommendations WHERE id>=? AND id<? AND kind='prop'").bind(prefix,prefix+'￿').all()).results||[];
+  const eventIds=new Map(candidates.map(c=>[`${c.player}|${c.market}|${c.line}|${c.side}|${c.game_time}`.toLowerCase(),c.propKey.toLowerCase()]));
+  const officialKeys=new Set(official.map(r=>eventIds.get(`${r.player}|${r.market}|${r.line}|${r.side}|${new Date(r.game_time).toISOString()}`.toLowerCase())).filter(Boolean));
+  const recipients=[];
+  for(const row of (await env.DB.prepare("SELECT endpoint,books_json FROM push_subscriptions WHERE books_json IS NOT NULL AND books_json<>'[]' LIMIT 2000").all()).results||[]){let books=[];try{books=cleanBooks(JSON.parse(row.books_json))}catch{}if(books.length)recipients.push({id:`push:${row.endpoint}`,push:row,books})}
+  if(env.RESEND_API_KEY)for(const row of (await env.DB.prepare('SELECT a.auth_user_id,a.token,p.email,u.preferences_json FROM email_alerts a JOIN user_profiles p ON p.auth_user_id=a.auth_user_id JOIN user_preferences u ON u.auth_user_id=a.auth_user_id WHERE a.enabled=1 LIMIT 2000').all()).results||[]){let books=[];try{books=cleanBooks(JSON.parse(row.preferences_json||'{}').books)}catch{}if(books.length&&row.email)recipients.push({id:`email:${row.auth_user_id}`,email:row,books})}
+  let sent=0;const dayAgo=new Date(now-24*3600000).toISOString();
+  for(const r of recipients){
+    const history=(await env.DB.prepare('SELECT prop_key,sent_at FROM book_alerts WHERE recipient=? AND sent_at>? ORDER BY sent_at DESC').bind(r.id,new Date(now-7*86400000).toISOString()).all()).results||[];
+    if(history[0]&&now-Date.parse(history[0].sent_at)<BOOK_ALERT_GAP)continue;
+    const today=history.filter(h=>h.sent_at>dayAgo).length;
+    const picks=bookAlertPicks(candidates,r.books,new Set(history.map(h=>h.prop_key)),officialKeys,BOOK_ALERT_DAILY-today);
+    if(!picks.length)continue;
+    const message=bookAlertMessage(picks),stamp=new Date(now).toISOString();
+    // Claim first so two Worker instances can't send the same prop twice.
+    const claims=await env.DB.batch(picks.map(c=>env.DB.prepare('INSERT OR IGNORE INTO book_alerts (recipient,prop_key,sent_at,message_json) VALUES (?,?,?,?)').bind(r.id,c.propKey,stamp,JSON.stringify(message))));
+    if(!claims.some(c=>Number(c?.meta?.changes??c?.changes)))continue;
+    try{
+      if(r.push){
+        const response=await fetch(r.push.endpoint,{method:'POST',headers:{TTL:'21600',Urgency:'normal','Content-Length':'0',Authorization:await vapidAuthorization(env,r.push.endpoint,now)},signal:AbortSignal.timeout(10000)});
+        if(response.status===404||response.status===410){await env.DB.prepare('DELETE FROM push_subscriptions WHERE endpoint=?').bind(r.push.endpoint).run();continue}
+        if(response.ok)sent++;
+      }else{
+        const unsubscribe=`${SITE_URL}/api/email-alerts/unsubscribe?token=${r.email.token}`,postal=String(env.EMAIL_POSTAL_ADDRESS||'').trim(),rows=picks.map(bookAlertRow);
+        const opts={subject:`${message.title}: ${picks.length===1?`${picks[0].player} ${weeklyLegText(picks[0])}`:`${picks.length} props`}`,heading:message.title,eyebrow:'YOUR SPORTSBOOK',lede:`These prices at ${message.where} beat the market's fair price. They are not official Bet This Guy picks and are not part of our record.`};
+        const response=await fetch('https://api.resend.com/emails',{method:'POST',headers:{authorization:`Bearer ${env.RESEND_API_KEY}`,'content-type':'application/json'},body:JSON.stringify({from:env.EMAIL_FROM||EMAIL_ALERT_FROM,to:[r.email.email],reply_to:env.EMAIL_REPLY_TO||'support@betthisguy.com',subject:opts.subject,html:emailAlertHtml(rows,unsubscribe,postal,opts),text:emailAlertText(rows,unsubscribe,postal,opts),headers:{'List-Unsubscribe':`<${unsubscribe}>`,'List-Unsubscribe-Post':'List-Unsubscribe=One-Click'}}),signal:AbortSignal.timeout(15000)});
+        if(response.ok)sent++;else console.warn('book_alert_email_failed',response.status);
+      }
+    }catch(error){console.warn('book_alert_failed',error.message)}
+  }
+  return {sent,recipients:recipients.length,candidates:candidates.length};
+}
 // One-click unsubscribe. A plain visit shows a button (so link scanners can't
 // unsubscribe anyone); mail apps' one-click POST unsubscribes straight away.
 async function emailUnsubscribe(request,env){
@@ -634,7 +731,7 @@ const SERVICE_WORKER_JS=`self.addEventListener('install',()=>self.skipWaiting())
 self.addEventListener('activate',event=>event.waitUntil(self.clients.claim()));
 self.addEventListener('push',event=>event.waitUntil((async()=>{
   let note={title:'New Bet This Guy pick',body:'A new official pick is on the board.',url:'/'};
-  try{const response=await fetch('/api/alerts/latest',{cache:'no-store'});if(response.ok)note=Object.assign(note,await response.json())}catch(error){}
+  try{const sub=await self.registration.pushManager.getSubscription().catch(()=>null);const response=await fetch('/api/alerts/latest'+(sub?'?endpoint='+encodeURIComponent(sub.endpoint):''),{cache:'no-store'});if(response.ok)note=Object.assign(note,await response.json())}catch(error){}
   return self.registration.showNotification(note.title,{body:note.body,icon:'/icon-192.png',badge:'/icon-192.png',tag:'btg-pick',renotify:true,data:{url:note.url||'/'}});
 })()));
 self.addEventListener('notificationclick',event=>{event.notification.close();event.waitUntil((async()=>{

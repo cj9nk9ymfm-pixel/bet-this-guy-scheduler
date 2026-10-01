@@ -134,6 +134,12 @@ Account holders can get an email when official picks post: a checkbox at sign-up
 - Opt-ins live in `email_alerts` (migration 0007). Each row has a token for the unsubscribe link and the one-click `List-Unsubscribe` header; opening the link shows a button, so link scanners can't unsubscribe anyone.
 - Resend's free plan covers 100 emails a day and 3,000 a month, so upgrade before the list gets near that.
 
+## My-book ratings and alerts
+
+The market's fair price always comes from every sportsbook (3+ books pricing both sides, the official-pick bar). A visitor who picks their own books in Settings sees each prop priced and rated at the best of their books, so a one-book visitor still gets real Good value / Fair price / Overpriced verdicts.
+
+On each publish run, `sendBookAlerts` (in `worker/records.js`) also tells people when one of their own books beats that fair price by 1% or more: phones with pick alerts on (their books are stored in `push_subscriptions.books_json`) and email-alert accounts with books saved in their settings. These are labelled "Not an official pick", never touch the record, skip props that are already official picks, and are capped at one message an hour and 3 props a day per person, never repeating a prop (`book_alerts` table, migration `0008`). A phone's notification text comes from `/api/alerts/latest?endpoint=…`.
+
 ## Post kit
 
 `/post` (not linked or indexed) builds ready-to-paste posts from the official record: today's upcoming picks, this week's results so far, or last week's results. It shows editable text for X (kept under 280 characters, trimmed with a "+N more" count), Threads and Reddit (a table, with losses listed too). It also draws a 1080×1350 share image that can be shared from a phone or saved. The numbers come from the same functions as the weekly pages, at $100 a pick. Usage counts: `view:post`, `post:copy`, `post:open`, `post:image`.
