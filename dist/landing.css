@@ -2,3 +2,7 @@
 
 /* Home-screen app on iPhone: keep the page clear of the see-through status bar. */
 @media (display-mode: standalone){body{padding-top:env(safe-area-inset-top)}}
+/* Live record line under the intro (written in by the Worker). */
+.record-snapshot{margin:0 0 22px;padding:12px 14px;border-radius:12px;background:rgba(31,216,143,.08);border:1px solid rgba(31,216,143,.3);color:#cfe0f5;font-size:15px;line-height:1.5;max-width:560px}
+.record-snapshot strong{color:#fff}.record-snapshot a{color:#5ff0b5;font-weight:700;white-space:nowrap}.record-snapshot .nowrap{white-space:nowrap}
+.final-note{margin:18px auto 0;max-width:460px;color:#9fb6d6;font-size:15px}

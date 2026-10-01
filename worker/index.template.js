@@ -1052,7 +1052,7 @@ async function routeRequest(request, env, ctx) {
     if (url.pathname === "/api/email-alerts/unsubscribe") return emailUnsubscribe(request, env);
     if (url.pathname === "/sw.js") return new Response(SERVICE_WORKER_JS, { headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-cache" } });
     if (url.pathname === "/manifest.webmanifest") return new Response(WEB_MANIFEST, { headers: { "content-type": "application/manifest+json", "cache-control": "public, max-age=3600" } });
-    if (typeof ICONS !== "undefined" && ICONS[url.pathname]) return new Response(Uint8Array.from(atob(ICONS[url.pathname]), char => char.charCodeAt(0)), { headers: { "content-type": "image/png", "cache-control": "public, max-age=86400" } });
+    if (typeof ICONS !== "undefined" && ICONS[url.pathname]) return new Response(Uint8Array.from(atob(ICONS[url.pathname]), char => char.charCodeAt(0)), { headers: { "content-type": url.pathname.endsWith(".jpg") ? "image/jpeg" : "image/png", "cache-control": "public, max-age=86400" } });
     if (url.pathname === "/robots.txt") return new Response(ROBOTS_TXT, { headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=86400" } });
     if (url.pathname === "/sitemap.xml") return new Response(env.DB ? await weeklySitemap(env) : SITEMAP_XML, { headers: { "content-type": "application/xml; charset=utf-8", "cache-control": "public, max-age=3600" } });
     if (url.pathname === "/post") { ctx.waitUntil(countUsage(env, ["view:post"], request).catch(() => {})); return postKitPage(request, env); }
@@ -1069,9 +1069,9 @@ async function routeRequest(request, env, ctx) {
       const data = rows ? `<script>window.BTG_HOME=${JSON.stringify(rows).replace(/</g, "\\u003c")};document.documentElement.classList.add(${classes.map(c => JSON.stringify(c)).join(",")})</script>` : "";
       return new Response(STATIC[url.pathname][1].replace("<!--HOME_DATA-->", () => data), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache" } });
     }
-    if (url.pathname === "/trust" && env.DB && typeof STATIC !== "undefined") {
+    if ((url.pathname === "/trust" || url.pathname === "/about") && env.DB && typeof STATIC !== "undefined") {
       const snapshot = await trustSnapshot(env).catch(() => "");
-      return new Response(STATIC["/trust"][1].replace("<!--RECORD_SNAPSHOT-->", () => snapshot), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache" } });
+      return new Response(STATIC[url.pathname][1].replace("<!--RECORD_SNAPSHOT-->", () => snapshot), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache" } });
     }
     const asset = STATIC[url.pathname];
     if (asset) {
