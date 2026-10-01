@@ -129,7 +129,7 @@ The "🔔 Get pick alerts" button subscribes a browser to push notifications (st
 
 Account holders can get an email when official picks post: a checkbox at sign-up (on by default) and a switch in the account panel. On iPhone, the 🔔 button offers this first, because web notifications there need the Home Screen.
 
-- Set the `RESEND_API_KEY` secret (a Resend key with sending access for betthisguy.com). Without it nothing is sent. Optional: `EMAIL_POSTAL_ADDRESS`, a postal address for the email footer (US anti-spam law asks for one), and `EMAIL_FROM` to change the sender (default `Bet This Guy <picks@betthisguy.com>`).
+- Set the `RESEND_API_KEY` secret (a Resend key with sending access for betthisguy.com). Without it nothing is sent. Optional: `EMAIL_POSTAL_ADDRESS`, a postal address for the email footer (US anti-spam law asks for one), `EMAIL_FROM` to change the sender (default `Bet This Guy <picks@betthisguy.com>`) and `EMAIL_REPLY_TO` (default `support@betthisguy.com`). Cloudflare Email Routing forwards `support@` and `picks@` to the owner's inbox.
 - Every publish run checks for official picks posted since the last email whose games haven't started. One email lists them all. Emails go out at most once an hour, or every 10 minutes when one of the picks kicks off within 90 minutes.
 - Opt-ins live in `email_alerts` (migration 0007). Each row has a token for the unsubscribe link and the one-click `List-Unsubscribe` header; opening the link shows a button, so link scanners can't unsubscribe anyone.
 - Resend's free plan covers 100 emails a day and 3,000 a month, so upgrade before the list gets near that.
