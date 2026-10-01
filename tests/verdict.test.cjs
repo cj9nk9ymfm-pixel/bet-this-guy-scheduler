@@ -32,7 +32,7 @@ const html=extra=>run(`card(${prop(extra)},0,true)`);
  assert.ok(!send.includes('top-play-badge'),'the ✅ pill replaces the "#1 TOP PLAY" badge');
  assert.ok(send.includes('compact-card compact-send'));
  const face=send.slice(0,send.indexOf('<div class="card-more"'));
- assert.ok(face.includes('verdict-pill verdict-pill-send">✅ Good value'),'the verdict is a pill on the face');
+ assert.ok(/verdict-pill verdict-pill-send"><svg class="ico ico-send"[^]*?<\/svg> Good value/.test(face),'the verdict is a pill on the face');
  assert.ok(face.indexOf('<section class="mockup-pick">')<face.indexOf('class="card-money"'),'the money line follows the bet');
  assert.ok(face.includes('$25 wins $34'),'the face says what the usual wager wins, in whole dollars');
  assert.ok(!face.includes('class="verdict '),'the full verdict box is not on the face');
@@ -43,8 +43,8 @@ const html=extra=>run(`card(${prop(extra)},0,true)`);
  assert.ok(!send.includes('card-affiliate')&&!send.includes('rel="sponsored'),'no partner links unless the site has an approved partner for this state');
  assert.ok(!/Tap the (odds|price) to add/.test(send),'the add-to-slip tip is not repeated on every card');
  assert.ok(/player-photo" style="--avatar-hue:\d+"/.test(send),'avatars get a colour when no photo loads');
- assert.ok(flip.includes('verdict-pill-flip">⚖️ Fair price'));
- assert.ok(read.includes('compact-read')&&read.includes('verdict-pill-read">⛔ Overpriced')&&read.includes('The sportsbooks are charging extra here'),'Overpriced folds to a pass line');
+ assert.ok(/verdict-pill-flip"><svg class="ico ico-flip"[^]*?<\/svg> Fair price/.test(flip));
+ assert.ok(read.includes('compact-read')&&/verdict-pill-read"><svg class="ico ico-read"[^]*?<\/svg> Overpriced/.test(read)&&read.includes('The sportsbooks are charging extra here'),'Overpriced folds to a pass line');
  const nested=send.match(/<div class="card-more"[\s\S]*<\/article>$/)[0],opens=(nested.match(/<div\b/g)||[]).length,closes=(nested.match(/<\/div>/g)||[]).length;
  assert.equal(opens,closes,'the lifted blocks keep their markup balanced')}
 // Premade parlays never include a leg the board tells people to skip.

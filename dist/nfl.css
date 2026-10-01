@@ -745,3 +745,38 @@ body[data-mobile-page="parlays"] #propsSection,body[data-mobile-page="generator"
 .app-footer .copyright{display:block;width:100%;margin-top:6px;color:var(--muted,#7f96b8);font-size:12px}
 #feedBtn.error{border-color:rgba(255,255,255,.14)!important;color:#9fb3d9!important}
 #feedBtn.error i{background:#9fb3d9!important;box-shadow:none!important}
+/* ---- Visual refresh: one line-icon set, flatter surfaces, calmer labels ---- */
+.ico{display:inline-block;width:1.1em;height:1.1em;vertical-align:-.18em;flex:none}
+.icon-btn .ico{width:20px;height:20px;vertical-align:middle}
+.ico-send{color:#2fd59a}.ico-flip{color:#9fb3d9}.ico-read{color:#ff8a8a}
+.bookmark .ico{width:20px;height:20px}
+.bookmark.saved .ico{fill:currentColor;color:#ffc94d}
+.saved-header-btn .ico{width:19px;height:19px}
+.player-finder-icon .ico{width:20px;height:20px}
+.share-icon .ico{width:20px;height:20px}
+.hit-tag .ico,.gate-eyebrow .ico{width:1.15em;height:1.15em;vertical-align:-.22em}
+.verdict-pill .ico{width:1.05em;height:1.05em;vertical-align:-.17em}
+.alerts-btn:not([data-alerts-sheet])::before{content:"";display:inline-block;width:16px;height:16px;margin-right:7px;vertical-align:-3px;background:currentColor;-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9'/%3E%3Cpath d='M10.3 21a1.94 1.94 0 0 0 3.4 0'/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9'/%3E%3Cpath d='M10.3 21a1.94 1.94 0 0 0 3.4 0'/%3E%3C/svg%3E") center/contain no-repeat}
+/* No tech grid, no neon glows */
+body::before{background-image:none!important;display:none!important}
+.brand-logo{filter:none!important}
+.eyebrow,.hit-tag,.gate-eyebrow{text-shadow:none!important;letter-spacing:.08em!important}
+#heroCta,.hero-cta{box-shadow:none!important}
+.sub-tab.active,button.sub-tab.active{box-shadow:none!important}
+.topbar{box-shadow:none!important}
+/* Dark theme: flat surfaces instead of gradients */
+body:not(.light){background:#060d1c!important}
+body:not(.light) .board{background:transparent!important;border-color:transparent!important;box-shadow:none!important}
+body:not(.light) #heroBanner.hero{background:#0c1830!important;border:1px solid #1d2f50!important;box-shadow:none!important}
+body:not(.light) #heroCta{background:#22c98a!important;color:#04121f!important}
+body:not(.light) .hit-card-mini{background:#0c1a2c!important;border-color:#1f4a3d!important}
+body:not(.light) .player-finder{background:#0c1830!important;border-color:#1d2f50!important;box-shadow:none!important}
+body:not(.light) .player-finder-icon{background:#163a6e!important;color:#cfe3ff}
+body:not(.light) .sub-tab.active{background:#14305c!important}
+body:not(.light) .advanced-filters{background:#0c1830!important;box-shadow:none!important}
+@media(max-width:720px){body:not(.light) .board{padding-left:0!important;padding-right:0!important}}
+.hero-eyebrow,.filter-row>span,.chip-row-label,[class*="eyebrow"]{letter-spacing:.08em!important;text-shadow:none!important}
+.verdict-guide li span{display:block}
+body:not(.light) .prop-card{background:#0c1830!important;box-shadow:none!important}
+body:not(.light) .verdict-guide{background:#0c1830!important;box-shadow:none!important}
+#heroCta,.hero-cta{background:#22c98a!important;color:#04121f!important}
