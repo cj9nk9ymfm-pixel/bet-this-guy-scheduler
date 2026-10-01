@@ -15,7 +15,7 @@
   <meta property="og:image:height" content="630" />
   <meta name="twitter:card" content="summary_large_image" />
 <meta name="description" content="Posted props, parlay grades and Bet This Guy's performance record.">
-<style>a[href^="tel:"],a[href^="mailto:"]{text-decoration:underline;text-underline-offset:2px}
+<style>a.bs-leg{color:inherit;text-decoration:none}.bs-leg-end i{font-style:normal;color:#98a1ad;font-size:18px}.bs-link{display:block;margin-top:14px;color:#6aa8ff;font-size:14px;font-weight:600;text-decoration:none}a[href^="tel:"],a[href^="mailto:"]{text-decoration:underline;text-underline-offset:2px}
 .waiting-note{margin:14px 0 0;color:#c2c6cc;font-size:14px;line-height:1.55}
 .empty-note{margin:0 0 18px;padding:16px 18px;border:1px dashed #5e6063;border-radius:14px;background:#1d1f22;color:#d8dce2;line-height:1.6}
 .empty-note strong{color:#f5f9ff}
@@ -243,7 +243,8 @@ function sheetModel(row){
   return {chip,title:isProp?row.player:`${legs.length}-leg parlay`,bet:isProp?betText(row):legs.map(l=>l.player).join(' + '),
     game:[isProp?String(first.team||'').replace(' · ',' '):`${legs.length} legs`,whenText(row.game_time||first.gameTime),done?'Final':''].filter(Boolean).join(' · '),
     price:fmtOdds(odds),stake:stakeLabel(),money:net!==null?dollars(net):d?`wins $${Math.round(stake*(d-1)).toLocaleString('en-US')}`:'—',moneyCls:net===null?'pos':net>0?'pos':net<0?'neg':'',
-    rows,legs:isProp?null:legs.map(l=>({title:l.player,text:betText(l),odds:fmtOdds(l.odds),result:l.result})),
+    rows,legs:isProp?null:legs.map(l=>({title:l.player,text:betText(l),odds:fmtOdds(l.odds),result:l.result,href:statsHref(l)})),
+    statsLink:isProp?{text:`${String(row.player||'').split(' ').slice(-1)[0]}’s stats & game log ›`,href:statsHref({...first,player:row.player,market:row.market,line:row.line,side:row.side,odds:row.odds,gameTime:row.game_time||first.gameTime})}:null,
     chart:points.length>=2?{label:done?'Price posted → kickoff':'Price since posted',points}:null,
     share:`${row.result==='won'?'✅ Hit':'Bet This Guy pick'}: ${isProp?`${row.player} ${betText(row)}`:`${legs.length}-leg parlay`} (${fmtOdds(odds)}) · ${location.origin}/trust`};
 }
@@ -254,14 +255,16 @@ function sheetChart(c){
   const W=300,H=46,lo=Math.min(...ds),hi=Math.max(...ds),span=(hi-lo)||1,xy=ds.map((v,i)=>[6+i*(W-12)/(ds.length-1),6+(H-12)*(1-(v-lo)/span)]);
   return `<div class="bs-chart"><div><span>${escape(c.label)}</span><span>${escape(fmtOdds(c.points[0]))} → ${escape(fmtOdds(c.points.at(-1)))}</span></div><svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}"><polyline points="${xy.map(p=>p.map(v=>v.toFixed(1)).join(',')).join(' ')}" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="${xy.at(-1)[0].toFixed(1)}" cy="${xy.at(-1)[1].toFixed(1)}" r="3.5" fill="currentColor"/></svg></div>`;
 }
+// Player stats live in the main app; ?stats= opens that player's screen there.
+const statsHref=l=>'/?'+new URLSearchParams(Object.entries({stats:l.player||'',market:l.market||'',line:l.line??'',side:l.side||'',team:l.team||'',t:l.gameTime||'',odds:l.odds??''}).filter(([,v])=>v!==''&&v!=null).map(([k,v])=>[k,String(v)])).toString();
 function openSheet(id){
   const row=allResultRows.find(r=>String(r.id)===String(id)),dialog=resultNode('#pickSheet');if(!row||!dialog)return;
   const m=sheetModel(row);
   resultNode('#pickSheetBody').innerHTML=`<div class="bsheet"><span class="bs-chip bs-${m.chip.c}">${sheetIcon(m.chip.i)}${escape(m.chip.t)}</span><h2>${escape(m.title)}</h2><p class="bs-bet">${escape(m.bet)}</p><p class="bs-game">${escape(m.game)}</p>
     <div class="bs-money"><div><small>Price</small><b>${escape(m.price)}</b></div><div><small>${escape(m.stake)} bet</small><b class="${m.moneyCls}">${escape(m.money)}</b></div></div>
-    ${m.legs?`<div class="bs-legs">${m.legs.map(l=>`<div class="bs-leg"><span><b>${escape(l.title)}</b><small>${escape(l.text)}</small></span><span class="bs-leg-end">${['won','lost','push'].includes(l.result)?`<em class="bs-res ${l.result==='won'?'pos':l.result==='lost'?'neg':''}">${l.result==='won'?'Hit':escape(l.result)}</em>`:''}<b>${escape(l.odds)}</b></span></div>`).join('')}</div>`:''}
+    ${m.legs?`<div class="bs-legs">${m.legs.map(l=>`<a class="bs-leg" href="${escape(l.href)}"><span><b>${escape(l.title)}</b><small>${escape(l.text)}</small></span><span class="bs-leg-end">${['won','lost','push'].includes(l.result)?`<em class="bs-res ${l.result==='won'?'pos':l.result==='lost'?'neg':''}">${l.result==='won'?'Hit':escape(l.result)}</em>`:''}<b>${escape(l.odds)}</b><i aria-hidden="true">›</i></span></a>`).join('')}</div>`:''}
     <div class="bs-rows">${m.rows.map(([a,b,c])=>`<div><span>${escape(a)}</span><b class="${c}">${escape(b)}</b></div>`).join('')}</div>${sheetChart(m.chart)}
-    <div class="bs-acts"><button type="button" class="bs-btn wide" data-sheet-share>${sheetIcon('share')} ${row.result==='won'?'Share this hit':'Share'}</button></div></div>`;
+    <div class="bs-acts"><button type="button" class="bs-btn wide" data-sheet-share>${sheetIcon('share')} ${row.result==='won'?'Share this hit':'Share'}</button></div>${m.statsLink?`<a class="bs-link" href="${escape(m.statsLink.href)}">${escape(m.statsLink.text)}</a>`:''}</div>`;
   resultNode('#pickSheetBody').querySelector('[data-sheet-share]').onclick=async event=>{try{if(navigator.share)await navigator.share({text:m.share});else{await navigator.clipboard.writeText(m.share);event.currentTarget.textContent='Copied ✓'}}catch{}};
   if(typeof dialog.showModal==='function')dialog.showModal();else dialog.setAttribute('open','');
 }
