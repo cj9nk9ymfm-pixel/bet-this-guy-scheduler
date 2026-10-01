@@ -1213,6 +1213,10 @@ render=function(){
     sheet.querySelectorAll('[data-page-link]').forEach(link=>link.addEventListener('click',()=>{sheet.close();syncMoreActive()}));
     sheet.querySelector('[data-more-action="saved"]').onclick=()=>{sheet.close();$('#openSavedProps')?.click()};
     sheet.querySelector('[data-more-action="settings"]').onclick=()=>{sheet.close();$('#settingsBtn')?.click()};
+    // On phones the theme and feed buttons live here instead of the header.
+    const themeAction=sheet.querySelector('[data-more-action="theme"]'),feedAction=sheet.querySelector('[data-more-action="feed"]');
+    if(themeAction)themeAction.onclick=()=>{sheet.close();$('#themeBtn')?.click()};
+    if(feedAction)feedAction.onclick=()=>{sheet.close();$('#feedBtn')?.click()};
   }
   if(desktopMore&&panel){
     const close=()=>{panel.hidden=true;desktopMore.setAttribute('aria-expanded','false')};

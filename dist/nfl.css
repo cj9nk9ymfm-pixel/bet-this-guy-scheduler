@@ -418,7 +418,7 @@ body.light .top-play{border-color:#6bc5e8!important;box-shadow:0 9px 24px rgba(2
 .more-sheet-head{display:flex;justify-content:space-between;align-items:center;padding:2px 4px 10px}
 .more-sheet-head strong{font:800 18px/1 "Space Grotesk",system-ui,sans-serif}
 .more-sheet-close{width:36px;height:36px;border:1px solid #27466f;border-radius:50%;background:transparent;color:#f6f9ff;font-size:20px}
-.more-sheet a,.more-sheet button[data-more-action]{display:flex;flex-direction:column;gap:3px;width:100%;margin:0 0 8px;padding:13px 14px;border:1px solid rgba(92,147,211,.25);border-radius:14px;background:rgba(9,24,48,.8);color:#f6f9ff;text-align:left;text-decoration:none;font:inherit}
+.more-sheet a,.more-sheet button[data-more-action],.more-sheet button[data-alerts-sheet]{display:flex;flex-direction:column;gap:3px;width:100%;margin:0 0 8px;padding:13px 14px;border:1px solid rgba(92,147,211,.25);border-radius:14px;background:rgba(9,24,48,.8);color:#f6f9ff;text-align:left;text-decoration:none;font:inherit}
 .more-sheet a strong,.more-sheet button strong{font-size:15px}
 .more-sheet a span,.more-sheet button span{font-size:12.5px;color:#9fb3d9}
 .nav-more-panel{position:fixed;z-index:60;display:flex;flex-direction:column;gap:4px;width:280px;padding:8px;border:1px solid #27466f;border-radius:14px;background:#06122a;box-shadow:0 18px 40px rgba(0,0,0,.45)}
@@ -663,3 +663,13 @@ body.light{background-color:#eef4fb}
 .home-stats #heroStats:empty{min-height:73px}
 .home-hits #hitsStrip[hidden]{display:block!important;visibility:hidden;min-height:201px}
 @media(max-width:720px){.home-stats #heroStats:empty{min-height:71px}.home-hits #hitsStrip[hidden]{min-height:200px}}
+/* Phone header: three 42px buttons (watchlist, account, settings). The theme
+   switch and odds-feed status move to the More sheet. */
+.more-sheet button.more-phone-only{display:none}
+@media(max-width:720px){
+  #themeBtn,#feedBtn{display:none!important}
+  .more-sheet button.more-phone-only{display:flex}
+  .top-actions{gap:8px!important}
+  .top-actions .icon-btn{width:42px!important;height:42px!important;min-width:42px;font-size:19px}
+  .top-actions .account-btn{width:auto!important;min-width:42px;padding:0 11px}
+}
