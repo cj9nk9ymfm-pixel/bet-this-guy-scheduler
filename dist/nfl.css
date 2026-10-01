@@ -674,3 +674,67 @@ body.light{background-color:#eef4fb}
   .top-actions .icon-btn{width:42px!important;height:42px!important;min-width:42px;font-size:19px}
   .top-actions .account-btn{width:auto!important;min-width:42px;padding:0 11px}
 }
+/* Pop-ups: a big close button that stays in reach while the content scrolls. */
+#parlayDetailDialog>.dialog-close,#detailDialog>.dialog-close,#movementDialog>.dialog-close,#feedDialog>.dialog-close{position:sticky;float:right;top:0;right:0;z-index:5;display:grid;place-items:center;width:44px;height:44px;margin:-4px -4px 0 8px;padding:0;border-radius:50%;border:1px solid rgba(255,255,255,.18);background:rgba(4,13,34,.92);color:#e8f2ff;font-size:24px;line-height:1;cursor:pointer}
+body.light #parlayDetailDialog>.dialog-close,body.light #detailDialog>.dialog-close,body.light #movementDialog>.dialog-close,body.light #feedDialog>.dialog-close{background:#fff;border-color:#cfe0ee;color:#10213d}
+/* Parlay details on phones: a bottom sheet (tap above it to close) with
+   tighter type, instead of a full-screen page with no way back. */
+@media(max-width:720px){
+  .parlay-detail-dialog{height:auto!important;max-height:calc(100dvh - 24px);width:100%!important;max-width:none!important;margin:auto 0 0!important;padding:16px 16px calc(18px + env(safe-area-inset-bottom))!important;border:1px solid #285f9d!important;border-bottom:0!important;border-radius:20px 20px 0 0!important;overflow-y:auto}
+  .parlay-detail-dialog::backdrop{background:rgba(2,6,18,.72)}
+  #parlayDetailContent .eyebrow{font-size:12px;margin:4px 0 0}
+  #parlayDetailContent h2{font-size:22px;line-height:1.2;margin:4px 0 0}
+  .parlay-detail-total{margin:12px 0;gap:8px}
+  .parlay-detail-total>div{padding:10px 12px}
+  .parlay-detail-total strong{font-size:20px}
+  .parlay-detail-total span{font-size:12px}
+  .parlay-why{padding:12px}
+  .parlay-why p{font-size:14px;line-height:1.45}
+  .parlay-why small{font-size:12px;line-height:1.4}
+  .parlay-detail-legs{margin:12px 0}
+  .parlay-detail-legs article{padding:10px;gap:8px}
+  .parlay-detail-legs article strong{font-size:15px}
+  .parlay-detail-legs article small{font-size:12px;line-height:1.35}
+}
+/* Home-screen app on iPhone: keep pop-ups and their close buttons below the
+   see-through status bar. */
+@media (display-mode: standalone) and (max-width:720px){
+  .parlay-detail-dialog{max-height:calc(100dvh - env(safe-area-inset-top) - 16px)}
+  #detailDialog,#accountDialog{margin-top:calc(env(safe-area-inset-top) + 8px)!important;max-height:calc(100dvh - env(safe-area-inset-top) - 16px)!important}
+  #moreSheet{max-height:calc(100dvh - env(safe-area-inset-top) - 16px)!important}
+}
+@media(max-width:720px){
+  /* iPhone zooms the page into any text box under 16px and stays zoomed. */
+  input:not([type=checkbox]):not([type=radio]):not([type=range]),select,textarea{font-size:16px!important}
+  /* The rest of the phone text the full-screen audit found under 12px. */
+  .prop-trust small,#filterSummary,#activeFilterCount,.advanced-filter-grid>label,.advanced-filter-actions>span,#resetAdvancedFilters,.parlay-disclaimer,.parlay-feed-head b,.slip-head span,#slipNotice,.responsible strong,.responsible span,.settings-tabs>button,.settings-grid>label,#settingsSaveStatus,.settings-note span,.feed-detail span,.auth-form label>small{font-size:12px!important}
+  .parlay-level-tabs button strong{font-size:13px!important}
+  .parlay-level-tabs button span{font-size:12px!important}
+  .slip-leg span,.slip-leg small,.share-copy small,#parlaySummary small,.target-odds small,.slider-title span,.slider-title b,.slider-title output,.slider-labels span{font-size:12px!important}
+}
+/* Touchscreens (iPad too): text boxes at 16px so iOS never zooms in on tap. */
+@media (pointer:coarse){input:not([type=checkbox]):not([type=radio]):not([type=range]),select,textarea{font-size:16px!important}}
+/* Nothing under 12px on any screen size (found by the full-site audit). */
+.hero-eyebrow,.hero-note,.hit-tag,.player-finder label>span,.track-record-banner small,#propsSection .eyebrow,.prop-sub-tabs>span,.game-tab-time,#resultCount,.prop-trust small,#filterSummary,#activeFilterCount,.filter-summary-right em,.advanced-filter-grid>label,.advanced-filter-actions>span,#resetAdvancedFilters,.parlay-disclaimer,.parlay-feed-head b,.slip-head span,#slipNotice,.responsible strong,.responsible span,.settings-tabs>button,.settings-grid>label,#settingsSaveStatus,.settings-note span,.feed-detail span,.auth-form label>small,.slip-leg span,.slip-leg small,.share-copy small,#parlaySummary small,.target-odds small,.slider-title span,.slider-title b,.slider-title output,.slider-labels span,.parlay-detail-total span,.parlay-detail-legs article small,.hit-dialog-shell .hit-tag,.app-footer span,.app-footer nav a{font-size:12px!important}
+/* No made-up "online" badge on the share button: we don't count people. */
+.group-chat-share:after{content:none!important;display:none!important}
+/* Light mode: darker text where the audit measured low contrast. */
+body.light #resultCount,body.light .game-tab-time,body.light .app-footer span,body.light #filterSummary,body.light #activeFilterCount,body.light .parlay-detail-total span,body.light .parlay-why small,body.light .parlay-detail-legs article small{color:#4f6584!important}
+body.light .advanced-filters summary,body.light .advanced-filters summary strong,body.light .advanced-filters summary b{color:#10213d!important}
+body.light .advanced-filter-grid>label{color:#40597a!important}
+body.light .app-footer a,body.light .app-footer span a{color:#1c5fd0!important}
+body.light .slip-head span{color:#0b7fae!important}
+body.light .parlay-filter-summary{color:#40597a!important}
+body.light #parlayMixer .eyebrow,body.light .parlay-mixer .eyebrow{color:#0b7fae!important}
+body.light .parlay-lab .eyebrow,body.light #parlayLab .eyebrow{color:#0b7fae!important}
+/* Light mode: parlay payout tabs and parlay sections were still dark/grey. */
+body.light .parlay-feed-section{background:#fff!important;border-color:#dbe6f2!important}
+body.light .parlay-level-tabs{background:#eef4fb!important;border-color:#cfe0ee!important}
+body.light .parlay-level-tabs button{background:#fff!important;border-color:#cfe0ee!important}
+body.light .parlay-level-tabs button strong{color:#10213d!important}
+body.light .parlay-level-tabs button span{color:#0b7fae!important}
+body.light .parlay-level-tabs button.active{background:linear-gradient(135deg,#1c6cff,#16b6d9)!important;border-color:transparent!important}
+body.light .parlay-level-tabs button.active strong,body.light .parlay-level-tabs button.active span{color:#fff!important}
+/* Phones: the Bets page heading ("Featured props · Bet These Guys") doesn't
+   belong on the Parlays or Generator pages (desktop already hides it). */
+body[data-mobile-page="parlays"] #propsSection,body[data-mobile-page="generator"] #propsSection{display:none!important}
