@@ -112,6 +112,8 @@ export const pushSubscriptions=sqliteTable('push_subscriptions',{
   auth:text('auth').notNull(),
   createdAt:text('created_at').notNull(),
   failures:integer('failures').notNull().default(0),
+  // The sportsbooks this browser picked in Settings, for "my book" alerts.
+  booksJson:text('books_json'),
 });
 
 // Small key/value store for site settings the Worker creates itself, such as
@@ -130,3 +132,12 @@ export const emailAlerts=sqliteTable('email_alerts',{
   createdAt:text('created_at').notNull(),
   updatedAt:text('updated_at').notNull(),
 },table=>[uniqueIndex('email_alerts_token').on(table.token)]);
+
+// "My book" alerts already sent: a good-value price at someone's own sportsbook
+// (not an official pick). Prevents repeats and enforces the daily cap.
+export const bookAlerts=sqliteTable('book_alerts',{
+  recipient:text('recipient').notNull(),
+  propKey:text('prop_key').notNull(),
+  sentAt:text('sent_at').notNull(),
+  messageJson:text('message_json').notNull(),
+},table=>[primaryKey({columns:[table.recipient,table.propKey]}),index('book_alerts_recent').on(table.recipient,table.sentAt)]);
