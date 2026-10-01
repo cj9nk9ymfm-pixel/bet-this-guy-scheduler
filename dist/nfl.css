@@ -928,3 +928,54 @@ body.light .on-won{color:#15803d}body.light .on-lost{color:#c62828}
 button.on-row:hover{background:var(--panel2)}
 html body .hit-tag.pick-tag.pick-locked,html body .hit-tag.pick-tag.pick-push,html body .hit-tag.pick-tag.pick-pending{color:#98a1ad!important}
 html body .hit-tag.pick-tag.pick-lost{color:#f06060!important}
+/* ---- Unified detail sheet (props, official picks, past picks, parlays) ---- */
+#hitDialog,#parlayDetailDialog{width:min(460px,calc(100% - 24px))!important;max-width:460px!important;height:auto!important;max-height:calc(100dvh - 40px)!important;margin:auto!important;padding:0!important;border:1px solid #272c35!important;border-radius:20px!important;background:#16191e!important;background-image:none!important;color:#f2f4f7;box-shadow:none!important;overflow:auto}
+#hitDialog::backdrop,#parlayDetailDialog::backdrop{background:rgba(0,0,0,.6);backdrop-filter:none}
+#hitDialog .hit-dialog-shell{padding:0!important;max-height:none!important;overflow:visible!important}
+#hitDialogClose,#parlayDetailDialog>.dialog-close{position:absolute!important;top:16px!important;right:16px!important;width:34px!important;height:34px!important;border-radius:50%!important;border:0!important;background:#1e222a!important;color:#98a1ad!important;font-size:18px!important;z-index:2;display:grid;place-items:center;padding:0!important}
+#parlayDetailContent{padding:0!important}
+@media(max-width:720px){
+  #hitDialog,#parlayDetailDialog{width:100%!important;max-width:none!important;margin:auto 0 0!important;border-radius:20px 20px 0 0!important;border-width:1px 0 0!important;max-height:88dvh!important;padding-bottom:env(safe-area-inset-bottom)!important}
+  #hitDialog::before,#parlayDetailDialog::before{content:"";display:block;width:40px;height:5px;border-radius:3px;background:#3a404b;margin:10px auto 0}
+}
+.bsheet{padding:16px 20px 22px;font-family:"DM Sans",sans-serif}
+.bs-chip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px;border-radius:999px;font:700 13px "DM Sans",sans-serif;background:#1e222a;color:#c8ced6}
+.bs-chip .ico{width:15px;height:15px}
+.bs-chip.bs-g{background:#22c55e1f;color:#22c55e}.bs-chip.bs-r{background:#f060601a;color:#f06060}
+.bsheet h2{margin:12px 44px 2px 0!important;font:700 23px/1.2 "Space Grotesk",sans-serif!important;color:#f2f4f7!important;letter-spacing:-.01em}
+.bs-bet{margin:0;font-size:16px;font-weight:600;color:#f2f4f7}
+.bs-game{margin:3px 0 0;color:#98a1ad;font-size:13.5px}
+.bs-money{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:16px 0 4px}
+.bs-money>div{background:#1e222a;border-radius:12px;padding:10px 14px}
+.bs-money small{display:block;color:#98a1ad;font-size:12px}
+.bs-money b{font:700 22px/1.25 "Space Grotesk",sans-serif;color:#f2f4f7}
+.bsheet .pos{color:#22c55e!important}.bsheet .neg{color:#f06060!important}
+.bs-rows{margin:6px 0 0}
+.bs-rows>div{display:flex;justify-content:space-between;align-items:baseline;gap:14px;padding:10px 0;border-bottom:1px solid #272c35;font-size:14px}
+.bs-rows span{color:#98a1ad;white-space:nowrap}.bs-rows b{font-weight:600;text-align:right;color:#f2f4f7}
+.bs-legs{margin:10px 0 0;border:1px solid #272c35;border-radius:12px;overflow:hidden}
+.bs-leg{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;padding:10px 12px;border:0;border-top:1px solid #272c35;background:transparent;color:inherit;font:inherit;text-align:left}
+.bs-leg:first-child{border-top:0}button.bs-leg{cursor:pointer}
+.bs-leg>span:first-child{display:flex;flex-direction:column;min-width:0}.bs-leg b{font-weight:700;font-size:14.5px}.bs-leg small{color:#98a1ad;font-size:12.5px}
+.bs-leg-end{display:flex;align-items:center;gap:8px;white-space:nowrap}.bs-leg-end i{color:#98a1ad;font-style:normal}
+.bs-res{font-style:normal;font-size:12px;font-weight:700;padding:2px 8px;border-radius:999px;background:#1e222a;color:#98a1ad}
+.bs-res.pos{background:#22c55e1f}.bs-res.neg{background:#f060601a}
+.bs-chart{margin:12px 0 0;color:#6aa8ff}.bs-chart>div{display:flex;justify-content:space-between;color:#98a1ad;font-size:12px;margin-bottom:2px}
+.bs-gate,.bs-history{display:flex;justify-content:space-between;align-items:center;width:100%;margin:12px 0 0;padding:10px 12px;border:1px dashed #323844;border-radius:12px;background:transparent;color:#98a1ad;font:600 14px "DM Sans",sans-serif}
+.bs-gate span{display:inline-flex;align-items:center;gap:6px}.bs-gate .ico{width:15px;height:15px}
+.bs-gate button{height:32px;padding:0 12px;border-radius:999px;border:0;background:#2f7bf5;color:#fff;font:700 13px "DM Sans",sans-serif;cursor:pointer}
+.bs-history{border-style:solid;cursor:pointer;color:#f2f4f7}.bs-history span{color:#98a1ad}
+.bs-acts{display:flex;gap:8px;margin-top:16px}
+.bs-btn{height:46px;min-width:46px;padding:0 12px;border-radius:12px;border:1px solid #272c35;background:#1e222a;color:#f2f4f7;font:700 15px "DM Sans",sans-serif;display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer}
+.bs-btn.wide{flex:1}.bs-btn.p{background:#2f7bf5;border-color:#2f7bf5;color:#fff}.bs-btn .ico{width:18px;height:18px}
+.bs-btn.on .ico{fill:#ffc94d;color:#ffc94d}
+.bs-link{display:block;margin-top:14px;color:#6aa8ff;font-size:14px;font-weight:600;text-decoration:none}
+body.light #hitDialog,body.light #parlayDetailDialog{background:#fff!important;border-color:#e2e6ec!important;color:#0f172a}
+body.light .bsheet h2,body.light .bs-bet,body.light .bs-money b,body.light .bs-rows b{color:#0f172a!important}
+body.light .bs-money>div,body.light .bs-chip,body.light #hitDialogClose,body.light #parlayDetailDialog>.dialog-close{background:#f0f2f5!important}
+body.light .bs-rows>div,body.light .bs-legs,body.light .bs-leg{border-color:#e2e6ec}
+body.light .bs-btn{background:#f0f2f5;border-color:#e2e6ec;color:#0f172a}body.light .bs-btn.p{background:#1f6fe0;color:#fff}
+#hitDialog[open],#parlayDetailDialog[open]{position:fixed!important;inset:0!important;height:fit-content!important;min-height:0!important}
+#hitDialogClose:focus:not(:focus-visible),#parlayDetailDialog>.dialog-close:focus:not(:focus-visible){outline:none!important;box-shadow:none!important}
+@media(max-width:720px){#hitDialog[open],#parlayDetailDialog[open]{inset:auto 0 0 0!important;margin:0!important}}
+#hitDialog:focus,#parlayDetailDialog:focus{outline:none!important}

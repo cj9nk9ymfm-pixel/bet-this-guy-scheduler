@@ -1300,50 +1300,37 @@ render=function(){
     }else rows.push('<p class="hit-move">Final price before kickoff wasn’t recorded for this one.</p>');
     return chart+rows.join('');
   }
-  function hitDetails(r){
-    const legs=recordLegs(r),isParlay=r.kind==='parlay',n=pickName(r),odds=isParlay?r.combined_odds:r.odds;
-    const legBlock=(leg,closeOdds,closeLine,closeAt)=>`<section class="hit-leg"><header><strong>${htmlEscape(isParlay?leg.player:legText(leg))}</strong>${isParlay?`<span>${htmlEscape(legText(leg))}</span>`:''}<b class="hit-leg-result ${leg.result==='won'?'won':''}">${leg.result==='won'?`${icon('check')} Hit`:htmlEscape(leg.result||'')}</b></header>
-      <dl><div><dt>Game</dt><dd>${htmlEscape([String(leg.team||'').replace(' · ',' '),when(leg.gameTime)].filter(Boolean).join(' · '))}</dd></div>
-      <div><dt>Result</dt><dd>${leg.actualValue!=null?`${leg.minimumOnly?'At least ':''}${htmlEscape(leg.actualValue)} ${htmlEscape(String(leg.market||'').toLowerCase())}`:'—'}</dd></div>
-      <div><dt>Our price</dt><dd>${htmlEscape(formatOdds(leg.odds))}${leg.book?` at ${htmlEscape(leg.book)}`:''}</dd></div></dl>
-      ${legMovement(leg,r.posted_at,closeOdds,closeLine,closeAt)}${leg.gradingNote?`<p class="hit-note">${htmlEscape(leg.gradingNote)}</p>`:''}</section>`;
-    const body=isParlay?legs.map(l=>legBlock(l,l.closingOdds,l.closingLine,l.closingCapturedAt)).join(''):legs[0]?legBlock({...legs[0],odds:r.odds,line:r.line,side:r.side,market:r.market},r.closing_odds,r.closing_line,r.closing_captured_at):'';
-    return `<p class="hit-tag">${icon('check')} HIT · ${htmlEscape(isParlay?`${legs.length}-LEG PARLAY`:'SINGLE')}</p><h2>${htmlEscape(isParlay?n.detail:n.title)}</h2><p class="hit-sub">${isParlay?`Every leg hit at ${htmlEscape(formatOdds(odds))} combined`:htmlEscape(n.detail)} · posted ${htmlEscape(when(r.posted_at))}</p>
-      <div class="hit-payout"><span>${htmlEscape(stakeText())} bet</span><strong>${htmlEscape(money(payout(r)))}</strong><span>at ${htmlEscape(formatOdds(odds))}</span></div>${body}
-      ${isParlay?'<p class="hit-note">Parlay payout is the product of each leg’s posted price.</p>':''}<a class="hit-link" href="/trust#official">See every pick on the full record →</a>`;
+  // One sheet for every official pick (locked, hit, lost, push), built by the
+  // shared BTGSheet renderer so board props, picks and parlays all look alike.
+  function recordModel(r){
+    const legs=recordLegs(r),isParlay=r.kind==='parlay',odds=isParlay?r.combined_odds:r.odds,done=graded(r),d=oddsDecimal(odds),first=legs[0]||{};
+    const chip=done?{won:{cls:'g',icon:'check',text:'Hit'},lost:{cls:'r',icon:'over',text:'Lost'},push:{cls:'n',icon:'fair',text:'Push'}}[r.result]:r.status==='provisional'?{cls:'n',icon:'fair',text:'Provisional'}:{cls:'n',icon:'lock',text:'Official pick · Locked'};
+    const bet=isParlay?legs.map(l=>l.player).join(' + '):(t=>t.charAt(0).toUpperCase()+t.slice(1))(legText({side:r.side,line:r.line,market:String(r.market||'').toLowerCase()}));
+    const team=String(first.team||'').replace(' · ',' '),game=[isParlay?`${new Set(legs.map(l=>l.gameId||l.team)).size} game${new Set(legs.map(l=>l.gameId||l.team)).size===1?'':'s'}`:team,when(r.game_time||first.gameTime),done?'Final':''].filter(Boolean).join(' · ');
+    const posted=[first.book&&!isParlay?first.book:'',when(r.posted_at)].filter(Boolean).join(' · ');
+    const rows=[];
+    if(!isParlay){
+      if(done){const v=first.actualValue!=null?`${first.minimumOnly?'At least ':''}${first.actualValue} ${String(r.market||'').toLowerCase()}`:'—';rows.push(['Result',v,r.result==='won'?'pos':r.result==='lost'?'neg':'']);rows.push(['Posted at',posted,'']);
+        const move=moveOf(r.line,r.closing_line,r.side);
+        if(move)rows.push(['Closing line',`${move.line} · ${move.ourWay?'moved our way':'moved against us'}`,move.ourWay?'pos':'']);
+        else if(r.closing_odds!=null){const a=oddsDecimal(r.odds),c=oddsDecimal(r.closing_odds),e=a&&c?(a/c-1)*100:0;rows.push(['Closing price',`${formatOdds(r.closing_odds)} · ${e>.05?'we beat the close':e<-.05?'close was better':'same as the close'}`,e>.05?'pos':''])}
+        else rows.push(['Closing price','Not recorded',''])}
+      else{rows.push(['Locked at',posted,'']);if(Number(first.edge)>0)rows.push(['vs fair price',`+${Number(first.edge).toFixed(1)}% better`,'pos']);
+        const last=(Array.isArray(first.priceTrail)?first.priceTrail:[]).filter(p=>p&&p.o!=null).at(-1);if(last){const a=oddsDecimal(r.odds),b=oddsDecimal(last.o);rows.push(['Price now',`${formatOdds(last.o)}${a&&b&&b<a-1e-9?' · you got the better price':a&&b&&b>a+1e-9?' · better now':''}`,a&&b&&b<a-1e-9?'pos':''])}}
+    }else rows.push(['Posted',when(r.posted_at),'']);
+    const legRows=isParlay?legs.map(l=>({title:l.player,text:legText(l),odds:formatOdds(l.odds),result:done||l.result?l.result:null})):null;
+    const trail=isParlay?[]:(Array.isArray(first.priceTrail)?first.priceTrail:[]).filter(p=>p&&p.o!=null).map(p=>p.o);
+    const close=done&&!isParlay&&r.closing_odds!=null&&!moveOf(r.line,r.closing_line,r.side)?[r.closing_odds]:[];
+    const points=[odds,...trail,...close].filter(o=>o!=null);
+    return {chip,title:isParlay?`${legs.length}-leg parlay`:r.player,bet,game,price:formatOdds(odds),stake:stakeText(),
+      money:done?money(payout(r)):d?`wins $${Math.round(heroStake*(d-1)).toLocaleString('en-US')}`:'—',moneyCls:done?(r.result==='won'?'pos':r.result==='lost'?'neg':''):'pos',
+      rows,legs:legRows,chart:points.length>=2?{label:done?'Price posted → kickoff':'Price since posted',points}:null,
+      actions:[{label:done&&r.result==='won'?'Share this hit':'Share',icon:'share',primary:false,wide:true,share:`${done&&r.result==='won'?'✅ Hit':'Bet This Guy pick'}: ${isParlay?`${legs.length}-leg parlay (${formatOdds(odds)})`:`${r.player} ${bet} (${formatOdds(odds)})`} · ${location.origin}`}],
+      link:{text:'See every pick on Results ›',href:'/trust#official'}};
   }
-  // Details for any official pick: locked (not played yet), lost or pushed.
-  // Won picks keep the HIT sheet above.
-  function pickDetails(r){
-    if(graded(r)&&r.result==='won')return hitDetails(r);
-    const legs=recordLegs(r),isParlay=r.kind==='parlay',n=pickName(r),odds=isParlay?r.combined_odds:r.odds,d=oddsDecimal(odds);
-    const state=graded(r)?{lost:['lost','LOST'],push:['push','PUSH']}[r.result]:r.status==='provisional'?['pending','PROVISIONAL']:['locked','LOCKED'];
-    const wins=d?heroStake*(d-1):null;
-    const nowPrice=leg=>{const last=(Array.isArray(leg.priceTrail)?leg.priceTrail:[]).filter(p=>p&&p.o!=null).at(-1);if(!last)return '';const a=oddsDecimal(leg.odds),b=oddsDecimal(last.o),better=a&&b&&b>a+1e-9,worse=a&&b&&b<a-1e-9;
-      return `<div><dt>Now</dt><dd>${htmlEscape(formatOdds(last.o))} <span class="pick-move ${worse?'up':better?'down':''}">${worse?'· you locked a better price':better?'· price has improved since posting':'· unchanged'}</span></dd></div>`};
-    const legBlock=leg=>{
-      const trail=(Array.isArray(leg.priceTrail)?leg.priceTrail:[]).filter(p=>p&&p.o!=null).map(p=>({t:p.t,o:p.o}));
-      const chart=trail.length>=2?sparkline([{t:Date.parse(r.posted_at),o:leg.odds},...trail],graded(r)?'Final':'Now'):'';
-      return `<section class="hit-leg"><header><strong>${htmlEscape(isParlay?leg.player:legText(leg))}</strong>${isParlay?`<span>${htmlEscape(legText(leg))}</span>`:''}${graded(r)?`<b class="hit-leg-result ${leg.result==='won'?'won':''}">${htmlEscape(leg.result==='won'?'Hit':leg.result||'')}</b>`:''}</header>
-      <dl><div><dt>Game</dt><dd>${htmlEscape([String(leg.team||'').replace(' · ',' '),when(leg.gameTime)].filter(Boolean).join(' · '))}</dd></div>
-      <div><dt>Our price</dt><dd>${htmlEscape(formatOdds(leg.odds))}${leg.book?` at ${htmlEscape(leg.book)}`:''}</dd></div>
-      ${Number(leg.edge)>0?`<div><dt>Why</dt><dd>Beat the market’s fair price by ${htmlEscape(Number(leg.edge).toFixed(1))}%</dd></div>`:''}
-      ${graded(r)&&leg.actualValue!=null?`<div><dt>Result</dt><dd>${htmlEscape(leg.actualValue)} ${htmlEscape(String(leg.market||'').toLowerCase())}</dd></div>`:graded(r)?'':nowPrice(leg)}</dl>${chart}</section>`};
-    return `<p class="hit-tag pick-tag pick-${state[0]}">${state[0]==='locked'?icon('lock'):''} ${state[1]} · ${htmlEscape(isParlay?`${legs.length}-LEG PARLAY`:'SINGLE')}</p><h2>${htmlEscape(isParlay?n.detail:n.title)}</h2><p class="hit-sub">${isParlay?`Combined ${htmlEscape(formatOdds(odds))}`:htmlEscape(n.detail)}</p>
-      <div class="hit-payout"><span>${htmlEscape(stakeText())} bet</span><strong>${graded(r)?htmlEscape(money(payout(r))):wins!=null?`wins ${htmlEscape('$'+Math.round(wins).toLocaleString('en-US'))}`:'—'}</strong><span>at ${htmlEscape(formatOdds(odds))}</span></div>
-      ${legs.map(legBlock).join('')}
-      <p class="hit-note">Posted ${htmlEscape(when(r.posted_at))}. ${graded(r)?'Graded from the box score.':'Locked at this price before kickoff and graded in public after the game. Odds move, so check your sportsbook before you bet.'}</p><a class="hit-link" href="/trust#official">See every pick on the full record →</a>`;
-  }
-  function openPick(r){
-    const dialog=$('#hitDialog');if(!dialog||!r)return;window.btgCount?.('hit:open');
-    $('#hitDialogBody').innerHTML=pickDetails(r);
-    if(typeof dialog.showModal==='function')dialog.showModal();else dialog.setAttribute('open','');
-  }
-  function openHit(r){
-    const dialog=$('#hitDialog');if(!dialog||!r)return;window.btgCount?.('hit:open');
-    $('#hitDialogBody').innerHTML=hitDetails(r);
-    if(typeof dialog.showModal==='function')dialog.showModal();else dialog.setAttribute('open','');
-  }
+  const hitDetails=r=>window.BTGSheet.render(recordModel(r)),pickDetails=hitDetails;
+  function openPick(r){if(!r)return;window.btgCount?.('hit:open');window.BTGSheet.open(recordModel(r))}
+  const openHit=openPick;
   if($('#hitDialog')){const dialog=$('#hitDialog');$('#hitDialogClose').onclick=()=>dialog.close?.();dialog.addEventListener('click',event=>{if(event.target===dialog)dialog.close?.()})}
   function renderHero(s){
     const hero=$('#heroBanner'),strip=$('#hitsStrip');if(!hero)return;
@@ -1479,7 +1466,8 @@ render=function(){
     $$('.prop-card.compact-card').forEach(el=>{
       const p=props.find(item=>item.id===+el.dataset.id);if(!p)return;
       const key=savedPropKey(p),more=el.querySelector('.card-more'),header=el.querySelector('.prop-player');
-      const toggle=()=>{const opening=!el.classList.contains('expanded');if(opening)window.btgCount?.('card:open');el.classList.toggle('expanded',opening);if(more)more.hidden=!opening;opening?expanded.add(key):expanded.delete(key);header?.setAttribute('aria-expanded',String(opening))};
+      // Tapping a card opens the shared detail sheet (BTGSheet, below).
+      const toggle=()=>{el.classList.remove('expanded');if(more)more.hidden=true;expanded.delete(key);window.BTGSheet?.prop(p)};
       if(header){header.onclick=event=>{event.stopPropagation();toggle()};header.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();toggle()}};header.setAttribute('aria-expanded',String(el.classList.contains('expanded')));header.setAttribute('aria-label',`${p.player}: show or hide details`)}
       el.onclick=event=>{if(event.target.closest('button,a,input,select,.mockup-pick,.card-more,[data-board-progress]'))return;toggle()};
       el.querySelector('[data-open-profile]')?.addEventListener('click',event=>{event.stopPropagation();window.btgCount?.('profile:open');openPlayerProfile(p)});
@@ -1641,4 +1629,81 @@ if(typeof fetch==='function')window.btgCountVisit?.('view:home');
     if(typeof dialog.showModal==='function')dialog.showModal();else dialog.setAttribute('open','');
   };
   addEventListener('btg-auth',()=>render());
+})();
+
+// One detail sheet for everything a visitor taps: board props, this week's
+// official picks, past picks and parlays. Same layout every time: status chip,
+// the bet, price and payout, at most three facts, a price chart (free account)
+// and one main action.
+(function(){
+  const hasAccount=()=>Boolean(window.BTGAuth?.hasAccount?.());
+  const esc=htmlEscape;
+  const oddsDecimal=o=>{o=Number(o);return o>=100?1+o/100:o<=-100?1+100/Math.abs(o):null};
+  function chart(c){
+    if(!c)return '';
+    if(!hasAccount())return `<div class="bs-gate"><span>${icon('lock')} Price history</span><button type="button" data-bs-gate="signup">Free account</button></div>`;
+    if(c.open)return `<button type="button" class="bs-history" data-bs-history>${esc(c.label)} <span>›</span></button>`;
+    const ds=c.points.map(o=>oddsDecimal(o)).filter(Boolean);if(ds.length<2)return '';
+    const W=300,H=46,lo=Math.min(...ds),hi=Math.max(...ds),span=(hi-lo)||1,xy=ds.map((v,i)=>[6+i*(W-12)/(ds.length-1),6+(H-12)*(1-(v-lo)/span)]);
+    return `<div class="bs-chart"><div><span>${esc(c.label)}</span><span>${esc(formatOdds(c.points[0]))} → ${esc(formatOdds(c.points.at(-1)))}</span></div><svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" role="img" aria-label="${esc(c.label)}"><polyline points="${xy.map(p=>p.map(v=>v.toFixed(1)).join(',')).join(' ')}" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="${xy.at(-1)[0].toFixed(1)}" cy="${xy.at(-1)[1].toFixed(1)}" r="3.5" fill="currentColor"/></svg></div>`;
+  }
+  function renderSheet(m){
+    const legs=m.legs?`<div class="bs-legs">${m.legs.map((l,i)=>`<${l.onClick?'button type="button"':'div'} class="bs-leg" data-bs-leg="${i}"><span><b>${esc(l.title)}</b><small>${esc(l.text)}</small></span><span class="bs-leg-end">${l.result?`<em class="bs-res ${l.result==='won'?'pos':l.result==='lost'?'neg':''}">${l.result==='won'?'Hit':esc(l.result)}</em>`:''}<b>${esc(l.odds)}</b>${l.onClick?'<i>›</i>':''}</span></${l.onClick?'button':'div'}>`).join('')}</div>`:'';
+    const rows=m.rows?.length?`<div class="bs-rows">${m.rows.map(([a,b,c],i)=>`<div><span>${esc(a)}</span><b class="${c||''}" data-bs-row="${i}">${esc(b)}</b></div>`).join('')}</div>`:'';
+    const acts=m.actions?.length?`<div class="bs-acts">${m.actions.map((a,i)=>`<button type="button" class="bs-btn ${a.primary?'p':''} ${a.wide||a.primary?'wide':''}" data-bs-act="${i}" ${a.label?'':`aria-label="${esc(a.aria||'')}"`}>${a.icon?icon(a.icon):''}${a.label?esc(a.label):''}</button>`).join('')}</div>`:'';
+    return `<div class="bsheet"><span class="bs-chip bs-${m.chip.cls}">${m.chip.icon?icon(m.chip.icon):''}${esc(m.chip.text)}</span><h2>${esc(m.title)}</h2>${m.bet?`<p class="bs-bet">${esc(m.bet)}</p>`:''}${m.game?`<p class="bs-game">${esc(m.game)}</p>`:''}
+      <div class="bs-money"><div><small>Price</small><b>${esc(m.price)}</b></div><div><small>${esc(m.moneyLabel||`${m.stake} bet`)}</small><b class="${m.moneyCls||''}">${esc(m.money)}</b></div></div>${legs}${rows}${chart(m.chart)}${acts}${m.link?`<a class="bs-link" ${m.link.href?`href="${esc(m.link.href)}"`:'href="#" data-bs-link'}>${esc(m.link.text)}</a>`:''}</div>`;
+  }
+  function bind(host,m,dialog){
+    host.querySelectorAll('[data-bs-gate]').forEach(b=>b.onclick=()=>{dialog?.close?.();window.btgCount?.('gate:signup');window.BTGAuth?.open?.('signup')});
+    host.querySelector('[data-bs-history]')?.addEventListener('click',()=>{dialog?.close?.();m.chart.open()});
+    host.querySelectorAll('[data-bs-act]').forEach(b=>b.onclick=async()=>{const a=m.actions[+b.dataset.bsAct];
+      if(a.share){try{if(navigator.share)await navigator.share({text:a.share});else{await navigator.clipboard.writeText(a.share);b.textContent='Copied ✓'}}catch{}return}
+      a.onClick?.(b,dialog)});
+    host.querySelectorAll('[data-bs-leg]').forEach(b=>{const l=m.legs?.[+b.dataset.bsLeg];if(l?.onClick)b.onclick=()=>l.onClick(dialog)});
+    host.querySelector('[data-bs-link]')?.addEventListener('click',e=>{e.preventDefault();dialog?.close?.();m.link.onClick?.()});
+  }
+  function open(m,dialogSel='#hitDialog',bodySel='#hitDialogBody'){
+    const dialog=$(dialogSel),host=$(bodySel);if(!dialog||!host)return;
+    host.innerHTML=renderSheet(m);bind(host,m,dialog);m.after?.(host);
+    if(!dialog.open){if(typeof dialog.showModal==='function')dialog.showModal();else dialog.setAttribute('open','')}
+    // Don't land focus on the close button (it shows a ring); keep keyboard users inside the sheet.
+    try{if(!dialog.hasAttribute('tabindex'))dialog.setAttribute('tabindex','-1');dialog.focus({preventScroll:true})}catch{}
+  }
+  window.BTGSheet={render:renderSheet,open};
+
+  // Board props.
+  const stakeNow=()=>Math.max(1,Number(preferences.typicalWager)||100);
+  const winsOn=odds=>{const d=oddsDecimal(odds);return d?`wins $${Math.round(stakeNow()*(d-1)).toLocaleString('en-US')}`:'—'};
+  function propModel(p){
+    const v=propVerdict(p),odds=recommendedOdds(p),edge=Number(p.rawEdge),selection=p.binary?(p.side==='Over'?(p.overLabel||'Yes'):(p.underLabel||'No')):`${p.side} ${p.line}`;
+    const chip=v?{send:{cls:'g',icon:'check',text:'Good value'},flip:{cls:'n',icon:'fair',text:'Fair price'},read:{cls:'r',icon:'over',text:'Overpriced'}}[v.key]:{cls:'n',icon:'',text:p.market};
+    const inSlip=()=>state.slip.some(x=>x.key===slipSelectionKey(p,p.side)),saved=()=>state.saved.has(savedPropKey(p));
+    const rows=[['Best price',p.bestBook||'Best available','']];
+    if(Number.isFinite(edge))rows.push(['vs fair price',`${edge>=0?'+':'−'}${Math.abs(edge).toFixed(1)}% ${edge>=0?'better':'worse'}`,edge>=1?'pos':edge<=-3.5?'neg':'']);
+    rows.push(['Last 10 games','Loading…','']);
+    return {chip,title:p.player,bet:`${selection} ${String(p.market||'').toLowerCase()}`.trim(),game:[String(p.team||'').replace(' · vs ',' vs ').replace(' · @ ',' @ '),p.time].filter(Boolean).join(' · '),
+      price:formatOdds(odds),stake:`$${stakeNow().toLocaleString('en-US')}`,money:winsOn(odds),moneyCls:'pos',rows,
+      chart:{label:'Price history',open:()=>openMovementDetail(p.id)},
+      actions:[{label:inSlip()?'✓ In your slip':'＋ Add to slip',primary:true,onClick:b=>{toggleLeg(p,p.side);b.textContent=inSlip()?'✓ In your slip':'＋ Add to slip'}},
+        {icon:'star',aria:'Save',onClick:b=>{saved()?state.saved.delete(savedPropKey(p)):state.saved.add(savedPropKey(p));localStorage.setItem('propedge-saved',JSON.stringify([...state.saved]));window.BTGAuth?.syncSavedProps([...state.saved],props).catch(()=>{});b.classList.toggle('on',saved());render()}},
+        {icon:'share',aria:'Share',onClick:b=>shareProp(p,b)}],
+      link:{text:`${shortPlayerName(p.player)}’s stats & game log ›`,onClick:()=>{window.btgCount?.('profile:open');openPlayerProfile(p)}},
+      after:host=>{host.querySelector('[data-bs-act="1"]')?.classList.toggle('on',saved());lastTen(p).then(text=>{const cell=host.querySelector('[data-bs-row="2"]');if(!cell)return;if(text)cell.textContent=text;else cell.closest('div')?.remove()})}};
+  }
+  async function lastTen(p){
+    try{const payload=await playerStatsFor(p),recent=(payload.stats||[]).map(row=>({date:statDate(row),metric:propMetric(p,row)})).filter(item=>item.metric.value!==null).sort((a,b)=>(b.date?.getTime()||0)-(a.date?.getTime()||0)).slice(0,10);
+      if(recent.length<3)return '';const hits=recent.filter(item=>hitAgainstLine(p,item.metric.value)===true).length;return `${p.side==='Under'?'Under':'Over'} in ${hits} of ${recent.length}`}catch{return ''}
+  }
+  window.BTGSheet.prop=p=>{window.btgCount?.('card:open');open(propModel(p))};
+
+  // Parlays use the same sheet, one row per leg.
+  openParlayDetail=function(r){
+    if(!r)return;
+    const generated=r.sectionIndex===undefined||r.sectionIndex===null,cfg=generated?{tag:'CUSTOM BUILD',name:'Generated Parlay'}:parlaySections[r.sectionIndex],payout=Number.isFinite(r.payout)?r.payout:r.dec*wagerStake();
+    const games=new Set(r.legs.map(p=>p.eventID||p.team)).size;
+    open({chip:{cls:'n',icon:'layers',text:`${r.legs.length}-leg parlay`},title:cfg.name,bet:'',game:`${games} game${games===1?'':'s'} · ${r.legs.length} legs`,price:formatOddsPretty(r.american),moneyLabel:`${wagerLabel()} pays`,money:formatMoney(payout),moneyCls:'pos',
+      legs:r.legs.map(p=>({title:p.player,text:`${p.side} ${p.line} ${String(p.market||'').toLowerCase()}`,odds:formatOdds(recommendedOdds(p)),onClick:()=>openParlayLegPlayer(p,r)})),
+      actions:[{label:'Add this parlay to slip',primary:true,onClick:(b,dialog)=>{dialog?.close?.();loadSuggestedParlay(r)}}]},'#parlayDetailDialog','#parlayDetailContent');
+  };
 })();
