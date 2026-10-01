@@ -54,7 +54,7 @@
   <header class="topbar">
     <a class="brand" href="/" aria-label="Bet This Guy home"><img class="brand-logo" src="/logo.png" alt="Bet This Guy" /></a>
     <nav class="desktop-nav" aria-label="Main navigation">
-      <button class="nav-link active" data-view="board">Bets</button>
+      <button class="nav-link active" data-view="board">Picks</button>
       <button class="nav-link" data-nav-target="live"><span class="nav-live-dot"></span>Live</button>
       <button class="nav-link" data-nav-target="parlays">Parlays</button>
       <button class="nav-link nav-more-toggle" id="desktopMoreBtn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="desktopMorePanel">More<i class="nav-more-caret" aria-hidden="true">▾</i></button>
@@ -104,6 +104,11 @@
           <div class="hero-actions"><a class="hero-cta" id="heroCta" href="#propsSection">See this week’s picks</a><button type="button" class="alerts-btn" data-alerts-toggle>Get pick alerts</button><a class="hero-link" href="/trust#overview">All results →</a></div>
           <p class="alerts-note" id="alertsNote" role="status" hidden></p>
           <p class="hero-note" id="heroNote">Singles at $100 each at the posted price (change your usual wager in Settings). Every pick is locked before kickoff and graded in public. Past results don’t guarantee future ones.</p>
+        </section>
+        <section class="official-now" id="officialNow" aria-labelledby="officialNowTitle" hidden>
+          <div class="on-head"><div><h2 id="officialNowTitle">This week’s official picks</h2><p>Locked before kickoff at the price shown. Graded in public, wins and losses.</p></div><span class="on-count" id="officialNowCount"></span></div>
+          <div class="on-list" id="officialNowList"></div>
+          <a class="on-more" href="/picks">Every pick, week by week →</a>
         </section>
         <section class="hits-strip" id="hitsStrip" aria-labelledby="hitsTitle" hidden>
           <div class="hits-head"><h2 id="hitsTitle">Last week’s hits</h2><div class="hits-nav"><button type="button" id="hitsPrev" aria-label="Previous hits">‹</button><button type="button" id="hitsNext" aria-label="More hits">›</button></div><a href="/trust#official">See every pick →</a></div>
@@ -232,7 +237,7 @@
     </section>
   </main>
 
-  <nav class="mobile-nav" aria-label="Mobile navigation"><a class="active" href="?page=props" data-page-link="props">Bets</a><a href="?page=parlays" data-page-link="parlays">Parlays</a><a href="?page=slip" data-page-link="slip">Slip <span id="slipCount">0</span></a><a class="nav-more" href="#more" id="mobileMoreBtn" aria-haspopup="dialog" aria-controls="moreSheet">More</a></nav>
+  <nav class="mobile-nav" aria-label="Mobile navigation"><a class="active" href="?page=props" data-page-link="props"><svg class="ico nav-ico" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11 12 4l9 7v9H3z"/></svg><em>Picks</em></a><a href="?page=parlays" data-page-link="parlays"><svg class="ico nav-ico" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></svg><em>Parlays</em></a><a href="?page=slip" data-page-link="slip"><svg class="ico nav-ico" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></svg><em>Slip</em> <span id="slipCount">0</span></a><a class="nav-more" href="#more" id="mobileMoreBtn" aria-haspopup="dialog" aria-controls="moreSheet"><svg class="ico nav-ico" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg><em>More</em></a></nav>
   <dialog class="more-sheet" id="moreSheet" aria-label="More pages"><div class="more-sheet-head"><strong>More</strong><button type="button" class="more-sheet-close" id="moreSheetClose" aria-label="Close">×</button></div>
     <a href="?page=generator" data-page-link="generator"><strong>Parlay Generator</strong><span>Build a parlay to your odds and size</span></a>
     <a href="?page=movement" data-page-link="movement"><strong>Line Movement</strong><span>See which lines are moving</span></a>

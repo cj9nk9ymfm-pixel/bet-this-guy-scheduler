@@ -1260,7 +1260,7 @@ render=function(){
       hits:(()=>{const won=kind=>list.filter(r=>r.kind===kind&&graded(r)&&r.result==='won').sort((a,b)=>payout(b)-payout(a)),a=won('prop'),b=won('parlay'),out=[];for(let i=0;out.length<12&&(i<a.length||i<b.length);i++){if(a[i])out.push(a[i]);if(b[i]&&out.length<12)out.push(b[i])}return out})()
     };
   }
-  window.BTGFirstImpression={summarise,currentWeek,hitDetails:r=>hitDetails(r)};
+  window.BTGFirstImpression={summarise,currentWeek,hitDetails:r=>hitDetails(r),officialNow:(rows,now)=>officialNow(rows,now)};
   // Details sheet for a finished pick: the exact bet, the result, and how the
   // price moved from posting to kickoff.
   const when=iso=>{const d=new Date(iso);return Number.isFinite(d.getTime())?d.toLocaleString([],{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):''};
@@ -1306,13 +1306,13 @@ render=function(){
   function renderHero(s){
     const hero=$('#heroBanner'),strip=$('#hitsStrip');if(!hero)return;
     if(!s){hero.hidden=false;return}
-    $('#heroEyebrow').textContent=`${s.label} · OFFICIAL PICKS`;
-    $('#heroTitle').textContent=`${s.wins}–${s.losses}${s.pushes?`–${s.pushes}`:''} on our picks`;
+    $('#heroEyebrow').textContent='OFFICIAL RECORD';
+    $('#heroTitle').textContent=`${s.label==='LAST WEEK'?'Last week':s.label==='THIS WEEK SO FAR'?'This week so far':s.label.charAt(0)+s.label.slice(1).toLowerCase()}: ${s.wins}–${s.losses}${s.pushes?`–${s.pushes}`:''}`;
     const stats=[[money(s.profit),`betting ${stakeText()} a pick`,s.profit>=0?'up':'down']];
     if(s.tracked)stats.push([`${s.beat} of ${s.tracked}`,'beat the closing line','']);
     if(s.parlayWins+s.parlayLosses)stats.push([`${s.parlayWins}–${s.parlayLosses}`,`parlays · ${money(s.parlayProfit)}`,s.parlayProfit>=0?'up':'down']);
     $('#heroStats').innerHTML=stats.map(([value,label,tone])=>`<div class="hero-stat ${tone}"><strong>${htmlEscape(value)}</strong><span>${htmlEscape(label)}</span></div>`).join('');
-    $('#heroNote').textContent=`Singles at ${stakeText()} each at the posted price (change your usual wager in Settings). Every pick is locked before kickoff and graded in public. Past results don’t guarantee future ones.`;
+    $('#heroNote').textContent=`Singles at ${stakeText()} a pick at the posted price. Past results don’t guarantee future ones.`;
     hero.hidden=false;document.body.classList.add('has-hero');
     if(!strip||!s.hits.length)return;
     $('#hitsTitle').textContent=s.label==='LAST WEEK'?'Last week’s hits':s.label==='THIS WEEK SO FAR'?'This week’s hits':'Recent hits';
@@ -1323,15 +1323,41 @@ render=function(){
     const row=$('#hitsRow'),prev=$('#hitsPrev'),next=$('#hitsNext'),sync=()=>{if(!prev||!next)return;prev.disabled=row.scrollLeft<=4;next.disabled=row.scrollLeft+row.clientWidth>=row.scrollWidth-4};
     if(prev&&next){prev.onclick=()=>row.scrollBy({left:-row.clientWidth*.85,behavior:'smooth'});next.onclick=()=>row.scrollBy({left:row.clientWidth*.85,behavior:'smooth'});row.addEventListener('scroll',sync,{passive:true});sync()}
   }
+  // This week's official picks, first thing on the home page: every pick in the
+  // current official week, locked with its posted price, then graded.
+  function officialNow(rows,now=Date.now()){
+    const current=currentWeek(now);
+    return rows.filter(r=>weekOf(r)===current&&(r.kind==='prop'||r.kind==='parlay')).sort((a,b)=>String(a.game_time||'').localeCompare(String(b.game_time||''))||String(a.posted_at||'').localeCompare(String(b.posted_at||'')));
+  }
+  const kickoff=iso=>{const d=new Date(iso);return Number.isFinite(d.getTime())?d.toLocaleString([],{weekday:'short',hour:'numeric',minute:'2-digit'}):''};
+  function officialRow(r,i){
+    const legs=recordLegs(r),isParlay=r.kind==='parlay',odds=isParlay?r.combined_odds:r.odds;
+    const graded=r.status!=='provisional'&&['won','lost','push'].includes(r.result);
+    const status=graded?{won:['won','Won'],lost:['lost','Lost'],push:['push','Push']}[r.result]:['locked','Locked'];
+    const title=isParlay?`${legs.length}-leg parlay`:r.player;
+    const sub0=isParlay?legs.map(l=>l.player).join(' + '):legText({side:r.side,line:r.line,market:String(r.market||'').toLowerCase()}),sub=sub0.charAt(0).toUpperCase()+sub0.slice(1);
+    const initials=String(r.player||'').split(' ').map(x=>x[0]||'').join('').slice(0,3);
+    const avatar=isParlay?`<span class="on-avatar on-parlay">${icon('layers')}</span>`:`<span class="on-avatar"><span>${htmlEscape(initials)}</span><img loading="lazy" decoding="async" src="/api/player-photo?name=${encodeURIComponent(r.player||'')}" alt="" onerror="this.remove()"></span>`;
+    const tag=status[0]==='locked'?`${icon('lock')} Locked`:status[1];
+    return `<${graded&&r.result==='won'?'button type="button"':'div'} class="on-row" data-on="${i}">${avatar}<span class="on-who"><b>${htmlEscape(title)}</b><span>${htmlEscape(sub)}</span><small>${htmlEscape(kickoff(r.game_time))}</small></span><span class="on-end"><b class="on-price">${htmlEscape(formatOdds(odds))}</b><span class="on-tag on-${status[0]}">${tag}</span></span></${graded&&r.result==='won'?'button':'div'}>`;
+  }
+  function renderOfficialNow(rows){
+    const host=$('#officialNow');if(!host||!Array.isArray(rows))return;
+    const list=officialNow(rows);
+    $('#officialNowCount').textContent=list.length?`${list.length} pick${list.length===1?'':'s'} so far`:'';
+    $('#officialNowList').innerHTML=list.length?list.map(officialRow).join(''):'<div class="on-empty"><strong>No official picks yet this week.</strong><span>Picks post in the 24 hours before kickoff, only when a price beats the market. Turn on alerts to hear the moment one drops.</span></div>';
+    $$('#officialNowList button[data-on]').forEach(b=>b.onclick=()=>openHit(list[+b.dataset.on]));
+    host.hidden=false;
+  }
   let heroRows=null;
   async function loadHero(){
     // The home page HTML usually carries the rows already (window.BTG_HOME),
     // so the banner and hits draw with the page instead of popping in later.
-    if(Array.isArray(window.BTG_HOME)){heroRows=window.BTG_HOME;renderHero(summarise(heroRows,Date.now(),viewerStake()));return}
+    if(Array.isArray(window.BTG_HOME)){heroRows=window.BTG_HOME;renderHero(summarise(heroRows,Date.now(),viewerStake()));renderOfficialNow(heroRows);return}
     try{
       const response=await fetch('/api/record?view=home',{signal:AbortSignal.timeout(10000)});
       if(!response.ok)throw new Error();
-      const body=await response.json();heroRows=body.success?body.recent||[]:null;renderHero(heroRows?summarise(heroRows,Date.now(),viewerStake()):null);
+      const body=await response.json();heroRows=body.success?body.recent||[]:null;renderHero(heroRows?summarise(heroRows,Date.now(),viewerStake()):null);renderOfficialNow(heroRows);
     }catch{renderHero(null)}
   }
   $('#heroCta')&&($('#heroCta').onclick=event=>{event.preventDefault();$('#propsSection')?.scrollIntoView({behavior:'smooth',block:'start'})});
