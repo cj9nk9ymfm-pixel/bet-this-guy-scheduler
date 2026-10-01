@@ -652,7 +652,8 @@ body.light{background-color:#eef4fb}
   #resultCount{font-size:12.5px!important}
   .prop-sub-tabs .sub-tab{font-size:13px!important;min-height:36px}
   .app-footer span{font-size:12.5px}
-  .app-footer nav a{display:inline-block;padding:10px 6px;font-size:13px}
+  .app-footer nav{display:flex;flex-wrap:wrap;justify-content:center;gap:0 4px}
+  .app-footer nav a{display:inline-block;padding:10px 6px;font-size:13px;white-space:nowrap}
   .prop-card .bookmark{min-width:40px;min-height:40px}
   /* The feed status shows only its dot on phones; keep its words for screen readers. */
   .feed-status span{display:inline!important;position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap}

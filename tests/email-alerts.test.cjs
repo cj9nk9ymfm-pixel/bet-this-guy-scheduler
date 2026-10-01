@@ -46,7 +46,7 @@ const pick=(id,player,gameTime,postedAt,extra={})=>db.prepare("INSERT INTO publi
   assert.deepEqual([result.sent,result.picks],[1,1],'one email with the one pick whose game has not started');
   const email=sent[0].body[0];
   assert.equal(sent[0].init.headers.authorization,'Bearer re_test');
-  assert.deepEqual(email.to,['fan@example.com']);assert.equal(email.from,'Bet This Guy <picks@betthisguy.com>');
+  assert.deepEqual(email.to,['fan@example.com']);assert.equal(email.reply_to,'support@betthisguy.com','replies go to the support inbox');assert.equal(email.from,'Bet This Guy <picks@betthisguy.com>');
   assert.equal(email.subject,'✅ New pick: Jonnu Smith Over 4.5 receptions');
   assert.equal(email.headers['List-Unsubscribe'],`<https://betthisguy.com/api/email-alerts/unsubscribe?token=${token}>`);
   assert.equal(email.headers['List-Unsubscribe-Post'],'List-Unsubscribe=One-Click');
