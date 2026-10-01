@@ -824,3 +824,10 @@ html body:not(.light) :is(.dialog-close,.more-sheet-close,.account-close):focus:
 html body:not(.light) .player-finder input#playerSearch{background:transparent!important;border-color:transparent!important}
 html body:not(.light) .player-finder label>span{color:#98a1ad!important}
 html body:not(.light) .parlay-card,html body:not(.light) [class*=parlay-feed]{border-color:#272c35!important}
+/* Logo A: monogram + wordmark image, never stretched */
+.brand-logo{width:auto!important;height:30px!important;max-width:none!important;object-fit:contain!important;transform:none!important;filter:none!important}
+@media(max-width:720px){.brand-logo{height:26px!important}}
+@media(max-width:360px){.brand-logo{height:22px!important}}
+body.light .brand-logo,body.light .account-head img{content:url(/logo-dark.png)}
+.loader-emblem img{width:220px!important;height:auto!important;filter:none!important}
+.account-head img{width:auto!important;height:28px!important;max-height:none!important}

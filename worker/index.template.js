@@ -1010,7 +1010,7 @@ const NOT_FOUND_HTML = `<!doctype html>
 </head>
 <body>
   <main>
-    <a href="/"><img src="/bet-this-guy-logo-v3.png" alt="Bet This Guy"></a>
+    <a href="/"><img src="/logo.png" alt="Bet This Guy" style="height:28px;width:auto"></a>
     <h1>This line isn't on the board.</h1>
     <p>The page you're looking for doesn't exist or has moved.</p>
     <a class="button" href="/app">Open the board →</a>
