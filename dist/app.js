@@ -1272,6 +1272,7 @@ render=function(){
       parlayWins:count(parlays,'won'),parlayLosses:count(parlays,'lost'),parlayProfit:parlays.reduce((s,r)=>s+payout(r),0),
       beat:closes.filter(Boolean).length,tracked:closes.length,
       // Singles and parlays alternate, biggest payouts first in each.
+      picks:list.filter(r=>(r.kind==='prop'||r.kind==='parlay')&&graded(r)).sort((a,b)=>({won:0,push:1,lost:2}[a.result]??3)-({won:0,push:1,lost:2}[b.result]??3)||payout(b)-payout(a)),
       hits:(()=>{const won=kind=>list.filter(r=>r.kind===kind&&graded(r)&&r.result==='won').sort((a,b)=>payout(b)-payout(a)),a=won('prop'),b=won('parlay'),out=[];for(let i=0;out.length<12&&(i<a.length||i<b.length);i++){if(a[i])out.push(a[i]);if(b[i]&&out.length<12)out.push(b[i])}return out})()
     };
   }
@@ -1343,6 +1344,17 @@ render=function(){
     $('#heroStats').innerHTML=stats.map(([value,label,tone])=>`<div class="hero-stat ${tone}"><strong>${htmlEscape(value)}</strong><span>${htmlEscape(label)}</span></div>`).join('');
     $('#heroNote').textContent=`Singles at ${stakeText()} a pick at the posted price. Past results don’t guarantee future ones.`;
     hero.hidden=false;document.body.classList.add('has-hero');
+    // Tap the record to see every graded pick from that week, hits first.
+    if(s.picks?.length){
+      const label=s.label==='LAST WEEK'?'last week’s':s.label==='THIS WEEK SO FAR'?'this week’s':'that week’s';
+      $('#heroTitle').innerHTML=`<button type="button" class="hero-toggle" id="heroToggle" aria-expanded="false" aria-controls="heroPicks" aria-label="${htmlEscape(`Show ${label} picks`)}">${$('#heroTitle').innerHTML}<i aria-hidden="true"><svg class="ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></i></button>`;
+      let panel=$('#heroPicks');if(!panel){panel=document.createElement('div');panel.id='heroPicks';panel.className='hero-picks';hero.append(panel)}
+      panel.hidden=true;
+      const tag={won:['g','check','Hit'],lost:['r','over','Lost'],push:['n','fair','Push']};
+      panel.innerHTML=`<ul>${s.picks.map((r,i)=>{const n=pickName(r),odds=r.kind==='parlay'?r.combined_odds:r.odds,[cls,ic,txt]=tag[r.result]||tag.push,net=payout(r);return `<li><button type="button" data-hero-pick="${i}" aria-label="${htmlEscape(`${txt}: ${n.title}, ${n.detail}`)}"><span class="hp-tag ${cls}">${icon(ic)}${txt}</span><span class="hp-name"><strong>${htmlEscape(n.title)}</strong><small>${htmlEscape(n.detail)}</small></span><span class="hp-num"><b>${htmlEscape(formatOdds(odds))}</b><small class="${net>0?'up':net<0?'down':''}">${htmlEscape(money(net))}</small></span></button></li>`}).join('')}</ul><a class="hp-all" href="/trust#official">Every pick on Results →</a>`;
+      panel.querySelectorAll('[data-hero-pick]').forEach(b=>b.onclick=()=>openHit(s.picks[+b.dataset.heroPick]));
+      const toggle=$('#heroToggle');toggle.onclick=()=>{const open=panel.hidden;panel.hidden=!open;toggle.setAttribute('aria-expanded',String(open));hero.classList.toggle('open',open);if(open)window.btgCount?.('hero:picks')};
+    }
     if(!strip||!s.hits.length)return;
     $('#hitsTitle').textContent=s.label==='LAST WEEK'?'Last week’s hits':s.label==='THIS WEEK SO FAR'?'This week’s hits':'Recent hits';
     $('#hitsRow').innerHTML=s.hits.map((r,i)=>{const n=pickName(r),odds=r.kind==='parlay'?r.combined_odds:r.odds;return `<button type="button" class="hit-card-mini" data-hit="${i}" aria-label="Details for ${htmlEscape(n.title)}"><span class="hit-tag">${icon('check')} HIT</span><strong>${htmlEscape(n.title)}</strong><small>${htmlEscape(n.detail)}</small><div class="hit-foot"><b>${htmlEscape(formatOdds(odds))}</b><span>${htmlEscape(stakeText())} → ${htmlEscape(money(payout(r)))}</span></div><em class="hit-more">Tap for details ›</em></button>`}).join('');
