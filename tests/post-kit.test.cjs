@@ -44,5 +44,10 @@ add(week,'s',{player:'Started Guy',market:'Receptions',side:'Over',line:3.5,odds
   const many={...kit,upcoming:Array.from({length:14},(_,i)=>({...kit.upcoming[0],player:`Player Number ${i}`}))};
   const trimmed=JSON.parse(JSON.stringify(run(`postKitTexts(${JSON.stringify(many)})`))).today.x;
   assert.ok(trimmed.length<=280&&/\+\d+ more on the site/.test(trimmed),trimmed);
-  console.log('PASS: post kit: upcoming picks only, X posts that fit, short and long bet text, anytime TDs, weekly results with $100 profit, parlays and actual stats, Reddit lists losses too, trimming with a count, noindex page whose script parses');
+  // /trust carries a server-written record summary, and robots.txt lets search engines load the record.
+  const trust=await run('trustSnapshot(env)');
+  assert.ok(trust.includes('<p class="record-snapshot"><strong>Official record: 2–1 on player props, +\u0024101 betting \u0024100 a pick.</strong> Parlays: 1–0 <span class="nowrap">(+\u0024264)</span>.'),trust.match(/<p class="record-snapshot">[\s\S]*?<\/p>/)?.[0]);
+  const robots=await (await run("routeRequest(new Request('https://betthisguy.com/robots.txt'),env,{waitUntil(){}})")).text();
+  assert.ok(robots.includes('Allow: /api/record\nDisallow: /api/'));
+  console.log('PASS: post kit and /trust summary: upcoming picks only, X posts that fit, short and long bet text, anytime TDs, weekly results with $100 profit, parlays and actual stats, Reddit lists losses too, trimming with a count, noindex page whose script parses');
 })().catch(e=>{console.error(e);process.exitCode=1});

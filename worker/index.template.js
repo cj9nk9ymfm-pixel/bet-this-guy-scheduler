@@ -966,7 +966,7 @@ async function scheduledMaintenance(request,env,ctx){
 // Filled in by scripts/build-worker.mjs with each asset's content fingerprint.
 const ASSET_VERSIONS = /*__ASSET_VERSIONS__*/{};
 const SITE_URL = "https://betthisguy.com";
-const ROBOTS_TXT = `User-agent: *\nAllow: /\nDisallow: /api/\n\nSitemap: ${SITE_URL}/sitemap.xml\n`;
+const ROBOTS_TXT = `User-agent: *\nAllow: /\nAllow: /api/record\nDisallow: /api/\n\nSitemap: ${SITE_URL}/sitemap.xml\n`;
 const SITEMAP_XML = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${["/", "/about", "/trust", "/legal"].map(path => `  <url><loc>${SITE_URL}${path}</loc></url>`).join("\n")}\n</urlset>\n`;
 const SECURITY_HEADERS = {
   "x-content-type-options": "nosniff",
@@ -1038,6 +1038,12 @@ async function routeRequest(request, env, ctx) {
     if (url.pathname === "/bet-this-guy-logo-v3.png") {
       const bytes = Uint8Array.from(atob(LOGO), char => char.charCodeAt(0));
       return new Response(bytes, { headers: { "content-type": "image/png", "cache-control": "public, max-age=86400" } });
+    }
+    // The results page is built in the browser; a server-written summary of
+    // the record gives search engines and link previews real content too.
+    if (url.pathname === "/trust" && env.DB && typeof STATIC !== "undefined") {
+      const snapshot = await trustSnapshot(env).catch(() => "");
+      return new Response(STATIC["/trust"][1].replace("<!--RECORD_SNAPSHOT-->", () => snapshot), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache" } });
     }
     const asset = STATIC[url.pathname];
     if (asset) {
