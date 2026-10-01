@@ -775,7 +775,7 @@ html body:not(.light) .topbar{background:#0e1013!important;border-bottom:1px sol
 html body:not(.light) .mobile-nav{background:#0e1013!important;border-top:1px solid #272c35!important;box-shadow:none!important}
 html body:not(.light) .mobile-nav a,html body:not(.light) .mobile-nav button{background:transparent!important;background-image:none!important;border-color:transparent!important;color:#98a1ad!important;box-shadow:none!important}
 html body:not(.light) .mobile-nav a.active,html body:not(.light) .mobile-nav button.active{background:#1e222a!important;color:#f2f4f7!important}
-html body:not(.light) .mobile-nav a span,html body:not(.light) .saved-header-btn span{background:#2f7bf5!important;color:#fff!important}
+html body:not(.light) .mobile-nav a span,html body:not(.light) .saved-header-btn span{background:#2563eb!important;color:#fff!important}
 html body:not(.light) .icon-btn,html body:not(.light) .account-btn,html body:not(.light) .feed-status{background:#16191e!important;border-color:#272c35!important;color:#f2f4f7!important;box-shadow:none!important}
 html body:not(.light) .board{background:transparent!important;border-color:transparent!important;box-shadow:none!important}
 html body:not(.light) #heroBanner.hero,html body:not(.light) .hero,html body:not(.light) .player-finder,html body:not(.light) .prop-card,html body:not(.light) .verdict-guide,html body:not(.light) .hit-card-mini,html body:not(.light) .advanced-filters,html body:not(.light) .board-gate,html body:not(.light) .card-gate{background:#16191e!important;background-image:none!important;border:1px solid #272c35!important;box-shadow:none!important}
@@ -784,12 +784,12 @@ html body:not(.light) .hero-eyebrow,html body:not(.light) .eyebrow,html body:not
 html body:not(.light) .hero-stat strong{color:#f2f4f7!important}
 html body:not(.light) .hero-stat.up strong{color:#22c55e!important}
 html body:not(.light) .hero-note,html body:not(.light) .card-money,html body:not(.light) .board-title p,html body:not(.light) .app-footer{color:#98a1ad!important}
-html body:not(.light) #heroCta,html body:not(.light) .hero-cta,html body:not(.light) .gate-primary{background:#2f7bf5!important;background-image:none!important;color:#fff!important;box-shadow:none!important}
+html body:not(.light) #heroCta,html body:not(.light) .hero-cta,html body:not(.light) .gate-primary{background:#2563eb!important;background-image:none!important;color:#fff!important;box-shadow:none!important}
 html body:not(.light) .alerts-btn,html body:not(.light) .gate-secondary,html body:not(.light) .hits-nav button{background:transparent!important;border:1px solid #272c35!important;color:#f2f4f7!important}
 html body:not(.light) .hero-link,html body:not(.light) .hits-head a,html body:not(.light) .hit-more,html body:not(.light) .app-footer nav a{color:#6aa8ff!important}
 html body:not(.light) .hit-tag{color:#22c55e!important}
 html body:not(.light) .sub-tab{background:transparent!important;background-image:none!important;border-color:#272c35!important;color:#98a1ad!important;box-shadow:none!important}
-html body:not(.light) .sub-tab.active{background:#2f7bf5!important;border-color:#2f7bf5!important;color:#fff!important}
+html body:not(.light) .sub-tab.active{background:#2563eb!important;border-color:#2563eb!important;color:#fff!important}
 html body:not(.light) .sub-tab span,html body:not(.light) .sub-tab time{color:inherit!important}
 html body:not(.light) .game-tabs{border-color:#272c35!important}
 html body:not(.light) .player-finder-icon{background:#1e222a!important;background-image:none!important;color:#98a1ad!important}
@@ -802,7 +802,7 @@ html body:not(.light) .ico-send{color:#22c55e}html body:not(.light) .ico-flip{co
 html body:not(.light) .bookmark{color:#98a1ad!important}
 html body:not(.light) .nav-link{color:#98a1ad!important}
 html body:not(.light) .nav-link.active{color:#f2f4f7!important}
-html body:not(.light) .nav-link.active::after,html body:not(.light) .nav-link.active::before{background:#2f7bf5!important;box-shadow:none!important}
+html body:not(.light) .nav-link.active::after,html body:not(.light) .nav-link.active::before{background:#2563eb!important;box-shadow:none!important}
 html body:not(.light) dialog,html body:not(.light) .sheet,html body:not(.light) .nav-more-panel{background:#16191e!important;background-image:none!important;border-color:#272c35!important}
 html body:not(.light) input:not([type=checkbox]):not([type=radio]):not([type=range]),html body:not(.light) select,html body:not(.light) textarea{background:#1e222a!important;background-image:none!important;border-color:#272c35!important;color:#f2f4f7!important;box-shadow:none!important}
 html body:not(.light) .player-finder input{background:transparent!important}
@@ -812,10 +812,10 @@ html body:not(.light) .settings-section,html body:not(.light) .settings-footer,h
 html body:not(.light) .parlay-card li,html body:not(.light) .parlay-card .pc-leg,html body:not(.light) .pc-legs li{background:#1e222a!important;border-color:transparent!important}
 html body:not(.light) .parlay-level-tabs,html body:not(.light) .settings-tabs{background:transparent!important;border-color:#272c35!important}
 html body:not(.light) .parlay-level-tabs button,html body:not(.light) .settings-tabs button,html body:not(.light) .pc-add,html body:not(.light) #resetAdvancedFilters,html body:not(.light) .shuffle-btn,html body:not(.light) [data-more-parlays]{background:#1e222a!important;background-image:none!important;border-color:#272c35!important;color:#f2f4f7!important;box-shadow:none!important}
-html body:not(.light) .parlay-level-tabs button.active,html body:not(.light) .parlay-level-tabs button[aria-selected=true],html body:not(.light) .settings-tabs button.active,html body:not(.light) .settings-tabs button[aria-selected=true]{background:#2f7bf5!important;border-color:#2f7bf5!important;color:#fff!important}
+html body:not(.light) .parlay-level-tabs button.active,html body:not(.light) .parlay-level-tabs button[aria-selected=true],html body:not(.light) .settings-tabs button.active,html body:not(.light) .settings-tabs button[aria-selected=true]{background:#2563eb!important;border-color:#2563eb!important;color:#fff!important}
 html body:not(.light) .parlay-level-tabs button span{color:inherit!important;opacity:.85}
 html body:not(.light) .dialog-close,html body:not(.light) .more-sheet-close,html body:not(.light) .account-close{background:#1e222a!important;border:1px solid #272c35!important;color:#f2f4f7!important;box-shadow:none!important;outline-color:#2f7bf5}
-html body:not(.light) button.primary,html body:not(.light) .primary,html body:not(.light) #savePreferences{background:#2f7bf5!important;background-image:none!important;color:#fff!important;box-shadow:none!important;border-color:#2f7bf5!important}
+html body:not(.light) button.primary,html body:not(.light) .primary,html body:not(.light) #savePreferences{background:#2563eb!important;background-image:none!important;color:#fff!important;box-shadow:none!important;border-color:#2f7bf5!important}
 html body:not(.light) .filter-summary,html body:not(.light) .advanced-filters summary{background:transparent!important}
 html body:not(.light) .app-footer a,html body:not(.light) a.category-results-link,html body:not(.light) .auth-link-button,html body:not(.light) #filterMatchCount,html body:not(.light) .advanced-filters summary small,html body:not(.light) .advanced-filters summary b+*{color:#6aa8ff!important}
 html body:not(.light) .parlay-filter-summary{background:#16191e!important;background-image:none!important;border-color:#2f7bf5!important;color:#98a1ad!important}
@@ -963,19 +963,38 @@ html body .hit-tag.pick-tag.pick-lost{color:#f06060!important}
 .bs-chart{margin:12px 0 0;color:#6aa8ff}.bs-chart>div{display:flex;justify-content:space-between;color:#98a1ad;font-size:12px;margin-bottom:2px}
 .bs-gate,.bs-history{display:flex;justify-content:space-between;align-items:center;width:100%;margin:12px 0 0;padding:10px 12px;border:1px dashed #323844;border-radius:12px;background:transparent;color:#98a1ad;font:600 14px "DM Sans",sans-serif}
 .bs-gate span{display:inline-flex;align-items:center;gap:6px}.bs-gate .ico{width:15px;height:15px}
-.bs-gate button{height:32px;padding:0 12px;border-radius:999px;border:0;background:#2f7bf5;color:#fff;font:700 13px "DM Sans",sans-serif;cursor:pointer}
+.bs-gate button{height:32px;padding:0 12px;border-radius:999px;border:0;background:#2563eb;color:#fff;font:700 13px "DM Sans",sans-serif;cursor:pointer}
 .bs-history{border-style:solid;cursor:pointer;color:#f2f4f7}.bs-history span{color:#98a1ad}
 .bs-acts{display:flex;gap:8px;margin-top:16px}
 .bs-btn{height:46px;min-width:46px;padding:0 12px;border-radius:12px;border:1px solid #272c35;background:#1e222a;color:#f2f4f7;font:700 15px "DM Sans",sans-serif;display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer}
-.bs-btn.wide{flex:1}.bs-btn.p{background:#2f7bf5;border-color:#2f7bf5;color:#fff}.bs-btn .ico{width:18px;height:18px}
+.bs-btn.wide{flex:1}.bs-btn.p{background:#2563eb;border-color:#2f7bf5;color:#fff}.bs-btn .ico{width:18px;height:18px}
 .bs-btn.on .ico{fill:#ffc94d;color:#ffc94d}
 .bs-link{display:block;margin-top:14px;color:#6aa8ff;font-size:14px;font-weight:600;text-decoration:none}
 body.light #hitDialog,body.light #parlayDetailDialog{background:#fff!important;border-color:#e2e6ec!important;color:#0f172a}
 body.light .bsheet h2,body.light .bs-bet,body.light .bs-money b,body.light .bs-rows b{color:#0f172a!important}
 body.light .bs-money>div,body.light .bs-chip,body.light #hitDialogClose,body.light #parlayDetailDialog>.dialog-close{background:#f0f2f5!important}
 body.light .bs-rows>div,body.light .bs-legs,body.light .bs-leg{border-color:#e2e6ec}
-body.light .bs-btn{background:#f0f2f5;border-color:#e2e6ec;color:#0f172a}body.light .bs-btn.p{background:#1f6fe0;color:#fff}
+body.light .bs-btn{background:#f0f2f5;border-color:#e2e6ec;color:#0f172a}body.light .bs-btn.p{background:#2563eb;color:#fff}
 #hitDialog[open],#parlayDetailDialog[open]{position:fixed!important;inset:0!important;height:fit-content!important;min-height:0!important}
 #hitDialogClose:focus:not(:focus-visible),#parlayDetailDialog>.dialog-close:focus:not(:focus-visible){outline:none!important;box-shadow:none!important}
 @media(max-width:720px){#hitDialog[open],#parlayDetailDialog[open]{inset:auto 0 0 0!important;margin:0!important}}
 #hitDialog:focus,#parlayDetailDialog:focus{outline:none!important}
+a[href^="tel:"],a[href^="mailto:"]{text-decoration:underline;text-underline-offset:2px}
+/* Light mode, scheme A: soft grey page, white cards, one solid blue. */
+html body.light{background:#f4f6f9!important;background-image:none!important;color:#0f172a}
+html body.light .board{background:transparent!important;border-color:transparent!important;box-shadow:none!important;padding:0 0 8px!important}
+html body.light .hero,html body.light #heroBanner{background:#fff!important;background-image:none!important;border:1px solid #e2e6ec!important;box-shadow:none!important}
+html body.light .sub-tab.active,html body.light .mobile-nav a.active,html body.light .parlay-level-tabs button.active,html body.light .settings-tabs button.active{background:#2563eb!important;background-image:none!important;border-color:#2563eb!important;color:#fff!important;box-shadow:none!important}
+html body.light .mobile-nav a span,html body.light .saved-header-btn span,html body.light #savedHeaderCount,html body.light #slipCount{background:#2563eb!important;background-image:none!important;color:#fff!important}
+html body.light .player-finder{background:#fff!important;background-image:none!important;border:1px solid #e2e6ec!important;box-shadow:none!important}
+html body.light .player-finder-icon{background:#2563eb!important;background-image:none!important;color:#fff!important}
+html body.light button.primary,html body.light .primary,html body.light #heroCta,html body.light .gate-primary,html body.light #savePreferences{background:#2563eb!important;background-image:none!important;border-color:#2563eb!important;color:#fff!important;box-shadow:none!important}
+html body.light .hit-tag,html body.light .hit-foot span{color:#047857!important}
+html body.light .bsheet .pos,html body.light .hero-profit.up,html body.light .bs-chip.bs-g{color:#047857!important}
+html body.light .bsheet .neg,html body.light .bs-chip.bs-r{color:#b91c1c!important}
+html body.light .bs-link,html body.light .bs-chart{color:#1d4ed8!important}
+html body.light .mobile-nav{background:#fff!important;border-top:1px solid #e2e6ec!important;box-shadow:none!important}
+html body.light .mobile-nav a,html body.light .mobile-nav button{background:transparent!important;background-image:none!important;border-color:transparent!important;color:#5b6472!important;box-shadow:none!important}
+html body.light .mobile-nav a.active,html body.light .mobile-nav button.active{background:#e8eefc!important;border-color:transparent!important;color:#1d4ed8!important}
+html body.light .game-tabs{border-color:#e2e6ec!important}
+html body.light .copyright,html body.light .bs-game,html body.light .bs-money small,html body.light .bs-rows span,html body.light .bs-gate,html body.light .bs-gate span{color:#5b6472!important}

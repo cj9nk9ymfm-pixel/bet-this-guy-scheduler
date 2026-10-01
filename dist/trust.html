@@ -15,7 +15,7 @@
   <meta property="og:image:height" content="630" />
   <meta name="twitter:card" content="summary_large_image" />
 <meta name="description" content="Posted props, parlay grades and Bet This Guy's performance record.">
-<style>
+<style>a[href^="tel:"],a[href^="mailto:"]{text-decoration:underline;text-underline-offset:2px}
 .waiting-note{margin:14px 0 0;color:#c2c6cc;font-size:14px;line-height:1.55}
 .empty-note{margin:0 0 18px;padding:16px 18px;border:1px dashed #5e6063;border-radius:14px;background:#1d1f22;color:#d8dce2;line-height:1.6}
 .empty-note strong{color:#f5f9ff}
@@ -36,7 +36,7 @@
 .sum-card{background:#16191e;border:1px solid #272c35;border-radius:14px;padding:16px}
 .sum-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:8px}.sum-head h2{margin:0;font:700 17px "Space Grotesk",sans-serif}
 .sum-list-head{margin:26px 0 10px}
-.sum-tabs{display:flex;gap:6px}.sum-tabs button{height:32px;padding:0 12px;border-radius:999px;border:1px solid #272c35;background:transparent;color:#f2f4f7;font:600 13px "DM Sans",sans-serif;cursor:pointer}.sum-tabs button.on{background:#2f7bf5;border-color:#2f7bf5;color:#fff}
+.sum-tabs{display:flex;gap:6px}.sum-tabs button{height:32px;padding:0 12px;border-radius:999px;border:1px solid #272c35;background:transparent;color:#f2f4f7;font:600 13px "DM Sans",sans-serif;cursor:pointer}.sum-tabs button.on{background:#2563eb;border-color:#2f7bf5;color:#fff}
 .sum-table{background:#16191e;border:1px solid #272c35;border-radius:14px;overflow:hidden}
 .sum-row{display:grid;grid-template-columns:64px 1fr 60px 92px 76px;align-items:center;gap:10px;padding:11px 14px;border-top:1px solid #272c35;font-size:14px}.sum-row:first-child{border-top:0}
 .sum-date{color:#98a1ad;font-size:13px}.sum-pick{min-width:0;display:flex;flex-direction:column}.sum-pick b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.sum-pick small{color:#98a1ad;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -69,7 +69,7 @@ button.sum-row{width:100%;border:0;border-top:1px solid #272c35;background:trans
 .bs-res{font-style:normal;font-size:12px;font-weight:700;padding:2px 8px;border-radius:999px;background:#1e222a;color:#98a1ad}.bs-res.pos{background:#22c55e1f}.bs-res.neg{background:#f060601a}
 .bs-chart{margin:12px 0 0;color:#6aa8ff}.bs-chart>div{display:flex;justify-content:space-between;color:#98a1ad;font-size:12px;margin-bottom:2px}
 .bs-gate{display:flex;justify-content:space-between;align-items:center;margin:12px 0 0;padding:10px 12px;border:1px dashed #323844;border-radius:12px;color:#98a1ad;font-weight:600;font-size:14px}
-.bs-gate span{display:inline-flex;align-items:center;gap:6px}.bs-gate a{height:32px;line-height:32px;padding:0 12px;border-radius:999px;background:#2f7bf5;color:#fff;font-size:13px;font-weight:700;text-decoration:none}
+.bs-gate span{display:inline-flex;align-items:center;gap:6px}.bs-gate a{height:32px;line-height:32px;padding:0 12px;border-radius:999px;background:#2563eb;color:#fff;font-size:13px;font-weight:700;text-decoration:none}
 .bs-acts{display:flex;gap:8px;margin-top:16px}.bs-btn{flex:1;height:46px;border-radius:12px;border:1px solid #272c35;background:#1e222a;color:#f2f4f7;font:700 15px "DM Sans",sans-serif;display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer}
 </style>
 </head>
@@ -85,7 +85,7 @@ button.sum-row{width:100%;border:0;border-top:1px solid #272c35;background:trans
 <div id="officialGroups"></div>
 </section>
 <section id="overviewPanel">
-<h1>Results</h1><p class="lede">Every official pick, graded from box scores. Wins, losses and what’s still waiting.</p><!--RECORD_SNAPSHOT--><div id="summary" class="summary" hidden><div id="summaryStats" class="sum-stats"></div><div class="sum-card"><div class="sum-head"><h2>Profit over time</h2><span id="summaryStake" class="subtle"></span></div><div id="summaryChart"></div></div><div class="sum-head sum-list-head"><h2>Every official pick</h2><div class="sum-tabs" role="tablist"><button type="button" class="on" data-sum="all">All</button><button type="button" data-sum="prop">Singles</button><button type="button" data-sum="parlay">Parlays</button></div></div><div id="summaryTable" class="sum-table"></div></div><h2 class="by-cat">By category</h2><div class="toolbar"><label>Record <select id="recordScope"><option value="all">All posted history</option><option value="legacy">Pre-season test picks (not official)</option><option value="2026-09-22">Official · Week of Sep 22</option></select></label><span class="subtle">Official weekly picks start with the Sept. 24–28 slate.</span></div>
+<h1>Results</h1><p class="lede">Every official pick, graded from box scores. Wins, losses and what’s still waiting.</p><!--RECORD_SNAPSHOT--><div id="summary" class="summary" hidden><div id="summaryStats" class="sum-stats"></div><div class="sum-card"><div class="sum-head"><h2>Profit over time</h2><span id="summaryStake" class="subtle"></span></div><div id="summaryChart"></div></div><div class="sum-head sum-list-head"><h2>Every official pick</h2><div class="sum-tabs" role="group" aria-label="Show"><button type="button" class="on" aria-pressed="true" data-sum="all">All</button><button type="button" aria-pressed="false" data-sum="prop">Singles</button><button type="button" aria-pressed="false" data-sum="parlay">Parlays</button></div></div><div id="summaryTable" class="sum-table"></div></div><h2 class="by-cat">By category</h2><div class="toolbar"><label>Record <select id="recordScope"><option value="all">All posted history</option><option value="legacy">Pre-season test picks (not official)</option><option value="2026-09-22">Official · Week of Sep 22</option></select></label><span class="subtle">Official weekly picks start with the Sept. 24–28 slate.</span></div>
 <div id="recordEmptyNote" class="empty-note" hidden><strong>No graded picks yet.</strong> The public record starts fresh with the Sept. 24–28 slate. Picks are only published when a sportsbook price beats the market consensus by at least 1%, so early days may have none. Every pick will appear here with its original timestamp and be graded automatically after the game. <a href="#official">See this week’s slate →</a></div>
 <div id="tierGrid" class="section-grid" aria-label="Browse posted picks"></div>
 </section>
@@ -215,7 +215,7 @@ function renderSummary(rows=[]){
   host.hidden=!summaryRows.length;
   const snap=document.querySelector?.('.record-snapshot');if(snap&&summaryRows.length)snap.hidden=true;
 }
-document.querySelectorAll?.('[data-sum]').forEach(button=>button.onclick=()=>{summaryKind=button.dataset.sum;document.querySelectorAll('[data-sum]').forEach(b=>b.classList.toggle('on',b===button));renderSummaryTable()});
+document.querySelectorAll?.('[data-sum]').forEach(button=>button.onclick=()=>{summaryKind=button.dataset.sum;document.querySelectorAll('[data-sum]').forEach(b=>{b.classList.toggle('on',b===button);b.setAttribute('aria-pressed',String(b===button))});renderSummaryTable()});
 
 // SHEET: the same detail sheet as the home page, for any pick on this page.
 const signedUp=()=>{try{for(let i=0;i<localStorage.length;i++)if(String(localStorage.key(i)).startsWith('btg-secure-session'))return true}catch{}return false};
