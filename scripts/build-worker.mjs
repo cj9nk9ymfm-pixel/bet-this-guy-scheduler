@@ -29,7 +29,7 @@ const [html, landing, landingCss, legal, trust, app, styles, theme, nfl, perform
 const stats = await readFile("dist/stats.js", "utf8");
 const records = await readFile("worker/records.js", "utf8");
 // Home-screen and notification icons and the link-preview image, served by the Worker.
-const icons = Object.fromEntries(await Promise.all(["/icon-192.png", "/icon-512.png", "/apple-touch-icon.png", "/og-image.jpg"].map(async path => [path, (await readFile(`dist${path}`)).toString("base64")])));
+const icons = Object.fromEntries(await Promise.all(["/icon-192.png", "/icon-512.png", "/apple-touch-icon.png", "/og-image-v2.jpg", "/logo.png", "/logo-dark.png"].map(async path => [path, (await readFile(`dist${path}`)).toString("base64")])));
 const accounts = await readFile("worker/accounts.js", "utf8");
 const movement = await readFile("dist/movement.js", "utf8");
 const movementServer = await readFile("worker/movement.js", "utf8");

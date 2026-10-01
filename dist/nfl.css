@@ -824,3 +824,71 @@ html body:not(.light) :is(.dialog-close,.more-sheet-close,.account-close):focus:
 html body:not(.light) .player-finder input#playerSearch{background:transparent!important;border-color:transparent!important}
 html body:not(.light) .player-finder label>span{color:#98a1ad!important}
 html body:not(.light) .parlay-card,html body:not(.light) [class*=parlay-feed]{border-color:#272c35!important}
+/* Logo A: monogram + wordmark image, never stretched */
+.brand-logo{width:auto!important;height:30px!important;max-width:none!important;object-fit:contain!important;transform:none!important;filter:none!important}
+@media(max-width:720px){.brand-logo{height:26px!important}}
+@media(max-width:360px){.brand-logo{height:22px!important}}
+body.light .brand-logo,body.light .account-head img{content:url(/logo-dark.png)}
+.loader-emblem img{width:220px!important;height:auto!important;filter:none!important}
+.account-head img{width:auto!important;height:28px!important;max-height:none!important}
+/* ---- Home: record strip, then this week's official picks ---- */
+#heroBanner.hero{padding:16px 18px!important;border-radius:14px!important}
+#heroBanner .hero-eyebrow{font-size:11.5px!important;margin:0 0 4px!important}
+#heroBanner .hero-title{font-size:24px!important;line-height:1.15!important;margin:0 0 10px!important}
+#heroBanner .hero-stats{gap:8px!important;margin:0 0 12px!important}
+#heroBanner .hero-stat{padding:9px 11px!important;border-radius:10px!important}
+#heroBanner .hero-stat strong{font-size:18px!important}
+#heroBanner .hero-stat span{font-size:12px!important}
+#heroBanner #heroCta{display:none!important}
+#heroBanner .hero-actions{gap:10px!important;margin:0!important;align-items:center}
+#heroBanner .alerts-btn{height:36px!important;min-height:36px!important;padding:0 14px!important;font-size:14px!important}
+#heroBanner .hero-note{font-size:12px!important;margin:10px 0 0!important}
+.official-now{margin:22px 0 6px}
+.official-now[hidden]{display:none}
+.on-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;margin-bottom:10px}
+.on-head h2{margin:0;font:700 22px/1.2 "Space Grotesk",sans-serif;letter-spacing:-.015em}
+.on-head p{margin:4px 0 0;color:var(--muted);font-size:13.5px}
+.on-count{color:var(--muted);font-size:13px;font-weight:600;white-space:nowrap}
+.on-list{border:1px solid var(--line);border-radius:14px;background:var(--panel);overflow:hidden}
+.on-row{display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;border:0;border-top:1px solid var(--line);background:transparent;color:inherit;font:inherit;text-align:left}
+.on-row:first-child{border-top:0}
+button.on-row{cursor:pointer}
+.on-avatar{position:relative;width:42px;height:42px;border-radius:50%;background:var(--panel2);display:grid;place-items:center;overflow:hidden;flex:none;color:var(--muted);font:700 13px "Space Grotesk",sans-serif}
+.on-avatar img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.on-avatar .ico{width:20px;height:20px}
+.on-who{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.on-who b{font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.on-who span{font-size:14px;color:var(--text)}
+.on-who small{font-size:12.5px;color:var(--muted)}
+.on-end{display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex:none}
+.on-price{min-width:58px;text-align:center;padding:6px 10px;border-radius:9px;background:var(--panel2);font:700 15px "Space Grotesk",sans-serif}
+.on-tag{display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 8px;border-radius:999px;font-size:12px;font-weight:700;background:var(--panel2);color:var(--muted)}
+.on-tag .ico{width:13px;height:13px}
+.on-won{background:#22c55e1f;color:#22c55e}.on-lost{background:#f060601a;color:#f06060}
+.on-empty{padding:18px 16px;display:flex;flex-direction:column;gap:4px}.on-empty span{color:var(--muted);font-size:14px}
+.on-more{display:inline-block;margin-top:10px;font-weight:600;font-size:14px;color:#6aa8ff}
+body.light .on-won{color:#15803d}body.light .on-lost{color:#c62828}
+/* Bottom tabs: icon over label */
+.mobile-nav a{position:relative;display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;gap:3px!important;font-size:11.5px!important;font-weight:600!important;min-height:52px!important;padding:6px 4px!important;border-radius:12px!important}
+.mobile-nav a em{font-style:normal;line-height:1}
+.mobile-nav .nav-ico{width:22px;height:22px}
+.mobile-nav a #slipCount{position:absolute!important;top:3px;left:calc(50% + 6px);min-width:17px;height:17px;padding:0 4px;border-radius:9px;font-size:10.5px;line-height:17px;text-align:center}
+/* Filter chips: no row labels, compact chips */
+.prop-sub-tabs>span:first-child{display:none!important}
+.prop-sub-tabs .sub-tab{min-height:34px!important;padding:6px 12px!important;font-size:13.5px!important;border-radius:999px!important}
+.prop-sub-tabs.game-tabs .sub-tab{padding:5px 11px!important}
+.prop-sub-tabs.game-tabs .game-tab-time{font-size:11.5px!important}
+.on-more{text-decoration:none!important}
+.hit-card-mini .hit-more{display:none!important}
+/* Slimmer prop cards */
+.prop-list .prop-card.mockup-card{padding:14px 14px 12px!important;border-radius:14px!important;margin-bottom:10px!important}
+.prop-card .prop-player{gap:12px!important;min-height:0!important;margin-bottom:10px!important}
+.prop-card .prop-player .avatar{width:42px!important;height:42px!important;min-width:42px!important;border-radius:50%!important;font-size:13px!important}
+.prop-card .prop-player strong{font-size:16px!important}
+.prop-card .prop-player span,.prop-card .prop-player small{font-size:12.5px!important}
+.prop-card .mockup-pick{padding:0!important;background:transparent!important;border:0!important;min-height:0!important;margin:0 0 8px!important;display:flex!important;align-items:center!important;justify-content:space-between!important;gap:10px}
+.prop-card .mockup-pick strong{font-size:17px!important}
+.prop-card .mockup-pick b,.prop-card .mockup-pick button{min-width:64px!important;height:36px!important;min-height:36px!important;padding:0 10px!important;border-radius:9px!important;font-size:15px!important;display:grid!important;place-items:center!important}
+.prop-card .bookmark{top:12px!important;right:12px!important}
+.prop-card .card-money{font-size:13px!important}
+.verdict-guide li{display:block!important}.verdict-guide li b{display:flex;align-items:center;gap:6px}

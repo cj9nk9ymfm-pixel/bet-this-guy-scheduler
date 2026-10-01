@@ -20,3 +20,9 @@
 body{background:#0e1013!important}
 .eyebrow{color:#98a1ad!important}
 .hero h1 em{color:#6aa8ff!important}
+.brand img,.footer-brand img{width:auto!important;height:28px!important}
+.final-cta img{width:auto!important;height:34px!important}
+
+.site-nav{display:flex;align-items:center;gap:18px}.site-nav a{color:#98a1ad;font:600 14px/1 "DM Sans",sans-serif;text-decoration:none;padding:10px 0}.site-nav a[aria-current=page]{color:#f2f4f7}.site-nav a:hover{color:#f2f4f7}
+@media(max-width:900px){.site-head nav.site-nav{display:flex!important;gap:16px}.site-head{padding:0 16px!important;height:60px!important}}
+@media(max-width:850px){.site-head nav.site-nav>a{display:inline-block!important}}
