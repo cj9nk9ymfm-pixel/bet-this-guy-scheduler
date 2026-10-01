@@ -1275,17 +1275,17 @@ render=function(){
       hits:(()=>{const won=kind=>list.filter(r=>r.kind===kind&&graded(r)&&r.result==='won').sort((a,b)=>payout(b)-payout(a)),a=won('prop'),b=won('parlay'),out=[];for(let i=0;out.length<12&&(i<a.length||i<b.length);i++){if(a[i])out.push(a[i]);if(b[i]&&out.length<12)out.push(b[i])}return out})()
     };
   }
-  window.BTGFirstImpression={summarise,currentWeek,hitDetails:r=>hitDetails(r),officialNow:(rows,now)=>officialNow(rows,now)};
+  window.BTGFirstImpression={summarise,currentWeek,hitDetails:r=>hitDetails(r),pickDetails:r=>pickDetails(r),officialNow:(rows,now)=>officialNow(rows,now)};
   // Details sheet for a finished pick: the exact bet, the result, and how the
   // price moved from posting to kickoff.
   const when=iso=>{const d=new Date(iso);return Number.isFinite(d.getTime())?d.toLocaleString([],{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):''};
   const legText=l=>{const binary=/touchdown/i.test(l.market||'')&&Number(l.line)===0.5;return binary?`${l.side==='Under'?'No ':''}${l.market}`:`${l.side} ${l.line} ${l.market}`};
   const moveOf=(line,close,side)=>{const a=Number(line),b=Number(close);if(line==null||close==null||!Number.isFinite(a)||!Number.isFinite(b)||Math.abs(a-b)<=.01)return null;return {line:b,ourWay:String(side).toLowerCase()==='under'?b<a:b>a}};
-  function sparkline(points){
+  function sparkline(points,endLabel='Final'){
     const pts=points.filter(p=>Number.isFinite(p.t)&&oddsDecimal(p.o));if(pts.length<3)return '';
     const w=280,h=64,t0=pts[0].t,t1=pts.at(-1).t||t0+1,ds=pts.map(p=>oddsDecimal(p.o)),lo=Math.min(...ds),hi=Math.max(...ds),span=hi-lo||1;
     const xy=pts.map((p,i)=>[8+(w-16)*((p.t-t0)/((t1-t0)||1)),8+(h-16)*(1-(ds[i]-lo)/span)]);
-    return `<svg class="hit-spark" viewBox="0 0 ${w} ${h}" role="img" aria-label="Price from ${formatOdds(pts[0].o)} to ${formatOdds(pts.at(-1).o)}"><polyline points="${xy.map(p=>p.map(v=>v.toFixed(1)).join(',')).join(' ')}"/>${xy.map((p,i)=>`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="${i===0||i===xy.length-1?3.5:2}"/>`).join('')}</svg><div class="hit-spark-labels"><span>Posted ${htmlEscape(formatOdds(pts[0].o))}</span><span>Higher = pays more</span><span>Final ${htmlEscape(formatOdds(pts.at(-1).o))}</span></div>`;
+    return `<svg class="hit-spark" viewBox="0 0 ${w} ${h}" role="img" aria-label="Price from ${formatOdds(pts[0].o)} to ${formatOdds(pts.at(-1).o)}"><polyline points="${xy.map(p=>p.map(v=>v.toFixed(1)).join(',')).join(' ')}"/>${xy.map((p,i)=>`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="${i===0||i===xy.length-1?3.5:2}"/>`).join('')}</svg><div class="hit-spark-labels"><span>Posted ${htmlEscape(formatOdds(pts[0].o))}</span><span>Higher = pays more</span><span>${endLabel} ${htmlEscape(formatOdds(pts.at(-1).o))}</span></div>`;
   }
   function legMovement(leg,postedAt,closeOdds,closeLine,closeAt){
     const rows=[];
@@ -1311,6 +1311,33 @@ render=function(){
     return `<p class="hit-tag">${icon('check')} HIT · ${htmlEscape(isParlay?`${legs.length}-LEG PARLAY`:'SINGLE')}</p><h2>${htmlEscape(isParlay?n.detail:n.title)}</h2><p class="hit-sub">${isParlay?`Every leg hit at ${htmlEscape(formatOdds(odds))} combined`:htmlEscape(n.detail)} · posted ${htmlEscape(when(r.posted_at))}</p>
       <div class="hit-payout"><span>${htmlEscape(stakeText())} bet</span><strong>${htmlEscape(money(payout(r)))}</strong><span>at ${htmlEscape(formatOdds(odds))}</span></div>${body}
       ${isParlay?'<p class="hit-note">Parlay payout is the product of each leg’s posted price.</p>':''}<a class="hit-link" href="/trust#official">See every pick on the full record →</a>`;
+  }
+  // Details for any official pick: locked (not played yet), lost or pushed.
+  // Won picks keep the HIT sheet above.
+  function pickDetails(r){
+    if(graded(r)&&r.result==='won')return hitDetails(r);
+    const legs=recordLegs(r),isParlay=r.kind==='parlay',n=pickName(r),odds=isParlay?r.combined_odds:r.odds,d=oddsDecimal(odds);
+    const state=graded(r)?{lost:['lost','LOST'],push:['push','PUSH']}[r.result]:r.status==='provisional'?['pending','PROVISIONAL']:['locked','LOCKED'];
+    const wins=d?heroStake*(d-1):null;
+    const nowPrice=leg=>{const last=(Array.isArray(leg.priceTrail)?leg.priceTrail:[]).filter(p=>p&&p.o!=null).at(-1);if(!last)return '';const a=oddsDecimal(leg.odds),b=oddsDecimal(last.o),better=a&&b&&b>a+1e-9,worse=a&&b&&b<a-1e-9;
+      return `<div><dt>Now</dt><dd>${htmlEscape(formatOdds(last.o))} <span class="pick-move ${worse?'up':better?'down':''}">${worse?'· you locked a better price':better?'· price has improved since posting':'· unchanged'}</span></dd></div>`};
+    const legBlock=leg=>{
+      const trail=(Array.isArray(leg.priceTrail)?leg.priceTrail:[]).filter(p=>p&&p.o!=null).map(p=>({t:p.t,o:p.o}));
+      const chart=trail.length>=2?sparkline([{t:Date.parse(r.posted_at),o:leg.odds},...trail],graded(r)?'Final':'Now'):'';
+      return `<section class="hit-leg"><header><strong>${htmlEscape(isParlay?leg.player:legText(leg))}</strong>${isParlay?`<span>${htmlEscape(legText(leg))}</span>`:''}${graded(r)?`<b class="hit-leg-result ${leg.result==='won'?'won':''}">${htmlEscape(leg.result==='won'?'Hit':leg.result||'')}</b>`:''}</header>
+      <dl><div><dt>Game</dt><dd>${htmlEscape([String(leg.team||'').replace(' · ',' '),when(leg.gameTime)].filter(Boolean).join(' · '))}</dd></div>
+      <div><dt>Our price</dt><dd>${htmlEscape(formatOdds(leg.odds))}${leg.book?` at ${htmlEscape(leg.book)}`:''}</dd></div>
+      ${Number(leg.edge)>0?`<div><dt>Why</dt><dd>Beat the market’s fair price by ${htmlEscape(Number(leg.edge).toFixed(1))}%</dd></div>`:''}
+      ${graded(r)&&leg.actualValue!=null?`<div><dt>Result</dt><dd>${htmlEscape(leg.actualValue)} ${htmlEscape(String(leg.market||'').toLowerCase())}</dd></div>`:graded(r)?'':nowPrice(leg)}</dl>${chart}</section>`};
+    return `<p class="hit-tag pick-tag pick-${state[0]}">${state[0]==='locked'?icon('lock'):''} ${state[1]} · ${htmlEscape(isParlay?`${legs.length}-LEG PARLAY`:'SINGLE')}</p><h2>${htmlEscape(isParlay?n.detail:n.title)}</h2><p class="hit-sub">${isParlay?`Combined ${htmlEscape(formatOdds(odds))}`:htmlEscape(n.detail)}</p>
+      <div class="hit-payout"><span>${htmlEscape(stakeText())} bet</span><strong>${graded(r)?htmlEscape(money(payout(r))):wins!=null?`wins ${htmlEscape('$'+Math.round(wins).toLocaleString('en-US'))}`:'—'}</strong><span>at ${htmlEscape(formatOdds(odds))}</span></div>
+      ${legs.map(legBlock).join('')}
+      <p class="hit-note">Posted ${htmlEscape(when(r.posted_at))}. ${graded(r)?'Graded from the box score.':'Locked at this price before kickoff and graded in public after the game. Odds move, so check your sportsbook before you bet.'}</p><a class="hit-link" href="/trust#official">See every pick on the full record →</a>`;
+  }
+  function openPick(r){
+    const dialog=$('#hitDialog');if(!dialog||!r)return;window.btgCount?.('hit:open');
+    $('#hitDialogBody').innerHTML=pickDetails(r);
+    if(typeof dialog.showModal==='function')dialog.showModal();else dialog.setAttribute('open','');
   }
   function openHit(r){
     const dialog=$('#hitDialog');if(!dialog||!r)return;window.btgCount?.('hit:open');
@@ -1354,14 +1381,14 @@ render=function(){
     const initials=String(r.player||'').split(' ').map(x=>x[0]||'').join('').slice(0,3);
     const avatar=isParlay?`<span class="on-avatar on-parlay">${icon('layers')}</span>`:`<span class="on-avatar"><span>${htmlEscape(initials)}</span><img loading="lazy" decoding="async" src="/api/player-photo?name=${encodeURIComponent(r.player||'')}" alt="" onerror="this.remove()"></span>`;
     const tag=status[0]==='locked'?`${icon('lock')} Locked`:status[1];
-    return `<${graded&&r.result==='won'?'button type="button"':'div'} class="on-row" data-on="${i}">${avatar}<span class="on-who"><b>${htmlEscape(title)}</b><span>${htmlEscape(sub)}</span><small>${htmlEscape(kickoff(r.game_time))}</small></span><span class="on-end"><b class="on-price">${htmlEscape(formatOdds(odds))}</b><span class="on-tag on-${status[0]}">${tag}</span></span></${graded&&r.result==='won'?'button':'div'}>`;
+    return `<button type="button" class="on-row" data-on="${i}" aria-label="Details for ${htmlEscape(title)}">${avatar}<span class="on-who"><b>${htmlEscape(title)}</b><span>${htmlEscape(sub)}</span><small>${htmlEscape(kickoff(r.game_time))}</small></span><span class="on-end"><b class="on-price">${htmlEscape(formatOdds(odds))}</b><span class="on-tag on-${status[0]}">${tag}</span></span></button>`;
   }
   function renderOfficialNow(rows){
     const host=$('#officialNow');if(!host||!Array.isArray(rows))return;
     const list=officialNow(rows);
     $('#officialNowCount').textContent=list.length?String(list.length):'';
     $('#officialNowList').innerHTML=list.length?list.map(officialRow).join(''):'<div class="on-empty"><strong>No picks yet this week.</strong><span>They post in the 24 hours before kickoff.</span></div>';
-    $$('#officialNowList button[data-on]').forEach(b=>b.onclick=()=>openHit(list[+b.dataset.on]));
+    $$('#officialNowList button[data-on]').forEach(b=>b.onclick=()=>openPick(list[+b.dataset.on]));
     host.hidden=false;
   }
   let heroRows=null;
