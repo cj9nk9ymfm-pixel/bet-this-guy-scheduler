@@ -44,6 +44,33 @@
 .sum-tag{justify-self:start;padding:3px 9px;border-radius:999px;font-size:12px;font-weight:700;background:#1e222a;color:#98a1ad}.sum-won{background:#22c55e1f;color:#22c55e}.sum-lost{background:#f060601a;color:#f06060}
 .by-cat{margin:6px 0 12px;font:700 17px "Space Grotesk",sans-serif}
 @media(max-width:640px){.sum-stats{grid-template-columns:1fr 1fr}.sum-row{grid-template-columns:1fr auto auto;row-gap:2px}.sum-date{grid-column:1/-1;font-size:12px}.sum-odds{display:none}.sum-head{flex-wrap:wrap}}
+.record-row{display:flex;justify-content:space-between;align-items:center;gap:12px;width:100%;text-align:left;font:inherit;color:inherit;cursor:pointer}
+button.sum-row{width:100%;border:0;border-top:1px solid #272c35;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}button.sum-row:first-child{border-top:0}button.sum-row:hover,.record-row:hover{background:#1e222a}
+.pick-sheet{width:min(460px,calc(100% - 24px));max-height:calc(100dvh - 40px);margin:auto;padding:0;border:1px solid #272c35;border-radius:20px;background:#16191e;color:#f2f4f7;overflow:auto}
+.pick-sheet::backdrop{background:rgba(0,0,0,.6)}
+.pick-sheet:focus{outline:none}
+.pick-sheet-close{position:absolute;top:16px;right:16px;width:34px;height:34px;border-radius:50%;border:0;background:#1e222a;color:#98a1ad;font-size:18px;cursor:pointer}
+.pick-sheet-close:focus:not(:focus-visible){outline:none}
+@media(max-width:720px){.pick-sheet[open]{position:fixed;inset:auto 0 0 0;width:100%;max-width:none;margin:0;border-radius:20px 20px 0 0;border-width:1px 0 0;max-height:88dvh;padding-bottom:env(safe-area-inset-bottom)}.pick-sheet::before{content:"";display:block;width:40px;height:5px;border-radius:3px;background:#3a404b;margin:10px auto 0}}
+.bsheet{padding:16px 20px 22px}
+.bs-chip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px;border-radius:999px;font:700 13px "DM Sans",sans-serif;background:#1e222a;color:#c8ced6}
+.bs-chip.bs-g{background:#22c55e1f;color:#22c55e}.bs-chip.bs-r{background:#f060601a;color:#f06060}
+.bsheet h2{margin:12px 44px 2px 0;font:700 23px/1.2 "Space Grotesk",sans-serif;color:#f2f4f7}
+.bs-bet{margin:0;font-size:16px;font-weight:600;color:#f2f4f7}.bs-game{margin:3px 0 0;color:#98a1ad;font-size:13.5px}
+.bs-money{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:16px 0 4px}.bs-money>div{background:#1e222a;border-radius:12px;padding:10px 14px}
+.bs-money small{display:block;color:#98a1ad;font-size:12px}.bs-money b{font:700 22px/1.25 "Space Grotesk",sans-serif;color:#f2f4f7}
+.bsheet .pos{color:#22c55e!important}.bsheet .neg{color:#f06060!important}
+.bs-rows>div{display:flex;justify-content:space-between;align-items:baseline;gap:14px;padding:10px 0;border-bottom:1px solid #272c35;font-size:14px}
+.bs-rows span{color:#98a1ad;white-space:nowrap}.bs-rows b{font-weight:600;text-align:right;color:#f2f4f7}
+.bs-legs{margin:10px 0 0;border:1px solid #272c35;border-radius:12px;overflow:hidden}
+.bs-leg{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;border-top:1px solid #272c35}.bs-leg:first-child{border-top:0}
+.bs-leg>span:first-child{display:flex;flex-direction:column;min-width:0}.bs-leg b{font-size:14.5px}.bs-leg small{color:#98a1ad;font-size:12.5px}
+.bs-leg-end{display:flex;align-items:center;gap:8px;white-space:nowrap}
+.bs-res{font-style:normal;font-size:12px;font-weight:700;padding:2px 8px;border-radius:999px;background:#1e222a;color:#98a1ad}.bs-res.pos{background:#22c55e1f}.bs-res.neg{background:#f060601a}
+.bs-chart{margin:12px 0 0;color:#6aa8ff}.bs-chart>div{display:flex;justify-content:space-between;color:#98a1ad;font-size:12px;margin-bottom:2px}
+.bs-gate{display:flex;justify-content:space-between;align-items:center;margin:12px 0 0;padding:10px 12px;border:1px dashed #323844;border-radius:12px;color:#98a1ad;font-weight:600;font-size:14px}
+.bs-gate span{display:inline-flex;align-items:center;gap:6px}.bs-gate a{height:32px;line-height:32px;padding:0 12px;border-radius:999px;background:#2f7bf5;color:#fff;font-size:13px;font-weight:700;text-decoration:none}
+.bs-acts{display:flex;gap:8px;margin-top:16px}.bs-btn{flex:1;height:46px;border-radius:12px;border:1px solid #272c35;background:#1e222a;color:#f2f4f7;font:700 15px "DM Sans",sans-serif;display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer}
 </style>
 </head>
 <body>
@@ -80,6 +107,7 @@
 <p>Bet This Guy does not accept wagers or guarantee winners. <a href="/legal#terms">Terms and privacy</a>.</p>
 </section>
 <p id="loadStatus" class="subtle" role="status">Loading posted results…</p>
+<dialog id="pickSheet" class="pick-sheet" aria-label="Pick details"><button type="button" id="pickSheetClose" class="pick-sheet-close" aria-label="Close">×</button><div id="pickSheetBody"></div></dialog>
 </main>
 <footer><span>© 2026 Bet This Guy</span><a href="/picks">Picks by week</a><a href="#methodology">How results are graded</a><a href="/legal#terms">Terms & privacy</a><a href="mailto:support@betthisguy.com">Contact</a><span class="footer-help">21+ where legal. Gambling problem? Call <a href="tel:18004262537">1-800-GAMBLER</a>.</span></footer>
 <script>
@@ -136,7 +164,7 @@ const sectionProfit=list=>{const s=statLine(list),provisionalNet=s.provisional.r
 const metrics=list=>{const s=statLine(list);return [['Final record',recordMarkup(s.wins,s.losses,s.pushes),'Wins · losses · pushes'],['Final win rate',numberMarkup(parseFloat(s.rate),s.rate),`${s.wins+s.losses} decided picks`],['Provisional',recordMarkup(s.provisional.filter(r=>r.result==='won').length,s.provisional.filter(r=>r.result==='lost').length,s.provisional.filter(r=>r.result==='push').length),'Not included in final totals'],['Pending',s.pending,'Still awaiting a grade']].map(([label,value,note])=>`<div class="metric"><span>${label}</span><strong>${value}</strong><small>${note}</small></div>`).join('')};
 const posted=value=>{const date=new Date(value);return Number.isNaN(date.getTime())?'Date unavailable':date.toLocaleString([],{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})};
 const pickText=leg=>`${leg.player||'Player'} · ${leg.side||''} ${leg.line??''} ${leg.market||''}`;
-const renderRecord=row=>{const legs=parsedLegs(row),isProp=row.kind==='prop',title=isProp?pickText(row):`${legs.length}-leg parlay`,grade=['won','lost','push'].includes(row.result)?row.result:'pending';return `<details class="record-row" data-record="${escape(row.id)}"><summary><span><strong>${escape(title)}</strong><small>${String(row.id||'').startsWith('official|')?'Official weekly pick · ':''}Posted ${escape(posted(row.posted_at))}${isProp&&legs[0]?.actualValue!=null?` · Actual ${legs[0].minimumOnly?'at least ':''}${escape(legs[0].actualValue)}`:''}</small></span><em class="grade ${grade}">${resultLabel(row)}</em></summary><div class="record-detail"><p>${escape(resultNote(row))}</p>${(!isProp||String(row.id||'').startsWith('official|'))?legs.map(leg=>`<div class="leg"><span>${escape(pickText(leg))}<small>${escape(leg.team||'')} · ${escape(posted(leg.gameTime))}${leg.book?' · '+escape(leg.book):''}${leg.odds!=null?' · Posted '+escape(leg.odds):''}${lineMove(leg.line,leg.closingLine,leg.side)?' · '+escape(moveText(lineMove(leg.line,leg.closingLine,leg.side))):leg.closingOdds!=null?' · Final '+escape(leg.closingOdds):''}</small><small>${leg.actualValue!=null?`Actual ${leg.minimumOnly?'at least ':''}${escape(leg.actualValue)}`:escape(leg.pendingReason||'Waiting for player stats')}</small></span><span class="grade ${['won','lost','push'].includes(leg.result)?leg.result:'pending'}">${gradeName(leg.result)}</span></div>`).join(''):''}<p>Posted odds: ${numberMarkup(row.odds??row.combined_odds,row.odds??row.combined_odds??'—')}${(()=>{const c=closingValue(row),move=isProp&&row.closing_captured_at?lineMove(row.line,row.closing_line,row.side):null;if(move)return ` · ${numberMarkup(move.ourWay?1:-1,moveText(move),move.ourWay?'won':'lost')}`;if(!c)return '';const v=closingVerdict(c);return ` · Final price before kickoff: ${escape(isProp?row.closing_odds:americanFromDecimal(c.close))} · ${numberMarkup(c.edge,`${v.label} (${c.edge>=0?'+':'−'}${Math.abs(c.edge).toFixed(1)}% payout)`,v.kind)}`})()}${confirmed(row)?` · Estimated ${stakeLabel()} net: ${numberMarkup(profit(row),money(profit(row)))}`:''}</p></div></details>`};
+const renderRecord=row=>{const legs=parsedLegs(row),isProp=row.kind==='prop',title=isProp?pickText(row):`${legs.length}-leg parlay`,grade=['won','lost','push'].includes(row.result)?row.result:'pending';return `<button type="button" class="record-row" data-record="${escape(row.id)}"><span><strong>${escape(title)}</strong><small>${String(row.id||'').startsWith('official|')?'Official weekly pick · ':''}Posted ${escape(posted(row.posted_at))}${isProp&&legs[0]?.actualValue!=null?` · Actual ${legs[0].minimumOnly?'at least ':''}${escape(legs[0].actualValue)}`:''}${row.status==='provisional'?' · Final box score not confirmed':''}</small></span><em class="grade ${grade}">${resultLabel(row)}</em></button>`};
 const officialWeekAt=(now=Date.now())=>{const first=Date.parse('2026-09-22T12:00:00Z');if(now<first)return'2026-09-22';const d=new Date(now),anchor=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate(),12));anchor.setUTCDate(anchor.getUTCDate()-((anchor.getUTCDay()+5)%7));if(now<anchor.getTime())anchor.setUTCDate(anchor.getUTCDate()-7);return anchor.toISOString().slice(0,10)};
 const officialTier=row=>{const parts=String(row.id||'').split('|');return parts[2]|| (row.kind==='prop'?'props':tierFor(row.combined_odds).key)};
 function renderOfficial(rows=[]){const week=officialWeekAt(),list=rows.filter(verified).filter(row=>String(row.id||'').startsWith(`official|${week}|`)),counts=Object.fromEntries(sections.map(section=>[section.key,list.filter(row=>officialTier(row)===section.key).length]));resultNode('#officialWeek').textContent=new Date(week+'T12:00:00Z').toLocaleDateString([],{month:'short',day:'numeric',year:'numeric'});resultNode('#officialCaps').innerHTML=sections.map(section=>`<div class="cap-card"><span>${escape(section.label)}</span><strong>${counts[section.key]} / ${officialCaps[section.key]}</strong><span>published / weekly cap</span></div>`).join('');const games=new Set(list.flatMap(row=>{const legs=parsedLegs(row);return legs.length?legs.map(leg=>leg.gameId||`${leg.team||''}|${leg.gameTime||''}`):[row.game_id||`${row.team||''}|${row.game_time||''}`]}).filter(Boolean)),latest=list.reduce((value,row)=>Math.max(value,Date.parse(row.posted_at)||0),0),missing=sections.filter(section=>!counts[section.key]).map(section=>section.label);resultNode('#officialGames').textContent=games.size;resultNode('#officialLatest').textContent=latest?posted(latest):'None yet';resultNode('#officialMissing').textContent=missing.length?missing.length:'None';resultNode('#officialMissing').title=missing.join(', ');resultNode('#officialWaitingNote').hidden=list.length>0;resultNode('#officialStatus').textContent=list.length?`${list.length} official pick${list.length===1?'':'s'} published`:'Waiting for qualifying odds';resultNode('#officialGroups').innerHTML=sections.map(section=>{const picks=list.filter(row=>officialTier(row)===section.key);return `<section class="official-group"><div class="official-group-head"><h2>${escape(section.label)}</h2><span>${picks.length} published${section.range?' · '+escape(section.range):''}</span></div><div class="record-list">${picks.length?picks.map(renderRecord).join(''):'<div class="empty">No qualifying picks published in this category yet.</div>'}</div></section>`}).join('')}
@@ -168,7 +196,7 @@ function renderSummaryTable(){
   host.innerHTML=list.length?list.map(row=>{const legs=parsedLegs(row),isProp=row.kind==='prop',done=confirmed(row),grade=done?row.result:row.status==='provisional'?'provisional':'pending',p=done?profit(row):null,odds=isProp?row.odds:row.combined_odds;
     const title=isProp?row.player:`${legs.length}-leg parlay`,sub=isProp?legName(row):legs.map(leg=>leg.player).join(' + ');
     const tag={won:'Won',lost:'Lost',push:'Push',provisional:'Provisional',pending:'Pending'}[grade];
-    return `<div class="sum-row"><span class="sum-date">${escape(shortDate(row.game_time||row.posted_at))}</span><span class="sum-pick"><b>${escape(title)}</b><small>${escape(sub)}</small></span><span class="sum-odds">${escape(Number(odds)>0?'+'+odds:odds)}</span><span class="sum-tag sum-${grade}">${tag}</span><span class="sum-net ${p>0?'pos':p<0?'neg':''}">${p===null?'—':escape(dollars(p))}</span></div>`}).join(''):'<p class="subtle" style="padding:14px">No official picks in this view yet.</p>';
+    return `<button type="button" class="sum-row" data-record="${escape(row.id)}"><span class="sum-date">${escape(shortDate(row.game_time||row.posted_at))}</span><span class="sum-pick"><b>${escape(title)}</b><small>${escape(sub)}</small></span><span class="sum-odds">${escape(Number(odds)>0?'+'+odds:odds)}</span><span class="sum-tag sum-${grade}">${tag}</span><span class="sum-net ${p>0?'pos':p<0?'neg':''}">${p===null?'—':escape(dollars(p))}</span></button>`}).join(''):'<p class="subtle" style="padding:14px">No official picks in this view yet.</p>';
 }
 function renderSummary(rows=[]){
   const host=resultNode('#summary');if(!host)return;
@@ -188,6 +216,57 @@ function renderSummary(rows=[]){
   const snap=document.querySelector?.('.record-snapshot');if(snap&&summaryRows.length)snap.hidden=true;
 }
 document.querySelectorAll?.('[data-sum]').forEach(button=>button.onclick=()=>{summaryKind=button.dataset.sum;document.querySelectorAll('[data-sum]').forEach(b=>b.classList.toggle('on',b===button));renderSummaryTable()});
+
+// SHEET: the same detail sheet as the home page, for any pick on this page.
+const signedUp=()=>{try{for(let i=0;i<localStorage.length;i++)if(String(localStorage.key(i)).startsWith('btg-secure-session'))return true}catch{}return false};
+const SHEET_ICONS={check:'<circle cx="12" cy="12" r="9"/><path d="m8.5 12.5 2.5 2.5 4.5-5"/>',over:'<circle cx="12" cy="12" r="9"/><path d="m9 9 6 6M15 9l-6 6"/>',fair:'<circle cx="12" cy="12" r="9"/><path d="M8 12h8"/>',lock:'<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',share:'<path d="M4 13v6a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6"/><path d="m16 7-4-4-4 4M12 3v13"/>'};
+const sheetIcon=name=>SHEET_ICONS[name]?`<svg class="ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${SHEET_ICONS[name]}</svg>`:'';
+const fmtOdds=o=>{o=Number(o);return Number.isFinite(o)?(o>0?'+'+o:String(o)):'—'};
+const whenText=iso=>{const d=new Date(iso);return Number.isNaN(d.getTime())?'':d.toLocaleString([],{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})};
+const betText=leg=>{const m=String(leg.market||'').toLowerCase();if(/touchdown/.test(m)&&Number(leg.line)===0.5){const t=(leg.side==='Under'?'no ':'')+m;return t.charAt(0).toUpperCase()+t.slice(1)}return `${leg.side||''} ${leg.line??''} ${m}`.replace(/\s+/g,' ').trim()};
+function sheetModel(row){
+  const legs=parsedLegs(row),isProp=row.kind==='prop',first=legs[0]||{},odds=isProp?row.odds:row.combined_odds,done=confirmed(row),d=decimal(odds),stake=standardStake();
+  const chip=done?{won:{c:'g',i:'check',t:'Hit'},lost:{c:'r',i:'over',t:'Lost'},push:{c:'n',i:'fair',t:'Push'}}[row.result]:row.status==='provisional'?{c:'n',i:'fair',t:'Provisional'}:{c:'n',i:'lock',t:String(row.id||'').startsWith('official|')?'Official pick · Locked':'Pending'};
+  const rows=[];
+  if(isProp){
+    const posted=[first.book,whenText(row.posted_at)].filter(Boolean).join(' · ');
+    if(done||row.status==='provisional'){rows.push(['Result',first.actualValue!=null?`${first.minimumOnly?'At least ':''}${first.actualValue} ${String(row.market||'').toLowerCase()}`:'—',row.result==='won'?'pos':row.result==='lost'?'neg':'']);rows.push(['Posted at',posted,'']);
+      const move=row.closing_captured_at?lineMove(row.line,row.closing_line,row.side):null,c=closingValue(row);
+      if(move)rows.push(['Closing line',`${move.line} · ${move.ourWay?'moved our way':'moved against us'}`,move.ourWay?'pos':'']);
+      else if(c)rows.push(['Closing price',`${fmtOdds(row.closing_odds)} · ${c.edge>.05?'we beat the close':c.edge<-.05?'close was better':'same as the close'}`,c.edge>.05?'pos':'']);
+      else rows.push(['Closing price','Not recorded',''])}
+    else{rows.push(['Locked at',posted,'']);if(Number(first.edge)>0)rows.push(['vs fair price',`+${Number(first.edge).toFixed(1)}% better`,'pos'])}
+  }else rows.push(['Posted',whenText(row.posted_at),'']);
+  const trail=isProp?(Array.isArray(first.priceTrail)?first.priceTrail:[]).filter(p=>p&&p.o!=null).map(p=>p.o):[];
+  const points=[odds,...trail,...(done&&isProp&&row.closing_odds!=null&&!lineMove(row.line,row.closing_line,row.side)?[row.closing_odds]:[])].filter(o=>o!=null);
+  const net=done?profit(row):null;
+  return {chip,title:isProp?row.player:`${legs.length}-leg parlay`,bet:isProp?betText(row):legs.map(l=>l.player).join(' + '),
+    game:[isProp?String(first.team||'').replace(' · ',' '):`${legs.length} legs`,whenText(row.game_time||first.gameTime),done?'Final':''].filter(Boolean).join(' · '),
+    price:fmtOdds(odds),stake:stakeLabel(),money:net!==null?dollars(net):d?`wins $${Math.round(stake*(d-1)).toLocaleString('en-US')}`:'—',moneyCls:net===null?'pos':net>0?'pos':net<0?'neg':'',
+    rows,legs:isProp?null:legs.map(l=>({title:l.player,text:betText(l),odds:fmtOdds(l.odds),result:l.result})),
+    chart:points.length>=2?{label:done?'Price posted → kickoff':'Price since posted',points}:null,
+    share:`${row.result==='won'?'✅ Hit':'Bet This Guy pick'}: ${isProp?`${row.player} ${betText(row)}`:`${legs.length}-leg parlay`} (${fmtOdds(odds)}) · ${location.origin}/trust`};
+}
+function sheetChart(c){
+  if(!c)return '';
+  if(!signedUp())return `<div class="bs-gate"><span>${sheetIcon('lock')} Price history</span><a href="/?join=signup">Free account</a></div>`;
+  const ds=c.points.map(decimal).filter(Boolean);if(ds.length<2)return '';
+  const W=300,H=46,lo=Math.min(...ds),hi=Math.max(...ds),span=(hi-lo)||1,xy=ds.map((v,i)=>[6+i*(W-12)/(ds.length-1),6+(H-12)*(1-(v-lo)/span)]);
+  return `<div class="bs-chart"><div><span>${escape(c.label)}</span><span>${escape(fmtOdds(c.points[0]))} → ${escape(fmtOdds(c.points.at(-1)))}</span></div><svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}"><polyline points="${xy.map(p=>p.map(v=>v.toFixed(1)).join(',')).join(' ')}" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="${xy.at(-1)[0].toFixed(1)}" cy="${xy.at(-1)[1].toFixed(1)}" r="3.5" fill="currentColor"/></svg></div>`;
+}
+function openSheet(id){
+  const row=allResultRows.find(r=>String(r.id)===String(id)),dialog=resultNode('#pickSheet');if(!row||!dialog)return;
+  const m=sheetModel(row);
+  resultNode('#pickSheetBody').innerHTML=`<div class="bsheet"><span class="bs-chip bs-${m.chip.c}">${sheetIcon(m.chip.i)}${escape(m.chip.t)}</span><h2>${escape(m.title)}</h2><p class="bs-bet">${escape(m.bet)}</p><p class="bs-game">${escape(m.game)}</p>
+    <div class="bs-money"><div><small>Price</small><b>${escape(m.price)}</b></div><div><small>${escape(m.stake)} bet</small><b class="${m.moneyCls}">${escape(m.money)}</b></div></div>
+    ${m.legs?`<div class="bs-legs">${m.legs.map(l=>`<div class="bs-leg"><span><b>${escape(l.title)}</b><small>${escape(l.text)}</small></span><span class="bs-leg-end">${['won','lost','push'].includes(l.result)?`<em class="bs-res ${l.result==='won'?'pos':l.result==='lost'?'neg':''}">${l.result==='won'?'Hit':escape(l.result)}</em>`:''}<b>${escape(l.odds)}</b></span></div>`).join('')}</div>`:''}
+    <div class="bs-rows">${m.rows.map(([a,b,c])=>`<div><span>${escape(a)}</span><b class="${c}">${escape(b)}</b></div>`).join('')}</div>${sheetChart(m.chart)}
+    <div class="bs-acts"><button type="button" class="bs-btn wide" data-sheet-share>${sheetIcon('share')} ${row.result==='won'?'Share this hit':'Share'}</button></div></div>`;
+  resultNode('#pickSheetBody').querySelector('[data-sheet-share]').onclick=async event=>{try{if(navigator.share)await navigator.share({text:m.share});else{await navigator.clipboard.writeText(m.share);event.currentTarget.textContent='Copied ✓'}}catch{}};
+  if(typeof dialog.showModal==='function')dialog.showModal();else dialog.setAttribute('open','');
+}
+document.addEventListener('click',event=>{const target=event.target.closest?.('[data-record]');if(target)openSheet(target.dataset.record)});
+{const dialog=resultNode('#pickSheet');if(dialog){resultNode('#pickSheetClose').onclick=()=>dialog.close?.();dialog.addEventListener?.('click',event=>{if(event.target===dialog)dialog.close?.()})}}
 resultNode('#gradeFilter').onchange=renderDetail;
 resultNode('#recordScope').onchange=()=>paint(allResultRows);
 addEventListener('hashchange',()=>{resultNode('#gradeFilter').value='all';showResultSection(location.hash.slice(1));window.scrollTo({top:0,behavior:'auto'})});

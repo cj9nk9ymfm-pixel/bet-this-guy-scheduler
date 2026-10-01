@@ -185,4 +185,6 @@ function init(){
 // never see the free-account gate flash on page load.
 window.BTGAuth={open,isSignedIn:signedIn,hasAccount:()=>signedIn()||hasSavedSession(),savePreferences,syncSavedProps,trackParlay,refreshBets,renderTrackingPanel};
 addEventListener('load',init,{once:true});
+// Other pages (like Results) send people here with ?join=signup to open the sign-up form.
+addEventListener('load',()=>{const q=new URLSearchParams(location.search).get('join');if(!q)return;history.replaceState(null,'',location.pathname+location.hash);setTimeout(()=>open(q==='login'?'login':'signup'),0)},{once:true});
 })();
