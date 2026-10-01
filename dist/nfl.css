@@ -738,3 +738,6 @@ body.light .parlay-level-tabs button.active strong,body.light .parlay-level-tabs
 /* Phones: the Bets page heading ("Featured props · Bet These Guys") doesn't
    belong on the Parlays or Generator pages (desktop already hides it). */
 body[data-mobile-page="parlays"] #propsSection,body[data-mobile-page="generator"] #propsSection{display:none!important}
+/* Smallest phones (320px wide): shrink the logo so all three header buttons fit. */
+@media(max-width:360px){.brand-logo{width:140px!important;height:auto!important}.top-actions{gap:6px!important}}
+.top-actions .account-btn span{font-size:15px;font-weight:700}
