@@ -1147,3 +1147,26 @@ body.light .player-filter-chip{background:#e8eefc;color:#0f172a}body.light .play
 @media(max-width:720px){body.search-open::after{content:"";position:fixed;inset:0;z-index:55;background:rgba(0,0,0,.5)}body.light.search-open::after{background:rgba(15,23,42,.25)}}
 html body .search-panel .player-finder label input#playerSearch{padding:0 40px 0 38px!important;text-indent:0!important}
 html body .search-panel #clearPlayerSearch{right:8px!important;top:8px!important}
+/* Record bar opens to last week's picks */
+#heroBanner .hero-title{flex:1;min-width:0}
+#heroBanner .hero-toggle{display:inline-flex;align-items:center;gap:0;padding:0;margin:0;border:0;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
+#heroBanner .hero-toggle i{display:inline-grid;place-items:center;width:26px;height:26px;margin-left:6px;border-radius:50%;background:#1e222a;color:#98a1ad;font-style:normal;transition:transform .2s}
+#heroBanner.open .hero-toggle i{transform:rotate(180deg)}
+#heroBanner .hero-picks{flex:0 0 100%;margin:4px 0 0;border-top:1px solid #272c35}
+#heroBanner .hero-picks[hidden]{display:none}
+#heroBanner .hero-picks ul{list-style:none;margin:0;padding:0}
+#heroBanner .hero-picks li+li{border-top:1px solid #272c35}
+#heroBanner .hero-picks button{display:flex;align-items:center;gap:12px;width:100%;padding:11px 0;border:0;background:none;color:#f2f4f7;text-align:left;cursor:pointer;font:inherit}
+.hp-tag{flex:none;display:inline-flex;align-items:center;gap:4px;width:62px;font:700 11px "DM Sans",sans-serif;letter-spacing:.05em;text-transform:uppercase}
+.hp-tag .ico{width:14px;height:14px}.hp-tag.g{color:#22c55e}.hp-tag.r{color:#f06060}.hp-tag.n{color:#98a1ad}
+.hp-name{flex:1;min-width:0}.hp-name strong{display:block;font-size:14.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hp-name small{display:block;margin-top:1px;font-size:12.5px;color:#98a1ad;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hp-num{flex:none;text-align:right}.hp-num b{display:block;font:700 14px "Space Grotesk",sans-serif}
+.hp-num small{display:block;font-size:12.5px;font-weight:600;color:#98a1ad}.hp-num small.up{color:#22c55e}.hp-num small.down{color:#f06060}
+#heroBanner .hp-all{display:block;padding:10px 0 2px;border-top:1px solid #272c35;font-size:14px;font-weight:600;color:#6aa8ff;text-decoration:none}
+body.light #heroBanner .hero-toggle i{background:#f0f2f5;color:#5b6472}
+body.light #heroBanner .hero-picks,body.light #heroBanner .hero-picks li+li,body.light #heroBanner .hp-all{border-color:#e2e6ec}
+body.light #heroBanner .hero-picks button{color:#0f172a}
+body.light .hp-name small,body.light .hp-num small,body.light .hp-tag.n{color:#5b6472}
+body.light .hp-tag.g,body.light .hp-num small.up{color:#047857}body.light .hp-tag.r,body.light .hp-num small.down{color:#b91c1c}
+body.light #heroBanner .hp-all{color:#1d4ed8}
