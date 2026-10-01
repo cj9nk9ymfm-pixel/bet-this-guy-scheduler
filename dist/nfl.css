@@ -710,4 +710,31 @@ body.light #parlayDetailDialog>.dialog-close,body.light #detailDialog>.dialog-cl
   .prop-trust small,#filterSummary,#activeFilterCount,.advanced-filter-grid>label,.advanced-filter-actions>span,#resetAdvancedFilters,.parlay-disclaimer,.parlay-feed-head b,.slip-head span,#slipNotice,.responsible strong,.responsible span,.settings-tabs>button,.settings-grid>label,#settingsSaveStatus,.settings-note span,.feed-detail span,.auth-form label>small{font-size:12px!important}
   .parlay-level-tabs button strong{font-size:13px!important}
   .parlay-level-tabs button span{font-size:12px!important}
+  .slip-leg span,.slip-leg small,.share-copy small,#parlaySummary small,.target-odds small,.slider-title span,.slider-title b,.slider-title output,.slider-labels span{font-size:12px!important}
 }
+/* Touchscreens (iPad too): text boxes at 16px so iOS never zooms in on tap. */
+@media (pointer:coarse){input:not([type=checkbox]):not([type=radio]):not([type=range]),select,textarea{font-size:16px!important}}
+/* Nothing under 12px on any screen size (found by the full-site audit). */
+.hero-eyebrow,.hero-note,.hit-tag,.player-finder label>span,.track-record-banner small,#propsSection .eyebrow,.prop-sub-tabs>span,.game-tab-time,#resultCount,.prop-trust small,#filterSummary,#activeFilterCount,.filter-summary-right em,.advanced-filter-grid>label,.advanced-filter-actions>span,#resetAdvancedFilters,.parlay-disclaimer,.parlay-feed-head b,.slip-head span,#slipNotice,.responsible strong,.responsible span,.settings-tabs>button,.settings-grid>label,#settingsSaveStatus,.settings-note span,.feed-detail span,.auth-form label>small,.slip-leg span,.slip-leg small,.share-copy small,#parlaySummary small,.target-odds small,.slider-title span,.slider-title b,.slider-title output,.slider-labels span,.parlay-detail-total span,.parlay-detail-legs article small,.hit-dialog-shell .hit-tag,.app-footer span,.app-footer nav a{font-size:12px!important}
+/* No made-up "online" badge on the share button: we don't count people. */
+.group-chat-share:after{content:none!important;display:none!important}
+/* Light mode: darker text where the audit measured low contrast. */
+body.light #resultCount,body.light .game-tab-time,body.light .app-footer span,body.light #filterSummary,body.light #activeFilterCount,body.light .parlay-detail-total span,body.light .parlay-why small,body.light .parlay-detail-legs article small{color:#4f6584!important}
+body.light .advanced-filters summary,body.light .advanced-filters summary strong,body.light .advanced-filters summary b{color:#10213d!important}
+body.light .advanced-filter-grid>label{color:#40597a!important}
+body.light .app-footer a,body.light .app-footer span a{color:#1c5fd0!important}
+body.light .slip-head span{color:#0b7fae!important}
+body.light .parlay-filter-summary{color:#40597a!important}
+body.light #parlayMixer .eyebrow,body.light .parlay-mixer .eyebrow{color:#0b7fae!important}
+body.light .parlay-lab .eyebrow,body.light #parlayLab .eyebrow{color:#0b7fae!important}
+/* Light mode: parlay payout tabs and parlay sections were still dark/grey. */
+body.light .parlay-feed-section{background:#fff!important;border-color:#dbe6f2!important}
+body.light .parlay-level-tabs{background:#eef4fb!important;border-color:#cfe0ee!important}
+body.light .parlay-level-tabs button{background:#fff!important;border-color:#cfe0ee!important}
+body.light .parlay-level-tabs button strong{color:#10213d!important}
+body.light .parlay-level-tabs button span{color:#0b7fae!important}
+body.light .parlay-level-tabs button.active{background:linear-gradient(135deg,#1c6cff,#16b6d9)!important;border-color:transparent!important}
+body.light .parlay-level-tabs button.active strong,body.light .parlay-level-tabs button.active span{color:#fff!important}
+/* Phones: the Bets page heading ("Featured props · Bet These Guys") doesn't
+   belong on the Parlays or Generator pages (desktop already hides it). */
+body[data-mobile-page="parlays"] #propsSection,body[data-mobile-page="generator"] #propsSection{display:none!important}

@@ -6,3 +6,5 @@
 .record-snapshot{margin:0 0 22px;padding:12px 14px;border-radius:12px;background:rgba(31,216,143,.08);border:1px solid rgba(31,216,143,.3);color:#cfe0f5;font-size:15px;line-height:1.5;max-width:560px}
 .record-snapshot strong{color:#fff}.record-snapshot a{color:#5ff0b5;font-weight:700;white-space:nowrap}.record-snapshot .nowrap{white-space:nowrap}
 .final-note{margin:18px auto 0;max-width:460px;color:#9fb6d6;font-size:15px}
+/* The product preview's small labels stay readable (12px minimum). */
+.window-bar b,.window-bar em,.window-body header span,.preview-card .pick small,.preview-card .player span,.builder span{font-size:12px}
