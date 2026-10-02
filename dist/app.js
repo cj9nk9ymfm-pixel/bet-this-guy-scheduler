@@ -173,7 +173,7 @@ function withBestLine(prop,index){
     const here=g.offers.filter(o=>mine(o)&&o.line===prop.line).sort((a,b)=>b.edge-a.edge)[0];
     if(here)Object.assign(out,{side:here.side==='over'?'Over':'Under',rawEdge:+here.edge.toFixed(2),edge:+Math.max(.2,here.edge).toFixed(1),conf:Math.round(Math.min(88,52+Math.max(.2,here.edge)*3)),pairedBooks:g.books,note:`Best at ${here.book} vs the fair price across lines`,curve:true});
   }
-  const floor=Math.max(1,(Number(out.rawEdge)||0)+1);
+  const floor=Math.max(1.5,(Number(out.rawEdge)||0)+1);
   const best=g.offers.filter(o=>mine(o)&&o.line!==prop.line&&BTGLine.lineGain(o.side,o.line,prop.line)>0&&o.edge>=floor).sort((a,b)=>b.edge-a.edge)[0];
   if(best)out.bestLine={side:best.side==='over'?'Over':'Under',line:best.line,odds:best.odds,book:best.book,edge:+best.edge.toFixed(1),gain:+BTGLine.lineGain(best.side,best.line,prop.line).toFixed(1),unit:g.kind==='normal'?' yds':''};
   return out;
@@ -1083,7 +1083,8 @@ const VERDICTS={
 function propVerdict(p){
   const edge=Number(p?.rawEdge);
   if(!p||p.teamMarket||!Number.isFinite(edge))return null;
-  if(edge>=1&&(Number(p.pairedBooks)||0)>=3)return VERDICTS.send;
+  // Lines rated on the cross-line curve (an estimate) need a bigger edge.
+  if(edge>=(p.curve?1.5:1)&&(Number(p.pairedBooks)||0)>=3)return VERDICTS.send;
   if(edge<=-3.5)return VERDICTS.read;
   return VERDICTS.flip;
 }
