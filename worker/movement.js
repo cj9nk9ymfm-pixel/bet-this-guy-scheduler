@@ -38,14 +38,14 @@ async function loadSharedMovement(request,env,ctx,eventID){
           const historical=await fetch(`${API_BASE}/historical/sports/americanfootball_nfl/events/${event.id}/odds?${query}`,{signal:AbortSignal.timeout(10000)});
           providerStatus=historical.status;
           if(!historical.ok){const error=await historical.json().catch(()=>({}));providerErrorCode=/^[A-Z_]+$/.test(error.error_code||'')?error.error_code:null}
-          if(historical.ok){const body=await historical.json(),at=Date.parse(body.timestamp);if(body.data?.id===event.id&&body.data.bookmakers?.length&&Number.isFinite(at)&&at<now&&at>now-7*86400000){await saveMovementSnapshot({...body.data,eventID},env,at,'provider-history');status='available';break}}
+          if(historical.ok){const raw=await historical.json(),body={...raw,data:licensedOnly(raw.data)},at=Date.parse(body.timestamp);if(body.data?.id===event.id&&body.data.bookmakers?.length&&Number.isFinite(at)&&at<now&&at>now-7*86400000){await saveMovementSnapshot({...body.data,eventID},env,at,'provider-history');status='available';break}}
           if([401,403,429].includes(historical.status))break;
         }
       }catch{}
       await env.DB.prepare('UPDATE movement_snapshots SET payload_json=? WHERE id=?').bind(JSON.stringify({status,providerStatus,providerErrorCode}),historyID).run();
     }
     const rows=await env.DB.prepare("SELECT captured_at,kind,payload_json FROM movement_snapshots WHERE event_id=? AND captured_at>=? AND kind!='history-status' ORDER BY CASE WHEN kind='provider-history' THEN 0 ELSE 1 END,captured_at DESC LIMIT 96").bind(eventID,now-7*86400000).all();
-    const snapshots=(rows.results||[]).sort((a,b)=>a.captured_at-b.captured_at).map(row=>({at:row.captured_at,source:row.kind,event:JSON.parse(row.payload_json)}));
+    const snapshots=(rows.results||[]).sort((a,b)=>a.captured_at-b.captured_at).map(row=>({at:row.captured_at,source:row.kind,event:licensedOnly(JSON.parse(row.payload_json))}));
     const statusRow=await env.DB.prepare('SELECT payload_json FROM movement_snapshots WHERE id=?').bind(historyID).all();
     const historyStatus=JSON.parse(statusRow.results?.[0]?.payload_json||'{}');
     const body=JSON.stringify({success:true,data:[event],snapshots,historyStatus,updatedAt:new Date(now).toISOString(),historyScope:'Shared sampled history; not the sportsbook opening price.'});
