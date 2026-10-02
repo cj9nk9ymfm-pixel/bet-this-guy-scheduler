@@ -174,12 +174,23 @@ function livePlayerRow(gameID, player) {
   const snapshot=liveBoard.gameStats.get(String(gameID)), wanted=liveNameKey(player);
   return snapshot?.stats?.find(row=>{const name=liveNameKey(livePlayerName(row));return Boolean(name&&wanted&&name===wanted)})||null;
 }
-function liveMetric(prop,row){return BTGStats.metric(prop,row)}
+// Touchdown markets: the feed has no single total, so add every TD field.
+const LIVE_TD_FIELDS=['rushing_touchdowns','receiving_touchdowns','kick_return_touchdowns','punt_return_touchdowns','interception_touchdowns','fumbles_touchdowns'];
+function liveMetric(prop,row){
+  const metric=BTGStats.metric(prop,row);
+  if(metric.value===null&&row&&/touchdown|scorer/i.test(prop.market||'')&&!/first|last/i.test(prop.market||'')){const vals=LIVE_TD_FIELDS.map(k=>BTGStats.number(row[k]));if(vals.some(v=>v!==null))return {...metric,value:vals.reduce((a,v)=>a+(v||0),0)}}
+  return metric;
+}
+// Once the game's box score has loaded, a player with nothing recorded has 0.
+function liveTracked(prop){return /touchdown|scorer/i.test(prop.market||'')?!/first|last/i.test(prop.market||''):BTGStats.supports(prop)}
 function liveLegState(prop,game,row){
-  const metric=liveMetric(prop,row),line=BTGStats.number(prop.line),side=String(prop.side||'Over'),value=metric.value,final=game?.state==='final',crossed=Number.isFinite(value)&&Number.isFinite(line)&&(side==='Over'?value>line:value>line),hit=Number.isFinite(value)&&Number.isFinite(line)&&(side==='Over'?value>line:value<line),irreversible=side==='Over'&&hit;
+  const snap=game?liveBoard.gameStats.get(String(game.id)):null,loaded=Array.isArray(snap?.stats)&&snap.stats.length>0;
+  let metric0=liveMetric(prop,row);const zero=metric0.value===null&&loaded&&liveTracked(prop);if(zero)metric0={...metric0,value:0};
+  const metric=metric0,line=BTGStats.number(prop.line),side=String(prop.side||'Over'),value=metric.value,final=game?.state==='final',crossed=Number.isFinite(value)&&Number.isFinite(line)&&(side==='Over'?value>line:value>line),hit=Number.isFinite(value)&&Number.isFinite(line)&&(side==='Over'?value>line:value<line),irreversible=side==='Over'&&hit;
   let key='pending',title='LIVE',detail='Waiting for a reported stat';
   if(Number.isFinite(value)&&Number.isFinite(line)){
-    if(final){const result=BTGStats.grade(side,line,value);key=result==='push'?'pending':hit?'hit':'miss';title=result==='push'?'PROVISIONAL PUSH':hit?'PROVISIONAL HIT':'PROVISIONAL MISS';detail='Awaiting final-stat confirmation';}
+    if(final&&zero){title='NO STATS RECORDED';detail='If he didn’t play, sportsbooks void this bet';}
+    else if(final){const result=BTGStats.grade(side,line,value);key=result==='push'?'pending':hit?'hit':'miss';title=result==='push'?'PROVISIONAL PUSH':hit?'PROVISIONAL HIT':'PROVISIONAL MISS';detail='Awaiting final-stat confirmation';}
     else if(irreversible){key='hit';title='HIT LIVE';detail='Unofficial until game statistics are finalized';}
     else if(side==='Under'&&crossed){key='miss';title='OVER THE LINE';detail='Currently above your Under line; live statistics can still change';}
     else{const needed=side==='Over'?Math.max(0,Math.floor(line+1-value)):Math.max(0,Math.floor(line+1-value));detail=side==='Over'?`${needed} more to hit`:`${Math.max(0,line-value).toFixed(line%1?1:0)} below the line`;}
@@ -201,9 +212,10 @@ function boardProgress(prop){
   const game=liveGameFor(gameName(prop),prop.startsAt);
   if(!game||!['in_progress','suspended','final'].includes(game.state))return '';
   const status=liveLegState(prop,game,livePlayerRow(game.id,prop.player)),snapshot=liveBoard.gameStats.get(String(game.id));
-  return `<div class="board-live-progress"><span>${htmlEscape(status.title)} · <strong>${status.value===null?'Awaiting stats':htmlEscape(String(status.value))}</strong></span><small>${htmlEscape(snapshot?.stale?'Stats update delayed':status.detail)}</small><div class="live-progress"><i style="width:${status.progress.toFixed(1)}%"></i></div></div>`;
+  return `<div class="board-live-progress"><span>${htmlEscape(status.title)} · <strong>${status.value===null?(snapshot?.stats?'Not tracked live':'Loading stats…'):htmlEscape(String(status.value))}</strong></span><small>${htmlEscape(snapshot?.stale?'Stats update delayed':status.detail)}</small><div class="live-progress"><i style="width:${status.progress.toFixed(1)}%"></i></div></div>`;
 }
 function updateBoardProgress(){
+  (window.btgLiveHooks||[]).forEach(hook=>{try{hook()}catch{}});
   document.querySelectorAll('[data-board-progress]').forEach(host=>{const prop=props.find(p=>p.id===Number(host.dataset.boardProgress));host.innerHTML=prop?boardProgress(prop):''});
 }
 function livePropCard(prop,game){
@@ -276,7 +288,14 @@ function setupPullRefresh(){
   document.addEventListener('touchend',finishGesture,{passive:true});
   document.addEventListener('touchcancel',()=>{pullRefresh.active=false;pullRefresh.ready=false;indicator.classList.remove('visible','ready')},{passive:true});
 }
-window.BTGLive={attachProfile:attachLiveProfile,updateLabels:()=>{updateLiveLabels();updateBoardProgress()},renderCenter:renderLiveCenter,boardProgress};
+// Live status of one bet for other screens: null until its game starts.
+function legStatus(prop){
+  const game=liveGameFor(gameName(prop),prop.startsAt);
+  if(!game||!['in_progress','suspended','final'].includes(game.state))return null;
+  const snap=liveBoard.gameStats.get(String(game.id));
+  return {...liveLegState(prop,game,livePlayerRow(game.id,prop.player)),clock:liveStatusLabel(game),final:game.state==='final',loaded:Array.isArray(snap?.stats),stale:!!snap?.stale};
+}
+window.BTGLive={attachProfile:attachLiveProfile,updateLabels:()=>{updateLiveLabels();updateBoardProgress()},renderCenter:renderLiveCenter,boardProgress,legStatus};
 document.addEventListener('visibilitychange',()=>{if(document.hidden)clearTimeout(liveBoard.timer);else tickLiveBoard()});
 window.addEventListener('online',tickLiveBoard);
 window.addEventListener('offline',()=>{clearTimeout(liveBoard.timer);liveBoard.error='Offline';updateLiveLabels();renderCurrentGame()});

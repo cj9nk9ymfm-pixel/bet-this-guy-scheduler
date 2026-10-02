@@ -454,10 +454,11 @@ async function trustSnapshot(env,now=Date.now()){
 
 // Anonymous usage counts: daily totals per metric. No cookies, IP addresses or
 // per-person identifiers are stored; unknown metric names are ignored.
-const USAGE_METRICS=new Set(['view:home','view:trust','view:picks','view:week','visit:new','visit:return','card:open','slip:add','parlay:add','share','hit:open','profile:open','affiliate:click','alerts:on','alerts:off','gate:shown','gate:signup','gate:login','alerts:email','view:post','post:copy','post:open','post:image']);
+const USAGE_METRICS=new Set(['view:home','view:trust','view:picks','view:week','visit:new','visit:return','card:open','slip:add','parlay:add','share','hit:open','profile:open','affiliate:click','alerts:on','alerts:off','gate:shown','gate:signup','gate:login','alerts:email','view:post','post:copy','post:open','post:image','src:reddit','src:x','src:google','src:social','src:other','src:direct']);
 const USAGE_BOTS=/bot|crawl|spider|slurp|preview|facebookexternalhit|curl|wget|python|headless|lighthouse/i;
 async function countUsage(env,metrics,request){
-  if(!env.DB||USAGE_BOTS.test(request.headers.get('user-agent')||''))return;
+  // The owner's own devices (opted out with /?me=1) are never counted.
+  if(!env.DB||USAGE_BOTS.test(request.headers.get('user-agent')||'')||/(?:^|;\s*)btg_owner=1(?:;|$)/.test(request.headers.get('cookie')||''))return;
   const day=new Date().toISOString().slice(0,10),list=[...new Set(metrics)].filter(m=>USAGE_METRICS.has(m)).slice(0,4);
   if(!list.length)return;
   await env.DB.batch(list.map(metric=>env.DB.prepare('INSERT INTO usage_counts (day,metric,count) VALUES (?,?,1) ON CONFLICT(day,metric) DO UPDATE SET count=count+1').bind(day,metric)));

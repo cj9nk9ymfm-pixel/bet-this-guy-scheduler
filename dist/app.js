@@ -1210,14 +1210,26 @@ render=function(){
 
 // Anonymous usage counts: batched metric names only (no cookies or IDs). A
 // "seen before" flag stays in this browser to tell new from returning visits.
+// Visiting /?me=1 marks this device as the owner's: nothing from it is counted
+// (/?me=0 undoes it). The cookie lets the server skip pages it counts itself.
+const btgOwner=(()=>{try{const q=new URLSearchParams(location.search).get('me');
+  if(q==='1'||q==='0'){const on=q==='1';if(on)localStorage.setItem('btg-owner','1');else localStorage.removeItem('btg-owner');document.cookie=`btg_owner=${on?1:0}; Path=/; Max-Age=${on?315360000:0}; SameSite=Lax; Secure`;
+    history.replaceState(null,'',location.pathname+location.hash);
+    setTimeout(()=>{const n=document.createElement('div');n.className='owner-toast';n.setAttribute('role','status');n.textContent=on?'This device won’t be counted in site stats.':'This device is counted in site stats again.';document.body.append(n);setTimeout(()=>n.remove(),4000)},300)}
+  return localStorage.getItem('btg-owner')==='1'}catch{return false}})();
+// Where a visit came from, counted once per visit.
+function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm_source')||'',ref=document.referrer?new URL(document.referrer).hostname:'',v=(utm||ref).toLowerCase();
+  if(ref&&ref===location.hostname&&!utm)return null;if(!v)return 'src:direct';
+  if(/reddit|redd\.it/.test(v))return 'src:reddit';if(/(^|\.)(x|twitter)\.com$|^t\.co$|^x$|twitter/.test(v))return 'src:x';if(/google\./.test(v)||v==='google')return 'src:google';
+  if(/facebook|instagram|threads|tiktok|discord|t\.me|telegram|whatsapp|snapchat|linkedin/.test(v))return 'src:social';return 'src:other'}catch{return null}}
 (function(){
   const queue=new Set();let timer=null;
-  const flush=()=>{timer=null;if(!queue.size)return;const body=JSON.stringify({m:[...queue].slice(0,4)});queue.clear();try{if(navigator.sendBeacon?.('/api/hit',new Blob([body],{type:'application/json'})))return}catch{}try{fetch('/api/hit',{method:'POST',body,keepalive:true,headers:{'content-type':'application/json'}}).catch(()=>{})}catch{}};
-  window.btgCount=metric=>{queue.add(metric);if(queue.size>=4)flush();else if(!timer)timer=setTimeout(flush,1500)};
+  const flush=()=>{timer=null;if(!queue.size)return;const items=[...queue].slice(0,4);items.forEach(m=>queue.delete(m));if(queue.size)timer=setTimeout(flush,300);const body=JSON.stringify({m:items});try{if(navigator.sendBeacon?.('/api/hit',new Blob([body],{type:'application/json'})))return}catch{}try{fetch('/api/hit',{method:'POST',body,keepalive:true,headers:{'content-type':'application/json'}}).catch(()=>{})}catch{}};
+  window.btgCount=metric=>{if(btgOwner)return;queue.add(metric);if(queue.size>=4)flush();else if(!timer)timer=setTimeout(flush,1500)};
   addEventListener('pagehide',flush);
   window.btgCountVisit=view=>{
     window.btgCount(view);
-    try{if(!sessionStorage.getItem('btg-visit')){sessionStorage.setItem('btg-visit','1');window.btgCount(localStorage.getItem('btg-seen')?'visit:return':'visit:new');localStorage.setItem('btg-seen','1')}}catch{}
+    try{if(!sessionStorage.getItem('btg-visit')){sessionStorage.setItem('btg-visit','1');window.btgCount(localStorage.getItem('btg-seen')?'visit:return':'visit:new');const src=btgSource();if(src)window.btgCount(src);localStorage.setItem('btg-seen','1')}}catch{}
   };
 })();
 
@@ -1316,7 +1328,7 @@ render=function(){
         if(move)rows.push(['Closing line',`${move.line} · ${move.ourWay?'moved our way':'moved against us'}`,move.ourWay?'pos':'']);
         else if(r.closing_odds!=null){const a=oddsDecimal(r.odds),c=oddsDecimal(r.closing_odds),e=a&&c?(a/c-1)*100:0;rows.push(['Closing price',`${formatOdds(r.closing_odds)} · ${e>.05?'we beat the close':e<-.05?'close was better':'same as the close'}`,e>.05?'pos':''])}
         else rows.push(['Closing price','Not recorded',''])}
-      else{rows.push(['Locked at',posted,'']);if(Number(first.edge)>0)rows.push(['vs fair price',`+${Number(first.edge).toFixed(1)}% better`,'pos']);
+      else{const lv=liveLine(r);if(lv)rows.push(['Live',lv.html.replace(/<[^>]+>/g,''),lv.cls==='hit'?'pos':lv.cls==='miss'?'neg':'']);rows.push(['Locked at',posted,'']);if(Number(first.edge)>0)rows.push(['vs fair price',`+${Number(first.edge).toFixed(1)}% better`,'pos']);
         const last=(Array.isArray(first.priceTrail)?first.priceTrail:[]).filter(p=>p&&p.o!=null).at(-1);if(last){const a=oddsDecimal(r.odds),b=oddsDecimal(last.o);rows.push(['Price now',`${formatOdds(last.o)}${a&&b&&b<a-1e-9?' · you got the better price':a&&b&&b>a+1e-9?' · better now':''}`,a&&b&&b<a-1e-9?'pos':''])}}
     }else rows.push(['Posted',when(r.posted_at),'']);
     const legRows=isParlay?legs.map(l=>({title:l.player,text:legText(l),odds:formatOdds(l.odds),result:done||l.result?l.result:null,onClick:dialog=>{dialog?.close?.();openPlayerProfile(statsProp(l))}})):null;
@@ -1380,14 +1392,36 @@ render=function(){
     const initials=String(r.player||'').split(' ').map(x=>x[0]||'').join('').slice(0,3);
     const avatar=isParlay?`<span class="on-avatar on-parlay">${icon('layers')}</span>`:`<span class="on-avatar"><span>${htmlEscape(initials)}</span><img loading="lazy" decoding="async" src="/api/player-photo?name=${encodeURIComponent(r.player||'')}" alt="" onerror="this.remove()"></span>`;
     const tag=status[0]==='locked'?`${icon('lock')} Locked`:status[1];
-    return `<button type="button" class="on-row" data-on="${i}" aria-label="Details for ${htmlEscape(title)}">${avatar}<span class="on-who"><b>${htmlEscape(title)}</b><span>${htmlEscape(sub)}</span><small>${htmlEscape(kickoff(r.game_time))}</small></span><span class="on-end"><b class="on-price">${htmlEscape(formatOdds(odds))}</b><span class="on-tag on-${status[0]}">${tag}</span></span></button>`;
+    return `<button type="button" class="on-row" data-on="${i}" aria-label="Details for ${htmlEscape(title)}">${avatar}<span class="on-who"><b>${htmlEscape(title)}</b><span>${htmlEscape(sub)}</span><small>${htmlEscape(kickoff(r.game_time))}</small><em class="on-live" data-on-live="${i}" hidden></em></span><span class="on-end"><b class="on-price">${htmlEscape(formatOdds(odds))}</b><span class="on-tag on-${status[0]}">${tag}</span></span></button>`;
   }
+  // Live progress for locked picks, refreshed with the live board (every 5s in games).
+  let officialLiveList=[];
+  const liveLeg=(r,l)=>statsProp({...l,player:l.player||r.player,market:l.market||r.market,line:l.line??r.line,side:l.side||r.side,gameTime:l.gameTime||r.game_time});
+  const liveUnit=p=>/touchdown|scorer/i.test(p.market||'')?'TD':String(p.market||'').toLowerCase();
+  function liveLine(r){
+    if(!window.BTGLive?.legStatus||(r.status!=='provisional'&&['won','lost','push'].includes(r.result)))return null;
+    const legs=recordLegs(r);if(!legs.length)return null;
+    if(r.kind==='parlay'){
+      const st=legs.map(l=>({l,s:window.BTGLive.legStatus(liveLeg(r,l))}));const live=st.filter(x=>x.s);if(!live.length)return null;
+      const fmt=x=>`${String(x.l.player).split(' ').slice(-1)[0]} ${x.s.value??'–'}`;
+      return {cls:live.some(x=>x.s.key==='miss')?'miss':live.every(x=>x.s.key==='hit')?'hit':'',html:`<b>${htmlEscape(live[0].s.clock)}</b> · ${live.map(x=>`<span class="${x.s.key}">${htmlEscape(fmt(x))}</span>`).join(' · ')}`};
+    }
+    const p=liveLeg(r,legs[0]),s=window.BTGLive.legStatus(p);if(!s)return null;
+    const val=s.value===null?(s.loaded?'not tracked live':'loading stats…'):`${s.value} ${liveUnit(p)}`;
+    return {cls:s.key,html:`<b>${htmlEscape(s.clock)}</b> · <strong>${htmlEscape(val)}</strong>${s.value!==null?` · ${htmlEscape(s.detail)}`:''}`};
+  }
+  function updateOfficialLive(){
+    $$('#officialNowList [data-on-live]').forEach(el=>{const line=liveLine(officialLiveList[+el.dataset.onLive]||{});el.hidden=!line;if(el.previousElementSibling)el.previousElementSibling.hidden=!!line;el.className=`on-live${line?.cls?' '+line.cls:''}`;el.innerHTML=line?line.html:''});
+  }
+  (window.btgLiveHooks||=[]).push(updateOfficialLive);
+  window.BTGOfficialLive=liveLine;
   function renderOfficialNow(rows){
     const host=$('#officialNow');if(!host||!Array.isArray(rows))return;
     const list=officialNow(rows);
     $('#officialNowCount').textContent=list.length?String(list.length):'';
     $('#officialNowList').innerHTML=list.length?list.map(officialRow).join(''):'<div class="on-empty"><strong>No picks yet this week.</strong><span>They post in the 24 hours before kickoff.</span></div>';
     $$('#officialNowList button[data-on]').forEach(b=>b.onclick=()=>openPick(list[+b.dataset.on]));
+    officialLiveList=list;updateOfficialLive();
     host.hidden=false;
   }
   let heroRows=null;
