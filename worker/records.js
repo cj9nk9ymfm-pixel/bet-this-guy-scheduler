@@ -245,7 +245,8 @@ async function publishOfficialPicks(request,env,ctx){
     {const mine=sendBookAlerts(env,boards).catch(error=>console.warn('book_alerts_failed',error.message));if(ctx?.waitUntil)ctx.waitUntil(mine);else await mine}
     // Odds snapshots older than a week are no longer read; clear them hourly so
     // the database stays small (the history endpoint's own cleanup rarely runs).
-    if(Date.now()-snapshotPrunedAt>3600000){snapshotPrunedAt=Date.now();const prune=env.DB.prepare('DELETE FROM movement_snapshots WHERE captured_at<?').bind(Date.now()-7*86400000).run().catch(error=>console.warn('snapshot_prune_failed',error.message));if(ctx?.waitUntil)ctx.waitUntil(prune);else await prune}
+    // Awaited: a deferred delete did not run after the maintenance response.
+    if(Date.now()-snapshotPrunedAt>3600000){snapshotPrunedAt=Date.now();await env.DB.prepare('DELETE FROM movement_snapshots WHERE captured_at<?').bind(Math.floor(Date.now()-7*86400000)).run().catch(error=>console.warn('snapshot_prune_failed',error.message))}
     const trail=officialTrailStatements(boards,existing.results||[],env,Date.now());if(trail.length)await env.DB.batch(trail);
 
   if(failedBoards)throw new Error('Some official boards were unavailable; retry required');
