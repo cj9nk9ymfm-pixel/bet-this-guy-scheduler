@@ -348,17 +348,18 @@ function postKitTexts(kit){
   const upcoming=kit.upcoming||[];
   const days=[...new Set(upcoming.map(r=>day(r.game_time)))];
   const when=days.length===1?days[0]:kit.current.week?`Week ${kit.current.week}`:'this week';
-  out.today={mode:'today',ready:upcoming.length>0,empty:'No official picks are posted for upcoming games yet. Picks post up to 24 hours before kickoff; check back then.',eyebrow:`OFFICIAL PICKS · ${when.toUpperCase()}`,rows:upcoming,
+  const recWeek=kit.previous?.summary&&(kit.previous.summary.wins+kit.previous.summary.losses)?kit.previous:kit.current,rs=recWeek.summary;
+  out.today={mode:'today',ready:upcoming.length>0,recordLabel:recWeek.week?`Week ${recWeek.week} record`:'Last week',recordValue:rs.wins+rs.losses?`${rs.wins}–${rs.losses}${rs.pushes?`–${rs.pushes}`:''} props`:'',recordProfit:rs.wins+rs.losses?rs.profit:null,empty:'No official picks are posted for upcoming games yet. Picks post up to 24 hours before kickoff; check back then.',eyebrow:`OFFICIAL PICKS · ${when.toUpperCase()}`,rows:upcoming,
     x:fit(`✅ Bet This Guy picks · ${when}`,upcoming.map(r=>line(r,true)),`Every pick locked before kickoff, graded in public 👇\n${site}`,275),
     threads:fit(`✅ Today’s Bet This Guy picks (${when})`,upcoming.map(r=>line(r,false)),`Every pick is locked before kickoff and graded in public, wins and losses. Free picks and alerts:\n${site}`,495),
-    reddit:[`**Bet This Guy official picks: ${when}**`,'',...(upcoming.some(r=>r.kind==='prop')?['| Player | Bet | Odds | Kickoff |','|---|---|---|---|',...upcoming.filter(r=>r.kind==='prop').map(r=>`| ${r.player} | ${bet(r,false)} | ${odds(r.odds)} | ${time(r.game_time)} |`),'']:[]),...upcoming.filter(r=>r.kind==='parlay').map(r=>`**${r.legs.length}-leg parlay (${odds(r.combined_odds)}):** ${r.legs.map(l=>`${l.player} ${bet(l,false)}`).join(' + ')}`),...(upcoming.some(r=>r.kind==='parlay')?['']:[]),`Every pick is locked before kickoff and graded from box scores, wins and losses: ${kit.site}${kit.current.path}`].join('\n')};
+    reddit:[`**Bet This Guy official picks: ${when}**`,'',...(upcoming.some(r=>r.kind==='prop')?['| Player | Bet | Odds | Book | Kickoff |','|---|---|---|---|---|',...upcoming.filter(r=>r.kind==='prop').map(r=>`| ${r.player} | ${bet(r,false)} | ${odds(r.odds)} | ${r.book||'—'} | ${time(r.game_time)} |`),'']:[]),...upcoming.filter(r=>r.kind==='parlay').map(r=>`**${r.legs.length}-leg parlay (${odds(r.combined_odds)}):** ${r.legs.map(l=>`${l.player} ${bet(l,false)}`).join(' + ')}`),...(upcoming.some(r=>r.kind==='parlay')?['']:[]),'How we pick: a prop only makes the list when the best sportsbook price beats the fair price from 3+ books. No projections or hype, just price.','',...(rs.wins+rs.losses?[`${recWeek.week?`Week ${recWeek.week}`:'Last week'}: ${rs.wins}–${rs.losses}${rs.pushes?`–${rs.pushes}`:''} on props, ${money(rs.profit)} at ${D}100 a pick${rs.tracked?`, ${rs.beat} of ${rs.tracked} beat the closing price`:''}.`,'']:[]),`Every pick is locked before kickoff and graded from box scores, wins and losses: ${kit.site}${kit.current.path}`].join('\n')};
   for(const key of ['current','previous']){
     const w=kit[key],s=w.summary,graded=w.rows.filter(r=>r.result),label=w.week?`Week ${w.week}`:'This week';
     const hits=graded.filter(r=>r.result==='won').sort((a,b)=>Number(b.kind==='parlay'?b.combined_odds:b.odds)-Number(a.kind==='parlay'?a.combined_odds:a.odds));
     const record=`${s.wins}–${s.losses}${s.pushes?`–${s.pushes}`:''}`,parlays=s.parlayWins+s.parlayLosses?`Parlays: ${s.parlayWins}–${s.parlayLosses} (${money(s.parlayProfit)})`:'';
     const head=`📊 ${label} results: ${record} on player props, ${money(s.profit)} betting ${D}100 a pick`+(key==='current'&&s.pending?' (so far)':'');
     const url=`${kit.site}${w.path}`,short=url.replace(/^https?:\/\//,'');
-    out[key]={mode:key,ready:graded.length>0,empty:`No graded picks for ${label.toLowerCase()} yet.`,eyebrow:`${label.toUpperCase()} RESULTS`,record,profit:s.profit,parlays,rows:hits.length?hits:graded,
+    out[key]={mode:key,ready:graded.length>0,empty:`No graded picks for ${label.toLowerCase()} yet.`,eyebrow:`${label.toUpperCase()} RESULTS`,label,record,profit:s.profit,parlays,beat:s.beat,tracked:s.tracked,rows:graded.slice().sort((a,b)=>({won:0,push:1,lost:2}[a.result]??3)-({won:0,push:1,lost:2}[b.result]??3)),
       x:fit([head,parlays].filter(Boolean).join('\n'),hits.filter(r=>r.kind==='prop').map(r=>line(r,true,true)),`Posted before kickoff. Full results 👇\n${short}`,275),
       threads:fit([head,parlays].filter(Boolean).join('\n'),hits.map(r=>line(r,false,true)),`Every pick was posted before kickoff and graded in public, the losses too. Full results:\n${short}`,495),
       reddit:[`**Bet This Guy ${label} results: ${record} on player props (${money(s.profit)} at ${D}100 a pick)**`,...(parlays?['',parlays]:[]),'',...graded.map(r=>`- ${line(r,false,true)}`),'',`Every pick was locked before kickoff and graded from box scores: ${url}`].join('\n')};
@@ -375,38 +376,77 @@ function postKitClient(kit,texts){
   const fitText=(ctx,text,max)=>{if(ctx.measureText(text).width<=max)return text;while(text.length>1&&ctx.measureText(text+'…').width>max)text=text.slice(0,-1);return text+'…'};
   const round=(ctx,x,y,w,h,r)=>{ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath()};
   async function draw(t){
-    const c=document.createElement('canvas');c.width=1080;c.height=1350;const ctx=c.getContext('2d');
-    try{await document.fonts.load('700 60px "Space Grotesk"');await document.fonts.load('500 30px "DM Sans"')}catch{}
+    const W=1080,H=1350,c=document.createElement('canvas');c.width=W;c.height=H;const ctx=c.getContext('2d');
+    try{await Promise.all([document.fonts.load('700 60px "Space Grotesk"'),document.fonts.load('600 30px "DM Sans"'),document.fonts.load('500 30px "DM Sans"')])}catch{}
     if(!logo.complete)await new Promise(r=>{logo.onload=logo.onerror=r});
-    const g=ctx.createLinearGradient(0,0,1080,1350);g.addColorStop(0,'#26282b');g.addColorStop(1,'#0b0d10');ctx.fillStyle=g;ctx.fillRect(0,0,1080,1350);
-    if(logo.naturalWidth){const w=600,h=w*logo.naturalHeight/logo.naturalWidth;ctx.drawImage(logo,(1080-w)/2,70,w,h)}
-    ctx.textAlign='center';ctx.fillStyle='#5ff0b5';ctx.font='700 34px "Space Grotesk",sans-serif';ctx.fillText(t.eyebrow,540,300);
-    const rows=t.rows.slice(0,t.mode==='today'?7:5),rowH=112,mark={won:'✅',lost:'❌',push:'↔️'};
-    // Center the record and rows in the space between the title and the footer.
-    const headH=t.mode==='today'?0:t.parlays?290:250,blockH=headH+rows.length*rowH+(t.rows.length>rows.length?50:0);
-    let y=340+Math.max(0,(1180-340-blockH)/3);
-    if(t.mode!=='today'){
-      ctx.fillStyle='#ffffff';ctx.font='700 150px "Space Grotesk",sans-serif';ctx.fillText(t.record,540,y+130);
-      ctx.fillStyle=t.profit>=0?'#5ff0b5':'#ff9d9d';ctx.font='700 46px "Space Grotesk",sans-serif';ctx.fillText(`${t.profit<0?'−':'+'}${D}${Math.abs(Math.round(t.profit)).toLocaleString('en-US')} betting ${D}100 a pick`,540,y+200);
-      if(t.parlays){ctx.fillStyle='#c8ccd2';ctx.font='500 32px "DM Sans",sans-serif';ctx.fillText(t.parlays,540,y+252)}
-      y+=t.parlays?290:250;
+    const C={bg:'#0e1013',panel:'#16191e',panel2:'#1e222a',line:'#272c35',text:'#f2f4f7',sub:'#c9d0d9',muted:'#98a1ad',dim:'#7d8692',link:'#6aa8ff',pos:'#22c55e',neg:'#f06060'};
+    const font=(w,size,fam)=>`${w} ${size}px "${fam==='g'?'Space Grotesk':'DM Sans'}",sans-serif`;
+    const text=(s,x,y,f,color,align='left')=>{ctx.font=f;ctx.fillStyle=color;ctx.textAlign=align;ctx.fillText(s,x,y);return ctx.measureText(s).width};
+    const box=(x,y,w,h,r,fill,stroke)=>{round(ctx,x,y,w,h,r);ctx.fillStyle=fill;ctx.fill();if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=2;ctx.stroke()}};
+    const nick=s=>String(s||'').trim().split(/\s+/).pop();
+    const teams=r=>String(r.team||r.legs?.[0]?.team||'').split(/\s*·\s*@\s*|\s+@\s+/);
+    const matchup=r=>{const [a,h]=teams(r);return a&&h?`${nick(a)} @ ${nick(h)}`:''};
+    const et=(iso,o)=>new Date(iso).toLocaleString('en-US',{timeZone:'America/New_York',...o});
+    const betText=r=>{const m=String(r.market||'').toLowerCase();return /touchdown/.test(m)&&Number(r.line)===0.5?(r.side==='Under'?'No anytime touchdown':'Anytime touchdown'):`${r.side} ${r.line} ${m}`};
+    ctx.fillStyle=C.bg;ctx.fillRect(0,0,W,H);
+    // Header: logo and a tag.
+    if(logo.naturalWidth){const h=56,w=h*logo.naturalWidth/logo.naturalHeight;ctx.drawImage(logo,72,72,w,h)}
+    const tag=t.mode==='today'?'Official picks':'Results';ctx.font=font(600,24,'d');const tw=ctx.measureText(tag).width+40;box(W-72-tw,74,tw,52,26,C.panel,C.line);text(tag,W-72-tw/2,108,font(600,24,'d'),C.muted,'center');
+    let y=0;
+    if(t.mode==='today'){
+      const rows=t.rows,games=[...new Set(rows.map(r=>matchup(r)).filter(Boolean))],first=rows[0]?.game_time;
+      const day=first?et(first,{weekday:'long'}):'',hour=first?Number(et(first,{hour:'numeric',hour12:false})):0;
+      const prime=games.length===1&&first&&hour>=19?({Thursday:'Thursday Night Football',Sunday:'Sunday Night Football',Monday:'Monday Night Football'})[day]:'';
+      const days=[...new Set(rows.map(r=>et(r.game_time,{weekday:'long'})))];
+      const title=games.length===1?games[0]:days.length===1?`${days[0]}’s picks`:'This week’s picks';
+      const sub=games.length===1?[prime||et(first,{weekday:'short',month:'short',day:'numeric'}),et(first,{hour:'numeric',minute:'2-digit'})+' ET'].join(' · '):`${days.length===1?et(first,{weekday:'short',month:'short',day:'numeric'})+' · ':''}${rows.length} picks across ${games.length} games`;
+      ctx.font=font(700,76,'g');let size=76;while(ctx.measureText(title).width>W-144&&size>48){size-=4;ctx.font=font(700,size,'g')}
+      text(title,72,262,font(700,size,'g'),C.text);text(sub,72,316,font(500,30,'d'),C.muted);
+      // Pick cards: big for small slates, compact for big ones.
+      const top=360,bottom=1050,n=rows.length,big=n<=4,gap=big?18:12,h=big?146:Math.max(84,Math.min(110,Math.floor((bottom-top-28)/Math.min(n,7))-gap));
+      const shown=rows.slice(0,big?4:Math.floor((bottom-top-28+gap)/(h+gap)));
+      // Small slates sit in the middle of the space instead of leaving a gap.
+      y=top+Math.max(0,Math.floor((bottom-top-50-(shown.length*(h+gap)-gap))/2));
+      for(const r of shown){
+        box(72,y,W-144,h,24,C.panel,C.line);
+        const isP=r.kind==='parlay',price=isP?odds(r.combined_odds):odds(r.odds),book=isP?`${r.legs.length}-leg parlay`:(r.book||'');
+        const avR=big?42:30,ax=72+34+avR,ay=y+h/2;ctx.beginPath();ctx.arc(ax,ay,avR,0,Math.PI*2);ctx.fillStyle=C.panel2;ctx.fill();
+        const ini=isP?String(r.legs.length)+'L':String(r.player||'').split(' ').map(x=>x[0]||'').join('').slice(0,2);text(ini,ax,ay+(big?11:9),font(700,big?30:22,'g'),C.muted,'center');
+        const px=W-72-34;ctx.font=font(700,big?46:36,'g');const pw=Math.max(ctx.measureText(price).width,(ctx.font=font(500,big?22:19,'d'),ctx.measureText(book).width));
+        text(price,px,y+(big?h/2+6:h/2+4),font(700,big?46:36,'g'),C.text,'right');if(book)text(book,px,y+(big?h/2+38:h/2+30),font(500,big?22:19,'d'),C.muted,'right');
+        const nx=ax+avR+26,room=px-pw-30-nx;
+        const name=isP?r.legs.map(l=>String(l.player).split(' ').slice(-1)[0]).join(' + '):r.player,detail=isP?r.legs.map(l=>betText(l)).join(' · '):betText(r)+(games.length>1&&matchup(r)?` · ${matchup(r)}`:'');
+        ctx.font=font(700,big?38:31,'d');text(fitText(ctx,name,room),nx,y+(big?h/2-6:h/2-4),font(700,big?38:31,'d'),C.text);
+        ctx.font=font(500,big?30:24,'d');text(fitText(ctx,detail,room),nx,y+(big?h/2+34:h/2+26),font(500,big?30:24,'d'),C.sub);
+        y+=h+gap;
+      }
+      if(rows.length>shown.length)text(`+${rows.length-shown.length} more picks at betthisguy.com`,72,y+14,font(600,26,'d'),C.muted);
+      else text('🔒 Prices locked before kickoff · graded in public, win or lose',72,y+14,font(500,24,'d'),C.muted);
+      // Record card.
+      box(72,1080,W-144,142,24,C.panel,C.line);
+      if(t.recordValue){text(String(t.recordLabel).toUpperCase(),106,1132,font(700,22,'d'),C.muted);const rw=text(t.recordValue,106,1188,font(700,44,'g'),C.text);if(t.recordProfit!=null)text(` · ${t.recordProfit<0?'−':'+'}${D}${Math.abs(Math.round(t.recordProfit)).toLocaleString('en-US')}`,106+rw,1188,font(700,44,'g'),t.recordProfit<0?C.neg:C.pos)}
+      else text('Every pick locked before kickoff',106,1162,font(700,32,'g'),C.text);
+      text('betthisguy.com',W-106,1166,font(700,34,'g'),C.link,'right');
+    }else{
+      text(t.label?`${t.label} results`:'Results',72,262,font(700,64,'g'),C.text);
+      const rw=text(t.record,72,392,font(700,120,'g'),C.text);text('player props',72+rw+24,392,font(500,32,'d'),C.muted);
+      const pf=`${t.profit<0?'−':'+'}${D}${Math.abs(Math.round(t.profit)).toLocaleString('en-US')} betting ${D}100 a pick`;text(pf,72,452,font(700,36,'g'),t.profit<0?C.neg:C.pos);
+      let ly=500;if(t.tracked){text(`${t.beat} of ${t.tracked} beat the closing price`,72,ly,font(600,28,'d'),C.sub);ly+=42}
+      if(t.parlays){text(t.parlays,72,ly,font(500,28,'d'),C.muted);ly+=42}
+      const rows=t.rows,top=ly+18,bottom=1170,h=Math.max(74,Math.min(104,Math.floor((bottom-top)/Math.max(1,Math.min(rows.length,8)))-10)),shown=rows.slice(0,Math.floor((bottom-top+10)/(h+10)));y=top;
+      for(const r of shown){
+        box(72,y,W-144,h,20,C.panel,C.line);const won=r.result==='won',lost=r.result==='lost',col=won?C.pos:lost?C.neg:C.muted;
+        text(won?'HIT':lost?'MISS':'PUSH',106,y+h/2+9,font(700,24,'d'),col);
+        const isP=r.kind==='parlay',price=isP?odds(r.combined_odds):odds(r.odds);ctx.font=font(700,32,'g');const pw=ctx.measureText(price).width;text(price,W-106,y+h/2+11,font(700,32,'g'),C.text,'right');
+        const nx=206,room=W-106-pw-30-nx,name=isP?`${r.legs.length}-leg parlay`:r.player;
+        const had=!isP&&r.legs?.[0]?.actualValue!=null?` · had ${r.legs[0].actualValue}`:'',detail=isP?r.legs.map(l=>String(l.player).split(' ').slice(-1)[0]).join(' + '):betText(r)+had+(r.beat===true?' · beat close':'');
+        ctx.font=font(700,28,'d');text(fitText(ctx,name,room),nx,y+h/2-4,font(700,28,'d'),C.text);ctx.font=font(500,22,'d');text(fitText(ctx,detail,room),nx,y+h/2+26,font(500,22,'d'),C.muted);
+        y+=h+10;
+      }
+      if(rows.length>shown.length)text(`+${rows.length-shown.length} more at betthisguy.com`,72,y+20,font(600,24,'d'),C.muted);
+      text('Every pick locked before kickoff, graded from box scores',72,1232,font(500,24,'d'),C.muted);text('betthisguy.com',W-72,1232,font(700,30,'g'),C.link,'right');
     }
-    ctx.textAlign='left';
-    for(const r of rows){
-      round(ctx,70,y,940,rowH-14,22);ctx.fillStyle='rgba(255,255,255,.06)';ctx.fill();ctx.strokeStyle='rgba(255,255,255,.12)';ctx.lineWidth=2;ctx.stroke();
-      const price=r.kind==='parlay'?odds(r.combined_odds):odds(r.odds);
-      ctx.textAlign='right';ctx.fillStyle='#5ff0b5';ctx.font='700 40px "Space Grotesk",sans-serif';ctx.fillText(price,975,y+60);const pw=ctx.measureText(price).width;
-      ctx.textAlign='left';const icon=t.mode!=='today'&&mark[r.result]?mark[r.result]+' ':'';
-      const name=r.kind==='parlay'?`${icon}${r.legs.length}-leg parlay`:`${icon}${r.player}`;
-      const detail=r.kind==='parlay'?r.legs.map(l=>String(l.player).split(' ').slice(-1)[0]).join(' + '):(()=>{const m=String(r.market||'').toLowerCase();return /touchdown/.test(m)&&Number(r.line)===0.5?(r.side==='Under'?'No ':'')+r.market:`${r.side} ${r.line} ${m}`})()+(t.mode!=='today'&&r.legs?.[0]?.actualValue!=null?` · had ${r.legs[0].actualValue}`:'')+(t.mode==='today'&&r.game_time?` · ${new Date(r.game_time).toLocaleString('en-US',{weekday:'short',hour:'numeric',minute:'2-digit',timeZone:'America/New_York'})} ET`:'');
-      ctx.fillStyle='#ffffff';ctx.font='700 38px "Space Grotesk",sans-serif';ctx.fillText(fitText(ctx,name,880-pw),100,y+46);
-      ctx.fillStyle='#c8ccd2';ctx.font='500 30px "DM Sans",sans-serif';ctx.fillText(fitText(ctx,detail,880-pw),100,y+84);
-      y+=rowH;
-    }
-    ctx.textAlign='center';
-    if(t.rows.length>rows.length){ctx.fillStyle='#b5b9bf';ctx.font='500 30px "DM Sans",sans-serif';ctx.fillText(`+${t.rows.length-rows.length} more at betthisguy.com`,540,y+30)}
-    ctx.fillStyle='#b5b9bf';ctx.font='500 30px "DM Sans",sans-serif';ctx.fillText('Locked before kickoff · graded in public',540,1235);
-    ctx.fillStyle='#ffffff';ctx.font='700 44px "Space Grotesk",sans-serif';ctx.fillText('betthisguy.com',540,1295);
+    text(`${D}100 a pick at the posted price. Not a guarantee. 21+ · Gambling problem? 1-800-GAMBLER`,W/2,1300,font(500,20,'d'),C.dim,'center');
     return new Promise(r=>c.toBlob(r,'image/png'));
   }
   async function show(){
@@ -425,7 +465,8 @@ function postKitClient(kit,texts){
 }
 async function postKitData(env,now=Date.now()){
   const week=officialWeek(now),previous=new Date(Date.parse(`${week}T00:00:00Z`)-7*86400000).toISOString().slice(0,10);
-  const slim=r=>({kind:r.kind,player:r.player,market:r.market,side:r.side,line:r.line,odds:r.odds,combined_odds:r.combined_odds,game_time:r.game_time,result:weeklyGraded(r)?r.result:null,legs:recordLegs(r).map(l=>({player:l.player,market:l.market,side:l.side,line:l.line,odds:l.odds,actualValue:l.actualValue??null}))});
+  const beat=r=>r.kind==='prop'&&r.closing_captured_at&&r.closing_odds!=null&&(r.closing_line==null||Math.abs(Number(r.closing_line)-Number(r.line))<=.01)?(weeklyDecimal(r.odds)/weeklyDecimal(r.closing_odds)-1)*100>.05:null;
+  const slim=r=>{const legs=recordLegs(r);return {kind:r.kind,player:r.player,market:r.market,side:r.side,line:r.line,odds:r.odds,combined_odds:r.combined_odds,game_time:r.game_time,result:weeklyGraded(r)?r.result:null,book:legs[0]?.book||null,team:legs[0]?.team||null,beat:beat(r),closing_odds:r.closing_odds??null,legs:legs.map(l=>({player:l.player,market:l.market,side:l.side,line:l.line,odds:l.odds,team:l.team||null,actualValue:l.actualValue??null}))}};
   const pack=(start,rows)=>{const nfl=nflWeekOf(start);return {week:nfl?.week||null,season:nfl?.season||null,path:nfl?`/picks/${nfl.season}/week-${nfl.week}`:'/picks',summary:weeklySummary(rows),rows:rows.map(slim)}};
   const [thisWeek,lastWeek]=await Promise.all([weeklyRows(env,week),weeklyRows(env,previous)]);
   return {site:SITE_URL,upcoming:thisWeek.filter(r=>Date.parse(r.game_time)>now).map(slim),current:pack(week,thisWeek),previous:pack(previous,lastWeek)};

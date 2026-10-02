@@ -32,6 +32,7 @@ add(week,'s',{player:'Started Guy',market:'Receptions',side:'Over',line:3.5,odds
   assert.ok(texts.today.x.endsWith('betthisguy.com')&&texts.today.x.length<=280,'the X post fits');
   assert.ok(texts.today.threads.includes('Puka Nacua Over 6.5 receptions (+120)'));
   assert.ok(texts.today.reddit.includes('| Puka Nacua | Over 6.5 receptions | +120 |'));
+  assert.ok(texts.today.reddit.includes('| Book |')&&texts.today.reddit.includes('How we pick:'),'the Reddit post names the book and explains the method');
   const last=texts.previous;
   assert.equal(last.record,'2–1');assert.equal(Math.round(last.profit),Math.round(110+100/1.1-100));
   assert.ok(last.x.startsWith('📊 Week')&&last.x.includes('2–1 on player props, +$101 betting $100 a pick'),last.x.split('\n')[0]);
