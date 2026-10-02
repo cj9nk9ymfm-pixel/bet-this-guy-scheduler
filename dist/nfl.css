@@ -1222,3 +1222,81 @@ html body.light .auth-account-foot button,html body.light .auth-record-row butto
 html body.light .auth-result{background:#e2e6ec;color:#334155}
 html body.light .positive{color:#047857!important}html body.light .negative{color:#b91c1c!important}
 html body.light .auth-alert-toggle strong{color:#0f172a}html body.light .auth-alert-toggle small{color:#5b6472}
+/* Header buttons: one size, icons centred, matching strokes */
+html body .topbar .top-actions{align-items:center!important;gap:8px!important}
+html body .topbar .top-actions>.icon-btn,html body .topbar .top-actions>.feed-status{position:relative;display:inline-flex!important;align-items:center!important;justify-content:center!important;gap:8px;height:40px!important;min-height:40px!important;min-width:40px;margin:0!important;padding:0 10px!important;border-radius:12px!important;line-height:1!important;vertical-align:middle}
+html body .topbar .top-actions>.icon-btn:not(.account-btn){width:40px!important;padding:0!important}
+html body .topbar .top-actions>.icon-btn>svg{flex:none;width:20px!important;height:20px!important;margin:0!important;position:static!important;stroke-width:2!important;transform:none!important}
+html body .topbar .account-btn>span{font:600 14px/1 "DM Sans",sans-serif!important}
+@media(max-width:720px){html body .topbar .account-btn{width:40px!important;padding:0!important}html body .topbar .account-btn>span{display:none!important}}
+html body #savedHeaderCount,html body #slipCount{position:absolute!important;top:-5px!important;right:-5px!important;min-width:18px;height:18px;padding:0 5px;border-radius:9px;display:grid;place-items:center;font:700 11px/1 "DM Sans",sans-serif!important}
+html body #savedHeaderCount[hidden],html body #slipCount[hidden]{display:none!important}
+html body.light .topbar .top-actions>.icon-btn,html body.light .topbar .top-actions>.feed-status{background:#fff!important;border:1px solid #e2e6ec!important;color:#0f172a!important;box-shadow:none!important}
+/* Desktop "Live": a small red dot, not a blue pill */
+html body .nav-live-dot{display:inline-block!important;width:7px!important;height:7px!important;min-width:0!important;margin:0 7px 1px 0!important;padding:0!important;border-radius:50%!important;background:#f06060!important;box-shadow:none!important;vertical-align:middle}
+/* Parlays + bet slip on scheme A (dark) */
+html body:not(.light) :is(#slip.slip,.parlay-mixer,.parlay-lab,.parlay-feed-section,.parlay-card,.mixer-result,.advanced-filters,.parlay-preview){background:#16191e!important;background-image:none!important;border-color:#272c35!important;box-shadow:none!important}
+html body:not(.light) :is(.mixer-controls,.mixer-intro,.parlay-summary>div,.slip-leg,.parlay-filter-summary){background-image:none!important;box-shadow:none!important}
+html body:not(.light) :is(.slip-notice,.slip-empty,.mixer-result .parlay-card,.track-parlay,.shuffle-btn,.responsible,.parlay-summary label>div){background:#1e222a!important;background-image:none!important;border-color:#272c35!important;color:#c9d0d9!important;box-shadow:none!important}
+html body:not(.light) .slip-head span,html body:not(.light) .mixer-intro .eyebrow,html body:not(.light) .parlay-lab .eyebrow{color:#98a1ad!important}
+html body:not(.light) :is(#combinedOdds,#parlayProb,#payout){color:#f2f4f7!important}
+html body:not(.light) #combinedOdds{color:#22c55e!important}
+html body:not(.light) .group-chat-share{background:#2563eb!important;background-image:none!important;border:0!important;box-shadow:none!important}
+html body:not(.light) .group-chat-share .share-icon{background:rgba(255,255,255,.16)!important;background-image:none!important;box-shadow:none!important}
+html body:not(.light) .share-typing{display:none!important}
+html body:not(.light) .track-parlay{color:#f2f4f7!important}
+html body:not(.light) input[type=range]{accent-color:#2563eb}
+html body:not(.light) .mixer-target,html body:not(.light) .target-odds{background:#1e222a!important;background-image:none!important;border-color:#272c35!important;box-shadow:none!important}
+/* light */
+html body.light :is(#slip.slip,.parlay-mixer,.parlay-lab,.parlay-feed-section,.parlay-card,.mixer-result,.advanced-filters,.parlay-preview){background:#fff!important;background-image:none!important;border-color:#e2e6ec!important;box-shadow:none!important}
+html body.light :is(.slip-notice,.slip-empty,.track-parlay,.shuffle-btn,.responsible,.parlay-summary label>div){background:#f4f6f9!important;background-image:none!important;border-color:#e2e6ec!important;color:#334155!important}
+html body.light :is(#combinedOdds,#parlayProb,#payout){color:#0f172a!important}html body.light #combinedOdds{color:#047857!important}
+html body.light .group-chat-share{background:#2563eb!important;background-image:none!important;border:0!important;color:#fff!important}
+html body.light .share-typing{display:none!important}
+html body:not(.light) #activeFilterCount{border-color:#272c35!important}
+/* The record bar and this week's picks belong to the Picks tab only. */
+@media(max-width:720px){html body[data-mobile-page]:not([data-mobile-page="props"]) :is(#heroBanner,#officialNow){display:none!important}}
+/* Parlay generator: sliders and labels */
+html body #oddsSlider,html body #legsSlider{background:linear-gradient(90deg,#2563eb 0 var(--slider-fill),#272c35 var(--slider-fill) 100%)!important}
+html body.light #oddsSlider,html body.light #legsSlider{background:linear-gradient(90deg,#2563eb 0 var(--slider-fill),#e2e6ec var(--slider-fill) 100%)!important}
+html body #oddsSlider::-webkit-slider-thumb,html body #legsSlider::-webkit-slider-thumb{border-color:#2563eb!important;box-shadow:0 1px 4px rgba(0,0,0,.35)!important}
+html body #oddsSlider::-moz-range-thumb,html body #legsSlider::-moz-range-thumb{border-color:#2563eb!important;box-shadow:0 1px 4px rgba(0,0,0,.35)!important}
+html body .target-odds small,html body .slider-title span,html body .mixer-intro .eyebrow{color:#98a1ad!important}
+html body .target-odds output,html body .slider-title b,html body .slider-title output{color:#f2f4f7!important}
+html body.light .target-odds{background:#f4f6f9!important;background-image:none!important;border-color:#e2e6ec!important;box-shadow:none!important}
+html body.light .target-odds output,html body.light .slider-title b,html body.light .slider-title output{color:#0f172a!important}
+html body.light .target-odds small,html body.light .slider-title span,html body.light .mixer-intro .eyebrow,html body.light .slip-head span,html body.light .parlay-lab .eyebrow{color:#5b6472!important}
+/* Light: legend, filters, add buttons, card borders */
+html body.light .verdict-guide{background:#fff!important;background-image:none!important;border:1px solid #e2e6ec!important;color:#0f172a!important;box-shadow:none!important}
+html body.light .advanced-filters select,html body.light :is(#sportFilterAdvanced,#gameFilterAdvanced,#teamFilterAdvanced,#dayFilterAdvanced,#timeFilterAdvanced,#propFilterAdvanced,#sideFilterAdvanced,#moveFilterAdvanced,#edgeFilterAdvanced,#confidenceFilterAdvanced,#oddsFilterAdvanced,#sortFilterAdvanced){background:#fff!important;border-color:#e2e6ec!important;color:#0f172a!important}
+html body.light .advanced-filters label,html body.light .nfl-fixed-filter,html body.light .parlay-filter-summary{color:#5b6472!important}
+html body.light .pc-add{background:#2563eb!important;background-image:none!important;color:#fff!important;border:0!important}
+html body.light .prop-card,html body.light .prop-card.mockup-card{border-color:#e2e6ec!important}
+html body.light #activeFilterCount{border-color:#e2e6ec!important}
+html body.light .shuffle-btn,html body.light #showMoreParlays,html body.light .parlay-more{background:#fff!important;border:1px solid #e2e6ec!important;color:#0f172a!important;opacity:1!important}
+html body.light .group-chat-share .share-icon{background:rgba(255,255,255,.2)!important;background-image:none!important}
+html body.light [data-more-parlays]{background:#fff!important;border:1px solid #e2e6ec!important;color:#0f172a!important;opacity:1!important}html body.light [data-more-parlays]:disabled{opacity:.5!important}
+@media(min-width:721px){
+  html body[data-desktop-page]:not([data-desktop-page="props"]) :is(#heroBanner,#officialNow){display:none!important}
+  html body:is([data-desktop-page="parlays"],[data-desktop-page="generator"]) :is(#propsSection,#verdictGuide,#propTypeTabs,#gameTabs){display:none!important}
+}
+@media(max-width:720px){html body:is([data-mobile-page="parlays"],[data-mobile-page="generator"]) :is(#propsSection,#verdictGuide,#propTypeTabs,#gameTabs){display:none!important}}
+html body .nav-more-panel>:is(a,button){background:transparent!important;background-image:none!important;border:0!important;box-shadow:none!important}
+html body:not(.light) .nav-more-panel>:is(a,button):hover,html body:not(.light) .nav-more-panel>:is(a,button):focus-visible{background:#1e222a!important}
+html body.light .nav-more-panel>:is(a,button):hover,html body.light .nav-more-panel>:is(a,button):focus-visible{background:#f0f2f5!important}
+html body dialog::backdrop{background:rgba(6,7,9,.72)!important;backdrop-filter:blur(4px)!important;-webkit-backdrop-filter:blur(4px)!important}
+html body.light dialog::backdrop{background:rgba(15,23,42,.38)!important}
+html body:not(.light) .verdict-pill-read{color:#f87171!important}
+html body.light .verdict-guide,html body.light .verdict-guide li,html body.light .verdict-guide b,html body.light .verdict-guide span{color:#0f172a!important}
+html body.light #verdictGuideClose{background:#fff!important;border:1px solid #e2e6ec!important;color:#0f172a!important}
+html body.light .avatar.player-photo{background:#f0f2f5!important;background-image:none!important;border-color:#e2e6ec!important;color:#5b6472!important}
+html body.light .avatar.player-photo>span{background:transparent!important;color:#5b6472!important}
+html body.light .verdict-pill-send{color:#047857!important}
+html body.light #propList .prop-card .avatar.player-photo,html body.light .prop-card .player .avatar{background:#f0f2f5!important;background-image:none!important;border-color:#e2e6ec!important}
+html body.light .verdict-pill-read{color:#b91c1c!important}
+html body.light #propList .prop-card,html body.light .prop-card.mockup-card{background:#fff!important;background-image:none!important}
+html body.light .avatar.player-photo>span{color:#475569!important}html body.light .prop-card .prop-player div span,html body.light .compact-read .prop-player span{color:#5b6472!important}
+html body.light #propList .prop-card .avatar.player-photo>span{color:#475569!important}html body.light #propList .prop-card small[data-game-time],html body.light #propList .prop-card .prop-player span{color:#5b6472!important}
+html body.light #propList .prop-card .card-money>span{color:#5b6472!important}
+html body.light #propList .prop-card .verdict-pill-read{color:#b91c1c!important}
+html body .prop-card.compact-card.compact-read{opacity:1!important}
