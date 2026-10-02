@@ -99,16 +99,18 @@ function officialCandidates(events,now=Date.now()){
         const side=String(outcome.name).toLowerCase(),line=BTGStats.number(outcome.point),odds=BTGStats.number(outcome.price),player=String(outcome.description||'').trim();
         if(!['over','under'].includes(side)||!player||line===null||odds===null||Math.abs(odds)<100||Math.abs(odds)>10000)continue;
         const key=JSON.stringify([player,label,line]),group=groups.get(key)||{player,market:label,line,books:new Map()};
-        const pair=group.books.get(book.key)||{};pair[side]={odds,book:book.title||book.key};group.books.set(book.key,pair);groups.set(key,group);
+        const pair=group.books.get(book.key)||{};pair[side]={odds,book:book.title||book.key,key:book.key};group.books.set(book.key,pair);groups.set(key,group);
       }
     }
     for(const group of groups.values()){
       const pairs=[...group.books.values()].filter(p=>p.over&&p.under);
       if(pairs.length<3)continue;
       const fair=pairs.reduce((sum,p)=>{const o=1/recordDecimal(p.over.odds),u=1/recordDecimal(p.under.odds);return sum+o/(o+u)},0)/pairs.length;
-      const options=['over','under'].map(side=>{const best=pairs.map(p=>p[side]).sort((a,b)=>recordDecimal(b.odds)-recordDecimal(a.odds))[0];return{side:side==='over'?'Over':'Under',...best,edge:100*((side==='over'?fair:1-fair)-1/recordDecimal(best.odds))}}).sort((a,b)=>b.edge-a.edge);
+      // The fair price uses every licensed book; the pick itself must be
+      // available at one of the five biggest (OFFICIAL_BOOKS).
+      const options=['over','under'].map(side=>{const best=pairs.map(p=>p[side]).filter(o=>OFFICIAL_BOOKS.has(o.key)).sort((a,b)=>recordDecimal(b.odds)-recordDecimal(a.odds))[0];return best?{side:side==='over'?'Over':'Under',...best,edge:100*((side==='over'?fair:1-fair)-1/recordDecimal(best.odds))}:null}).filter(Boolean).sort((a,b)=>b.edge-a.edge);
       const best=options[0];
-      if(best.edge<1||best.edge>12)continue;
+      if(!best||best.edge<1||best.edge>12)continue;
       const leg=verifiedRecordLeg({...group,...best},event,now);
       if(leg)result.push({...leg,edge:best.edge,book:best.book,playerKey:officialPlayer(leg)});
     }
@@ -228,6 +230,39 @@ function queueOfficialPicks(request,env,ctx){
   officialPublishing=publishOfficialPicks(request,env,ctx).catch(e=>console.error('official_publication_failed',e.message)).finally(()=>{officialPublishing=null});ctx.waitUntil(officialPublishing);
 }
 
+// Line value runs in shadow mode for now: would-be picks rated on the
+// fair-price curve (BTGLine) are logged here, never posted. Every run also
+// stores each logged pick's current fair chance until kickoff, so the last
+// value is its closing fair price: did the market move toward us or away?
+const LINE_SHADOW_MIN=1.5;
+function lineShadowCandidates(events,now=Date.now()){
+  const best=new Map();
+  for(const event of events){
+    const kickoff=Date.parse(event.commence_time);
+    if(kickoff<OFFICIAL_START||kickoff<=now+5*60000||kickoff>now+24*3600000)continue;
+    const eventID=event.eventID||`NFL--${event.id}`;
+    for(const g of BTGLine.rate(event,now)){
+      const pick=g.offers.filter(o=>OFFICIAL_BOOKS.has(o.key)&&o.edge>=LINE_SHADOW_MIN).sort((a,b)=>b.edge-a.edge)[0];
+      if(!pick)continue;
+      const row={id:`${officialWeek(kickoff)}|${eventID}|${g.player}|${g.marketKey}`,event_id:eventID,player:g.player,market_key:g.marketKey,market:recordLabels[g.marketKey]||g.marketKey,side:pick.side==='over'?'Over':'Under',line:pick.line,odds:pick.odds,book:pick.book,alt:pick.alt?1:0,main_line:g.main,books:g.books,edge:+pick.edge.toFixed(2),fair:+pick.fair.toFixed(4),game_time:new Date(kickoff).toISOString(),model_json:JSON.stringify(g.model)};
+      // One per player and game, like official picks.
+      const k=`${eventID}|${normalizedName(g.player)}`,prior=best.get(k);if(!prior||row.edge>prior.edge)best.set(k,row);
+    }
+  }
+  return [...best.values()];
+}
+async function recordLineShadow(env,events,now=Date.now()){
+  if(!env.DB)return {logged:0};
+  const stamp=new Date(now).toISOString(),rows=lineShadowCandidates(events,now);
+  const statements=rows.map(r=>env.DB.prepare('INSERT OR IGNORE INTO line_shadow (id,event_id,player,market_key,market,side,line,odds,book,alt,main_line,books,edge,fair,game_time,logged_at,model_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(r.id,r.event_id,r.player,r.market_key,r.market,r.side,r.line,r.odds,r.book,r.alt,r.main_line,r.books,r.edge,r.fair,r.game_time,stamp,r.model_json));
+  const open=(await env.DB.prepare('SELECT id,event_id,player,market_key,side,line FROM line_shadow WHERE game_time>? AND game_time<=?').bind(stamp,new Date(now+24*3600000).toISOString()).all()).results||[];
+  if(open.length){
+    const curves=new Map();for(const event of events){const eventID=event.eventID||`NFL--${event.id}`;for(const g of BTGLine.rate(event,now))curves.set(`${eventID}|${g.player}|${g.marketKey}`,g)}
+    for(const r of open){const g=curves.get(`${r.event_id}|${r.player}|${r.market_key}`);if(!g)continue;const over=BTGLine.overChance(g.model,Number(r.line));statements.push(env.DB.prepare('UPDATE line_shadow SET close_fair=?,close_main=?,close_at=? WHERE id=?').bind(+(r.side==='Over'?over:1-over).toFixed(4),g.main,stamp,r.id))}
+  }
+  if(statements.length)await env.DB.batch(statements);
+  return {logged:rows.length,tracked:open.length};
+}
 async function publishOfficialPicks(request,env,ctx){
   if(Date.now()<OFFICIAL_START)return {state:"not_started"};
 
@@ -248,6 +283,7 @@ async function publishOfficialPicks(request,env,ctx){
     // Awaited: a deferred delete did not run after the maintenance response.
     if(Date.now()-snapshotPrunedAt>3600000){snapshotPrunedAt=Date.now();await env.DB.prepare('DELETE FROM movement_snapshots WHERE captured_at<?').bind(Math.floor(Date.now()-7*86400000)).run().catch(error=>console.warn('snapshot_prune_failed',error.message))}
     const trail=officialTrailStatements(boards,existing.results||[],env,Date.now());if(trail.length)await env.DB.batch(trail);
+    await recordLineShadow(env,boards,Date.now()).catch(error=>console.warn('line_shadow_failed',error.message));
 
   if(failedBoards)throw new Error('Some official boards were unavailable; retry required');
   return {state:"completed"};
@@ -677,6 +713,7 @@ async function sendEmailAlerts(env,now=Date.now()){
 const BOOK_ALERT_DAILY=3,BOOK_ALERT_GAP=60*60000;
 const bookKey=value=>{const key=String(value||'').toLowerCase().replace(/[^a-z0-9]/g,'');return key==='espnbet'?'thescorebet':key==='williamhillus'?'caesars':key};
 function cleanBooks(list){return Array.isArray(list)?[...new Set(list.map(b=>String(b||'').slice(0,40)).filter(b=>/^[A-Za-z0-9 .&'+-]{2,40}$/.test(b)))].slice(0,20):[]}
+const LINE_ALERT_MIN=2;
 function bookValueCandidates(events,now=Date.now()){
   const out=[];
   for(const event of events){
@@ -704,6 +741,17 @@ function bookValueCandidates(events,now=Date.now()){
         out.push({propKey:`${event.eventID||event.id}|${group.player}|${group.market}|${group.line}|${side}`,player:group.player,market:group.market,line:group.line,side:side==='over'?'Over':'Under',odds:p[side],book:p.title,bookKey:bookKey(p.key),bookTitleKey:bookKey(p.title),edge,game_time:new Date(kickoff).toISOString(),matchup:`${event.away_team||''} @ ${event.home_team||''}`.trim()});
       }
     }
+    // Line value: a book's standard line that beats the usual line (Over
+    // 209.5 where most books have 215.5), rated on the fair-price curve.
+    // Held to a higher bar than same-line prices while it runs in shadow.
+    for(const g of BTGLine.rate(event,now)){
+      const market=recordLabels[g.marketKey];if(!market)continue;
+      for(const o of g.offers){
+        const gain=BTGLine.lineGain(o.side,o.line,g.main);
+        if(o.alt||gain<=0||o.edge<LINE_ALERT_MIN)continue;
+        out.push({propKey:`${event.eventID||event.id}|${g.player}|${market}|${o.line}|${o.side}`,player:g.player,market,line:o.line,side:o.side==='over'?'Over':'Under',odds:o.odds,book:o.book,bookKey:bookKey(o.key),bookTitleKey:bookKey(o.book),edge:o.edge,game_time:new Date(kickoff).toISOString(),matchup:`${event.away_team||''} @ ${event.home_team||''}`.trim(),lineNote:`${+gain.toFixed(1)}${g.kind==="normal"?" yds":""} better line than most books`});
+      }
+    }
   }
   return out;
 }
@@ -719,10 +767,10 @@ function bookAlertPicks(candidates,books,sentKeys,officialKeys,limit){
   const seenPlayer=new Set();
   return [...best.values()].sort((a,b)=>b.edge-a.edge).filter(c=>{const k=`${c.propKey.split('|')[0]}|${c.player}`;if(seenPlayer.has(k))return false;seenPlayer.add(k);return true}).slice(0,Math.max(0,limit));
 }
-const bookAlertRow=c=>({kind:'prop',player:c.player,market:c.market,side:c.side,line:c.line,odds:c.odds,game_time:c.game_time,legs_json:JSON.stringify([{book:c.book}])});
+const bookAlertRow=c=>({kind:'prop',player:c.player,market:c.market,side:c.side,line:c.line,odds:c.odds,game_time:c.game_time,legs_json:JSON.stringify([{book:c.lineNote?`${c.book} (${c.lineNote})`:c.book}])});
 function bookAlertMessage(picks){
   const books=[...new Set(picks.map(c=>c.book))],where=books.length===1?books[0]:'your sportsbooks';
-  return {title:`Good value at ${where}`,body:picks.map(c=>`${c.player} ${weeklyLegText(c)} (${weeklyOdds(c.odds)}${books.length>1?` at ${c.book}`:''})`).join('\n')+'\nNot an official pick.',url:'/',where};
+  return {title:`Good value at ${where}`,body:picks.map(c=>`${c.player} ${weeklyLegText(c)} (${weeklyOdds(c.odds)}${books.length>1?` at ${c.book}`:''})${c.lineNote?` · ${c.lineNote}`:''}`).join('\n')+'\nNot an official pick.',url:'/',where};
 }
 async function sendBookAlerts(env,events,now=Date.now()){
   if(!env.DB)return {sent:0};
