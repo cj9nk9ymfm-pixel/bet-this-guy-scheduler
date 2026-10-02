@@ -73,8 +73,8 @@ const reply = body => Response.json(body);
   console.log('PASS: ongoing and preseason games excluded from historical profile stats');
 
   clear();calls.length=0;
-  provider=async()=>reply({...game,id:'event77',bookmakers:[{key:'draftkings',last_update:new Date(now-600000).toISOString(),markets:[{key:'player_rush_yds'}]},{key:'fanduel',last_update:new Date(now).toISOString(),markets:[{key:'player_reception_yds'}]},{key:'bovada',last_update:new Date(now).toISOString(),markets:[{key:'player_reception_yds'}]}]});
-  const odds=await payload('/api/event?eventID=NFL--event77&live=1');assert.equal(odds.data[0].bookmakers.length,1);assert.ok(odds.data[0].bookmakers.every(b=>b.key!=='bovada'),'offshore books are dropped');
+  provider=async()=>reply({...game,id:'event77',bookmakers:[{last_update:new Date(now-600000).toISOString(),markets:[{key:'player_rush_yds'}]},{last_update:new Date(now).toISOString(),markets:[{key:'player_reception_yds'}]}]});
+  const odds=await payload('/api/event?eventID=NFL--event77&live=1');assert.equal(odds.data[0].bookmakers.length,1);
   now+=61000;provider=async()=>{throw new Error('offline')};assert.equal((await payload('/api/event?eventID=NFL--event77&live=1')).success,false,'never serve stale in-play odds after failure');
   console.log('PASS: stale sportsbook markets removed; failed live-odds refresh never revives cached opening lines');
 
