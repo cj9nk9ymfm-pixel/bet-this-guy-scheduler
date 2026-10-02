@@ -1181,3 +1181,44 @@ body.light .on-live{color:#5b6472}body.light .on-live strong{color:#0f172a}body.
 body.light .on-live.hit strong,body.light .on-live span.hit{color:#047857}body.light .on-live.miss strong,body.light .on-live span.miss{color:#b91c1c}
 .owner-toast{position:fixed;left:50%;bottom:calc(88px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:200;max-width:calc(100% - 32px);padding:11px 16px;border-radius:12px;background:#1e222a;border:1px solid #272c35;color:#f2f4f7;font:600 14px "DM Sans",sans-serif;box-shadow:0 10px 30px rgba(0,0,0,.4)}
 body.light .owner-toast{background:#fff;border-color:#e2e6ec;color:#0f172a}
+.auth-perks{list-style:none;margin:10px 0 6px;padding:0;display:grid;gap:8px}
+.auth-perks li{position:relative;padding-left:26px;font-size:14.5px;line-height:1.35;color:#f2f4f7}
+.auth-perks li::before{content:"";position:absolute;left:0;top:1px;width:18px;height:18px;border-radius:50%;background:#22c55e22 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2322c55e' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 12 4 4 8-8'/%3E%3C/svg%3E") no-repeat center/12px}
+body.light .auth-perks li{color:#0f172a}
+.auth-social[hidden]{display:none!important}
+.auth-social{display:flex!important;align-items:center;justify-content:center;gap:10px}
+html body .auth-socials{grid-template-columns:1fr!important;gap:10px}
+html body .auth-social[data-auth-provider="google"]{background:#fff!important;color:#1f1f1f!important;border:1px solid #dadce0!important}
+html body .auth-social[data-auth-provider="google"]:hover{background:#f7f8f8!important}
+html body .auth-social[data-auth-provider="apple"]{background:#000!important;color:#fff!important;border:1px solid #000!important}
+html body.light .auth-social[data-auth-provider="apple"]{border-color:#000!important}
+html body:not(.light) .auth-social[data-auth-provider="apple"]{border-color:#3a3f48!important}
+html body .auth-social{min-height:48px;border-radius:12px;font:600 15.5px "DM Sans",sans-serif}
+html body .auth-divider{color:#98a1ad}html body .auth-divider::before,html body .auth-divider::after{background:#272c35}
+html body .auth-security{border-color:#272c35;background:#16191e;color:#98a1ad}html body .auth-security svg{stroke:#98a1ad}
+html body.light .auth-divider::before,html body.light .auth-divider::after{background:#e2e6ec}html body.light .auth-divider{color:#5b6472}
+html body.light .auth-security{border-color:#e2e6ec;background:#f4f6f9;color:#5b6472}
+#accountDialog:focus{outline:none}
+/* Light mode: account and sign-in sheet */
+html body.light .account-dialog{background:#fff!important;color:#0f172a!important;border-color:#e2e6ec!important;box-shadow:0 28px 80px rgba(15,23,42,.22)!important}
+html body.light .account-dialog::backdrop{background:rgba(15,23,42,.45)}
+html body.light .account-head{background:#fff!important;background-image:none!important;border-bottom-color:#e2e6ec!important}
+html body.light .account-close,html body.light .record-back{background:#f0f2f5!important;border-color:#e2e6ec!important;color:#0f172a!important}
+html body.light .auth-eyebrow{color:#5b6472!important}
+html body.light .auth-view h2{color:#0f172a!important}
+html body.light .auth-lead,html body.light .auth-switch,html body.light .auth-form label,html body.light .auth-account-card span,html body.light .record-summary small,html body.light .auth-record-row small,html body.light .auth-empty,html body.light .auth-record-loading,html body.light .auth-account-foot a{color:#5b6472!important}
+html body.light .auth-form input{background:#f4f6f9!important;border-color:#e2e6ec!important;color:#0f172a!important}
+html body.light .auth-form input:focus{border-color:#2563eb!important;box-shadow:0 0 0 3px rgba(37,99,235,.15)!important}
+html body.light .auth-form .primary{background:#2563eb!important;background-image:none!important}
+html body.light .auth-link,html body.light .auth-link-button,html body.light .auth-terms a{color:#1d4ed8!important}
+html body.light .auth-status{background:#f4f6f9;color:#0f172a}
+html body.light .auth-status.error{background:#fef2f2;border-color:#fecaca;color:#b91c1c}
+html body.light .auth-status.success{background:#ecfdf5;border-color:#a7f3d0;color:#047857}
+html body.light .auth-check-icon{background:#e8eefc;border-color:#bfd0f7;color:#1d4ed8}
+html body.light .auth-account-card,html body.light .record-summary>div,html body.light .auth-record-row,html body.light .auth-alert-toggle,html body.light .auth-account-actions button{background:#f4f6f9!important;background-image:none!important;border-color:#e2e6ec!important;color:#0f172a!important}
+html body.light .auth-plan{border-color:#bfd0f7;color:#1d4ed8!important}
+html body.light .auth-account-foot{border-top-color:#e2e6ec}
+html body.light .auth-account-foot button,html body.light .auth-record-row button{color:#b91c1c}
+html body.light .auth-result{background:#e2e6ec;color:#334155}
+html body.light .positive{color:#047857!important}html body.light .negative{color:#b91c1c!important}
+html body.light .auth-alert-toggle strong{color:#0f172a}html body.light .auth-alert-toggle small{color:#5b6472}

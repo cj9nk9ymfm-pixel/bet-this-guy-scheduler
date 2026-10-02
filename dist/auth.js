@@ -2,9 +2,20 @@
 const SUPABASE_URL='https://dtypbfxmponfrwtprnca.supabase.co';
 const SUPABASE_KEY='sb_publishable_SRVkae5U7sfu1sgRHB2UFQ_AroKYMPj';
 const SESSION_KEY='btg-secure-session';
-// Google and Apple sign-in are hidden until their Supabase providers are set up.
-// Set to true to show the "Continue with Google/Apple" buttons again.
-const SOCIAL_SIGN_IN=false;
+// Google and Apple buttons appear on their own once each provider is turned on
+// in Supabase (Authentication -> Sign In / Providers); nothing to redeploy.
+const SOCIAL_KEY='btg-auth-providers';
+async function socialProviders(){
+  try{const saved=JSON.parse(sessionStorage.getItem(SOCIAL_KEY)||'null');if(saved&&Date.now()-saved.at<10*60000)return saved.list}catch{}
+  try{const response=await fetch(`${SUPABASE_URL}/auth/v1/settings`,{headers:{apikey:SUPABASE_KEY}});if(!response.ok)return [];
+    const external=(await response.json())?.external||{},list=['google','apple'].filter(name=>external[name]===true);
+    try{sessionStorage.setItem(SOCIAL_KEY,JSON.stringify({at:Date.now(),list}))}catch{}return list}catch{return []}
+}
+async function showSocial(){
+  const list=await socialProviders();
+  document.querySelectorAll('[data-auth-provider]').forEach(button=>{button.hidden=!list.includes(button.dataset.authProvider)});
+  document.querySelectorAll('.auth-socials,.auth-divider').forEach(element=>{element.style.display=list.length?'':'none'});
+}
 // The 218 KB Supabase library loads only when needed: right away for visitors
 // with a saved session or returning from an email/OAuth link, otherwise when
 // the account dialog opens. index.html keeps its fingerprinted URL in an inert
@@ -58,9 +69,10 @@ function show(view){
   if(view==='record')refreshBets();
 }
 async function open(view){
+  showSocial();
   if(!client){try{await loadClient()}catch(error){show('login');setStatus(error.message,'error');if(!dialog().open)dialog().showModal();return}}
   const target=view||(signedIn()?'account':'login');
-  show(target);if(!dialog().open)dialog().showModal();
+  show(target);if(!dialog().open){dialog().showModal();dialog().setAttribute('tabindex','-1');dialog().focus({preventScroll:true})}
 }
 async function api(path,options={}){
   if(!signedIn())throw new Error('Please sign in to continue.');
@@ -169,7 +181,7 @@ async function handleEmailLink(){
   }
 }
 function init(){
-  if(!SOCIAL_SIGN_IN)document.querySelectorAll('.auth-socials,.auth-divider').forEach(element=>element.style.display='none');
+  document.querySelectorAll('.auth-socials,.auth-divider').forEach(element=>element.style.display='none');
   $('#accountBtn').onclick=()=>open();$('#accountClose').onclick=()=>dialog().close();
   document.querySelectorAll('[data-auth-target]').forEach(button=>button.onclick=()=>show(button.dataset.authTarget));
   document.querySelectorAll('[data-auth-provider]').forEach(button=>button.onclick=()=>social(button.dataset.authProvider));
