@@ -1003,18 +1003,18 @@ const NOT_FOUND_HTML = `<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#04091a">
+  <meta name="theme-color" content="#0e1013">
   <meta name="robots" content="noindex">
   <title>Page not found — Bet This Guy</title>
-  <style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#04091a;color:#f6f9ff;font:16px/1.6 "DM Sans",system-ui,sans-serif;text-align:center}main{padding:32px 20px;max-width:440px}img{width:190px;height:auto}h1{font:700 30px/1.2 "Space Grotesk",system-ui,sans-serif;margin:28px 0 8px}p{color:#9fb3d9;margin:0 0 26px}a.button{display:inline-block;padding:12px 22px;border-radius:12px;background:linear-gradient(90deg,#1c6cff,#00c7ff);color:#fff;font-weight:700;text-decoration:none}a.home{display:block;margin-top:16px;color:#9fb3d9}</style>
+  <style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0e1013;color:#f2f4f7;font:16px/1.6 "DM Sans",system-ui,sans-serif;text-align:center}main{padding:32px 20px;max-width:440px}img{width:190px;height:auto}h1{font:700 30px/1.2 "Space Grotesk",system-ui,sans-serif;margin:28px 0 8px}p{color:#98a1ad;margin:0 0 26px}a.button{display:inline-block;padding:12px 22px;border-radius:12px;background:#2563eb;color:#fff;font-weight:700;text-decoration:none}a.home{display:block;margin-top:16px;color:#6aa8ff}</style>
 </head>
 <body>
   <main>
     <a href="/"><img src="/logo.png" alt="Bet This Guy" style="height:28px;width:auto"></a>
     <h1>This line isn't on the board.</h1>
     <p>The page you're looking for doesn't exist or has moved.</p>
-    <a class="button" href="/app">Open the board →</a>
-    <a class="home" href="/about">About Bet This Guy</a>
+    <a class="button" href="/">See this week’s picks →</a>
+    <a class="home" href="/trust">See every pick on Results</a>
   </main>
 </body>
 </html>
