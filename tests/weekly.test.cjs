@@ -41,6 +41,10 @@ context.env={DB};
   assert.equal(JSON.stringify(counts),JSON.stringify({'slip:add':1,'view:home':2,'visit:new':1}),'known metrics counted once per send, unknown names and bots ignored');
   assert.equal(JSON.stringify(db.prepare('PRAGMA table_info(usage_counts)').all().map(c=>c.name)),'["day","metric","count"]','only a day, a metric name and a total are stored');
   assert.equal((await run("usageHit(new Request('https://betthisguy.com/api/hit'),env,ctx)")).status,405,'reads are refused');
+  // The owner's devices (cookie set by /?me=1) are never counted; visit sources are.
+  const ownerHit=await run(`usageHit(new Request('https://betthisguy.com/api/hit',{method:'POST',headers:{'user-agent':'Mozilla/5.0','cookie':'a=1; btg_owner=1'},body:JSON.stringify({m:['view:home','src:reddit']})}),env,ctx)`);await Promise.all(context.jobs.splice(0));
+  assert.equal(ownerHit.status,204);assert.equal(db.prepare("SELECT count FROM usage_counts WHERE metric='view:home'").get().count,2,'owner visits are not counted');
+  await hit({m:['src:reddit']});assert.equal(db.prepare("SELECT count FROM usage_counts WHERE metric='src:reddit'").get().count,1,'visit sources are counted');
   const routed=await run("routeRequest(new Request('https://betthisguy.com/picks/2026/week-3',{headers:{'user-agent':'Mozilla/5.0'}}),env,ctx)");await Promise.all(context.jobs.splice(0));
   assert.equal(routed.status,200);assert.equal(db.prepare("SELECT count FROM usage_counts WHERE metric='view:week'").get().count,1,'weekly pages count their own views');
   // Partner links: off with no setting, shown only in listed US states, and

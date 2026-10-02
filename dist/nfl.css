@@ -1170,3 +1170,14 @@ body.light #heroBanner .hero-picks button{color:#0f172a}
 body.light .hp-name small,body.light .hp-num small,body.light .hp-tag.n{color:#5b6472}
 body.light .hp-tag.g,body.light .hp-num small.up{color:#047857}body.light .hp-tag.r,body.light .hp-num small.down{color:#b91c1c}
 body.light #heroBanner .hp-all{color:#1d4ed8}
+/* Live progress on locked picks */
+.on-live{display:block;margin-top:4px;font-style:normal;font-size:12.5px;line-height:1.35;color:#98a1ad}
+.on-live[hidden]{display:none}
+.on-live b{color:#f06060;font-weight:700}.on-live b::before{content:"";display:inline-block;width:6px;height:6px;margin:0 5px 1px 0;border-radius:50%;background:#f06060;vertical-align:middle;animation:onPulse 1.6s infinite}
+.on-live strong{color:#f2f4f7}.on-live.hit strong,.on-live span.hit{color:#22c55e}.on-live.miss strong,.on-live span.miss{color:#f06060}
+@keyframes onPulse{50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.on-live b::before{animation:none}}
+body.light .on-live{color:#5b6472}body.light .on-live strong{color:#0f172a}body.light .on-live b{color:#b91c1c}body.light .on-live b::before{background:#dc2626}
+body.light .on-live.hit strong,body.light .on-live span.hit{color:#047857}body.light .on-live.miss strong,body.light .on-live span.miss{color:#b91c1c}
+.owner-toast{position:fixed;left:50%;bottom:calc(88px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:200;max-width:calc(100% - 32px);padding:11px 16px;border-radius:12px;background:#1e222a;border:1px solid #272c35;color:#f2f4f7;font:600 14px "DM Sans",sans-serif;box-shadow:0 10px 30px rgba(0,0,0,.4)}
+body.light .owner-toast{background:#fff;border-color:#e2e6ec;color:#0f172a}
