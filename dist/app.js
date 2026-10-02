@@ -155,7 +155,30 @@ function priceAtMyBooks(prop,index){
   const options=[['Over',over],['Under',under]].filter(([,offer])=>offer).map(([side,offer])=>({side,offer,edge:(fair(side)-americanProbability(offer.price))*100})).sort((a,b)=>b.edge-a.edge),pick=options[0];
   return {...prop,side:pick.side,over:over?.price??prop.over,under:under?.price??prop.under,rawEdge:+pick.edge.toFixed(2),edge:+Math.max(.2,pick.edge).toFixed(1),conf:Math.round(Math.min(88,52+Math.max(.2,pick.edge)*3)),note:`Best at ${pick.offer.book} vs no-vig market consensus`,myBooks:true};
 }
-normalizeLiveProps=function(payload){const events=Array.isArray(payload?.data)?payload.data:[],all=normalizeAllBooks(payload),index=preferences.books.length?myBookOffers(events):null,priced=index?all.map(prop=>priceAtMyBooks(prop,index)).filter(Boolean):all;return priced.map(prop=>{const price=recommendedOdds(prop),fairChance=Math.min(.99,americanProbability(price)+prop.edge/100),bookMatch=String(prop.note||'').match(/(?:Best (?:at|price at)|at) ([^,]+?)(?: vs| price|$)/i);return{...prop,bookCount:propBookCoverage(payload,prop),oneSided:Boolean(prop.binary||prop.under===null||prop.under===undefined),fairChance:+(fairChance*100).toFixed(1),bestBook:bookMatch?.[1]||'Best available'}})};
+// Line value, rated on the shared fair-price curve (BTGLine, 3+ books):
+// - a line only one or two books hang (205.5 where most have 215.5) is rated
+//   on the curve instead of against its own price;
+// - every prop notes a better line at another book when it beats the prop's
+//   own value (Over 205.5 at Caesars on the 215.5 row).
+// At the viewer's own books only, when they picked some.
+function bestLines(events){
+  const index=new Map();if(!window.BTGLine)return index;
+  for(const event of events){if(!Array.isArray(event?.bookmakers))continue;for(const g of BTGLine.rate(event))index.set(`${event.eventID||event.id}|${g.player}|${marketLabels[g.marketKey]||''}`,g)}
+  return index;
+}
+function withBestLine(prop,index){
+  const g=index.get(`${prop.eventID}|${prop.player}|${prop.market}`);if(!g||prop.binary)return prop;
+  const mine=o=>!o.alt&&(!preferences.books.length||bookAllowed(o.book)||bookAllowed(o.key)),out={...prop};
+  if(prop.line!==g.main&&(Number(prop.pairedBooks)||0)<3){
+    const here=g.offers.filter(o=>mine(o)&&o.line===prop.line).sort((a,b)=>b.edge-a.edge)[0];
+    if(here)Object.assign(out,{side:here.side==='over'?'Over':'Under',rawEdge:+here.edge.toFixed(2),edge:+Math.max(.2,here.edge).toFixed(1),conf:Math.round(Math.min(88,52+Math.max(.2,here.edge)*3)),pairedBooks:g.books,note:`Best at ${here.book} vs the fair price across lines`,curve:true});
+  }
+  const floor=Math.max(1.5,(Number(out.rawEdge)||0)+1);
+  const best=g.offers.filter(o=>mine(o)&&o.line!==prop.line&&BTGLine.lineGain(o.side,o.line,prop.line)>0&&o.edge>=floor).sort((a,b)=>b.edge-a.edge)[0];
+  if(best)out.bestLine={side:best.side==='over'?'Over':'Under',line:best.line,odds:best.odds,book:best.book,edge:+best.edge.toFixed(1),gain:+BTGLine.lineGain(best.side,best.line,prop.line).toFixed(1),unit:g.kind==='normal'?' yds':''};
+  return out;
+}
+normalizeLiveProps=function(payload){const events=Array.isArray(payload?.data)?payload.data:[],all=normalizeAllBooks(payload),index=preferences.books.length?myBookOffers(events):null,priced=index?all.map(prop=>priceAtMyBooks(prop,index)).filter(Boolean):all;const lines=bestLines(events);return priced.map(prop=>withBestLine(prop,lines)).map(prop=>{const price=recommendedOdds(prop),fairChance=Math.min(.99,americanProbability(price)+prop.edge/100),bookMatch=String(prop.note||'').match(/(?:Best (?:at|price at)|at) ([^,]+?)(?: vs| price|$)/i);return{...prop,bookCount:propBookCoverage(payload,prop),oneSided:Boolean(prop.binary||prop.under===null||prop.under===undefined),fairChance:+(fairChance*100).toFixed(1),bestBook:bookMatch?.[1]||'Best available'}})};
 function setFeedStatus(mode,message){feedMode=mode;const button=$('#feedBtn');button.classList.toggle('live',mode==='live');button.classList.toggle('error',mode==='error');button.querySelector('span').textContent=message}
 function loadLiveProps(force=false){if(livePropsPromise)return livePropsPromise;livePropsPromise=refreshLiveProps(force).finally(()=>{livePropsPromise=null});return livePropsPromise}
 async function refreshLiveProps(force=false){
@@ -1060,7 +1083,8 @@ const VERDICTS={
 function propVerdict(p){
   const edge=Number(p?.rawEdge);
   if(!p||p.teamMarket||!Number.isFinite(edge))return null;
-  if(edge>=1&&(Number(p.pairedBooks)||0)>=3)return VERDICTS.send;
+  // Lines rated on the cross-line curve (an estimate) need a bigger edge.
+  if(edge>=(p.curve?1.5:1)&&(Number(p.pairedBooks)||0)>=3)return VERDICTS.send;
   if(edge<=-3.5)return VERDICTS.read;
   return VERDICTS.flip;
 }
@@ -1728,6 +1752,7 @@ if(typeof fetch==='function')window.btgCountVisit?.('view:home');
     const rows=[['Best price',p.bestBook||'Best available','']];
     if(Number.isFinite(edge))rows.push(['vs fair price',`${edge>=0?'+':'−'}${Math.abs(edge).toFixed(1)}% ${edge>=0?'better':'worse'}`,edge>=1?'pos':edge<=-3.5?'neg':'']);
     rows.push(['Last 10 games','Loading…','']);
+    if(p.bestLine){const b=p.bestLine;rows.push(['Best line',`${b.side} ${b.line} at ${b.book} (${formatOdds(b.odds)}) · ${b.gain}${b.unit} ${b.side==='Over'?'lower':'higher'}, +${b.edge}% vs fair`,'pos'])}
     return {chip,title:p.player,bet:`${selection} ${String(p.market||'').toLowerCase()}`.trim(),game:[String(p.team||'').replace(' · vs ',' vs ').replace(' · @ ',' @ '),p.time].filter(Boolean).join(' · '),
       price:formatOdds(odds),stake:`$${stakeNow().toLocaleString('en-US')}`,money:winsOn(odds),moneyCls:'pos',rows,
       chart:{label:'Price history',open:()=>openMovementDetail(p.id)},
