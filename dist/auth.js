@@ -27,7 +27,11 @@ function loadClient(){
   if(client)return Promise.resolve(client);
   if(clientLoading)return clientLoading;
   clientLoading=new Promise((resolve,reject)=>{
-    const create=()=>{client=window.supabase?.createClient?.(SUPABASE_URL,SUPABASE_KEY,{auth:{flowType:'pkce',persistSession:true,autoRefreshToken:true,detectSessionInUrl:true,storageKey:SESSION_KEY}});if(!client)return reject(new Error('Sign-in is unavailable right now.'));watchSession(client);resolve(client)};
+    // Google/Apple come back with the session in the link (#access_token), so
+    // sign-in finishes in whatever browser or Home Screen app it lands in; a
+    // page opened from that link reads it with an implicit-flow client.
+    const returningFromProvider=/access_token=/.test(location.hash);
+    const create=()=>{client=window.supabase?.createClient?.(SUPABASE_URL,SUPABASE_KEY,{auth:{flowType:returningFromProvider?'implicit':'pkce',persistSession:true,autoRefreshToken:true,detectSessionInUrl:true,storageKey:SESSION_KEY}});if(!client)return reject(new Error('Sign-in is unavailable right now.'));watchSession(client);resolve(client)};
     if(window.supabase)return create();
     const script=document.createElement('script');
     script.src=document.querySelector('#supabaseScript')?.content?.querySelector('script')?.getAttribute('src')||'/supabase.js';
@@ -150,13 +154,35 @@ async function importLegacy(){
   for(const item of items){try{const legs=(item.liveLegs||[]).map(leg=>({...leg,gameStart:leg.startsAt,odds:leg.odds}));if(!legs.length)continue;await trackParlay({legs,wager:item.wager||10,source:'imported'});imported++}catch{}}
   if(imported){localStorage.removeItem('bet-this-guy-tracked');accountMessage=`Imported ${imported} saved pick${imported===1?'':'s'}.`;await refreshBets();renderAccount();setStatus(accountMessage,'success');accountMessage=''}else setStatus('Those older picks could not be imported.','error');button.disabled=false;
 }
-async function handleSession(next){session=next;profile=null;updateButton();dispatchEvent(new Event('btg-auth'));if(session){await loadAccount().catch(error=>setStatus(friendly(error),'error'))}else{bets=[];if(dialog()?.open)show('login')}}
+async function handleSession(next){if(location.href.endsWith('#'))history.replaceState(history.state,'',location.pathname+location.search);session=next;profile=null;updateButton();dispatchEvent(new Event('btg-auth'));if(session){await loadAccount().catch(error=>setStatus(friendly(error),'error'))}else{bets=[];if(dialog()?.open)show('login')}}
 
 async function submitLogin(event){event.preventDefault();const form=event.currentTarget;setBusy(form,true);setStatus('');const data=new FormData(form);try{const{error}=await (await auth()).signInWithPassword({email:String(data.get('email')).trim(),password:String(data.get('password'))});if(error)throw error;accountMessage='Welcome back.';show('account')}catch(error){setStatus(friendly(error),'error')}finally{setBusy(form,false)}}
 async function submitSignup(event){event.preventDefault();const form=event.currentTarget;setBusy(form,true);setStatus('');const data=new FormData(form),email=String(data.get('email')).trim(),password=String(data.get('password')),confirm=String(data.get('confirm')),name=String(data.get('name')).trim();try{if(name.length<2)throw new Error('Enter your name.');if(password.length<8)throw new Error('Use at least 8 characters.');if(password!==confirm)throw new Error('The passwords do not match.');if(!data.get('terms'))throw new Error('Agree to the Terms and Privacy Policy to create an account.');const{data:result,error}=await (await auth()).signUp({email,password,options:{data:{full_name:name,email_alerts:Boolean(data.get('emailAlerts'))},emailRedirectTo:`${location.origin}/?auth=confirmed`}});if(error)throw error;if(result.session){accountMessage='Your account is ready.';show('account')}else{show('check-email');$('#checkEmailAddress').textContent=email}}catch(error){setStatus(friendly(error),'error')}finally{setBusy(form,false)}}
 async function submitForgot(event){event.preventDefault();const form=event.currentTarget;setBusy(form,true);setStatus('');const email=String(new FormData(form).get('email')).trim();try{const{error}=await (await auth()).resetPasswordForEmail(email,{redirectTo:`${location.origin}/?auth=reset`});if(error)throw error;show('check-email');$('#checkEmailAddress').textContent=email;$('#checkEmailCopy').textContent='Use the secure link in your email to choose a new password.'}catch(error){setStatus(friendly(error),'error')}finally{setBusy(form,false)}}
 async function submitReset(event){event.preventDefault();const form=event.currentTarget;setBusy(form,true);setStatus('');const data=new FormData(form),password=String(data.get('password')),confirm=String(data.get('confirm'));try{if(password.length<8)throw new Error('Use at least 8 characters.');if(password!==confirm)throw new Error('The passwords do not match.');const{error}=await (await auth()).updateUser({password});if(error)throw error;accountMessage='Your password has been updated.';show('account')}catch(error){setStatus(friendly(error),'error')}finally{setBusy(form,false)}}
-async function social(provider){setStatus('');const{error}=await (await auth()).signInWithOAuth({provider,options:{redirectTo:location.origin}});if(error)setStatus(friendly(error),'error')}
+// A one-off implicit-flow client starts Google/Apple sign-in, so no
+// per-browser verifier is needed when the provider sends the visitor back.
+async function social(provider){
+  setStatus('');
+  try{
+    await loadClient();
+    const starter=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{flowType:'implicit',persistSession:false,autoRefreshToken:false,detectSessionInUrl:false,storageKey:`${SESSION_KEY}-start`}});
+    const{error}=await starter.auth.signInWithOAuth({provider,options:{redirectTo:location.origin}});
+    if(error)throw error;
+  }catch(error){setStatus(friendly(error),'error')}
+}
+// A provider link that could not finish (expired, or an older ?code= link in a
+// different browser) says so instead of silently leaving the visitor signed out.
+async function checkProviderReturn(){
+  const query=new URLSearchParams(location.search),hash=new URLSearchParams(location.hash.slice(1));
+  const failed=query.get('error_description')||hash.get('error_description'),staleCode=query.has('code')&&!query.has('token_hash');
+  if(!failed&&!staleCode)return;
+  await loadClient().catch(()=>{});await new Promise(resolve=>setTimeout(resolve,600));
+  ['code','error','error_code','error_description','state'].forEach(key=>query.delete(key));const search=query.toString();
+  history.replaceState(history.state,'',location.pathname+(search?`?${search}`:''));
+  if(signedIn())return;
+  await open('login');setStatus(failed?`Sign-in didn’t finish: ${failed}. Please try again.`:'Sign-in didn’t finish in this window. Tap Continue with Google to try again.','error');
+}
 // Account emails (see emails/) link back with a one-time token_hash that is
 // verified here, so the link works in any browser or mail app. The older
 // ?code= links only work in the browser that asked for them.
@@ -192,6 +218,7 @@ function init(){
   if(hasSavedSession()||authLinkInUrl())loadClient().catch(error=>console.warn('auth_unavailable',error.message));
   else handleSession(null);
   handleEmailLink();
+  checkProviderReturn();
 }
 // A saved session counts before the sign-in library has loaded, so members
 // never see the free-account gate flash on page load.
