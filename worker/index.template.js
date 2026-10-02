@@ -22,13 +22,6 @@ const STATIC = {
 const LOGO = __LOGO_PAYLOAD__;
 const ICONS = __ICONS_PAYLOAD__;
 const API_BASE = "https://api.the-odds-api.com/v4";
-// Only state-licensed US sportsbooks are used anywhere on the site: prices,
-// fair-price math, alerts and history. Offshore books (Bovada, BetOnline and
-// similar) are dropped as soon as odds arrive.
-const LICENSED_BOOKS = new Set(["draftkings", "fanduel", "betmgm", "williamhill_us", "fanatics", "betrivers", "espnbet", "hardrockbet", "ballybet", "betparx"]);
-// Official picks lock only at the five biggest licensed books.
-const OFFICIAL_BOOKS = new Set(["draftkings", "fanduel", "betmgm", "williamhill_us", "fanatics"]);
-const licensedOnly = data => data && Array.isArray(data.bookmakers) ? { ...data, bookmakers: data.bookmakers.filter(book => LICENSED_BOOKS.has(book.key)) } : data;
 const BDL_BASE = "https://api.balldontlie.io";
 const BDL_SPORTS = {
   NFL: { slug: "nfl", stats: "/nfl/v1/stats" },
@@ -132,7 +125,7 @@ async function fetchEventOdds(sport, eventId, apiKey, expanded = false) {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const response = await fetch(`${API_BASE}/sports/${sport.key}/events/${eventId}/odds?${query}`, { headers: { accept: "application/json" } });
     const body = await response.text();
-    if (response.ok) return { ...licensedOnly(JSON.parse(body)), sport_label: sport.label, eventID: `${sport.label}--${eventId}` };
+    if (response.ok) return { ...JSON.parse(body), sport_label: sport.label, eventID: `${sport.label}--${eventId}` };
     const error = new Error(providerMessage(body, `Props are not available for this ${sport.label} game.`));
     error.status = response.status;
     lastError = error;
