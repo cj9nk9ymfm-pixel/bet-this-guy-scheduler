@@ -131,9 +131,12 @@ globalThis.BTGLine = (() => {
       const pairs=new Map();
       for(const o of g.offers){const k=o.key+'|'+o.line+'|'+o.alt,p=pairs.get(k)||{key:o.key,line:o.line,alt:o.alt};p[o.side]=o.odds;pairs.set(k,p)}
       const two=[...pairs.values()].filter(p=>p.over!=null&&p.under!=null).map(p=>{const io=implied(p.over),iu=implied(p.under);return {...p,p:io/(io+iu),margin:io+iu}});
-      const count=new Map();for(const p of two)if(!p.alt)count.set(p.line,(count.get(p.line)||0)+1);
-      const main=[...count.keys()].sort((a,b)=>count.get(b)-count.get(a)||a-b)[0];
-      if(main===undefined||count.get(main)<MIN_BOOKS)continue;
+      // The consensus line: the median of each book's standard line (the one
+      // it prices closest to 50/50), so books split across lines still count.
+      const own=new Map();for(const p of two)if(!p.alt){const prior=own.get(p.key);if(!prior||Math.abs(p.p-.5)<Math.abs(prior.p-.5))own.set(p.key,p)}
+      if(own.size<MIN_BOOKS)continue;
+      const sorted=[...own.values()].map(p=>p.line).sort((a,b)=>a-b),main=sorted.length%2?sorted[(sorted.length-1)/2]:(sorted[sorted.length/2-1]+sorted[sorted.length/2])/2;
+      const count=new Map([[main,own.size]]);
       const margins=new Map(two.filter(p=>!p.alt).map(p=>[p.key,p.margin])),usual=[...margins.values()].sort((a,b)=>a-b)[Math.floor(margins.size/2)];
       const anchors=two.filter(p=>near(g.kind,p.line,main)).map(p=>({line:p.line,p:p.p,w:p.alt?1.5:2,two:true}));
       const pairedAlt=new Set(two.filter(p=>p.alt).map(p=>p.key+'|'+p.line));

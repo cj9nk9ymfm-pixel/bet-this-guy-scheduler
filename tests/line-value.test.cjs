@@ -31,10 +31,22 @@ const run=code=>vm.runInContext(code,context);
   // stale prices are ignored; a curve that misses the books' own prices is dropped.
   context.far=event([yards('draftkings','DraftKings',[[215.5,-110,-110]],[[149.5,-900,null]]),yards('fanduel','FanDuel',[[215.5,-110,-110]]),yards('betmgm','BetMGM',[[215.5,-110,-110]])]);
   assert.ok(run('BTGLine.rate(far,'+now+')[0].offers.every(o=>o.line!==149.5)'),'a line far from the consensus is ignored');
-  context.thin=event([yards('draftkings','DraftKings',[[215.5,-110,-110]]),yards('fanduel','FanDuel',[[215.5,-110,-110]]),yards('williamhill_us','Caesars',[[205.5,-110,-110]])]);
-  assert.equal(run('BTGLine.rate(thin,'+now+').length'),0,'needs 3 books on the consensus line');
-  context.stale=JSON.parse(JSON.stringify(context.lineEvent));context.stale.bookmakers[2].markets[0].last_update=new Date(now-3600000).toISOString();
-  assert.equal(run('BTGLine.rate(stale,'+now+').length'),0,'a stale book does not count toward the 3');
+  context.thin=event([yards('draftkings','DraftKings',[[215.5,-110,-110]]),yards('williamhill_us','Caesars',[[205.5,-110,-110]])]);
+  assert.equal(run('BTGLine.rate(thin,'+now+').length'),0,'needs 3 books pricing both sides');
+  // Books split across lines still count: the consensus is the median line.
+  context.split=event([yards('draftkings','DraftKings',[[183.5,-112,-112]]),yards('fanduel','FanDuel',[[187.5,-114,-114]]),yards('betmgm','BetMGM',[[189.5,-115,-115]]),yards('betrivers','BetRivers',[[195.5,-114,-117]])]);
+  assert.equal(run('BTGLine.rate(split,'+now+')[0].main'),188.5,'four books on four lines still make a curve');
+  // The rule that matters: a different line only counts when the odds don't
+  // pay for the difference. Fanatics' 55.5 at -135/+100 (the line moved and
+  // the price moved with it) is not value; FanDuel's 9.5 at the usual price is.
+  const rush=(key,title,line,over,under)=>book(key,title,market('player_rush_yds','Kyren Williams',[[line,over,under]]));
+  context.priced=event([rush('betmgm','BetMGM',59.5,-115,-115),rush('betrivers','BetRivers',61.5,-114,-117),rush('draftkings','DraftKings',59.5,-109,-115),rush('fanatics','Fanatics',55.5,-135,100),rush('fanduel','FanDuel',56.5,-114,-114)]);
+  assert.ok(run(`BTGLine.rate(priced,${now})[0].offers.filter(o=>o.book==='Fanatics').every(o=>o.edge<0)`),'a lower line with juiced odds is not value');
+  const dak=(key,title,line,over,under)=>book(key,title,market('player_rush_yds','Dak Prescott',[[line,over,under]]));
+  context.same=event([dak('betmgm','BetMGM',10.5,-115,-115),dak('draftkings','DraftKings',10.5,-119,-106),dak('fanatics','Fanatics',10.5,-110,-120),dak('fanduel','FanDuel',9.5,-114,-114)]);
+  assert.ok(run(`BTGLine.rate(same,${now})[0].offers.find(o=>o.book==='FanDuel'&&o.side==='over').edge>=1.5`),'a better line at the usual odds is value');
+  context.stale=JSON.parse(JSON.stringify(context.lineEvent));[1,2].forEach(i=>context.stale.bookmakers[i].markets[0].last_update=new Date(now-3600000).toISOString());
+  assert.equal(run('BTGLine.rate(stale,'+now+').length'),0,'stale books do not count toward the 3');
   const rec=(key,title,over35,under35)=>book(key,title,market('player_receptions','Jaylen Waddle',[[4.5,-120,-105]]));
   context.counts=event([rec('draftkings','DraftKings'),rec('fanduel','FanDuel'),rec('betmgm','BetMGM'),book('fanatics','Fanatics',market('player_receptions','Jaylen Waddle',[[3.5,-230,175]]))]);
   assert.equal(run('BTGLine.rate(counts,'+now+')[0].kind'),'poisson','counts use a Poisson curve');
