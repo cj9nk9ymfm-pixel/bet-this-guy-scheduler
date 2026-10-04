@@ -992,6 +992,30 @@ async function scheduledMaintenance(request,env,ctx){
   catch(error){console.error('scheduled_maintenance_failed',job);return json({success:false,job,error:'Maintenance failed; retry required'},503)}
 }
 
+// Cloudflare's own cron (wrangler.jsonc triggers) runs publishing and grading.
+// GitHub's schedule went hours without firing on a Sunday, so it now only
+// checks the site is up (and can force a run by hand). Same NFL windows and
+// cadence as before: publish every 15 minutes, grade every 10.
+function nflActiveWindow(date){
+  const weekday=(date.getUTCDay()+6)%7,hour=date.getUTCHours();
+  return (weekday===2&&hour>=12)||weekday===3||(weekday===4&&hour<8)||(weekday===5&&hour>=12)||weekday===6||weekday===0||(weekday===1&&hour<8);
+}
+function cronJobs(date){
+  const minute=date.getUTCMinutes();
+  if(nflActiveWindow(date))return [...(minute%15<5?['publish']:[]),...(minute%10<5?['grade']:[])];
+  return date.getUTCHours()%6===0&&minute<5?['publish','grade']:[];
+}
+async function runCron(controller,env,ctx){
+  const due=cronJobs(new Date(controller.scheduledTime));
+  if(!due.length||!env.DB||!env.THE_ODDS_API_KEY||!env.BALLDONTLIE_API_KEY)return;
+  const request=new Request(`${SITE_URL}/api/maintenance`),jobs={publish:()=>publishOfficialPicks(request,env,ctx),grade:()=>settlePublicRecords(env)};
+  for(const job of due){
+    let work=scheduledJobs.get(job);
+    if(!work){work=Promise.resolve().then(jobs[job]).finally(()=>scheduledJobs.delete(job));scheduledJobs.set(job,work)}
+    try{await work;console.log('cron_completed',job)}catch(error){console.error('cron_failed',job,error.message)}
+  }
+}
+
 // Filled in by scripts/build-worker.mjs with each asset's content fingerprint.
 const ASSET_VERSIONS = /*__ASSET_VERSIONS__*/{};
 const SITE_URL = "https://betthisguy.com";
@@ -1093,5 +1117,8 @@ async function routeRequest(request, env, ctx) {
 export default {
   async fetch(request, env, ctx) {
     return withSecurityHeaders(await routeRequest(request, env, ctx));
+  },
+  async scheduled(controller, env, ctx) {
+    await runCron(controller, env, ctx);
   },
 };

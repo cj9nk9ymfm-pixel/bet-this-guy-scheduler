@@ -19,5 +19,22 @@ async function call(req){context.req=req;return run('worker.fetch(req,env,{waitU
  const failed=await call(request('grade'));assert.equal(failed.status,503);assert.ok(!(await failed.text()).includes('sensitive'));
  run('var release;settlePublicRecords=()=>{counts.grade++;return new Promise(r=>release=r)}');
  const one=call(request('grade'));await new Promise(r=>setTimeout(r,10));const two=call(request('grade'));await new Promise(r=>setTimeout(r,10));assert.equal(run('counts.grade'),2,'overlapping scheduler requests share one run');run('release()');assert.equal((await one).status,200);assert.equal((await two).status,200);
+ // Cloudflare cron: publish every 15 minutes and grade every 10 in NFL
+ // windows; every 6 hours otherwise. GitHub's schedule only checks uptime.
+ const due=iso=>JSON.stringify(run(`cronJobs(new Date('${iso}'))`));
+ assert.equal(due('2026-10-04T16:45:00Z'),'["publish"]','Sunday :45 publishes');
+ assert.equal(due('2026-10-04T16:50:00Z'),'["grade"]');
+ assert.equal(due('2026-10-04T17:00:00Z'),'["publish","grade"]');
+ assert.equal(due('2026-10-04T17:05:00Z'),'[]');
+ assert.equal(due('2026-10-06T14:05:00Z'),'[]','quiet Tuesday');
+ assert.equal(due('2026-10-06T18:00:00Z'),'["publish","grade"]','6-hour checkpoint');
+ assert.equal(typeof run('worker.scheduled'),'function','the Worker exports a scheduled handler');
+ const ran=[];context.publishOfficialPicks=async()=>{ran.push('publish')};context.settlePublicRecords=async()=>{ran.push('grade')};
+ run('publishOfficialPicks=globalThis.publishOfficialPicks;settlePublicRecords=globalThis.settlePublicRecords');
+ await run(`worker.scheduled({scheduledTime:Date.parse('2026-10-04T17:00:00Z')},env,{waitUntil(){}})`);
+ assert.deepEqual(ran,['publish','grade'],'the cron runs the jobs that are due');
+ const wf=read('.github/workflows/btg-maintenance.yml');
+ assert.ok(!/elif active_window/.test(wf),'GitHub no longer publishes on its own schedule');
+ assert.match(read('wrangler.jsonc'),/"crons": \["\*\/5 \* \* \* \*"\]/,'the site Worker has a 5-minute cron trigger');
  console.log('PASS: scheduled maintenance requires authorization, fails closed, dispatches only allowed jobs, reports failures and deduplicates concurrent runs');
 })().catch(e=>{console.error(e);process.exitCode=1});
