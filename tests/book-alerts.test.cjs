@@ -21,7 +21,7 @@ const run=code=>vm.runInContext(code,context);
 const api=(path,body)=>context.worker.fetch(new Request(`https://betthisguy.com${path}`,body?{method:'POST',body:JSON.stringify(body)}:{}),env,{waitUntil(){}});
 const keys={p256dh:'B'.repeat(87),auth:'a'.repeat(22)};
 (async()=>{
-  const now=Date.parse('2026-10-04T12:00:00Z'),iso=t=>new Date(t).toISOString(),kickoff=iso(now+5*3600000),fresh=iso(now-60000);
+  const now=Date.now(),iso=t=>new Date(t).toISOString(),kickoff=iso(now+5*3600000),fresh=iso(now-60000);
   const book=(key,title,players)=>({key,title,last_update:fresh,markets:[{key:'player_receptions',last_update:fresh,outcomes:players.flatMap(([player,over,under])=>[{name:'Over',description:player,point:4.5,price:over},{name:'Under',description:player,point:4.5,price:under}])}]});
   const field=['A Player','B Player','C Player','D Player','E Player'];
   const events=[{id:'evt1',commence_time:kickoff,home_team:'Cleveland Browns',away_team:'Pittsburgh Steelers',bookmakers:[
