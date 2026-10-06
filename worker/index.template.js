@@ -280,7 +280,9 @@ async function eventProps(request, env, ctx) {
   const inPlay = new URL(request.url).searchParams.get("live") === "1";
   const movement = new URL(request.url).searchParams.get("movement") === "1";
   const saved = await readFeedCache(request, `the-odds-api-event-expanded-v3-${movement ? "movement-" : inPlay ? "live-" : ""}${eventID}`);
-  if (saved.response && cacheAge(saved.response) < (inPlay || movement ? 60000 : 600000)) return cachedForClient(saved.response, "fresh");
+  // Pre-game odds are reused for 9 minutes, so the pick job (every 10 minutes)
+  // always pulls fresh prices instead of every other run hitting the cache.
+  if (saved.response && cacheAge(saved.response) < (inPlay || movement ? 60000 : 540000)) return cachedForClient(saved.response, "fresh");
   if (!await allowEventLookup(request, env, ctx, eventID)) return tooManyRequests(saved);
   try {
     const selectedSport = movement ? {...sport, markets:["player_pass_yds","player_rush_yds","player_reception_yds","player_receptions","player_pass_tds","player_anytime_td"],expandedMarkets:[]} : sport;
