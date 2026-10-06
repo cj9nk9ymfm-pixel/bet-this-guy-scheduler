@@ -72,6 +72,7 @@ async function latestPlayClock(request, game, env, ctx) {
 async function liveGames(request, env, ctx) {
   if (!env.BALLDONTLIE_API_KEY) return json({ success: false, error: "Live scores are not connected yet." }, 503);
   try {
+    if (new URL(request.url).searchParams.get("sport") === "NBA") return json(await nbaLiveGames(request, env, ctx));
     const result = await liveSnapshot(request, "nfl-live-games-v1", 8000, async () => {
       const query = new URLSearchParams({ per_page: "100" });
       // Include both sides of midnight for visitors in any time zone.
@@ -108,7 +109,7 @@ async function livePlayer(request, env, ctx) {
   if (!/^[1-9]\d{0,11}$/.test(gameID || "") || !/^[1-9]\d{0,11}$/.test(playerID || "")) return json({ success: false, error: "Choose a valid game and player." }, 400);
   try {
     // One box score per game is shared by every player profile and visitor.
-    const result = await fetchLiveBoxScore(request, gameID, env, ctx);
+    const result = query.get("sport") === "NBA" ? await nbaBoxScore(request, gameID, env, ctx) : await fetchLiveBoxScore(request, gameID, env, ctx);
     return json({ success: true, gameID: Number(gameID), playerID: Number(playerID), stat: result.stats.find(row => String(row.player?.id) === playerID) || null, updatedAt: result.updatedAt, stale: result.stale, provider: "BALLDONTLIE" });
   } catch (error) {
     return json({ success: false, error: error.status === 403 ? "Live player stats are not included in the connected stats plan." : "Current-game stats are temporarily unavailable. Retrying shortly." }, 503);
@@ -138,9 +139,47 @@ async function liveGameStats(request, env, ctx) {
   const gameID = new URL(request.url).searchParams.get("game_id");
   if (!/^[1-9]\d{0,11}$/.test(gameID || "")) return json({ success: false, error: "Choose a valid game." }, 400);
   try {
-    const result = await fetchLiveBoxScore(request, gameID, env, ctx);
+    const result = new URL(request.url).searchParams.get("sport") === "NBA" ? await nbaBoxScore(request, gameID, env, ctx) : await fetchLiveBoxScore(request, gameID, env, ctx);
     return json({ success: true, gameID: Number(gameID), stats: result.stats, updatedAt: result.updatedAt, stale: result.stale, provider: "BALLDONTLIE" });
   } catch (error) {
     return json({ success: false, error: error.status === 403 ? "Live player stats are not included in the connected stats plan." : "Live player stats are temporarily unavailable. Retrying shortly." }, 503);
   }
+}
+
+// NBA live tracker. Scores and clocks come from the games feed; player lines
+// from BALLDONTLIE's live box scores (one shared request covers every game in
+// progress), falling back to per-game stats once a game is final.
+const nbaClock = time => { const m = String(time || "").match(/\b(\d{1,2}:\d{2})\b/); return m ? m[1] : null; };
+async function nbaLiveGames(request, env, ctx) {
+  return liveSnapshot(request, "nba-live-games-v1", 8000, async () => {
+    const query = new URLSearchParams({ per_page: "100" });
+    for (const offset of [-1, 0, 1]) query.append("dates[]", new Date(Date.now() + offset * 86400000).toISOString().slice(0, 10));
+    const payload = await nbaRequest(`/games?${query}`, env.BALLDONTLIE_API_KEY);
+    const games = (payload.data || []).map(game => {
+      const tip = nbaTipoff(game), state = nbaGameState(game);
+      return { id: game.id, startsAt: tip ? new Date(tip).toISOString() : game.date, away: game.visitor_team, home: game.home_team,
+        awayScore: state === "scheduled" ? null : game.visitor_team_score ?? null, homeScore: state === "scheduled" ? null : game.home_team_score ?? null,
+        state, status: game.status || "", period: Number(game.period) || null, clock: nbaClock(game.time), halftime: /half/i.test(String(game.status || "")) };
+    });
+    return { games, provider: "BALLDONTLIE" };
+  }, ctx);
+}
+async function nbaBoxScore(request, gameID, env, ctx) {
+  return liveSnapshot(request, `nba-live-boxscore-v1-${gameID}`, 6000, async () => {
+    const live = await liveSnapshot(request, "nba-live-boxscores-v1", 6000, async () => ({ games: (await nbaRequest("/box_scores/live", env.BALLDONTLIE_API_KEY)).data || [] }), ctx);
+    const board = await nbaLiveGames(request, env, ctx), game = (board.games || []).find(g => String(g.id) === String(gameID));
+    const box = game && (live.games || []).find(b => String(b.home_team?.id) === String(game.home?.id) && String(b.visitor_team?.id) === String(game.away?.id));
+    if (box) return { stats: ["home_team", "visitor_team"].flatMap(side => (box[side]?.players || []).map(row => ({ ...row, team: { ...box[side], players: undefined }, game: { id: Number(gameID) } }))) };
+    const stats = [], visited = new Set(); let cursor = null;
+    for (let page = 0; page < 4; page++) {
+      const params = new URLSearchParams({ per_page: "100", "game_ids[]": String(gameID) });
+      if (cursor) params.set("cursor", String(cursor));
+      const payload = await nbaRequest(`/stats?${params}`, env.BALLDONTLIE_API_KEY);
+      stats.push(...(payload.data || []).filter(row => String(row.game?.id) === String(gameID)));
+      cursor = payload.meta?.next_cursor;
+      if (!cursor || visited.has(cursor)) return { stats };
+      visited.add(cursor);
+    }
+    throw new Error("Incomplete box score");
+  }, ctx);
 }

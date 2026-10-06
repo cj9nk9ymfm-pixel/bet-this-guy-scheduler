@@ -1825,6 +1825,15 @@ if(typeof fetch==='function')window.btgCountVisit?.('view:home');
     pr:{label:'PR',name:'Punt returns',k:'punt_returns'},prYds:{label:'PR Yds',name:'Punt return yards',k:'punt_return_yards'},
     retTd:{label:'Ret TD',name:'Return TD',get:row=>sumOf(row,['kick_return_touchdowns','punt_return_touchdowns'])},
     td:{label:'TD',name:'Total TD',get:row=>sumOf(row,['rushing_touchdowns','receiving_touchdowns','kick_return_touchdowns','punt_return_touchdowns','interception_touchdowns','fumbles_touchdowns'])},
+    // NBA (BALLDONTLIE NBA box score). Minutes arrive as "34" or "34:12".
+    pts:{label:'PTS',name:'Points',k:'pts'},reb:{label:'REB',name:'Rebounds',k:'reb'},nAst:{label:'AST',name:'Assists',k:'ast'},
+    fg3m:{label:'3PM',name:'3-pointers made',k:'fg3m'},fg3a:{label:'3PA',name:'3-point attempts',k:'fg3a'},fg3Pct:{label:'3P %',name:'3-point %',ratio:['fg3m','fg3a',100],suffix:'%'},
+    nFgm:{label:'FGM',name:'Field goals made',k:'fgm'},nFga:{label:'FGA',name:'Field goal attempts',k:'fga'},nFgPct:{label:'FG %',name:'Field goal %',ratio:['nFgm','nFga',100],suffix:'%'},
+    ftm:{label:'FTM',name:'Free throws made',k:'ftm'},fta:{label:'FTA',name:'Free throw attempts',k:'fta'},ftPct:{label:'FT %',name:'Free throw %',ratio:['ftm','fta',100],suffix:'%'},
+    oreb:{label:'OREB',name:'Offensive rebounds',k:'oreb'},dreb:{label:'DREB',name:'Defensive rebounds',k:'dreb'},
+    stl:{label:'STL',name:'Steals',k:'stl'},blk:{label:'BLK',name:'Blocks',k:'blk'},tov:{label:'TOV',name:'Turnovers',k:'turnover'},
+    min:{label:'MIN',name:'Minutes',kind:'avg',get:row=>{const m=String(row?.min??'').match(/^(\d+)(?::(\d+))?$/);return m?Math.round(10*(+m[1]+(+m[2]||0)/60))/10:null}},
+    pra:{label:'PRA',name:'Points + rebounds + assists',get:row=>{const v=['pts','reb','ast'].map(k=>get(row,k));return v.every(x=>x!==null)?v[0]+v[1]+v[2]:null}},
   };
   const statValue=(key,row)=>{const s=S[key];return s.get?s.get(row):get(row,s.k)};
   const GROUPS={
@@ -1836,6 +1845,8 @@ if(typeof fetch==='function')window.btgCountVisit?.('view:home');
     punting:{title:'Punting',stats:['punts','puntYds','puntAvg','in20','tb','puntLong']},
     returns:{title:'Returns',stats:['kr','krYds','pr','prYds','retTd']},
     ballSecurity:{title:'Ball security',stats:['fum','fumLost']},
+    nbaScoring:{title:'Scoring',stats:['pts','nFgm','nFga','nFgPct','fg3m','fg3a','fg3Pct','ftm','fta','ftPct']},
+    nbaOther:{title:'Rebounds, assists & more',stats:['reb','oreb','dreb','nAst','stl','blk','tov','min']},
   };
   const ROLES={
     QB:{name:'Quarterback',groups:['passing','rushing','ballSecurity'],tiles:['passYds','passTd','int','cmpPct'],log:['cmpAtt','passYds','passTd','int','rating','rushYds']},
@@ -1845,10 +1856,12 @@ if(typeof fetch==='function')window.btgCountVisit?.('view:home');
     DEF:{name:'Defense',groups:['defense','returns'],tiles:['tkl','sck','defInt','pd'],log:['tkl','solo','tfl','sck','qbHits','defInt','pd']},
     K:{name:'Kicker',groups:['kicking'],tiles:['fgPct','fgm','fgLong','kPts'],log:['fgMA','fgLong','xp','kPts']},
     P:{name:'Punter',groups:['punting'],tiles:['puntAvg','punts','in20','puntLong'],log:['punts','puntYds','in20','puntLong']},
+    NBA:{name:'',groups:['nbaScoring','nbaOther'],tiles:['pts','reb','nAst','fg3m'],log:['min','pts','reb','nAst','fg3m','pra']},
   };
   // Combined columns used only in the game log.
   const LOGCOL={cmpAtt:{label:'C/Att',cell:row=>{const c=get(row,'passing_completions'),a=get(row,'passing_attempts');return c===null&&a===null?null:`${c??0}/${a??0}`}},fgMA:{label:'FG',cell:row=>{const m=get(row,'field_goals_made'),a=get(row,'field_goal_attempts');return m===null&&a===null?null:`${m??0}/${a??0}`}}};
-  function roleOf(player,rows){
+  function roleOf(player,rows,p){
+    if(String(p?.sport||'').toUpperCase()==='NBA'||rows.some(x=>get(x.row,'pts')!==null&&get(x.row,'reb')!==null))return 'NBA';
     const ab=String(player?.position_abbreviation||'').toUpperCase(),full=String(player?.position||'').toUpperCase();
     if(ab==='QB'||/QUARTERBACK/.test(full))return 'QB';
     if(['RB','HB','FB'].includes(ab)||/RUNNING BACK|FULLBACK/.test(full))return 'RB';
@@ -1903,8 +1916,8 @@ if(typeof fetch==='function')window.btgCountVisit?.('view:home');
     let odds='';try{odds=formatOdds(recommendedOdds(p))}catch{}
     return `<section class="pp-card"><div class="pp-bethead"><div><h3 class="pp-h">This bet</h3><p class="pp-bet">${esc(betName(p))}</p></div>${odds?`<b class="pp-odds">${esc(odds)}</b>`:''}</div>
       ${chart(p,l10)}<p class="pp-legend"><i></i> Line ${betLine(p)} <span class="hit"></span> Cleared <span class="miss"></span> Missed</p>
-      <div class="pp-kpis"><div><span>Last 10</span><strong>${hits(l10)}/${l10.length}</strong></div><div><span>Last 5</span><strong>${hits(l5)}/${l5.length}</strong></div><div><span>L10 avg</span><strong>${avg(l10)}</strong></div><div><span>${cur||'Season'} avg</span><strong>${avg(season)}</strong></div></div>
-      ${vs.length?`<div class="pp-vs"><p>Last ${Math.min(vs.length,5)} vs ${esc(opp)} <b>${hits(vs.slice(0,5))} of ${Math.min(vs.length,5)} cleared</b></p><div>${vs.slice(0,5).map(x=>`<span class="${x.hit===true?'hit':x.hit===false?'miss':''}"><b>${fmt(x.v)}</b>${esc(String(x.info.season||''))}</span>`).join('')}</div></div>`:''}
+      <div class="pp-kpis"><div><span>Last 10</span><strong>${hits(l10)}/${l10.length}</strong></div><div><span>Last 5</span><strong>${hits(l5)}/${l5.length}</strong></div><div><span>L10 avg</span><strong>${avg(l10)}</strong></div><div><span>${cur&&!nbaView?cur:'Season'} avg</span><strong>${avg(season)}</strong></div></div>
+      ${vs.length?`<div class="pp-vs"><p>Last ${Math.min(vs.length,5)} vs ${esc(opp)} <b>${hits(vs.slice(0,5))} of ${Math.min(vs.length,5)} cleared</b></p><div>${vs.slice(0,5).map(x=>`<span class="${x.hit===true?'hit':x.hit===false?'miss':''}"><b>${fmt(x.v)}</b>${esc(nbaView?shortDate(x.date):String(x.info.season||''))}</span>`).join('')}</div></div>`:''}
     </section>`;
   }
   function seasonBlock(role,rows,season,seasons){
@@ -1912,7 +1925,7 @@ if(typeof fetch==='function')window.btgCountVisit?.('view:home');
     const r=ROLES[role],groups=r.groups.filter((g,i)=>i===0||GROUPS[g].stats.some(k=>{const t=seasonTotals(list,k).total;return t!==null&&t!==0}));
     const tile=k=>{const t=seasonTotals(list,k),s=S[k];return `<div><strong>${fmt(t.total,s.suffix)}</strong><span>${esc(s.name)}</span>${t.perGame!==null&&t.perGame!==undefined&&!t.ratio&&!t.avg?`<small>${fmt(t.perGame)} per game</small>`:''}</div>`};
     const table=g=>`<table class="pp-table"><caption>${GROUPS[g].title}</caption><thead><tr><th scope="col">Stat</th><th scope="col">Total</th><th scope="col">Per game</th></tr></thead><tbody>${GROUPS[g].stats.map(k=>{const t=seasonTotals(list,k),s=S[k];if(t.total===null)return '';return `<tr><th scope="row">${esc(s.name)}</th><td>${fmt(t.total,s.suffix)}</td><td>${t.perGame===null||t.perGame===undefined?'—':fmt(t.perGame)}</td></tr>`}).join('')}</tbody></table>`;
-    return `<section class="pp-card"><div class="pp-seasonhead"><h3 class="pp-h">Season stats</h3><div class="pp-seg" role="group" aria-label="Season">${seasons.map(y=>`<button type="button" data-pp-season="${y}" aria-pressed="${y===season}">${y}</button>`).join('')}</div></div>
+    return `<section class="pp-card"><div class="pp-seasonhead"><h3 class="pp-h">Season stats</h3><div class="pp-seg" role="group" aria-label="Season">${seasons.map(y=>`<button type="button" data-pp-season="${y}" aria-pressed="${y===season}">${seasonText(y)}</button>`).join('')}</div></div>
       <p class="pp-note">${list.length} game${list.length===1?'':'s'}${post?` (${reg} regular season, ${post} playoff)`:''}</p>
       ${list.length?`<div class="pp-tiles">${r.tiles.map(tile).join('')}</div>${groups.map(table).join('')}`:'<p class="pp-note">No games this season yet.</p>'}</section>`;
   }
@@ -1920,8 +1933,8 @@ if(typeof fetch==='function')window.btgCountVisit?.('view:home');
     const cols=ROLES[role].log.map(k=>LOGCOL[k]||{label:S[k].label,cell:row=>{const v=statValue(k,row);return v===null?null:fmt(v)}});
     const seasons=[...new Set(rows.map(x=>gameInfo(x.row,player).season))],shown=showAll?seasons:seasons.slice(0,2);
     const line=betLine(p),betHead=p.binary||/anytime|scorer/i.test(p.market||'')?'Any TD':`${p.side==='Under'?'U':'O'} ${line}`;
-    const body=shown.map(season=>`<tr class="pp-season"><th colspan="${cols.length+3}" scope="colgroup">${season} season</th></tr>`+rows.filter(x=>gameInfo(x.row,player).season===season).map(x=>{const i=gameInfo(x.row,player),v=betMetric(p,x.row),hit=v===null?null:hitAgainstLine({...p,line},v);
-      return `<tr><th scope="row"><b>${i.post?'Playoffs':`Wk ${i.week??'—'}`}</b><small>${esc(shortDate(x.date))}</small></th><td class="pp-opp">${i.at} ${esc(i.opp)}<small class="${i.result==='W'?'w':i.result==='L'?'l':''}">${i.result} ${i.score}</small></td><td class="pp-betcol ${hit===true?'hit':hit===false?'miss':''}">${v===null?'—':fmt(v)}</td>${cols.map(c=>`<td>${c.cell(x.row)??'—'}</td>`).join('')}</tr>`}).join('')).join('');
+    const body=shown.map(season=>`<tr class="pp-season"><th colspan="${cols.length+3}" scope="colgroup">${seasonText(season)} season</th></tr>`+rows.filter(x=>gameInfo(x.row,player).season===season).map(x=>{const i=gameInfo(x.row,player),v=betMetric(p,x.row),hit=v===null?null:hitAgainstLine({...p,line},v);
+      return `<tr><th scope="row">${i.week===null&&!i.post?`<b>${esc(shortDate(x.date))}</b>`:`<b>${i.post?'Playoffs':`Wk ${i.week??'—'}`}</b><small>${esc(shortDate(x.date))}</small>`}</th><td class="pp-opp">${i.at} ${esc(i.opp)}<small class="${i.result==='W'?'w':i.result==='L'?'l':''}">${i.result} ${i.score}</small></td><td class="pp-betcol ${hit===true?'hit':hit===false?'miss':''}">${v===null?'—':fmt(v)}</td>${cols.map(c=>`<td>${c.cell(x.row)??'—'}</td>`).join('')}</tr>`}).join('')).join('');
     return `<section class="pp-card pp-logcard"><div class="pp-scroll" tabindex="0" role="region" aria-label="Game log, scrolls sideways"><table class="pp-log"><thead><tr><th scope="col">Game</th><th scope="col">Opp</th><th scope="col" class="pp-betcol">${esc(betHead)}</th>${cols.map(c=>`<th scope="col">${esc(c.label)}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div>
       <p class="pp-note">Green and red show whether each game cleared this bet’s line. Regular season and playoffs; preseason excluded.</p>${seasons.length>shown.length?`<button type="button" class="pp-more" data-pp-more>Show ${seasons.slice(2).join(' and ')}</button>`:''}</section>`;
   }
@@ -1938,10 +1951,12 @@ if(typeof fetch==='function')window.btgCountVisit?.('view:home');
     return `<header class="pp-head"><div class="pp-photo"><img src="/api/player-photo?name=${encodeURIComponent(p.player)}" alt="" onerror="this.remove()"><span>${initials}</span></div><div><h2 id="ppName">${name}</h2><p class="pp-sub">${[pos,player?.jersey_number?`#${esc(player.jersey_number)}`:'',esc(team)].filter(Boolean).join(' · ')}</p>${bio?`<p class="pp-bio">${bio}</p>`:''}</div></header>
       ${p.team?`<p class="pp-next"><span>${Date.parse(p.startsAt)<Date.now()?'Game':'Next game'}</span> ${esc(compactGameName(String(p.team).replace(' · ',' ')))}${when?` · ${esc(when)}`:''}</p>`:''}`;
   }
+  // NBA seasons span two years (2025-26); NFL seasons are one.
+  let nbaView=false,seasonText=y=>String(y);
   function render(p,payload){
     const host=$('#playerProfile');if(!host)return;
     const player=payload.player||{},rows=(payload.stats||[]).map(row=>({row,date:statDate(row)})).sort((a,b)=>(b.date?.getTime()||0)-(a.date?.getTime()||0));
-    const role=roleOf(player,rows),seasons=[...new Set(rows.map(x=>gameInfo(x.row,player).season).filter(v=>v!==null))].sort((a,b)=>b-a);
+    const role=roleOf(player,rows,p);nbaView=role==='NBA';seasonText=nbaView?y=>`${y}-${String((Number(y)+1)%100).padStart(2,'0')}`:y=>String(y);const seasons=[...new Set(rows.map(x=>gameInfo(x.row,player).season).filter(v=>v!==null))].sort((a,b)=>b-a);
     const view={tab:'overview',season:seasons[0],all:false},count=props.filter(q=>q.player===p.player).length;
     const draw=()=>{
       const panel=view.tab==='log'?logBlock(p,role,rows,player,view.all):view.tab==='props'?propsBlock(p):(rows.length?betBlock(p,rows,player)+seasonBlock(role,rows,view.season,seasons):`<section class="pp-card"><p class="pp-note">No completed NFL games are available for this player yet.</p></section>`);

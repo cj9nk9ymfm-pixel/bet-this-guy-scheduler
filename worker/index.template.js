@@ -354,6 +354,30 @@ async function bdlRequest(path, apiKey, signal) {
   return JSON.parse(body);
 }
 
+// BALLDONTLIE serves the NBA under /v1 (its original API); newer sports use
+// /<sport>/v1. Try /v1 first and fall back to /nba/v1 once if that 404s.
+let nbaPrefix = null;
+async function nbaRequest(path, apiKey, signal) {
+  if (nbaPrefix) return bdlRequest(`${nbaPrefix}${path}`, apiKey, signal);
+  try { const payload = await bdlRequest(`/v1${path}`, apiKey, signal); nbaPrefix = "/v1"; return payload; }
+  catch (error) { if (error.status !== 404) throw error; const payload = await bdlRequest(`/nba/v1${path}`, apiKey, signal); nbaPrefix = "/nba/v1"; return payload; }
+}
+// The same request for any sport: NBA through nbaRequest, others by slug.
+const sportRequest = (sport, path, apiKey, signal) => sport === "NBA" ? nbaRequest(path, apiKey, signal) : bdlRequest(`/${BDL_SPORTS[sport].slug}/v1${path}`, apiKey, signal);
+// NBA game status: "Final", a quarter ("3rd Qtr", "Half", "OT"), or the
+// scheduled tip-off time.
+function nbaGameState(game) {
+  const text = String(game?.status || "");
+  if (/final/i.test(text)) return "final";
+  if (/postponed/i.test(text)) return "postponed";
+  if (/cancel/i.test(text)) return "canceled";
+  if (/qtr|quarter|half|\bOT\b|overtime/i.test(text) || (Number(game?.period) > 0 && !/^\d{4}-\d{2}-\d{2}T/.test(text) && !/\b(am|pm)\b/i.test(text))) return "in_progress";
+  return "scheduled";
+}
+const nbaTipoff = game => { const t = Date.parse(game?.datetime || (/^\d{4}-\d{2}-\d{2}T/.test(String(game?.status || "")) ? game.status : "") || ""); return Number.isFinite(t) ? t : null; };
+// NBA seasons are named for the year they start (2026-27 is 2026).
+const nbaSeason = (date = new Date()) => date.getUTCMonth() >= 8 ? date.getUTCFullYear() : date.getUTCFullYear() - 1;
+
 async function playerStats(request, env, ctx) {
   if (!env.BALLDONTLIE_API_KEY) return json({ success: false, error: "Player stats are not connected." }, 503);
   const url = new URL(request.url);
@@ -372,7 +396,7 @@ async function playerStats(request, env, ctx) {
     // Search on the surname and use selectPlayer() to resolve the full name.
     const nameParts = name.replace(/\b(Jr\.?|Sr\.?|II|III|IV)\b/gi, "").trim().split(/\s+/).filter(Boolean);
     const search = new URLSearchParams({ search: nameParts.at(-1) || name, per_page: "25" });
-    const playerPayload = await bdlRequest(`/${config.slug}/v1/players?${search}`, env.BALLDONTLIE_API_KEY);
+    const playerPayload = await sportRequest(sportLabel, `/players?${search}`, env.BALLDONTLIE_API_KEY);
     const player = selectPlayer(Array.isArray(playerPayload?.data) ? playerPayload.data : [], name, team);
     if (!player) return json({ success: false, error: "This player could not be matched to the stats feed yet." }, 404);
     let statPayload;
@@ -390,12 +414,16 @@ async function playerStats(request, env, ctx) {
         query.append("seasons[]", String(season));
         query.append("seasons[]", String(season - 1));
         query.append("seasons[]", String(season - 2));
+      } else if (sportLabel === "NBA") {
+        const season = nbaSeason();
+        query.append("seasons[]", String(season));
+        query.append("seasons[]", String(season - 1));
       }
       const pages=[];let cursor=null;
       for(let page=0;page<2;page++){
         const pageQuery=new URLSearchParams(query);
         if(cursor)pageQuery.set('cursor',String(cursor));
-        const response=await bdlRequest(`${config.stats}?${pageQuery}`, env.BALLDONTLIE_API_KEY);
+        const response=sportLabel==='NBA'?await nbaRequest(`/stats?${pageQuery}`, env.BALLDONTLIE_API_KEY):await bdlRequest(`${config.stats}?${pageQuery}`, env.BALLDONTLIE_API_KEY);
         pages.push(response);
         cursor=response?.meta?.next_cursor||response?.meta?.nextCursor||null;
         if(!cursor)break;
@@ -405,7 +433,8 @@ async function playerStats(request, env, ctx) {
       statPayload = await bdlRequest(`/${config.slug}/v1/players/${encodeURIComponent(player.id)}/season_stats`, env.BALLDONTLIE_API_KEY);
     }
     const rawStats = Array.isArray(statPayload?.data) ? statPayload.data : statPayload?.data ? [statPayload.data] : Array.isArray(statPayload) ? statPayload : [];
-    const stats = sportLabel === "NFL" ? rawStats.filter(row => {
+    // NBA: completed games only, newest first, and only games the player played.
+    const stats = sportLabel === "NBA" ? rawStats.filter(row => nbaGameState(row?.game) === "final" && String(row?.min ?? "").replace(/:.*/, "") !== "0" && String(row?.min ?? "") !== "").sort((a, b) => Date.parse(b?.game?.date || "") - Date.parse(a?.game?.date || "")) : sportLabel === "NFL" ? rawStats.filter(row => {
       const game = row?.game || {};
       // Ongoing games belong in Current Game, never the historical hit rate.
       if (game.status_state && game.status_state !== "final") return false;
@@ -511,19 +540,23 @@ async function recordGameBoxscore(record,env,signal,cache){
   const time=Date.parse(record.gameTime||''),teams=String(record.team||'').split(/\s*·\s*(?:@|vs)\s*/).map(normalizedName);
   if(!Number.isFinite(time)||teams.length!==2||teams.some(team=>!team))return undefined;
   if(time>Date.now())return null;
-  const day=new Date(time).toISOString().slice(0,10),key=`scoreboard|${day}`;
-  if(!cache.has(key))cache.set(key,bdlRequest(`/nfl/v1/games?${new URLSearchParams({'dates[]':day,per_page:'100'})}`,env.BALLDONTLIE_API_KEY,signal));
+  const nba=String(record.sport||'').toUpperCase()==='NBA',stateOf=nba?nbaGameState:nflGameState;
+  const day=new Date(time).toISOString().slice(0,10),key=`scoreboard|${nba?'nba':'nfl'}|${day}`;
+  // NBA games are dated in US Eastern time, so a late tip-off (after 8pm ET)
+  // falls on the previous UTC day: ask for both.
+  if(!cache.has(key))cache.set(key,nba?nbaRequest(`/games?${new URLSearchParams([['dates[]',new Date(time-86400000).toISOString().slice(0,10)],['dates[]',day],['per_page','100']])}`,env.BALLDONTLIE_API_KEY,signal):bdlRequest(`/nfl/v1/games?${new URLSearchParams({'dates[]':day,per_page:'100'})}`,env.BALLDONTLIE_API_KEY,signal));
   const payload=await cache.get(key);
-  const matches=(payload?.data||[]).filter(game=>Math.abs(Date.parse(game.date)-time)<6*3600000&&[game.home_team,game.visitor_team].every(team=>teams.includes(normalizedName(team?.full_name))));
+  const sameTeams=game=>[game.home_team,game.visitor_team].every(team=>teams.includes(normalizedName(team?.full_name)));
+  const matches=(payload?.data||[]).filter(game=>sameTeams(game)&&(nba?Math.abs((nbaTipoff(game)??Date.parse(`${game.date}T23:00:00Z`))-time)<18*3600000:Math.abs(Date.parse(game.date)-time)<6*3600000));
   if(matches.length!==1)return null;
   const game=matches[0];
-  if(!['final','in_progress'].includes(nflGameState(game)))return null;
+  if(!['final','in_progress'].includes(stateOf(game)))return null;
   const boxKey=`boxscore|${game.id}`;
   if(!cache.has(boxKey))cache.set(boxKey,(async()=>{
     const rows=[],seen=new Set();let cursor=null;
     for(let page=0;page<10;page++){
       const params=new URLSearchParams({'game_ids[]':String(game.id),per_page:'100'});if(cursor)params.set('cursor',String(cursor));
-      const data=await bdlRequest(`/nfl/v1/stats?${params}`,env.BALLDONTLIE_API_KEY,signal);
+      const data=nba?await nbaRequest(`/stats?${params}`,env.BALLDONTLIE_API_KEY,signal):await bdlRequest(`/nfl/v1/stats?${params}`,env.BALLDONTLIE_API_KEY,signal);
       rows.push(...(data.data||[]).filter(row=>String(row.game?.id)===String(game.id)));
       cursor=data.meta?.next_cursor;if(!cursor)return rows;if(seen.has(cursor))break;seen.add(cursor);
     }
@@ -534,8 +567,8 @@ async function recordGameBoxscore(record,env,signal,cache){
   // Feeds disagree on first names (Andres vs Andy). Within one game, a unique
   // last name plus first initial is the same player.
   if(!found.length)found=rows.filter(row=>sameInitialAndSurname(playerLabel(row.player),record.player));
-  if(found.length!==1)return {game,scoreboardFinal:nflGameState(game)==='final',scoreboardState:nflGameState(game),missingPlayerStats:true,boxMatches:found.length,boxRowCount:rows.length};
-  return {...found[0],scoreboardFinal:nflGameState(game)==='final',scoreboardState:nflGameState(game)};
+  if(found.length!==1)return {game,scoreboardFinal:stateOf(game)==='final',scoreboardState:stateOf(game),missingPlayerStats:true,boxMatches:found.length,boxRowCount:rows.length};
+  return {...found[0],scoreboardFinal:stateOf(game)==='final',scoreboardState:stateOf(game)};
 }
 
 async function recordPlayerStats(record, env, signal, cache=new Map()) {
@@ -546,7 +579,7 @@ async function recordPlayerStats(record, env, signal, cache=new Map()) {
   if (!config?.stats || !record?.player || !record?.gameTime) return null;
   const nameParts = String(record.player).replace(/\b(Jr\.?|Sr\.?|II|III|IV)\b/gi, "").trim().split(/\s+/).filter(Boolean);
   const search = new URLSearchParams({ search: nameParts.at(-1) || record.player, per_page: "25" });
-  const playerPayload = await bdlRequest(`/${config.slug}/v1/players?${search}`, env.BALLDONTLIE_API_KEY, signal);
+  const playerPayload = await sportRequest(sport, `/players?${search}`, env.BALLDONTLIE_API_KEY, signal);
   const player = selectPlayer(Array.isArray(playerPayload?.data) ? playerPayload.data : [], record.player, record.team || "");
   if (!player) return gameRow===undefined?null:gameRow;
   if(gameRow?.missingPlayerStats)return {...gameRow,player,player_id:player.id};
@@ -559,13 +592,15 @@ async function recordPlayerStats(record, env, signal, cache=new Map()) {
     const season = now.getUTCMonth() < 2 ? now.getUTCFullYear() - 1 : now.getUTCFullYear();
     query.append("seasons[]", String(season));
     query.append("seasons[]", String(season - 1));
+  } else if (sport === "NBA") {
+    query.append("seasons[]", String(nbaSeason(new Date(record.gameTime))));
   }
   const pages = [];
   let cursor = null;
   for (let page = 0; page < 6; page += 1) {
     const pageQuery = new URLSearchParams(query);
     if (cursor) pageQuery.set("cursor", String(cursor));
-    const payload = await bdlRequest(`${config.stats}?${pageQuery}`, env.BALLDONTLIE_API_KEY, signal);
+    const payload = sport === "NBA" ? await nbaRequest(`/stats?${pageQuery}`, env.BALLDONTLIE_API_KEY, signal) : await bdlRequest(`${config.stats}?${pageQuery}`, env.BALLDONTLIE_API_KEY, signal);
     pages.push(payload);
     cursor = payload?.meta?.next_cursor || payload?.meta?.nextCursor || null;
     if (!cursor) break;
