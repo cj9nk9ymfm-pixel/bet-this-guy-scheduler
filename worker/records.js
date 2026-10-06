@@ -84,6 +84,8 @@ async function verifiedRecordStatements(records,request,env,ctx) {
 // Tuesday noon UTC keeps Monday-night NFL games in the preceding slate.
 const OFFICIAL_START=Date.parse('2026-09-22T12:00:00Z');
 const OFFICIAL_CAPS={props:100,reasonable:15,swing:10,moonshot:5};
+// Picks can lock any time before kickoff in the official week.
+const OFFICIAL_HORIZON=8*86400000,LOW_ODDS_CREDITS=250000;
 function officialWeek(time){const d=new Date(Number(time)-12*3600000);d.setUTCHours(0,0,0,0);d.setUTCDate(d.getUTCDate()-(d.getUTCDay()+5)%7);return d.toISOString().slice(0,10)}
 const officialPlayer=leg=>`${leg.gameId}|${normalizedName(leg.player)}`;
 // stats (optional) collects what a run saw, for the pick_runs log.
@@ -91,7 +93,7 @@ function officialCandidates(events,now=Date.now(),stats={}){
   const result=[];
   for(const event of events){
     const kickoff=Date.parse(event.commence_time);
-    if(kickoff<OFFICIAL_START||kickoff<=now+5*60000||kickoff>now+24*3600000)continue;
+    if(kickoff<OFFICIAL_START||kickoff<=now+5*60000)continue;
     const groups=new Map();
     for(const book of event.bookmakers||[])for(const market of book.markets||[]){
       const label=recordLabels[market.key],updated=Date.parse(market.last_update||book.last_update||'');
@@ -242,7 +244,7 @@ function lineShadowCandidates(events,now=Date.now()){
   const best=new Map();
   for(const event of events){
     const kickoff=Date.parse(event.commence_time);
-    if(kickoff<OFFICIAL_START||kickoff<=now+5*60000||kickoff>now+24*3600000)continue;
+    if(kickoff<OFFICIAL_START||kickoff<=now+5*60000)continue;
     const eventID=event.eventID||`NFL--${event.id}`;
     for(const g of BTGLine.rate(event,now)){
       const pick=g.offers.filter(o=>OFFICIAL_BOOKS.has(o.key)&&o.edge>=LINE_SHADOW_MIN).sort((a,b)=>b.edge-a.edge)[0];
@@ -258,7 +260,7 @@ async function recordLineShadow(env,events,now=Date.now()){
   if(!env.DB)return {logged:0};
   const stamp=new Date(now).toISOString(),rows=lineShadowCandidates(events,now);
   const statements=rows.map(r=>env.DB.prepare('INSERT OR IGNORE INTO line_shadow (id,event_id,player,market_key,market,side,line,odds,book,alt,main_line,books,edge,fair,game_time,logged_at,model_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(r.id,r.event_id,r.player,r.market_key,r.market,r.side,r.line,r.odds,r.book,r.alt,r.main_line,r.books,r.edge,r.fair,r.game_time,stamp,r.model_json));
-  const open=(await env.DB.prepare('SELECT id,event_id,player,market_key,side,line FROM line_shadow WHERE game_time>? AND game_time<=?').bind(stamp,new Date(now+24*3600000).toISOString()).all()).results||[];
+  const open=(await env.DB.prepare('SELECT id,event_id,player,market_key,side,line FROM line_shadow WHERE game_time>? AND game_time<=?').bind(stamp,new Date(now+OFFICIAL_HORIZON).toISOString()).all()).results||[];
   if(open.length){
     const curves=new Map();for(const event of events){const eventID=event.eventID||`NFL--${event.id}`;for(const g of BTGLine.rate(event,now))curves.set(`${eventID}|${g.player}|${g.marketKey}`,g)}
     for(const r of open){const g=curves.get(`${r.event_id}|${r.player}|${r.market_key}`);if(!g)continue;const over=BTGLine.overChance(g.model,Number(r.line));statements.push(env.DB.prepare('UPDATE line_shadow SET close_fair=?,close_main=?,close_at=? WHERE id=?').bind(+(r.side==='Over'?over:1-over).toFixed(4),g.main,stamp,r.id))}
@@ -272,14 +274,17 @@ async function publishOfficialPicks(request,env,ctx){
     const now=Date.now(),week=officialWeek(now),prefix=`official|${week}|`;
     const schedule=await futureSchedule(new Request(new URL('/api/schedule',request.url)),env,ctx);if(!schedule.ok)throw new Error('Official schedule unavailable');
     const body=await schedule.json();
-    const events=(body.data||[]).filter(e=>{const t=Date.parse(e.status?.startsAt);return t>now+5*60000&&t<=now+24*3600000&&officialWeek(t)===week}).slice(0,16);
+    // Every game left this week is eligible until 5 minutes before kickoff,
+    // unless the odds plan runs low (then only the next 24 hours).
+    const horizon=oddsCreditsLeft!==null&&oddsCreditsLeft<LOW_ODDS_CREDITS?24*3600000:OFFICIAL_HORIZON;
+    const events=(body.data||[]).filter(e=>{const t=Date.parse(e.status?.startsAt);return t>now+5*60000&&t<=now+horizon&&officialWeek(t)===week}).slice(0,16);
     const boards=[];let failedBoards=0;
     for(let i=0;i<events.length;i+=4){const results=await Promise.allSettled(events.slice(i,i+4).map(async e=>{const url=new URL('/api/event',request.url);url.searchParams.set('eventID',e.eventID);const r=await eventProps(new Request(url),env,ctx);if(!r.ok||r.headers.get('x-feed-cache')==='stale')throw new Error('Official board unavailable');return (await r.json()).data||[]}));for(const r of results)if(r.status==='fulfilled')boards.push(...r.value);else failedBoards++}
     const existing=await env.DB.prepare('SELECT * FROM public_recommendations WHERE id>=? AND id<?').bind(prefix,prefix+'\uffff').all();
     const stats={};const candidates=officialCandidates(boards,Date.now(),stats);const posted=await writeOfficialPlan(officialPlan(candidates,existing.results||[],week,Date.now()),week,env);
     // One row per run: what the pick job saw and why it did or didn't post.
     await env.DB.batch([
-      env.DB.prepare('INSERT INTO pick_runs (at,games,boards,failed_boards,props,best_edge,near,qualified,capped,candidates,posted) VALUES (?,?,?,?,?,?,?,?,?,?,?)').bind(new Date(now).toISOString(),events.length,boards.length,failedBoards,stats.props||0,Number.isFinite(stats.best)?+stats.best.toFixed(2):null,stats.near||0,stats.qualified||0,stats.capped||0,candidates.length,Number(posted)||0),
+      env.DB.prepare('INSERT INTO pick_runs (at,games,boards,failed_boards,props,best_edge,near,qualified,capped,candidates,posted,credits_left) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)').bind(new Date(now).toISOString(),events.length,boards.length,failedBoards,stats.props||0,Number.isFinite(stats.best)?+stats.best.toFixed(2):null,stats.near||0,stats.qualified||0,stats.capped||0,candidates.length,Number(posted)||0,oddsCreditsLeft),
       env.DB.prepare('DELETE FROM pick_runs WHERE at<?').bind(new Date(now-30*86400000).toISOString())
     ]).catch(error=>console.warn('pick_runs_failed',error.message));
     if(posted){const alerts=sendPickAlerts(env).catch(error=>console.warn('pick_alerts_failed',error.message));if(ctx?.waitUntil)ctx.waitUntil(alerts);else await alerts}
@@ -397,7 +402,7 @@ function postKitTexts(kit){
   const days=[...new Set(upcoming.map(r=>day(r.game_time)))];
   const when=days.length===1?days[0]:kit.current.week?`Week ${kit.current.week}`:'this week';
   const recWeek=kit.previous?.summary&&(kit.previous.summary.wins+kit.previous.summary.losses)?kit.previous:kit.current,rs=recWeek.summary;
-  out.today={mode:'today',ready:upcoming.length>0,recordLabel:recWeek.week?`Week ${recWeek.week} record`:'Last week',recordValue:rs.wins+rs.losses?`${rs.wins}–${rs.losses}${rs.pushes?`–${rs.pushes}`:''} props`:'',recordProfit:rs.wins+rs.losses?rs.profit:null,empty:'No official picks are posted for upcoming games yet. Picks post up to 24 hours before kickoff; check back then.',eyebrow:`OFFICIAL PICKS · ${when.toUpperCase()}`,rows:upcoming,
+  out.today={mode:'today',ready:upcoming.length>0,recordLabel:recWeek.week?`Week ${recWeek.week} record`:'Last week',recordValue:rs.wins+rs.losses?`${rs.wins}–${rs.losses}${rs.pushes?`–${rs.pushes}`:''} props`:'',recordProfit:rs.wins+rs.losses?rs.profit:null,empty:'No official picks are posted for upcoming games yet. Picks post the moment a price qualifies, any day before kickoff.',eyebrow:`OFFICIAL PICKS · ${when.toUpperCase()}`,rows:upcoming,
     x:fit(`✅ Bet This Guy picks · ${when}`,upcoming.map(r=>line(r,true)),`Every pick locked before kickoff, graded in public 👇\n${site}`,275),
     threads:fit(`✅ Today’s Bet This Guy picks (${when})`,upcoming.map(r=>line(r,false)),`Every pick is locked before kickoff and graded in public, wins and losses. Free picks and alerts:\n${site}`,495),
     reddit:[`**Bet This Guy official picks: ${when}**`,'',...(upcoming.some(r=>r.kind==='prop')?['| Player | Bet | Odds | Book | Kickoff |','|---|---|---|---|---|',...upcoming.filter(r=>r.kind==='prop').map(r=>`| ${r.player} | ${bet(r,false)} | ${odds(r.odds)} | ${r.book||'—'} | ${time(r.game_time)} |`),'']:[]),...upcoming.filter(r=>r.kind==='parlay').map(r=>`**${r.legs.length}-leg parlay (${odds(r.combined_odds)}):** ${r.legs.map(l=>`${l.player} ${bet(l,false)}`).join(' + ')}`),...(upcoming.some(r=>r.kind==='parlay')?['']:[]),'How we pick: a prop only makes the list when the best sportsbook price beats the fair price from 3+ books. No projections or hype, just price.','',...(rs.wins+rs.losses?[`${recWeek.week?`Week ${recWeek.week}`:'Last week'}: ${rs.wins}–${rs.losses}${rs.pushes?`–${rs.pushes}`:''} on props, ${money(rs.profit)} at ${D}100 a pick${rs.tracked?`, ${rs.beat} of ${rs.tracked} beat the closing price`:''}.`,'']:[]),`Every pick is locked before kickoff and graded from box scores, wins and losses: ${kit.site}${kit.current.path}`].join('\n')};

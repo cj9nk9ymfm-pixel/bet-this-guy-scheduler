@@ -23,6 +23,9 @@ const events=Array.from({length:16},(_,g)=>({id:'game'+g,eventID:'NFL--game'+g,c
  context.rivers=JSON.parse(JSON.stringify(events));context.rivers.forEach(e=>{e.bookmakers[0].key='betrivers';e.bookmakers[0].title='BetRivers';e.bookmakers.push({...JSON.parse(JSON.stringify(e.bookmakers[1])),key:'fanatics',title:'Fanatics'})});
  assert.equal(run('officialCandidates(rivers).length'),0,'BetRivers price never becomes a pick');
  assert.ok(run('officialCandidates(events).every(c=>c.book==="DraftKings")'),'picks lock at a big-5 book');
+ // Games days away are eligible too: a qualifying price locks whenever it appears.
+ context.later=events.map(e=>({...e,commence_time:'2026-09-30T00:15:00Z'}));
+ assert.equal(run('officialCandidates(later).length'),160,'a game three days out can lock a pick');
  context.thin=events.map(e=>({...e,bookmakers:e.bookmakers.slice(0,2)}));assert.equal(run('officialCandidates(thin).length'),0);
  run("var candidates=officialCandidates(events),early=officialPlan(candidates,[],'2026-09-22')");
  assert.equal(run('early.filter(p=>p.tier!=="props").length'),0,'no parlays until the first leg is two hours from kickoff');

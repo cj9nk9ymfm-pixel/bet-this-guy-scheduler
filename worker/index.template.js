@@ -22,6 +22,8 @@ const STATIC = {
 const LOGO = __LOGO_PAYLOAD__;
 const ICONS = __ICONS_PAYLOAD__;
 const API_BASE = "https://api.the-odds-api.com/v4";
+// Credits left on the odds plan, from the last successful odds pull (null until one happens).
+let oddsCreditsLeft = null;
 // Only state-licensed US sportsbooks are used anywhere on the site: prices,
 // fair-price math, alerts and history. Offshore books (Bovada, BetOnline and
 // similar) are dropped as soon as odds arrive.
@@ -132,7 +134,11 @@ async function fetchEventOdds(sport, eventId, apiKey, expanded = false) {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const response = await fetch(`${API_BASE}/sports/${sport.key}/events/${eventId}/odds?${query}`, { headers: { accept: "application/json" } });
     const body = await response.text();
-    if (response.ok) return { ...licensedOnly(JSON.parse(body)), sport_label: sport.label, eventID: `${sport.label}--${eventId}` };
+    if (response.ok) {
+      const left = response.headers.get("x-requests-remaining");
+      if (left !== null && Number.isFinite(Number(left))) oddsCreditsLeft = Number(left);
+      return { ...licensedOnly(JSON.parse(body)), sport_label: sport.label, eventID: `${sport.label}--${eventId}` };
+    }
     const error = new Error(providerMessage(body, `Props are not available for this ${sport.label} game.`));
     error.status = response.status;
     lastError = error;
@@ -994,16 +1000,18 @@ async function scheduledMaintenance(request,env,ctx){
 
 // Cloudflare's own cron (wrangler.jsonc triggers) runs publishing and grading.
 // GitHub's schedule went hours without firing on a Sunday, so it now only
-// checks the site is up (and can force a run by hand). Same NFL windows and
-// cadence as before: publish every 15 minutes, grade every 10.
+// checks the site is up (and can force a run by hand). Picks are checked
+// every 10 minutes all week (lines move every day, and any qualifying price
+// locks right away); grading runs every 10 minutes in NFL windows.
 function nflActiveWindow(date){
   const weekday=(date.getUTCDay()+6)%7,hour=date.getUTCHours();
   return (weekday===2&&hour>=12)||weekday===3||(weekday===4&&hour<8)||(weekday===5&&hour>=12)||weekday===6||weekday===0||(weekday===1&&hour<8);
 }
 function cronJobs(date){
   const minute=date.getUTCMinutes();
-  if(nflActiveWindow(date))return [...(minute%15<5?['publish']:[]),...(minute%10<5?['grade']:[])];
-  return date.getUTCHours()%6===0&&minute<5?['publish','grade']:[];
+  const publish=minute%10<5?['publish']:[];
+  if(nflActiveWindow(date))return [...publish,...(minute%10<5?['grade']:[])];
+  return [...publish,...(date.getUTCHours()%6===0&&minute<5?['grade']:[])];
 }
 async function runCron(controller,env,ctx){
   const due=cronJobs(new Date(controller.scheduledTime));
