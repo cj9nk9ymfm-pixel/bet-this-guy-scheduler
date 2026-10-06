@@ -14,6 +14,10 @@ const events=Array.from({length:16},(_,g)=>({id:'game'+g,eventID:'NFL--game'+g,c
  assert.equal(run('officialCandidates(stale).length'),0);
  context.weak=JSON.parse(JSON.stringify(events));context.weak.forEach(e=>e.bookmakers.forEach(b=>b.markets.forEach(m=>m.outcomes.forEach(o=>o.price=-110))));
  assert.equal(run('officialCandidates(weak).length'),0,'no forced quota without edge');
+ // Each run's stats feed the pick_runs log: props checked, best edge, near misses, qualified.
+ run('var st={};officialCandidates(events,undefined,st);var ws={};officialCandidates(weak,undefined,ws)');
+ assert.deepEqual(JSON.parse(run('JSON.stringify([st.props,st.qualified,st.near||0,st.best>1])')),[160,160,0,true]);
+ assert.deepEqual(JSON.parse(run('JSON.stringify([ws.props,ws.qualified||0,ws.best<1])')),[160,0,true],'a run with no edge still records what it checked');
  // Big-5 only: when the best price sits at BetRivers (licensed, prices the
  // market) it can't become a pick; the same price at DraftKings can.
  context.rivers=JSON.parse(JSON.stringify(events));context.rivers.forEach(e=>{e.bookmakers[0].key='betrivers';e.bookmakers[0].title='BetRivers';e.bookmakers.push({...JSON.parse(JSON.stringify(e.bookmakers[1])),key:'fanatics',title:'Fanatics'})});

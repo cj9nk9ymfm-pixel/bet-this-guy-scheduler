@@ -86,7 +86,8 @@ const OFFICIAL_START=Date.parse('2026-09-22T12:00:00Z');
 const OFFICIAL_CAPS={props:100,reasonable:15,swing:10,moonshot:5};
 function officialWeek(time){const d=new Date(Number(time)-12*3600000);d.setUTCHours(0,0,0,0);d.setUTCDate(d.getUTCDate()-(d.getUTCDay()+5)%7);return d.toISOString().slice(0,10)}
 const officialPlayer=leg=>`${leg.gameId}|${normalizedName(leg.player)}`;
-function officialCandidates(events,now=Date.now()){
+// stats (optional) collects what a run saw, for the pick_runs log.
+function officialCandidates(events,now=Date.now(),stats={}){
   const result=[];
   for(const event of events){
     const kickoff=Date.parse(event.commence_time);
@@ -110,6 +111,8 @@ function officialCandidates(events,now=Date.now()){
       // available at one of the five biggest (OFFICIAL_BOOKS).
       const options=['over','under'].map(side=>{const best=pairs.map(p=>p[side]).filter(o=>OFFICIAL_BOOKS.has(o.key)).sort((a,b)=>recordDecimal(b.odds)-recordDecimal(a.odds))[0];return best?{side:side==='over'?'Over':'Under',...best,edge:100*((side==='over'?fair:1-fair)-1/recordDecimal(best.odds))}:null}).filter(Boolean).sort((a,b)=>b.edge-a.edge);
       const best=options[0];
+      stats.props=(stats.props||0)+1;
+      if(best){stats.best=Math.max(stats.best??-Infinity,best.edge);if(best.edge>=0.5&&best.edge<1)stats.near=(stats.near||0)+1;if(best.edge>=1&&best.edge<=12)stats.qualified=(stats.qualified||0)+1;if(best.edge>12)stats.capped=(stats.capped||0)+1}
       if(!best||best.edge<1||best.edge>12)continue;
       const leg=verifiedRecordLeg({...group,...best},event,now);
       if(leg)result.push({...leg,edge:best.edge,book:best.book,playerKey:officialPlayer(leg)});
@@ -273,7 +276,12 @@ async function publishOfficialPicks(request,env,ctx){
     const boards=[];let failedBoards=0;
     for(let i=0;i<events.length;i+=4){const results=await Promise.allSettled(events.slice(i,i+4).map(async e=>{const url=new URL('/api/event',request.url);url.searchParams.set('eventID',e.eventID);const r=await eventProps(new Request(url),env,ctx);if(!r.ok||r.headers.get('x-feed-cache')==='stale')throw new Error('Official board unavailable');return (await r.json()).data||[]}));for(const r of results)if(r.status==='fulfilled')boards.push(...r.value);else failedBoards++}
     const existing=await env.DB.prepare('SELECT * FROM public_recommendations WHERE id>=? AND id<?').bind(prefix,prefix+'\uffff').all();
-    const candidates=officialCandidates(boards,Date.now());const posted=await writeOfficialPlan(officialPlan(candidates,existing.results||[],week,Date.now()),week,env);
+    const stats={};const candidates=officialCandidates(boards,Date.now(),stats);const posted=await writeOfficialPlan(officialPlan(candidates,existing.results||[],week,Date.now()),week,env);
+    // One row per run: what the pick job saw and why it did or didn't post.
+    await env.DB.batch([
+      env.DB.prepare('INSERT INTO pick_runs (at,games,boards,failed_boards,props,best_edge,near,qualified,capped,candidates,posted) VALUES (?,?,?,?,?,?,?,?,?,?,?)').bind(new Date(now).toISOString(),events.length,boards.length,failedBoards,stats.props||0,Number.isFinite(stats.best)?+stats.best.toFixed(2):null,stats.near||0,stats.qualified||0,stats.capped||0,candidates.length,Number(posted)||0),
+      env.DB.prepare('DELETE FROM pick_runs WHERE at<?').bind(new Date(now-30*86400000).toISOString())
+    ]).catch(error=>console.warn('pick_runs_failed',error.message));
     if(posted){const alerts=sendPickAlerts(env).catch(error=>console.warn('pick_alerts_failed',error.message));if(ctx?.waitUntil)ctx.waitUntil(alerts);else await alerts}
     // Emails check every run: picks held back by the hourly limit go out on a later run.
     {const emails=sendEmailAlerts(env).catch(error=>console.warn('email_alerts_failed',error.message));if(ctx?.waitUntil)ctx.waitUntil(emails);else await emails}

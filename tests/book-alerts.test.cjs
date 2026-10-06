@@ -41,7 +41,7 @@ const keys={p256dh:'B'.repeat(87),auth:'a'.repeat(22)};
   db.prepare("INSERT INTO user_preferences(auth_user_id,preferences_json,created_at,updated_at) VALUES('u1',?, 'x','x')").run(JSON.stringify({books:['FanDuel']}));
   db.prepare("INSERT INTO email_alerts(auth_user_id,enabled,token,created_at,updated_at) VALUES('u1',1,?,'x','x')").run('f'.repeat(64));
   // An official pick on one of these props is announced by the official alerts instead.
-  db.prepare("INSERT INTO public_recommendations(id,kind,player,market,side,line,odds,game_time,legs_json,posted_at,status,source) VALUES(?,?,?,?,?,?,?,?,?,?,'pending','market-verified-v2')").run('official|2026-09-29|props|prop|x','prop','E Player','Receptions','Over',4.5,135,kickoff,'[]',iso(now-3600000));
+  db.prepare("INSERT INTO public_recommendations(id,kind,player,market,side,line,odds,game_time,legs_json,posted_at,status,source) VALUES(?,?,?,?,?,?,?,?,?,?,'pending','market-verified-v2')").run(`official|${run(`officialWeek(${now})`)}|props|prop|x`,'prop','E Player','Receptions','Over',4.5,135,kickoff,'[]',iso(now-3600000));
   let result=JSON.parse(JSON.stringify(await run(`sendBookAlerts(env,events,${now})`)));
   assert.equal(result.sent,2,'the FanDuel phone and the FanDuel email account are told');
   assert.deepEqual(pushes,[fanduelPhone],'BetMGM and no-book phones get nothing');
