@@ -1065,7 +1065,11 @@ function cronJobs(date){
 async function runCron(controller,env,ctx){
   const due=cronJobs(new Date(controller.scheduledTime));
   if(!due.length||!env.DB||!env.THE_ODDS_API_KEY||!env.BALLDONTLIE_API_KEY)return;
-  const request=new Request(`${SITE_URL}/api/maintenance`),jobs={publish:()=>publishOfficialPicks(request,env,ctx),grade:()=>settlePublicRecords(env)};
+  const request=new Request(`${SITE_URL}/api/maintenance`),jobs={publish:()=>publishOfficialPicks(request,env,ctx),grade:()=>settlePublicRecords(env),nbaShadow:()=>recordNbaShadow(request,env,ctx),nbaGrade:()=>gradeNbaShadow(env)};
+  // NBA shadow runs after the NFL jobs and on its own: it can never hold up
+  // or fail NFL publishing or grading.
+  if(due.includes('publish'))due.push('nbaShadow');
+  if(due.includes('grade'))due.push('nbaGrade');
   for(const job of due){
     let work=scheduledJobs.get(job);
     if(!work){work=Promise.resolve().then(jobs[job]).finally(()=>scheduledJobs.delete(job));scheduledJobs.set(job,work)}
