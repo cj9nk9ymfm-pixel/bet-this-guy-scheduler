@@ -1300,3 +1300,10 @@ html body.light #propList .prop-card .avatar.player-photo>span{color:#475569!imp
 html body.light #propList .prop-card .card-money>span{color:#5b6472!important}
 html body.light #propList .prop-card .verdict-pill-read{color:#b91c1c!important}
 html body .prop-card.compact-card.compact-read{opacity:1!important}
+/* NBA beta: league switch at the top of the page */
+.league-switch{display:inline-flex;gap:4px;padding:4px;margin:0 0 14px;border:1px solid var(--line);border-radius:999px;background:var(--panel)}
+.league-switch button{min-height:36px;padding:0 16px;border:0;border-radius:999px;background:none;color:var(--muted);font:700 14px/1 "Space Grotesk",sans-serif;cursor:pointer}
+.league-switch button[aria-pressed="true"]{background:var(--text);color:var(--bg)}
+.league-switch small{margin-left:6px;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;opacity:.75}
+html[data-league="NBA"] #heroBanner,html[data-league="NBA"] #officialNow,html[data-league="NBA"] #hitsStrip,html[data-league="NBA"] #liveCenter,html[data-league="NBA"] #liveParlayPanel,html[data-league="NBA"] [data-nav-target="live"]{display:none!important}
+.nba-note{margin:0 0 16px;color:var(--muted);font-size:14px;max-width:640px}

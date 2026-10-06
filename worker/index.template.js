@@ -43,7 +43,17 @@ const BDL_SPORTS = {
 const SPORTS = [
   { key: "americanfootball_nfl", label: "NFL", markets: ["player_anytime_td", "player_1st_td", "player_last_td", "player_tds", "player_tds_over", "player_assists", "player_pass_yds", "player_pass_yds_q1", "player_pass_tds", "player_pass_completions", "player_pass_attempts", "player_pass_interceptions", "player_pass_longest_completion", "player_pass_rush_yds", "player_pass_rush_reception_tds", "player_pass_rush_reception_yds", "player_rush_yds", "player_rush_attempts", "player_rush_longest", "player_rush_tds", "player_receptions", "player_reception_yds", "player_reception_longest", "player_reception_tds", "player_rush_reception_yds", "player_rush_reception_tds", "player_kicking_points", "player_field_goals", "player_pats", "player_sacks", "player_solo_tackles", "player_tackles_assists", "player_defensive_interceptions"], expandedMarkets: ["player_assists_alternate", "player_field_goals_alternate", "player_kicking_points_alternate", "player_pass_attempts_alternate", "player_pass_completions_alternate", "player_pass_interceptions_alternate", "player_pass_longest_completion_alternate", "player_pass_rush_yds_alternate", "player_pass_rush_reception_tds_alternate", "player_pass_rush_reception_yds_alternate", "player_pass_tds_alternate", "player_pass_yds_alternate", "player_pats_alternate", "player_receptions_alternate", "player_reception_longest_alternate", "player_reception_tds_alternate", "player_reception_yds_alternate", "player_rush_attempts_alternate", "player_rush_longest_alternate", "player_rush_reception_tds_alternate", "player_rush_reception_yds_alternate", "player_rush_tds_alternate", "player_rush_yds_alternate", "player_sacks_alternate", "player_solo_tackles_alternate", "player_tackles_assists_alternate"] },
 ];
-const SPORTS_BY_LABEL = Object.fromEntries(SPORTS.map(sport => [sport.label, sport]));
+// NBA has its own feed (/api/props?sport=NBA, /api/schedule?sport=NBA) so the
+// NFL board, its caches and the NFL pick job are unchanged by it.
+const NBA_SPORT = { key: "basketball_nba", label: "NBA",
+  markets: ["player_points", "player_rebounds", "player_assists", "player_threes", "player_points_rebounds_assists", "player_points_rebounds", "player_points_assists", "player_rebounds_assists", "player_blocks", "player_steals", "player_blocks_steals", "player_turnovers", "player_double_double", "player_triple_double"],
+  expandedMarkets: ["player_points_alternate", "player_rebounds_alternate", "player_assists_alternate", "player_threes_alternate", "player_points_rebounds_assists_alternate", "player_points_rebounds_alternate", "player_points_assists_alternate", "player_rebounds_assists_alternate", "player_blocks_alternate", "player_steals_alternate", "player_turnovers_alternate"],
+  movementMarkets: ["player_points", "player_rebounds", "player_assists", "player_threes", "player_points_rebounds_assists"] };
+SPORTS[0].movementMarkets = ["player_pass_yds", "player_rush_yds", "player_reception_yds", "player_receptions", "player_pass_tds", "player_anytime_td"];
+const SPORTS_BY_LABEL = Object.fromEntries([...SPORTS, NBA_SPORT].map(sport => [sport.label, sport]));
+// ?sport=NBA selects the NBA feed; anything else is the NFL feed as before.
+const feedSports = request => new URL(request.url).searchParams.get("sport") === "NBA" ? [NBA_SPORT] : SPORTS;
+const feedSuffix = sports => sports[0] === NBA_SPORT ? "-nba" : "";
 const runtimeFeedCache = new Map();
 
 function json(data, status = 200, extra = {}) {
@@ -161,8 +171,8 @@ function scheduleRecord(event) {
   };
 }
 
-async function allUpcomingEvents(apiKey) {
-  const results = await Promise.allSettled(SPORTS.map(sport => fetchSportEvents(sport, apiKey)));
+async function allUpcomingEvents(apiKey, sports = SPORTS) {
+  const results = await Promise.allSettled(sports.map(sport => fetchSportEvents(sport, apiKey)));
   const events = results.flatMap(result => result.status === "fulfilled" ? result.value : []);
   const errors = results.filter(result => result.status === "rejected").map(result => result.reason?.message).filter(Boolean);
   return { events, errors };
@@ -170,12 +180,13 @@ async function allUpcomingEvents(apiKey) {
 
 async function liveProps(request, env, ctx) {
   if (!env.THE_ODDS_API_KEY) return json({ success: false, error: "Live feed is not configured." }, 503);
-  const saved = await readFeedCache(request, "the-odds-api-live-props-nfl-v10");
+  const sports = feedSports(request);
+  const saved = await readFeedCache(request, `the-odds-api-live-props-nfl-v10${feedSuffix(sports)}`);
   if (saved.response && cacheAge(saved.response) < 10 * 60 * 1000) return cachedForClient(saved.response, "fresh");
   try {
     const now = Date.now();
-    const { events, errors: scheduleErrors } = await allUpcomingEvents(env.THE_ODDS_API_KEY);
-    const slate = SPORTS.flatMap(sport => events
+    const { events, errors: scheduleErrors } = await allUpcomingEvents(env.THE_ODDS_API_KEY, sports);
+    const slate = sports.flatMap(sport => events
       .filter(event => {
         const starts = Date.parse(event.commence_time);
         return event.sport_label === sport.label && Number.isFinite(starts) && starts >= now - 4 * 60 * 60 * 1000 && starts <= now + 7 * 24 * 60 * 60 * 1000;
@@ -219,10 +230,11 @@ async function liveProps(request, env, ctx) {
 
 async function futureSchedule(request, env, ctx) {
   if (!env.THE_ODDS_API_KEY) return json({ success: false, error: "Live feed is not configured." }, 503);
-  const saved = await readFeedCache(request, "the-odds-api-future-schedule-v1");
+  const sports = feedSports(request);
+  const saved = await readFeedCache(request, `the-odds-api-future-schedule-v1${feedSuffix(sports)}`);
   if (saved.response && cacheAge(saved.response) < 6 * 60 * 60 * 1000) return cachedForClient(saved.response, "fresh");
   try {
-    const { events, errors } = await allUpcomingEvents(env.THE_ODDS_API_KEY);
+    const { events, errors } = await allUpcomingEvents(env.THE_ODDS_API_KEY, sports);
     const data = events.filter(event => Date.parse(event.commence_time) > Date.now() - 4 * 60 * 60 * 1000).map(scheduleRecord);
     if (!data.length && errors.length) throw new Error(errors[0]);
     const stored = storedResponse(JSON.stringify({ success: true, data, updatedAt: new Date().toISOString(), partial: errors.length }), 7 * 24 * 60 * 60);
@@ -245,9 +257,9 @@ async function allowProviderCall(request, limiter) {
   try { return (await limiter.limit({ key: visitor })).success; } catch { return true; }
 }
 
-async function scheduledEventIDs(request, env, ctx) {
+async function scheduledEventIDs(request, env, ctx, sportLabel = "NFL") {
   try {
-    const response = await futureSchedule(new Request(new URL("/api/schedule", request.url)), env, ctx);
+    const response = await futureSchedule(new Request(new URL(sportLabel === "NBA" ? "/api/schedule?sport=NBA" : "/api/schedule", request.url)), env, ctx);
     if (!response.ok) return null;
     return new Set(((await response.json()).data || []).map(event => event.eventID));
   } catch {
@@ -259,7 +271,7 @@ async function scheduledEventIDs(request, env, ctx) {
 // the schedule check; scheduled events are never limited.
 async function allowEventLookup(request, env, ctx, eventID) {
   if (!request.headers.get("cf-connecting-ip") || !env.UNKNOWN_EVENT_LIMITER) return true;
-  const known = await scheduledEventIDs(request, env, ctx);
+  const known = await scheduledEventIDs(request, env, ctx, eventID.split("--")[0]);
   if (known?.has(eventID)) return true;
   return allowProviderCall(request, env.UNKNOWN_EVENT_LIMITER);
 }
@@ -285,7 +297,7 @@ async function eventProps(request, env, ctx) {
   if (saved.response && cacheAge(saved.response) < (inPlay || movement ? 60000 : 540000)) return cachedForClient(saved.response, "fresh");
   if (!await allowEventLookup(request, env, ctx, eventID)) return tooManyRequests(saved);
   try {
-    const selectedSport = movement ? {...sport, markets:["player_pass_yds","player_rush_yds","player_reception_yds","player_receptions","player_pass_tds","player_anytime_td"],expandedMarkets:[]} : sport;
+    const selectedSport = movement ? {...sport, markets:sport.movementMarkets,expandedMarkets:[]} : sport;
     const data = await fetchEventOdds(selectedSport, providerEventID, env.THE_ODDS_API_KEY, !movement);
     if(env.DB)ctx.waitUntil(saveMovementSnapshot(data,env).catch(()=>{}));
     // Books can suspend or remove in-play markets. Never resurrect the opening
