@@ -1443,7 +1443,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     const host=$('#officialNow');if(!host||!Array.isArray(rows))return;
     const list=officialNow(rows);
     $('#officialNowCount').textContent=list.length?String(list.length):'';
-    $('#officialNowList').innerHTML=list.length?list.map(officialRow).join(''):'<div class="on-empty"><strong>No picks yet this week.</strong><span>They post in the 24 hours before kickoff.</span></div>';
+    $('#officialNowList').innerHTML=list.length?list.map(officialRow).join(''):'<div class="on-empty"><strong>No picks yet this week.</strong><span>They post the moment a price qualifies, any day before kickoff.</span></div>';
     $$('#officialNowList button[data-on]').forEach(b=>b.onclick=()=>openPick(list[+b.dataset.on]));
     officialLiveList=list;updateOfficialLive();
     host.hidden=false;
