@@ -45,6 +45,9 @@ for e in events[:3]:
             for o in (m.get("outcomes") or [])[:4]:
                 if o.get("description") and o["description"] not in [p[0] for p in players]: players.append((o["description"], e.get("home_team")))
 
+# No odds posted yet (preseason): look up named players instead.
+if not players:
+    players = [tuple(x.split("|", 1)) for x in (os.environ.get("PLAYERS") or ("Jayson Tatum|Boston Celtics;Nikola Jokic|Denver Nuggets;Jalen Brunson|New York Knicks" if SPORT == "NBA" else "Josh Allen|Buffalo Bills;Saquon Barkley|Philadelphia Eagles")).split(";") if "|" in x]
 for name, team in players[:3]:
     s, stats, t = get(f"/api/player-stats?{urllib.parse.urlencode({'sport': SPORT, 'player': name, 'team': team})}")
     rows = stats.get("stats") or []

@@ -11,6 +11,9 @@ on:
       poll_minutes:
         description: Minutes to poll a live game's box score (0 = skip)
         default: "0"
+      players:
+        description: Players to look up when no odds are posted (Name|Team;Name|Team)
+        default: ""
 permissions:
   contents: read
 jobs:
@@ -23,4 +26,5 @@ jobs:
         env:
           SPORT: ${{ inputs.sport }}
           POLL_MINUTES: ${{ inputs.poll_minutes }}
+          PLAYERS: ${{ inputs.players }}
         run: python3 scripts/smoke.py
