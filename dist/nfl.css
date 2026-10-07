@@ -1307,3 +1307,27 @@ html body .prop-card.compact-card.compact-read{opacity:1!important}
 .league-switch small{margin-left:6px;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;opacity:.75}
 html[data-league="NBA"] #heroBanner,html[data-league="NBA"] #officialNow,html[data-league="NBA"] #hitsStrip{display:none!important}
 .nba-note{margin:0 0 16px;color:var(--muted);font-size:14px;max-width:640px}
+/* Audit 6: light mode for the Settings panel (it kept its dark gradient and
+   dark tab/section/footer backgrounds while its text turned dark) and for
+   the parlay card's "Details & why" button (near-white text on pale blue). */
+body.light #settingsDialog{background:#fff!important;background-image:none!important;color:#10213d}
+body.light #settingsDialog .settings-tabs button:not(.active){background:#eef3f9!important;background-image:none!important;color:#3d5170!important;border-color:#cbdced!important}
+body.light #settingsDialog .settings-section{background:#f8fbff!important;border-color:#cbdced!important}
+body.light #settingsDialog .settings-footer{background:#f4f7fb!important;border-color:#dbe4ef!important}
+body.light #settingsDialog .settings-panel>p,body.light #settingsDialog #settingsSaveStatus{color:#4f6280!important}
+body.light #settingsDialog .eyebrow{color:#0b63b6!important}
+body.light #settingsDialog input:not([type="checkbox"]):not([type="radio"]),body.light #settingsDialog select{background:#fff!important;background-image:none!important;color:#10213d!important;border-color:#b8c9dc!important}
+body.light #settingsDialog label{color:#2a3d5c}
+body.light .pc-actions [data-view-parlay-button]{background:#fff!important;color:#1d4ed8!important;border-color:#93b4f5!important}
+body.light #settingsDialog .settings-checks label,body.light #settingsDialog .settings-section label{background:#fff!important;background-image:none!important;color:#10213d!important;border-color:#cbdced!important}
+body.light #settingsDialog .tracking-summary div{background:#eef3f9!important;color:#10213d}
+/* Audit 6 contrast (WCAG AA): parlay level hint, parlay header and note, slip
+   responsibility line, tracking tiles, methodology link. */
+button[data-parlay-level].active span{opacity:1!important}
+.parlay-feed-head>div:nth-child(2)>b,.parlay-disclaimer{color:#9bb0cf!important}
+body.light .parlay-feed-head>div:nth-child(2)>b,body.light .parlay-disclaimer{color:#4f6280!important}
+body.light .responsible>span{color:#4f6280!important}
+#trackingSummary>div>small{color:#9bb0cf!important}
+body.light #trackingSummary>div>small{color:#4f6280!important}
+.trust-inline{color:#7cb3ff!important}
+body.light .trust-inline{color:#1d4ed8!important}
