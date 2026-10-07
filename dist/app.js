@@ -1346,6 +1346,21 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
   }
   // One sheet for every official pick (locked, hit, lost, push), built by the
   // shared BTGSheet renderer so board props, picks and parlays all look alike.
+  // "I bet this": one tap copies an official pick into the viewer's own
+  // tracked bets (My Picks), graded automatically like the board picks.
+  const betKey='btg-bet-official',betIds=()=>{try{return new Set(JSON.parse(localStorage.getItem(betKey)||'[]'))}catch{return new Set()}};
+  function betAction(r,legs,done){
+    const start=Date.parse(r.game_time||legs[0]?.gameTime||'');if(done||!(start>Date.now())||!window.BTGAuth?.trackParlay)return [];
+    const tracked=()=>betIds().has(r.id),label=()=>tracked()?'✓ In My Picks':'I bet this';
+    return [{label:label(),primary:true,wide:true,onClick:async b=>{
+      if(tracked())return;
+      const first=legs[0]||{},list=r.kind==='parlay'?legs.map(l=>({player:l.player,market:l.market,side:l.side,line:l.line,odds:l.odds,gameStart:l.gameTime,team:l.team,eventID:l.gameId})):[{player:r.player,market:r.market,side:r.side,line:r.line,odds:r.odds,gameStart:r.game_time||first.gameTime,team:first.team,eventID:first.gameId}];
+      b.disabled=true;b.textContent='Saving…';
+      try{const out=await window.BTGAuth.trackParlay({legs:list,wager:wagerStake(),sportsbook:first.book||null,source:'board'});
+        if(out){const ids=betIds();ids.add(r.id);try{localStorage.setItem(betKey,JSON.stringify([...ids].slice(-200)))}catch{}b.textContent='✓ In My Picks';window.btgCount?.('official:bet');window.BTGAuth.refreshBets?.();window.BTGMyRecord?.()}
+        else{b.textContent=label();b.disabled=false}}
+      catch(error){b.textContent=error?.message||'Couldn’t save. Try again.';b.disabled=false}}}];
+  }
   function recordModel(r){
     const legs=recordLegs(r),isParlay=r.kind==='parlay',odds=isParlay?r.combined_odds:r.odds,done=graded(r),d=oddsDecimal(odds),first=legs[0]||{};
     const chip=done?{won:{cls:'g',icon:'check',text:'Hit'},lost:{cls:'r',icon:'over',text:'Lost'},push:{cls:'n',icon:'fair',text:'Push'}}[r.result]:r.status==='provisional'?{cls:'n',icon:'fair',text:'Provisional'}:{cls:'n',icon:'lock',text:'Official pick · Locked'};
@@ -1369,7 +1384,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     return {chip,title:isParlay?`${legs.length}-leg parlay`:r.player,bet,game,price:formatOdds(odds),stake:stakeText(),
       money:done?money(payout(r)):d?`wins $${Math.round(heroStake*(d-1)).toLocaleString('en-US')}`:'—',moneyCls:done?(r.result==='won'?'pos':r.result==='lost'?'neg':''):'pos',
       rows,legs:legRows,chart:points.length>=2?{label:done?'Price posted → kickoff':'Price since posted',points}:null,
-      actions:[{label:done&&r.result==='won'?'Share this hit':'Share',icon:'share',primary:false,wide:true,share:`${done&&r.result==='won'?'✅ Hit':'Bet This Guy pick'}: ${isParlay?`${legs.length}-leg parlay (${formatOdds(odds)})`:`${r.player} ${bet} (${formatOdds(odds)})`} · ${location.origin}`}],
+      actions:[...betAction(r,legs,done),{label:done&&r.result==='won'?'Share this hit':'Share',icon:'share',primary:false,wide:true,share:`${done&&r.result==='won'?'✅ Hit':'Bet This Guy pick'}: ${isParlay?`${legs.length}-leg parlay (${formatOdds(odds)})`:`${r.player} ${bet} (${formatOdds(odds)})`} · ${location.origin}`}],
       links:[...(isParlay?[]:[{text:`${String(r.player||'').split(' ').slice(-1)[0]}’s stats & game log ›`,onClick:()=>openPlayerProfile(statsProp({...first,player:r.player,market:r.market,line:r.line,side:r.side,odds:r.odds,gameTime:r.game_time||first.gameTime}))}]),{text:'See every pick on Results ›',href:'/trust#official'}]};
   }
   const hitDetails=r=>window.BTGSheet.render(recordModel(r)),pickDetails=hitDetails;
@@ -2116,4 +2131,17 @@ function statsProp(l){
     document.body.appendChild(el);window.btgCount?.('a2hs:shown')};
   if(ios&&visits>=2)setTimeout(()=>toast('<strong>Get the app on your iPhone</strong><span>Tap <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="Share"><path d="M12 3v12"/><path d="m8 7 4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg> then <b>Add to Home Screen</b>. Opens like an app, and pick alerts work.</span>'),4000);
   window.addEventListener('beforeinstallprompt',event=>{event.preventDefault();if(visits<2)return;toast('<strong>Install Bet This Guy</strong><span>One tap to open picks, with alerts when they post.</span>',()=>{event.prompt();event.userChoice?.then(c=>window.btgCount?.(`a2hs:${c.outcome}`))})});
+})();
+
+/* Personal P/L: signed-in viewers see their own tracked record on home. */
+(()=>{
+  if(typeof document.getElementById!=='function')return;
+  const host=document.getElementById('myRecord');if(!host)return;
+  const dollars=c=>`${c<0?'−':'+'}$${Math.abs(Math.round(c/100)).toLocaleString('en-US')}`;
+  const draw=async()=>{const m=await window.BTGAuth?.myRecord?.().catch(()=>null);if(!m||!m.count){host.hidden=true;return}
+    const decided=m.wins+m.losses+m.pushes;
+    host.innerHTML=`<span class="my-pl-label">Your bets</span>${decided?`<b>${m.wins}–${m.losses}${m.pushes?`–${m.pushes}`:''}</b><span class="my-pl-net ${m.net>=0?'up':'down'}">${dollars(m.net)}</span>`:''}${m.pending?`<span class="my-pl-pending">${m.pending} pending</span>`:''}<span class="my-pl-go" aria-hidden="true">›</span>`;
+    host.setAttribute('aria-label',`Your tracked bets: ${m.wins} wins, ${m.losses} losses${m.pending?`, ${m.pending} pending`:''}. Open My Picks`);host.hidden=false};
+  host.onclick=()=>window.BTGAuth?.open?.('record');
+  window.BTGMyRecord=draw;addEventListener('btg-auth',draw);setTimeout(draw,1200);
 })();

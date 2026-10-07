@@ -1393,3 +1393,12 @@ body.light .alerts-hero{background:linear-gradient(135deg,#dbeafe,#f0f9ff 60%,#f
 .a2hs-close{position:absolute;top:6px;right:6px;width:28px;height:28px;border:0;background:transparent;color:var(--muted);font-size:20px}
 @keyframes a2hsIn{from{transform:translateY(16px);opacity:0}to{transform:none;opacity:1}}
 @media(min-width:900px){.a2hs{bottom:24px}}
+/* Personal P/L chip */
+.my-pl{display:flex;align-items:center;gap:8px;width:100%;margin:12px 0 0;padding:10px 14px;border:1px solid var(--line);border-radius:14px;background:var(--panel);color:var(--text);font:inherit;font-size:14px;text-align:left;cursor:pointer}
+.my-pl[hidden]{display:none}
+.my-pl-label{color:var(--muted);font-weight:600}
+.my-pl b{font:700 15px "Space Grotesk",sans-serif}
+.my-pl-net{font-weight:700}.my-pl-net.up{color:#22c55e}.my-pl-net.down{color:#f06060}
+body.light .my-pl-net.up{color:#15803d}body.light .my-pl-net.down{color:#c62828}
+.my-pl-pending{color:var(--muted);font-size:13px}
+.my-pl-go{margin-left:auto;color:var(--muted);font-size:18px}

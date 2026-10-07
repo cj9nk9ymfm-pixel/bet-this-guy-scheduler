@@ -128,7 +128,7 @@ async function trackParlay(input){
 async function refreshBets(){
   if(!signedIn())return;
   const host=$('#recordList');if(host)host.innerHTML='<div class="auth-record-loading">Checking your results…</div>';
-  try{const result=await api('/api/me/bets');bets=result.bets||[];renderRecord();renderTrackingPanel()}catch(error){setStatus(friendly(error),'error')}
+  try{const result=await api('/api/me/bets');bets=result.bets||[];betsLoaded=true;renderRecord();renderTrackingPanel()}catch(error){setStatus(friendly(error),'error')}
 }
 function recordMetrics(){
   const final=bets.filter(item=>item.status==='final'),wins=final.filter(item=>item.result==='won'||item.result==='win').length,losses=final.filter(item=>item.result==='lost'||item.result==='loss').length,pushes=final.filter(item=>item.result==='push').length,pending=bets.length-final.length,net=final.reduce((sum,item)=>sum+(Number(item.profit_loss_cents)||0),0),risked=final.reduce((sum,item)=>sum+(Number(item.stake_cents)||0),0);
@@ -222,7 +222,9 @@ function init(){
 }
 // A saved session counts before the sign-in library has loaded, so members
 // never see the free-account gate flash on page load.
-window.BTGAuth={open,isSignedIn:signedIn,hasAccount:()=>signedIn()||hasSavedSession(),savePreferences,syncSavedProps,trackParlay,refreshBets,renderTrackingPanel};
+let betsLoaded=false;
+async function myRecord(){if(!signedIn())return null;if(!betsLoaded){try{const result=await api('/api/me/bets');bets=result.bets||[];betsLoaded=true}catch{return null}}return {...recordMetrics(),count:bets.length}}
+window.BTGAuth={open,isSignedIn:signedIn,myRecord,hasAccount:()=>signedIn()||hasSavedSession(),savePreferences,syncSavedProps,trackParlay,refreshBets,renderTrackingPanel};
 addEventListener('load',init,{once:true});
 // Other pages (like Results) send people here with ?join=signup to open the sign-up form.
 addEventListener('load',()=>{const q=new URLSearchParams(location.search).get('join');if(!q)return;history.replaceState(null,'',location.pathname+location.hash);setTimeout(()=>open(q==='login'?'login':'signup'),0)},{once:true});
