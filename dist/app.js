@@ -61,7 +61,11 @@ const savePreferences=()=>{localStorage.setItem('bet-this-guy-preferences',JSON.
 const saveTrackedParlays=()=>localStorage.setItem('bet-this-guy-tracked',JSON.stringify(trackedParlays));
 function saveAppSession(){try{const{saved,...serialState}=state;localStorage.setItem('btg-app-session',JSON.stringify({at:Date.now(),state:serialState,mobilePage:document.body?.dataset.mobilePage||'props',wager:document.querySelector('#wager')?.value||preferences.typicalWager,scrollY:window.scrollY}));localStorage.setItem('btg-last-active',String(Date.now()))}catch{}}
 const normalizeBookName=value=>{const key=String(value||'').toLowerCase().replace(/[^a-z0-9]/g,'');return key==='espnbet'?'thescorebet':key};
-const bookAllowed=book=>!preferences.books.length||preferences.books.some(selected=>normalizeBookName(selected)===normalizeBookName(book));
+// Prices shown on the board come from the big five books, or the viewer's own
+// books when they pick some. Every licensed book still feeds the fair price.
+const BIG_FIVE_BOOKS=['DraftKings','FanDuel','BetMGM','Caesars','Fanatics'];
+const shownBooks=()=>preferences.books.length?preferences.books:BIG_FIVE_BOOKS;
+const bookAllowed=book=>shownBooks().some(selected=>normalizeBookName(selected)===normalizeBookName(book));
 const sportsbookLinks={draftkings:'https://sportsbook.draftkings.com/',fanduel:'https://sportsbook.fanduel.com/',betmgm:'https://sports.betmgm.com/en/sports',caesars:'https://sportsbook.caesars.com/',betrivers:'https://www.betrivers.com/',thescorebet:'https://thescore.bet/',fanatics:'https://sportsbook.fanatics.com/',bet365:'https://www.bet365.com/',hardrockbet:'https://www.hardrock.bet/'};
 const sportsbookDestination=book=>sportsbookLinks[normalizeBookName(book)]||null;
 const betHandoffText=p=>`${p.player} — ${p.market}, ${p.side} ${p.line} (${formatOdds(recommendedOdds(p))})`;
@@ -175,7 +179,7 @@ function bestLines(events){
 }
 function withBestLine(prop,index){
   const g=index.get(`${prop.eventID}|${prop.player}|${prop.market}`);if(!g||prop.binary)return prop;
-  const mine=o=>!o.alt&&(!preferences.books.length||bookAllowed(o.book)||bookAllowed(o.key)),out={...prop};
+  const mine=o=>!o.alt&&(bookAllowed(o.book)||bookAllowed(o.key)),out={...prop};
   if(prop.line!==g.main&&(Number(prop.pairedBooks)||0)<3){
     const here=g.offers.filter(o=>mine(o)&&o.line===prop.line).sort((a,b)=>b.edge-a.edge)[0];
     if(here)Object.assign(out,{side:here.side==='over'?'Over':'Under',rawEdge:+here.edge.toFixed(2),edge:+Math.max(.2,here.edge).toFixed(1),conf:Math.round(Math.min(88,52+Math.max(.2,here.edge)*3)),pairedBooks:g.books,note:`Best at ${here.book} vs the fair price across lines`,curve:true});
@@ -185,7 +189,7 @@ function withBestLine(prop,index){
   if(best)out.bestLine={side:best.side==='over'?'Over':'Under',line:best.line,odds:best.odds,book:best.book,edge:+best.edge.toFixed(1),gain:+BTGLine.lineGain(best.side,best.line,prop.line).toFixed(1),unit:g.kind==='normal'?' yds':''};
   return out;
 }
-normalizeLiveProps=function(payload){const events=Array.isArray(payload?.data)?payload.data:[],all=normalizeAllBooks(payload),index=preferences.books.length?myBookOffers(events):null,priced=index?all.map(prop=>priceAtMyBooks(prop,index)).filter(Boolean):all;const lines=bestLines(events);return priced.map(prop=>withBestLine(prop,lines)).map(prop=>{const price=recommendedOdds(prop),fairChance=Math.min(.99,americanProbability(price)+prop.edge/100),bookMatch=String(prop.note||'').match(/(?:Best (?:at|price at)|at) ([^,]+?)(?: vs| price|$)/i);return{...prop,bookCount:propBookCoverage(payload,prop),oneSided:Boolean(prop.binary||prop.under===null||prop.under===undefined),fairChance:+(fairChance*100).toFixed(1),bestBook:bookMatch?.[1]||'Best available'}})};
+normalizeLiveProps=function(payload){const events=Array.isArray(payload?.data)?payload.data:[],all=normalizeAllBooks(payload),index=myBookOffers(events),priced=index?all.map(prop=>priceAtMyBooks(prop,index)).filter(Boolean):all;const lines=bestLines(events);return priced.map(prop=>withBestLine(prop,lines)).map(prop=>{const price=recommendedOdds(prop),fairChance=Math.min(.99,americanProbability(price)+prop.edge/100),bookMatch=String(prop.note||'').match(/(?:Best (?:at|price at)|at) ([^,]+?)(?: vs| price|$)/i);return{...prop,bookCount:propBookCoverage(payload,prop),oneSided:Boolean(prop.binary||prop.under===null||prop.under===undefined),fairChance:+(fairChance*100).toFixed(1),bestBook:bookMatch?.[1]||'Best available'}})};
 function setFeedStatus(mode,message){feedMode=mode;const button=$('#feedBtn');button.classList.toggle('live',mode==='live');button.classList.toggle('error',mode==='error');button.querySelector('span').textContent=message}
 function loadLiveProps(force=false){if(livePropsPromise)return livePropsPromise;livePropsPromise=refreshLiveProps(force).finally(()=>{livePropsPromise=null});return livePropsPromise}
 async function refreshLiveProps(force=false){
