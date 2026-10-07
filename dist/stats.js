@@ -54,10 +54,14 @@ globalThis.BTGStats = (() => {
     }
     return {label, value:null};
   }
+  // NBA minutes arrive as "34", "34:12", "00" or empty. A player who didn't
+  // play (0 minutes) has no stat line: sportsbooks void those props.
+  const nbaMinutes = row => { const m = String(row?.min ?? '').match(/^(\d+)(?::(\d+))?$/); return m ? +m[1] + (+m[2] || 0) / 60 : null; };
+  const nbaPlayed = row => (nbaMinutes(row) ?? 0) > 0;
   function metric(prop, row) {
     const label = String(prop?.market || ''), key = label.toLowerCase().trim().replace(/^alternate\s+/, '');
     if (!row) return {label, value:null};
-    if (isNba(prop, row)) return nbaMetric(label, key, row);
+    if (isNba(prop, row)) return nbaPlayed(row) ? nbaMetric(label, key, row) : {label, value:null};
     // A game-total box score cannot establish scoring order or quarter totals.
     if (/first|last|quarter|half/.test(key)) return {label, value:null};
     const alias = {'field goals':'field goals made',pats:'extra points','longest completion':'longest pass completion'}[key] || key;
@@ -93,7 +97,7 @@ globalThis.BTGStats = (() => {
     if(String(prop?.sport||'').toUpperCase()==='NBA')return Boolean(nbaFields[key]||nbaCombos[key]||key==='double-double'||key==='triple-double');
     return Boolean(fields[key]||combinations[key]||['tackles + assists','anytime touchdown','touchdowns','field goals','pats','longest completion'].includes(key));
   }
-  return {number,read,metric,grade,supports};
+  return {number,read,metric,grade,supports,nbaPlayed};
 })();
 
 // Line value: one fair-price curve per player market, so a price at a

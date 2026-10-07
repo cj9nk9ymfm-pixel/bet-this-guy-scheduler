@@ -5,7 +5,7 @@ const root=path.resolve(__dirname,'..'),read=f=>fs.readFileSync(path.join(root,f
 // tracked until tip-off, and the pick is graded once the game is final.
 let now=Date.parse('2026-10-27T18:00:00Z');
 class Clock extends Date{constructor(...a){super(...(a.length?a:[now]))}static now(){return now}}
-const tip='2026-10-27T23:30:00Z';let tatumOver=-110,final=false;
+const tip='2026-10-27T23:30:00Z';let tatumOver=-110,final=false,dnp=false;
 const book=(key,title,over)=>({key,title,last_update:new Date(now-60000).toISOString(),markets:[{key:'player_points',last_update:new Date(now-60000).toISOString(),outcomes:[{name:'Over',description:'Jayson Tatum',point:27.5,price:over},{name:'Under',description:'Jayson Tatum',point:27.5,price:-110}]}]});
 const celtics={id:2,full_name:'Boston Celtics'},knicks={id:20,full_name:'New York Knicks'};
 const context=vm.createContext({Date:Clock,URL,URLSearchParams,Request,Response,Headers,AbortSignal,setTimeout,clearTimeout,console,
@@ -16,7 +16,8 @@ const context=vm.createContext({Date:Clock,URL,URLSearchParams,Request,Response,
     }
     const p=url.pathname.replace(/^\/(nba\/)?v1/,'');
     if(p==='/games')return Response.json({data:[{id:9001,date:'2026-10-27',datetime:tip,status:final?'Final':'7:30 pm ET',period:final?4:0,home_team:celtics,visitor_team:knicks,home_team_score:112,visitor_team_score:104}]});
-    if(p==='/stats')return Response.json({data:[{pts:31,reb:8,ast:4,fg3m:3,min:'36',player:{id:434,first_name:'Jayson',last_name:'Tatum'},team:celtics,game:{id:9001,date:'2026-10-27',status:'Final'}}],meta:{}});
+    if(p==='/players')return Response.json({data:[{id:434,first_name:'Jayson',last_name:'Tatum'},{id:435,first_name:'Jaylen',last_name:'Brown'}].filter(x=>x.last_name===url.searchParams.get('search'))});
+    if(p==='/stats')return Response.json({data:[{pts:31,reb:8,ast:4,fg3m:3,min:'36',player:{id:434,first_name:'Jayson',last_name:'Tatum'},team:celtics,game:{id:9001,date:'2026-10-27',status:'Final'}},...(dnp?[{pts:0,reb:0,ast:0,fg3m:0,min:'00',player:{id:435,first_name:'Jaylen',last_name:'Brown'},team:celtics,game:{id:9001,date:'2026-10-27',status:'Final'}}]:[])],meta:{}});
     return new Response('{}',{status:404});
   }});
 const template=read('worker/index.template.js');
@@ -44,5 +45,9 @@ const run=c=>vm.runInContext(c,context),req='new Request("https://betthisguy.com
   assert.equal(graded.graded,1);
   row=db.prepare('SELECT * FROM nba_shadow').get();
   assert.deepEqual([row.actual,row.result],[31,'won']);
+  // A pick on a player who didn't play is void, never a loss.
+  db.prepare("INSERT INTO nba_shadow (id,event_id,player,team,market,side,line,odds,book,edge,game_time,logged_at) VALUES ('dnp','NBA--nba1','Jaylen Brown','New York Knicks · @ Boston Celtics','Points','Over',22.5,-110,'DraftKings',1.5,?,?)").run(tip,tip);
+  dnp=true;run('runtimeFeedCache.clear()');await run(`gradeNbaShadow(env,${now})`);
+  assert.equal(db.prepare("SELECT result FROM nba_shadow WHERE id='dnp'").get().result,'void');
   console.log('PASS: NBA shadow picks follow the official rules, are never posted, keep their first price, track the close and grade from the box score');
 })().catch(e=>{console.error(e);process.exit(1)});

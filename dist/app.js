@@ -233,7 +233,7 @@ function renderBoardHealth(){syncParlayLimitUI()}
 function render(){if(innerWidth<=720&&document.body.dataset.mobilePage!=='props'){syncFilterUI();if(document.body.dataset.mobilePage==='parlays')renderParlays();if(document.body.dataset.mobilePage==='slip'||state.slip.length)renderSlip();$('#watchCount').textContent=state.saved.size;($('#savedHeaderCount').textContent=state.saved.size,$('#savedHeaderCount').hidden=!state.saved.size);return}const list=visibleProps(),popularView=state.view==='board'&&state.boardMarket==='All',gameSelected=state.boardGame!=='All',updated=feedUpdatedAt?feedUpdatedAt.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}):'just now';document.body.dataset.boardView=state.view;document.body.dataset.boardEmpty=String(!list.length);$('#viewTitle').textContent=state.view==='movement'?'Biggest movers right now':state.view==='saved'?'Your saved props':popularView?'Top props this week':state.boardMarket;$('#resultCount').textContent=state.view==='board'?(popularView?`${list.length?`${list.length} featured prop${list.length===1?'':'s'}`:'No props posted yet'}${gameSelected?` for ${compactGameName(state.boardGame)}`:''} · Updated ${updated}`:`${list.length} ${state.boardMarket} props · strongest edges first`):`${list.length} props shown`;$('#propList').innerHTML=list.map((prop,index)=>card(prop,index,popularView)).join('');const empty=$('#emptyState');empty.hidden=!!list.length;empty.innerHTML=feedMode==='loading'?'<strong>Loading live props…</strong><span>Current lines and game dates will appear here.</span>':feedMode==='error'?'<strong>Prices are updating.</strong><span>Props will appear here once sportsbook lines refresh. Check back shortly.</span>':state.view==='saved'?'<strong>Your watchlist is empty.</strong><span>Tap the star on any prop to keep it here for quick access.</span>':state.view==='movement'?'<strong>No meaningful line movement yet.</strong><span>We’ll surface the biggest price or line changes here as the market moves.</span>':popularView?'<strong>No current props are available here yet.</strong><span>Try another game or check back as sportsbooks post markets.</span>':'<strong>No NFL props are posted here yet.</strong><span>Try another prop type or game.</span>';renderBoardHealth();syncFilterUI();bindCards();if((document.body.dataset.mobilePage==='parlays'||innerWidth>720)&&initializedPages.has('parlays'))renderParlays();if(initializedPages.has('slip')||state.slip.length)renderSlip();$('#watchCount').textContent=state.saved.size;($('#savedHeaderCount').textContent=state.saved.size,$('#savedHeaderCount').hidden=!state.saved.size)}
 const renderBoardBase=render;
 render=function(){const movementPage=innerWidth<=720&&document.body.dataset.mobilePage==='movement';if(movementPage){document.body.dataset.mobilePage='props';renderBoardBase();document.body.dataset.mobilePage='movement';const empty=$('#emptyState');if(empty&&!empty.hidden){const baseline=props.some(p=>Array.isArray(p.lineHistory)&&p.lineHistory.length);empty.innerHTML=baseline?'<strong>No meaningful movement yet.</strong><span>The market has a baseline, but no line or price has moved enough to surface.</span>':'<strong>Building the first movement baseline.</strong><span>Prices are loading now. Refresh again after the next odds snapshot to measure movement.</span>'}return}renderBoardBase()};
-function card(p,rank=-1,featured=false){const delta=p.line-p.open,alerting=preferences.lineAlerts&&state.saved.has(savedPropKey(p))&&Math.abs(delta)>=.5,recommended=p.side==='Over'?p.over:p.under,initials=p.player.split(' ').map(x=>x[0]).join(''),selection=p.binary?(p.side==='Over'?(p.overLabel||'Yes'):(p.underLabel||'No')):`${p.side} ${p.line}`,top=featured&&rank<3;return `<article class="prop-card mockup-card ${alerting?'line-alert':''} ${top?'top-play':''}" data-id="${p.id}">${top?`<span class="top-play-badge">#${rank+1} ${rank===0?'TOP PLAY':'BEST BET'}</span>`:''}${alerting?'<span class="line-alert-label">LINE MOVED</span>':''}<button class="bookmark ${state.saved.has(savedPropKey(p))?'saved':''}" aria-label="Save ${p.player}">${icon('star')}</button><header class="player prop-player" role="button" tabindex="0" aria-label="View ${p.player} statistics and recent games"><div class="avatar player-photo"><span>${initials}</span><img loading="lazy" decoding="async" src="/api/player-photo?name=${encodeURIComponent(p.player)}" alt="${p.player}" onerror="this.hidden=true" /></div><div><strong>${p.player}</strong><span>${compactGameName(p.team.replace(' · vs ',' vs ').replace(' · @ ',' @ '))}</span><small data-game-time="${htmlEscape(gameName(p))}" data-kickoff="${htmlEscape(p.startsAt||'')}" data-default-time="${htmlEscape(p.time)}">${htmlEscape(p.time)}</small></div></header><section class="mockup-pick"><div><span>${p.market.toUpperCase()}</span><strong>${selection}</strong></div><b>${formatOdds(recommended)}</b></section><div class="mockup-proof"><div class="hit-card" data-hit-profile="${p.id}"><strong>Last 10</strong><span>Loading as this card comes into view…</span><i class="hit-loading"></i><div class="mini-games"></div></div></div><div class="bet-actions"><button class="pick-btn recommended add-recommended" data-side="${p.side}"><b>＋</b> Add to Parlay</button></div></article>`}
+function card(p,rank=-1,featured=false){const delta=p.line-p.open,alerting=preferences.lineAlerts&&state.saved.has(savedPropKey(p))&&Math.abs(delta)>=.5,recommended=p.side==='Over'?p.over:p.under,initials=p.player.split(' ').map(x=>x[0]).join(''),selection=p.binary?(p.side==='Over'?(p.overLabel||'Yes'):(p.underLabel||'No')):`${p.side} ${p.line}`,top=featured&&rank<3;return `<article class="prop-card mockup-card ${alerting?'line-alert':''} ${top?'top-play':''}" data-id="${p.id}">${top?`<span class="top-play-badge">#${rank+1} ${rank===0?'TOP PLAY':'BEST BET'}</span>`:''}${alerting?'<span class="line-alert-label">LINE MOVED</span>':''}<button class="bookmark ${state.saved.has(savedPropKey(p))?'saved':''}" aria-label="Save ${p.player}">${icon('star')}</button><header class="player prop-player" role="button" tabindex="0" aria-label="View ${p.player} statistics and recent games"><div class="avatar player-photo"><span>${initials}</span><img loading="lazy" decoding="async" src="/api/player-photo?name=${encodeURIComponent(p.player)}${p.sport==="NBA"?"&sport=NBA":""}" alt="${p.player}" onerror="this.hidden=true" /></div><div><strong>${p.player}</strong><span>${compactGameName(p.team.replace(' · vs ',' vs ').replace(' · @ ',' @ '))}</span><small data-game-time="${htmlEscape(gameName(p))}" data-kickoff="${htmlEscape(p.startsAt||'')}" data-default-time="${htmlEscape(p.time)}">${htmlEscape(p.time)}</small></div></header><section class="mockup-pick"><div><span>${p.market.toUpperCase()}</span><strong>${selection}</strong></div><b>${formatOdds(recommended)}</b></section><div class="mockup-proof"><div class="hit-card" data-hit-profile="${p.id}"><strong>Last 10</strong><span>Loading as this card comes into view…</span><i class="hit-loading"></i><div class="mini-games"></div></div></div><div class="bet-actions"><button class="pick-btn recommended add-recommended" data-side="${p.side}"><b>＋</b> Add to Parlay</button></div></article>`}
 function bindCards(){$$('.prop-card').forEach(el=>{const id=+el.dataset.id,p=props.find(x=>x.id===id);el.querySelector('.bookmark').onclick=e=>{e.stopPropagation();state.saved.has(savedPropKey(p))?state.saved.delete(savedPropKey(p)):state.saved.add(savedPropKey(p));localStorage.setItem('propedge-saved',JSON.stringify([...state.saved]));window.BTGAuth?.syncSavedProps([...state.saved],props).catch(()=>{});render()};el.querySelectorAll('.pick-btn').forEach(btn=>{const key=slipSelectionKey(p,btn.dataset.side);if(state.slip.some(x=>x.key===key))btn.classList.add('selected');btn.onclick=e=>{e.stopPropagation();toggleLeg(p,btn.dataset.side)}});el.querySelectorAll('[data-book-link]').forEach(link=>link.onclick=e=>{e.stopPropagation();navigator.clipboard?.writeText(betHandoffText(p)).catch(()=>{});link.textContent=`Opening ${p.bestBook||'sportsbook'}…`});const player=el.querySelector('.player');player.onclick=()=>openPlayerProfile(p);player.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openPlayerProfile(p)}};const market=el.querySelector('.market');if(market)market.onclick=()=>openDetail(p)})}
 const bindCardsBase=bindCards;
 let hitHydrationPromise=Promise.resolve();
@@ -625,7 +625,7 @@ $('#marketFilter').onchange=e=>{state.market=e.target.value;propRenderLimit=24;f
 function setView(view){state.view=view;$$('[data-view]').forEach(x=>x.classList.toggle('active',x.dataset.view===view));render()}
 function canvasRoundRect(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath()}
 const canvasImage=src=>new Promise(resolve=>{const image=new Image();image.onload=()=>resolve(image);image.onerror=()=>resolve(null);image.src=src});
-async function createParlayShareImage(){const decimal=state.slip.reduce((total,leg)=>total*americanToDecimal(leg.odds),1),combined=decimalToAmerican(decimal),wager=Math.max(0,+$('#wager').value||0),width=1080,height=500+state.slip.length*116,canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;const ctx=canvas.getContext('2d'),background=ctx.createLinearGradient(0,0,width,height);background.addColorStop(0,'#071a3d');background.addColorStop(.55,'#030b20');background.addColorStop(1,'#08183a');ctx.fillStyle=background;ctx.fillRect(0,0,width,height);ctx.strokeStyle='rgba(40,135,255,.13)';ctx.lineWidth=1;for(let x=0;x<width;x+=54){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,height);ctx.stroke()}for(let y=0;y<height;y+=54){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(width,y);ctx.stroke()}const glow=ctx.createRadialGradient(820,70,10,820,70,430);glow.addColorStop(0,'rgba(0,177,255,.28)');glow.addColorStop(1,'rgba(0,95,255,0)');ctx.fillStyle=glow;ctx.fillRect(0,0,width,height);const logo=await canvasImage('/logo.png');if(logo)ctx.drawImage(logo,58,52,348,58);ctx.fillStyle='#64d8ff';ctx.font='700 25px DM Sans, sans-serif';ctx.textAlign='right';ctx.fillText(`${state.slip.length}-LEG PARLAY`,1018,80);ctx.fillStyle='#829bc4';ctx.font='600 19px DM Sans, sans-serif';ctx.fillText('BETTHISGUY.COM',1018,112);ctx.textAlign='left';ctx.fillStyle='#f5f9ff';ctx.font='700 52px Space Grotesk, sans-serif';ctx.fillText('PARLAY SLIP',58,188);ctx.fillStyle='#ff9257';ctx.font='700 23px DM Sans, sans-serif';ctx.fillText('Prices at time of sharing. Odds change.',60,226);let y=270;state.slip.forEach((leg,index)=>{canvasRoundRect(ctx,58,y,964,92,18);ctx.fillStyle='rgba(12,31,68,.92)';ctx.fill();ctx.strokeStyle=index%2?'#245793':'#178dd7';ctx.lineWidth=2;ctx.stroke();ctx.fillStyle='#48d3ff';ctx.font='700 25px Space Grotesk, sans-serif';ctx.fillText(String(index+1).padStart(2,'0'),82,y+55);ctx.fillStyle='#f4f8ff';ctx.font='700 27px DM Sans, sans-serif';ctx.fillText(leg.p.player,142,y+38);ctx.fillStyle='#91a8ca';ctx.font='500 19px DM Sans, sans-serif';const detail=`${leg.p.sport} · ${leg.p.market}`;ctx.fillText(detail.length>62?detail.slice(0,59)+'…':detail,142,y+68);ctx.textAlign='right';ctx.fillStyle='#f5f9ff';ctx.font='700 25px DM Sans, sans-serif';ctx.fillText(`${leg.side} ${leg.p.line}`,990,y+38);ctx.fillStyle='#54d7ff';ctx.font='700 23px DM Sans, sans-serif';ctx.fillText(formatOdds(leg.odds),990,y+69);ctx.textAlign='left';y+=116});canvasRoundRect(ctx,58,y+14,964,146,22);const summary=ctx.createLinearGradient(58,y,1022,y);summary.addColorStop(0,'rgba(26,97,223,.5)');summary.addColorStop(1,'rgba(0,199,234,.18)');ctx.fillStyle=summary;ctx.fill();ctx.strokeStyle='#278fff';ctx.stroke();ctx.fillStyle='#87a0c8';ctx.font='700 18px DM Sans, sans-serif';ctx.fillText('COMBINED ODDS',88,y+57);ctx.fillText('WAGER',430,y+57);ctx.fillText('POTENTIAL PAYOUT',690,y+57);ctx.fillStyle='#ffffff';ctx.font='700 38px Space Grotesk, sans-serif';ctx.fillText(formatOddsPretty(combined),88,y+107);ctx.fillText(`$${wager.toFixed(2)}`,430,y+107);ctx.fillStyle='#5fe0ff';ctx.fillText(formatMoney(wager*decimal),690,y+107);ctx.fillStyle='#758db3';ctx.font='500 17px DM Sans, sans-serif';ctx.fillText('Verify every line at your licensed sportsbook · 21+ where legal · Play responsibly',58,height-40);ctx.textAlign='right';ctx.fillStyle='#4ecfff';ctx.font='700 18px DM Sans, sans-serif';ctx.fillText('BETTHISGUY',1022,height-40);return new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(new File([blob],`bet-this-guy-parlay-${Date.now()}.jpg`,{type:'image/jpeg',lastModified:Date.now()})):reject(new Error('Image could not be created.')),'image/jpeg',.92))}
+async function createParlayShareImage(){const decimal=state.slip.reduce((total,leg)=>total*americanToDecimal(leg.odds),1),combined=decimalToAmerican(decimal),wager=Math.max(0,+$('#wager').value||0),width=1080,height=500+state.slip.length*116,canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;const ctx=canvas.getContext('2d'),background=ctx.createLinearGradient(0,0,width,height);background.addColorStop(0,'#071a3d');background.addColorStop(.55,'#030b20');background.addColorStop(1,'#08183a');ctx.fillStyle=background;ctx.fillRect(0,0,width,height);ctx.strokeStyle='rgba(40,135,255,.13)';ctx.lineWidth=1;for(let x=0;x<width;x+=54){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,height);ctx.stroke()}for(let y=0;y<height;y+=54){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(width,y);ctx.stroke()}const glow=ctx.createRadialGradient(820,70,10,820,70,430);glow.addColorStop(0,'rgba(0,177,255,.28)');glow.addColorStop(1,'rgba(0,95,255,0)');ctx.fillStyle=glow;ctx.fillRect(0,0,width,height);const logo=await canvasImage('/logo.png');if(logo)ctx.drawImage(logo,58,52,58*logo.naturalWidth/logo.naturalHeight,58);ctx.fillStyle='#64d8ff';ctx.font='700 25px DM Sans, sans-serif';ctx.textAlign='right';ctx.fillText(`${state.slip.length}-LEG PARLAY`,1018,80);ctx.fillStyle='#829bc4';ctx.font='600 19px DM Sans, sans-serif';ctx.fillText('BETTHISGUY.COM',1018,112);ctx.textAlign='left';ctx.fillStyle='#f5f9ff';ctx.font='700 52px Space Grotesk, sans-serif';ctx.fillText('PARLAY SLIP',58,188);ctx.fillStyle='#ff9257';ctx.font='700 23px DM Sans, sans-serif';ctx.fillText('Prices at time of sharing. Odds change.',60,226);let y=270;state.slip.forEach((leg,index)=>{canvasRoundRect(ctx,58,y,964,92,18);ctx.fillStyle='rgba(12,31,68,.92)';ctx.fill();ctx.strokeStyle=index%2?'#245793':'#178dd7';ctx.lineWidth=2;ctx.stroke();ctx.fillStyle='#48d3ff';ctx.font='700 25px Space Grotesk, sans-serif';ctx.fillText(String(index+1).padStart(2,'0'),82,y+55);ctx.fillStyle='#f4f8ff';ctx.font='700 27px DM Sans, sans-serif';ctx.fillText(leg.p.player,142,y+38);ctx.fillStyle='#91a8ca';ctx.font='500 19px DM Sans, sans-serif';const detail=`${leg.p.sport} · ${leg.p.market}`;ctx.fillText(detail.length>62?detail.slice(0,59)+'…':detail,142,y+68);ctx.textAlign='right';ctx.fillStyle='#f5f9ff';ctx.font='700 25px DM Sans, sans-serif';ctx.fillText(`${leg.side} ${leg.p.line}`,990,y+38);ctx.fillStyle='#54d7ff';ctx.font='700 23px DM Sans, sans-serif';ctx.fillText(formatOdds(leg.odds),990,y+69);ctx.textAlign='left';y+=116});canvasRoundRect(ctx,58,y+14,964,146,22);const summary=ctx.createLinearGradient(58,y,1022,y);summary.addColorStop(0,'rgba(26,97,223,.5)');summary.addColorStop(1,'rgba(0,199,234,.18)');ctx.fillStyle=summary;ctx.fill();ctx.strokeStyle='#278fff';ctx.stroke();ctx.fillStyle='#87a0c8';ctx.font='700 18px DM Sans, sans-serif';ctx.fillText('COMBINED ODDS',88,y+57);ctx.fillText('WAGER',430,y+57);ctx.fillText('POTENTIAL PAYOUT',690,y+57);ctx.fillStyle='#ffffff';ctx.font='700 38px Space Grotesk, sans-serif';ctx.fillText(formatOddsPretty(combined),88,y+107);ctx.fillText(`$${wager.toFixed(2)}`,430,y+107);ctx.fillStyle='#5fe0ff';ctx.fillText(formatMoney(wager*decimal),690,y+107);ctx.fillStyle='#758db3';ctx.font='500 17px DM Sans, sans-serif';ctx.fillText('Verify every line at your licensed sportsbook · 21+ where legal · Play responsibly',58,height-40);ctx.textAlign='right';ctx.fillStyle='#4ecfff';ctx.font='700 18px DM Sans, sans-serif';ctx.fillText('BETTHISGUY',1022,height-40);return new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(new File([blob],`bet-this-guy-parlay-${Date.now()}.jpg`,{type:'image/jpeg',lastModified:Date.now()})):reject(new Error('Image could not be created.')),'image/jpeg',.92))}
 function shareCardTrim(value,max){const text=String(value||'');return text.length>max?`${text.slice(0,max-1)}…`:text}
 createParlayShareImage=async function(){
   const decimal=state.slip.reduce((total,leg)=>total*americanToDecimal(leg.odds),1),combined=decimalToAmerican(decimal),wager=Math.max(0,+$('#wager').value||0),width=1080,rowHeight=116,height=520+state.slip.length*rowHeight,canvas=document.createElement('canvas');
@@ -634,7 +634,7 @@ createParlayShareImage=async function(){
   background.addColorStop(0,'#061b43');background.addColorStop(.52,'#040d24');background.addColorStop(1,'#071b3b');ctx.fillStyle=background;ctx.fillRect(0,0,width,height);
   ctx.strokeStyle='rgba(48,143,232,.13)';ctx.lineWidth=1;for(let x=0;x<width;x+=54){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,height);ctx.stroke()}for(let y=0;y<height;y+=54){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(width,y);ctx.stroke()}
   const glow=ctx.createRadialGradient(870,35,12,870,35,470);glow.addColorStop(0,'rgba(0,206,255,.3)');glow.addColorStop(1,'rgba(0,91,255,0)');ctx.fillStyle=glow;ctx.fillRect(0,0,width,height);
-  const logo=await canvasImage('/logo.png');if(logo)ctx.drawImage(logo,58,60,430,72);
+  const logo=await canvasImage('/logo.png');if(logo)ctx.drawImage(logo,58,60,72*logo.naturalWidth/logo.naturalHeight,72);
   ctx.textAlign='right';ctx.fillStyle='#6be2ff';ctx.font='800 25px DM Sans, sans-serif';ctx.fillText(`${state.slip.length}-LEG PARLAY`,1022,62);ctx.fillStyle='#a1b7d7';ctx.font='700 18px DM Sans, sans-serif';ctx.fillText('BETTHISGUY.COM',1022,93);
   ctx.textAlign='left';ctx.fillStyle='#f7fbff';ctx.font='800 42px Space Grotesk, sans-serif';ctx.fillText("THIS ONE'S GOING TO BE DIFFERENT...",58,221);
   let y=270;state.slip.forEach((leg,index)=>{canvasRoundRect(ctx,58,y,964,88,18);ctx.fillStyle='rgba(9,28,63,.94)';ctx.fill();ctx.strokeStyle=index%2?'#285e9e':'#1ca6e8';ctx.lineWidth=2;ctx.stroke();ctx.beginPath();ctx.arc(99,y+44,25,0,Math.PI*2);ctx.fillStyle='#0d69b5';ctx.fill();ctx.fillStyle='#8eeaff';ctx.font='800 20px Space Grotesk, sans-serif';ctx.textAlign='center';ctx.fillText(String(index+1).padStart(2,'0'),99,y+51);ctx.textAlign='left';ctx.fillStyle='#f4f8ff';ctx.font='800 24px DM Sans, sans-serif';ctx.fillText(shareCardTrim(leg.p.player,43),145,y+37);ctx.fillStyle='#9db4d4';ctx.font='600 18px DM Sans, sans-serif';const detail=`${leg.p.sport} · ${leg.p.market}`;ctx.fillText(shareCardTrim(detail,53),145,y+66);ctx.textAlign='right';ctx.fillStyle='#f8fbff';ctx.font='800 23px DM Sans, sans-serif';ctx.fillText(`${leg.side} ${leg.p.line}`,990,y+37);ctx.fillStyle='#59dcff';ctx.font='800 22px DM Sans, sans-serif';ctx.fillText(formatOdds(leg.odds),990,y+67);ctx.textAlign='left';y+=rowHeight});
@@ -1346,6 +1346,21 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
   }
   // One sheet for every official pick (locked, hit, lost, push), built by the
   // shared BTGSheet renderer so board props, picks and parlays all look alike.
+  // "I bet this": one tap copies an official pick into the viewer's own
+  // tracked bets (My Picks), graded automatically like the board picks.
+  const betKey='btg-bet-official',betIds=()=>{try{return new Set(JSON.parse(localStorage.getItem(betKey)||'[]'))}catch{return new Set()}};
+  function betAction(r,legs,done){
+    const start=Date.parse(r.game_time||legs[0]?.gameTime||'');if(done||!(start>Date.now())||!window.BTGAuth?.trackParlay)return [];
+    const tracked=()=>betIds().has(r.id),label=()=>tracked()?'✓ In My Picks':'I bet this';
+    return [{label:label(),primary:true,wide:true,onClick:async b=>{
+      if(tracked())return;
+      const first=legs[0]||{},list=r.kind==='parlay'?legs.map(l=>({player:l.player,market:l.market,side:l.side,line:l.line,odds:l.odds,gameStart:l.gameTime,team:l.team,eventID:l.gameId})):[{player:r.player,market:r.market,side:r.side,line:r.line,odds:r.odds,gameStart:r.game_time||first.gameTime,team:first.team,eventID:first.gameId}];
+      b.disabled=true;b.textContent='Saving…';
+      try{const out=await window.BTGAuth.trackParlay({legs:list,wager:wagerStake(),sportsbook:first.book||null,source:'board'});
+        if(out){const ids=betIds();ids.add(r.id);try{localStorage.setItem(betKey,JSON.stringify([...ids].slice(-200)))}catch{}b.textContent='✓ In My Picks';window.btgCount?.('official:bet');window.BTGAuth.refreshBets?.();window.BTGMyRecord?.()}
+        else{b.textContent=label();b.disabled=false}}
+      catch(error){b.textContent=error?.message||'Couldn’t save. Try again.';b.disabled=false}}}];
+  }
   function recordModel(r){
     const legs=recordLegs(r),isParlay=r.kind==='parlay',odds=isParlay?r.combined_odds:r.odds,done=graded(r),d=oddsDecimal(odds),first=legs[0]||{};
     const chip=done?{won:{cls:'g',icon:'check',text:'Hit'},lost:{cls:'r',icon:'over',text:'Lost'},push:{cls:'n',icon:'fair',text:'Push'}}[r.result]:r.status==='provisional'?{cls:'n',icon:'fair',text:'Provisional'}:{cls:'n',icon:'lock',text:'Official pick · Locked'};
@@ -1369,7 +1384,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     return {chip,title:isParlay?`${legs.length}-leg parlay`:r.player,bet,game,price:formatOdds(odds),stake:stakeText(),
       money:done?money(payout(r)):d?`wins $${Math.round(heroStake*(d-1)).toLocaleString('en-US')}`:'—',moneyCls:done?(r.result==='won'?'pos':r.result==='lost'?'neg':''):'pos',
       rows,legs:legRows,chart:points.length>=2?{label:done?'Price posted → kickoff':'Price since posted',points}:null,
-      actions:[{label:done&&r.result==='won'?'Share this hit':'Share',icon:'share',primary:false,wide:true,share:`${done&&r.result==='won'?'✅ Hit':'Bet This Guy pick'}: ${isParlay?`${legs.length}-leg parlay (${formatOdds(odds)})`:`${r.player} ${bet} (${formatOdds(odds)})`} · ${location.origin}`}],
+      actions:[...betAction(r,legs,done),{label:done&&r.result==='won'?'Share this hit':'Share',icon:'share',primary:false,wide:true,share:`${done&&r.result==='won'?'✅ Hit':'Bet This Guy pick'}: ${isParlay?`${legs.length}-leg parlay (${formatOdds(odds)})`:`${r.player} ${bet} (${formatOdds(odds)})`} · ${location.origin}`}],
       links:[...(isParlay?[]:[{text:`${String(r.player||'').split(' ').slice(-1)[0]}’s stats & game log ›`,onClick:()=>openPlayerProfile(statsProp({...first,player:r.player,market:r.market,line:r.line,side:r.side,odds:r.odds,gameTime:r.game_time||first.gameTime}))}]),{text:'See every pick on Results ›',href:'/trust#official'}]};
   }
   const hitDetails=r=>window.BTGSheet.render(recordModel(r)),pickDetails=hitDetails;
@@ -1380,7 +1395,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     const hero=$('#heroBanner'),strip=$('#hitsStrip');if(!hero)return;
     if(!s){hero.hidden=false;return}
     $('#heroEyebrow').textContent='OFFICIAL RECORD';
-    $('#heroTitle').innerHTML=`${htmlEscape(s.label==='LAST WEEK'?'Last week':s.label==='THIS WEEK SO FAR'?'This week so far':s.label.charAt(0)+s.label.slice(1).toLowerCase())} <b>${s.wins}–${s.losses}${s.pushes?`–${s.pushes}`:''}</b> <span class="hero-profit ${s.profit>=0?'up':'down'}">${htmlEscape(money(s.profit))}</span>`;
+    $('#heroTitle').innerHTML=`${htmlEscape(s.label==='LAST WEEK'?'Last week':s.label==='THIS WEEK SO FAR'?'This week so far':(s.label.startsWith('WEEK OF ')?`Week of ${s.label.charAt(8)}${s.label.slice(9).toLowerCase()}`:s.label.charAt(0)+s.label.slice(1).toLowerCase()))} <b>${s.wins}–${s.losses}${s.pushes?`–${s.pushes}`:''}</b> <span class="hero-profit ${s.profit>=0?'up':'down'}">${htmlEscape(money(s.profit))}</span>`;
     const stats=[[money(s.profit),`betting ${stakeText()} a pick`,s.profit>=0?'up':'down']];
     if(s.tracked)stats.push([`${s.beat} of ${s.tracked}`,'beat the closing line','']);
     if(s.parlayWins+s.parlayLosses)stats.push([`${s.parlayWins}–${s.parlayLosses}`,`parlays · ${money(s.parlayProfit)}`,s.parlayProfit>=0?'up':'down']);
@@ -1421,9 +1436,12 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     const title=isParlay?`${legs.length}-leg parlay`:r.player;
     const sub0=isParlay?legs.map(l=>l.player).join(' + '):legText({side:r.side,line:r.line,market:String(r.market||'').toLowerCase()}),sub=sub0.charAt(0).toUpperCase()+sub0.slice(1);
     const initials=String(r.player||'').split(' ').map(x=>x[0]||'').join('').slice(0,3);
-    const avatar=isParlay?`<span class="on-avatar on-parlay">${icon('layers')}</span>`:`<span class="on-avatar"><span>${htmlEscape(initials)}</span><img loading="lazy" decoding="async" src="/api/player-photo?name=${encodeURIComponent(r.player||'')}" alt="" onerror="this.remove()"></span>`;
+    const avatar=isParlay?`<span class="on-avatar on-parlay">${icon('layers')}</span>`:`<span class="on-avatar"><span>${htmlEscape(initials)}</span><img loading="lazy" decoding="async" src="/api/player-photo?name=${encodeURIComponent(r.player||'')}${(r.sport||r.sport_label)==='NBA'?'&sport=NBA':''}" alt="" onerror="this.remove()"></span>`;
     const tag=status[0]==='locked'?`${icon('lock')} Locked`:status[1];
-    return `<button type="button" class="on-row" data-on="${i}" aria-label="Details for ${htmlEscape(title)}">${avatar}<span class="on-who"><b>${htmlEscape(title)}</b><span>${htmlEscape(sub)}</span><small>${htmlEscape(kickoff(r.game_time))}</small><em class="on-live" data-on-live="${i}" hidden></em></span><span class="on-end"><b class="on-price">${htmlEscape(formatOdds(odds))}</b><span class="on-tag on-${status[0]}">${tag}</span></span></button>`;
+    const books=[...new Set(legs.map(l=>l.book).filter(Boolean))],edges=legs.map(l=>Number(l.edge)).filter(Number.isFinite);
+    const kicker=`<span class="on-kicker">${icon('star')} Official${books.length===1?` · ${htmlEscape(books[0])}`:''}</span>`;
+    const why=edges.length?(isParlay?`Every leg beats fair`:`${Math.max(...edges).toFixed(1)}% better than fair`):'';
+    return `<button type="button" class="on-row on-${status[0]}-row" data-on="${i}" data-on-player="${htmlEscape(isParlay?'':r.player||'')}" data-on-team="${htmlEscape(isParlay?'':legs[0]?.team||'')}" aria-label="Details for ${htmlEscape(title)}">${avatar}<span class="on-who">${kicker}<b>${htmlEscape(title)}</b><span>${htmlEscape(sub)}</span><small>${htmlEscape(kickoff(r.game_time))}</small>${why?`<i class="on-why">${htmlEscape(why)}</i>`:''}<em class="on-live" data-on-live="${i}" hidden></em></span><span class="on-end"><b class="on-price">${htmlEscape(formatOdds(odds))}</b><span class="on-tag on-${status[0]}">${tag}</span></span></button>`;
   }
   // Live progress for locked picks, refreshed with the live board (every 5s in games).
   let officialLiveList=[];
@@ -1453,6 +1471,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     $('#officialNowList').innerHTML=list.length?list.map(officialRow).join(''):'<div class="on-empty"><strong>No picks yet this week.</strong><span>They post the moment a price qualifies, any day before kickoff.</span></div>';
     $$('#officialNowList button[data-on]').forEach(b=>b.onclick=()=>openPick(list[+b.dataset.on]));
     officialLiveList=list;updateOfficialLive();
+    $$('#officialNowList [data-on-player]').forEach(row=>{const player=row.dataset.onPlayer;if(!player||typeof playerStatsFor!=='function')return;const r=list[+row.dataset.on];playerStatsFor({sport:r?.sport||'NFL',player,team:row.dataset.onTeam}).then(payload=>window.BTGPaintTeam?.(row,payload?.player?.team,r?.sport||'NFL')).catch(()=>{})});
     host.hidden=false;
   }
   let heroRows=null;
@@ -1563,7 +1582,7 @@ if(typeof fetch==='function')window.btgCountVisit?.('view:home');
   const ios=/iPhone|iPad|iPod/.test(navigator.userAgent||'');
   const standalone=()=>window.matchMedia?.('(display-mode: standalone)').matches||navigator.standalone===true;
   const note=text=>{const el=$('#alertsNote');if(!el)return;el.textContent=text;el.hidden=!text};
-  const show=on=>buttons().forEach(button=>{const label=on?'Alerts on':'Get pick alerts';if(button.dataset.alertsSheet!==undefined){const strong=button.querySelector('strong');if(strong)strong.textContent=on?'Pick alerts are on':'Pick alerts';const span=button.querySelector('span');if(span)span.textContent=on?'Tap to turn them off':'Get a notification when a new official pick drops'}else button.textContent=label;button.setAttribute('aria-pressed',String(on))});
+  const show=on=>buttons().forEach(button=>{document.documentElement.classList.toggle('alerts-on',on);const label=on?'Alerts on':'Get pick alerts';if(button.dataset.alertsBanner!==undefined){button.setAttribute('aria-pressed',String(on));return}if(button.dataset.alertsSheet!==undefined){const strong=button.querySelector('strong');if(strong)strong.textContent=on?'Pick alerts are on':'Pick alerts';const span=button.querySelector('span');if(span)span.textContent=on?'Tap to turn them off':'Get a notification when a new official pick drops'}else button.textContent=label;button.setAttribute('aria-pressed',String(on))});
   const keyBytes=key=>{const b=atob(key.replace(/-/g,'+').replace(/_/g,'/')+'='.repeat((4-key.length%4)%4));return Uint8Array.from(b,c=>c.charCodeAt(0))};
   async function current(){try{const reg=await navigator.serviceWorker.getRegistration('/');return reg?await reg.pushManager.getSubscription():null}catch{return null}}
   async function turnOn(){
@@ -1576,12 +1595,12 @@ if(typeof fetch==='function')window.btgCountVisit?.('view:home');
     const reg=await navigator.serviceWorker.register('/sw.js');await navigator.serviceWorker.ready;
     const {publicKey}=await (await fetch('/api/alerts/key')).json();
     const sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:keyBytes(publicKey)});
-    const response=await fetch('/api/alerts/subscribe',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...sub.toJSON(),books:preferences.books||[]})});
+    const response=await fetch('/api/alerts/subscribe',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...sub.toJSON(),books:preferences.books||[],follows:(window.BTGFollow?.read().players||[]).map(f=>f.name)})});
     if(!response.ok){await sub.unsubscribe().catch(()=>{});note('Couldn’t turn alerts on right now. Try again in a minute.');return}
     show(true);note(preferences.books?.length?`Alerts are on. We’ll ping you when a new official pick drops, and when ${preferences.books.length===1?preferences.books[0]:'one of your sportsbooks'} has a good-value price.`:'Alerts are on. We’ll ping you when a new official pick drops.');window.btgCount?.('alerts:on');
   }
   // Saving Settings keeps the books stored with this phone's alerts up to date.
-  window.BTGSyncAlertBooks=async()=>{try{if(!('serviceWorker' in navigator))return;const reg=await navigator.serviceWorker.getRegistration('/sw.js');const sub=await reg?.pushManager?.getSubscription();if(sub)await fetch('/api/alerts/subscribe',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...sub.toJSON(),books:preferences.books||[]})})}catch{}};
+  window.BTGSyncAlertBooks=async()=>{try{if(!('serviceWorker' in navigator))return;const reg=await navigator.serviceWorker.getRegistration('/sw.js');const sub=await reg?.pushManager?.getSubscription();if(sub)await fetch('/api/alerts/subscribe',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...sub.toJSON(),books:preferences.books||[],follows:(window.BTGFollow?.read().players||[]).map(f=>f.name)})})}catch{}};
   async function turnOff(sub){
     await fetch('/api/alerts/unsubscribe',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({endpoint:sub.endpoint})}).catch(()=>{});
     await sub.unsubscribe().catch(()=>{});show(false);note('Alerts are off.');window.btgCount?.('alerts:off');
@@ -1948,7 +1967,7 @@ if(typeof fetch==='function')window.btgCountVisit?.('view:home');
     const bio=[player?.height,player?.weight,player?.age?`Age ${Math.floor(player.age)}`:'',player?.experience,player?.college].filter(Boolean).map(esc).join(' · ');
     const pos=player?.position_abbreviation||ROLES[role]?.name||'';
     let when='';try{when=p.startsAt?formatCompactKickoff(p.startsAt):p.time||''}catch{when=p.time||''}
-    return `<header class="pp-head"><div class="pp-photo"><img src="/api/player-photo?name=${encodeURIComponent(p.player)}" alt="" onerror="this.remove()"><span>${initials}</span></div><div><h2 id="ppName">${name}</h2><p class="pp-sub">${[pos,player?.jersey_number?`#${esc(player.jersey_number)}`:'',esc(team)].filter(Boolean).join(' · ')}</p>${bio?`<p class="pp-bio">${bio}</p>`:''}</div></header>
+    return `<header class="pp-head"><div class="pp-photo"><img src="/api/player-photo?name=${encodeURIComponent(p.player)}${p.sport==="NBA"?"&sport=NBA":""}" alt="" onerror="this.remove()"><span>${initials}</span></div><div><h2 id="ppName">${name}</h2><p class="pp-sub">${[pos,player?.jersey_number?`#${esc(player.jersey_number)}`:'',esc(team)].filter(Boolean).join(' · ')}</p>${bio?`<p class="pp-bio">${bio}</p>`:''}</div></header>
       ${p.team?`<p class="pp-next"><span>${Date.parse(p.startsAt)<Date.now()?'Game':'Next game'}</span> ${esc(compactGameName(String(p.team).replace(' · ',' ')))}${when?` · ${esc(when)}`:''}</p>`:''}`;
   }
   // NBA seasons span two years (2025-26); NFL seasons are one.
@@ -2052,4 +2071,139 @@ function statsProp(l){
   };
   const start=()=>{fix(document.body);document.title=document.title.replace(/\bNFL\b/g,'NBA');new MutationObserver(list=>list.forEach(m=>{if(m.type==='characterData')fix(m.target);else m.addedNodes.forEach(fix)})).observe(document.body,{childList:true,subtree:true,characterData:true})};
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start);else start();
+})();
+
+/* Team colors: once a card's player stats load, paint the avatar and accent in the player's team colors. */
+(()=>{
+  const NFL={ARI:['#97233F','#FFB612'],ATL:['#A71930','#101820'],BAL:['#241773','#9E7C0C'],BUF:['#00338D','#C60C30'],CAR:['#0085CA','#101820'],CHI:['#0B162A','#C83803'],CIN:['#FB4F14','#101820'],CLE:['#311D00','#FF3C00'],DAL:['#003594','#869397'],DEN:['#FB4F14','#002244'],DET:['#0076B6','#B0B7BC'],GB:['#203731','#FFB612'],HOU:['#03202F','#A71930'],IND:['#002C5F','#A2AAAD'],JAX:['#006778','#D7A22A'],KC:['#E31837','#FFB81C'],LV:['#101820','#A5ACAF'],LAC:['#0080C6','#FFC20E'],LAR:['#003594','#FFA300'],MIA:['#008E97','#FC4C02'],MIN:['#4F2683','#FFC62F'],NE:['#002244','#C60C30'],NO:['#101820','#D3BC8D'],NYG:['#0B2265','#A71930'],NYJ:['#125740','#101820'],PHI:['#004C54','#A5ACAF'],PIT:['#101820','#FFB612'],SF:['#AA0000','#B3995D'],SEA:['#002244','#69BE28'],TB:['#D50A0A','#34302B'],TEN:['#0C2340','#4B92DB'],WAS:['#5A1414','#FFB612']};
+  Object.assign(NFL,{JAC:NFL.JAX,LA:NFL.LAR,WSH:NFL.WAS});
+  const NBA={ATL:['#E03A3E','#26282A'],BOS:['#007A33','#BA9653'],BKN:['#101010','#777D84'],CHA:['#1D1160','#00788C'],CHI:['#CE1141','#101010'],CLE:['#860038','#FDBB30'],DAL:['#00538C','#002B5E'],DEN:['#0E2240','#FEC524'],DET:['#C8102E','#1D42BA'],GSW:['#1D428A','#FFC72C'],HOU:['#CE1141','#101010'],IND:['#002D62','#FDBB30'],LAC:['#C8102E','#1D428A'],LAL:['#552583','#FDB927'],MEM:['#5D76A9','#12173F'],MIA:['#98002E','#101010'],MIL:['#00471B','#EEE1C6'],MIN:['#0C2340','#236192'],NOP:['#0C2340','#C8102E'],NYK:['#006BB6','#F58426'],OKC:['#007AC1','#EF3B24'],ORL:['#0077C0','#101010'],PHI:['#006BB6','#ED174C'],PHX:['#1D1160','#E56020'],POR:['#E03A3E','#101010'],SAC:['#5A2D81','#63727A'],SAS:['#101010','#C4CED4'],TOR:['#CE1141','#101010'],UTA:['#002B5C','#F9A01B'],WAS:['#002B5C','#E31837']};
+  const light=hex=>{const n=parseInt(hex.slice(1),16);return .2126*(n>>16)+.7152*(n>>8&255)+.0722*(n&255)};
+  const colors=(team,sport)=>{const key=String(team?.abbreviation||'').toUpperCase();return (sport==='NBA'?NBA:NFL)[key]||null};
+  window.BTGTeamColors=colors;
+  const paint=(el,team,sport)=>{const pair=colors(team,sport);if(!el||!pair)return;const [a,b]=pair;el.style.setProperty('--team',a);el.style.setProperty('--team2',b);el.style.setProperty('--team-accent',light(a)>=light(b)?a:b);el.dataset.team=String(team.abbreviation).toUpperCase()};
+  window.BTGPaintTeam=(el,team,sport)=>paint(el,team,sport);
+  const fromStats=async(host,p)=>{try{if(p.teamMarket)return;const payload=await playerStatsFor(p);paint(host.closest('.prop-card'),payload?.player?.team,p.sport)}catch{}};
+  let seen=null;
+  const baseBind=bindCards;
+  bindCards=function(){baseBind();seen?.disconnect();const cards=$$('.prop-card[data-id]:not([data-team])'),go=el=>{const p=props.find(item=>item.id===+el.dataset.id);if(p)fromStats(el,p)};
+    if(typeof IntersectionObserver!=='function'){cards.slice(0,12).forEach(go);return}
+    seen=new IntersectionObserver(items=>items.forEach(item=>{if(!item.isIntersecting)return;seen.unobserve(item.target);go(item.target)}),{rootMargin:'200px 0px'});cards.forEach(el=>seen.observe(el))};
+  // One plain line on each board card saying why it got its rating.
+  const bookFrom=p=>(String(p.note||'').match(/^(?:Best (?:price |total )?at )?(.+?) (?:price )?vs\b/)||[])[1]||'';
+  const whyText=p=>{const v=typeof propVerdict==='function'?propVerdict(p):null,edge=Number(p.rawEdge),n=Number(p.pairedBooks)||0;if(!v||!Number.isFinite(edge))return '';const book=bookFrom(p);
+    if(v.key==='send')return `${book||'This book'} pays ${edge.toFixed(1)}% more than fair${n?` (${n} books)`:''}`;
+    if(v.key==='read')return `${Math.abs(edge).toFixed(1)}% worse than the fair price`;
+    return n?`In line with the fair price across ${n} books`:''};
+  const baseCard=card;
+  card=function(p,rank=-1,featured=false){const html=baseCard(p,rank,featured);if(!html.includes('<p class="card-money">'))return html;const why=whyText(p);return why?html.replace('<p class="card-money">',()=>`<p class="card-why card-why-${propVerdict(p).key}">${htmlEscape(why)}</p><p class="card-money">`):html};
+  const baseProfile=renderPlayerProfile;
+  renderPlayerProfile=function(p,payload){const out=baseProfile(p,payload);try{paint(document.querySelector('#playerProfile .pp-head'),payload?.player?.team,p.sport)}catch{}return out};
+})();
+
+/* Engine status: shows the pick engine is scanning, from the latest pick run. */
+(()=>{
+  const host=typeof document.getElementById==='function'?document.getElementById('engineStatus'):null;if(!host||typeof fetch!=='function')return;
+  const ago=ms=>{const m=Math.round(ms/60000);return m<1?'just now':m<60?`${m} min ago`:`${Math.round(m/60)} hr ago`};
+  const draw=body=>{const last=body?.last,age=last?Date.now()-Date.parse(last.at):Infinity;
+    if(!last||!(age<45*60000)||!last.props){host.hidden=true;return}
+    host.innerHTML=`<span class="on-engine-dot" aria-hidden="true"></span><span><b>Engine live</b> · checked ${Number(last.props).toLocaleString('en-US')} props ${ago(age)}${body.day?.runs>1?` · ${body.day.runs} scans today`:''}</span>`;host.hidden=false};
+  let data=null;
+  const load=()=>fetch('/api/engine').then(r=>r.ok?r.json():null).then(body=>{data=body?.success?body:null;draw(data)}).catch(()=>{});
+  load();setInterval(load,120000);setInterval(()=>data&&draw(data),30000);
+})();
+
+/* Alerts banner and add-to-home prompt: the two ways people come back. */
+(()=>{
+  if(typeof document.getElementById!=='function')return;
+  const store={get:k=>{try{return localStorage.getItem(k)}catch{return null}},set:(k,v)=>{try{localStorage.setItem(k,v)}catch{}}};
+  const days=n=>n*86400000,recent=(k,n)=>{const t=Number(store.get(k));return Number.isFinite(t)&&Date.now()-t<days(n)};
+  const hero=document.getElementById('alertsHero');
+  if(hero&&!recent('btg-alerts-hero-hidden',14)){hero.hidden=false;document.getElementById('alertsHeroClose')?.addEventListener('click',()=>{hero.hidden=true;store.set('btg-alerts-hero-hidden',String(Date.now()));window.btgCount?.('alerts:banner-hide')})}
+  // Add to Home Screen: iPhone needs it for phone alerts; Android can install directly.
+  const standalone=window.matchMedia?.('(display-mode: standalone)').matches||navigator.standalone===true;
+  if(standalone)return;
+  const visits=Number(store.get('btg-visits')||0)+1;store.set('btg-visits',String(visits));
+  const ios=/iPhone|iPad|iPod/.test(navigator.userAgent||'')&&!/CriOS|FxiOS|EdgiOS/.test(navigator.userAgent||'');
+  const toast=(html,onAction)=>{if(recent('btg-a2hs-hidden',30)||document.getElementById('a2hs'))return;const el=document.createElement('div');el.id='a2hs';el.className='a2hs';el.setAttribute('role','dialog');el.setAttribute('aria-label','Add Bet This Guy to your Home Screen');el.innerHTML=`<img src="/apple-touch-icon.png" alt="" width="40" height="40"><div class="a2hs-copy">${html}</div>${onAction?'<button type="button" class="a2hs-go">Install</button>':''}<button type="button" class="a2hs-close" aria-label="Not now">×</button>`;
+    el.querySelector('.a2hs-close').onclick=()=>{el.remove();store.set('btg-a2hs-hidden',String(Date.now()))};
+    if(onAction)el.querySelector('.a2hs-go').onclick=()=>{el.remove();onAction()};
+    document.body.appendChild(el);window.btgCount?.('a2hs:shown')};
+  if(ios&&visits>=2)setTimeout(()=>toast('<strong>Get the app on your iPhone</strong><span>Tap <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="Share"><path d="M12 3v12"/><path d="m8 7 4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg> then <b>Add to Home Screen</b>. Opens like an app, and pick alerts work.</span>'),4000);
+  window.addEventListener('beforeinstallprompt',event=>{event.preventDefault();if(visits<2)return;toast('<strong>Install Bet This Guy</strong><span>One tap to open picks, with alerts when they post.</span>',()=>{event.prompt();event.userChoice?.then(c=>window.btgCount?.(`a2hs:${c.outcome}`))})});
+})();
+
+/* Personal P/L: signed-in viewers see their own tracked record on home. */
+(()=>{
+  if(typeof document.getElementById!=='function')return;
+  const host=document.getElementById('myRecord');if(!host)return;
+  const dollars=c=>`${c<0?'−':'+'}$${Math.abs(Math.round(c/100)).toLocaleString('en-US')}`;
+  const draw=async()=>{const m=await window.BTGAuth?.myRecord?.().catch(()=>null);if(!m||!m.count){host.hidden=true;return}
+    const decided=m.wins+m.losses+m.pushes;
+    host.innerHTML=`<span class="my-pl-label">Your bets</span>${decided?`<b>${m.wins}–${m.losses}${m.pushes?`–${m.pushes}`:''}</b><span class="my-pl-net ${m.net>=0?'up':'down'}">${dollars(m.net)}</span>`:''}${m.pending?`<span class="my-pl-pending">${m.pending} pending</span>`:''}<span class="my-pl-go" aria-hidden="true">›</span>`;
+    host.setAttribute('aria-label',`Your tracked bets: ${m.wins} wins, ${m.losses} losses${m.pending?`, ${m.pending} pending`:''}. Open My Picks`);host.hidden=false};
+  host.onclick=()=>window.BTGAuth?.open?.('record');
+  window.BTGMyRecord=draw;addEventListener('btg-auth',draw);setTimeout(draw,1200);
+})();
+
+/* Follow players and teams (kept on this device): a Follow button on the
+   player screen, a "Following" tag on their board cards, and a Following
+   list in the desktop rail / under This week's picks on phones. */
+(()=>{
+  if(typeof document.getElementById!=='function')return;
+  const KEY='btg-follow',read=()=>{try{const v=JSON.parse(localStorage.getItem(KEY)||'{}');return {players:Array.isArray(v.players)?v.players:[],teams:Array.isArray(v.teams)?v.teams:[]}}catch{return {players:[],teams:[]}}};
+  const write=v=>{try{localStorage.setItem(KEY,JSON.stringify(v))}catch{}};
+  const norm=s=>String(s||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+  const has=(kind,name)=>read()[kind].some(x=>norm(x.name)===norm(name));
+  // Follows also live in the account (preferences.follows) and with this
+  // phone's alerts, so they carry across devices and trigger alerts.
+  const sync=v=>{try{preferences={...preferences,follows:v};savePreferences()?.catch?.(()=>{})}catch{}window.BTGSyncAlertBooks?.()};
+  const toggle=(kind,item)=>{const v=read(),list=v[kind],i=list.findIndex(x=>norm(x.name)===norm(item.name));if(i>=0)list.splice(i,1);else list.unshift({...item,at:Date.now()});v[kind]=list.slice(0,40);write(v);sync(v);window.btgCount?.(`follow:${i>=0?'off':'on'}`);refresh();return i<0};
+  // Signing in merges the account's follows with this device's.
+  addEventListener('btg:preferences-loaded',event=>{const remote=event.detail?.follows;if(!remote||typeof remote!=='object'){const l=read();if(l.players.length||l.teams.length)sync(l);return}const local=read(),merged={players:[],teams:[]};let extra=false;
+    for(const kind of ['players','teams']){const seen=new Set();for(const x of [...(Array.isArray(remote[kind])?remote[kind]:[]),...local[kind]]){if(!x?.name||seen.has(norm(x.name)))continue;seen.add(norm(x.name));merged[kind].push(x)}merged[kind]=merged[kind].slice(0,40);if(merged[kind].length>(Array.isArray(remote[kind])?remote[kind].length:0))extra=true}
+    write(merged);if(extra)sync(merged);else window.BTGSyncAlertBooks?.();refresh()});
+  window.BTGFollow={read,has,toggle};
+  const teamsOf=p=>String(p.team||'').toLowerCase();
+  const followedProp=p=>has('players',p.player)||read().teams.some(t=>t.full&&teamsOf(p).includes(String(t.full).toLowerCase()));
+  // Board cards: a small tag on followed players and teams.
+  const baseCard=card;
+  card=function(p,rank=-1,featured=false){const html=baseCard(p,rank,featured);if(!followedProp(p))return html;const team=has('players',p.player)?null:read().teams.find(t=>t.full&&teamsOf(p).includes(String(t.full).toLowerCase()));const tag=team?`${team.name} game`:'Following';return html.replace('<strong>'+p.player+'</strong>',()=>`<strong>${p.player}<em class="follow-tag">${htmlEscape(tag)}</em></strong>`).replace('class="prop-card','class="prop-card is-followed')};
+  // Player screen: Follow buttons for the player and their team.
+  const baseProfile=renderPlayerProfile;
+  renderPlayerProfile=function(p,payload){const out=baseProfile(p,payload);try{
+    const head=document.querySelector('#playerProfile .pp-head');if(!head||head.querySelector('.follow-row'))return out;
+    const team=payload?.player?.team||{},abbr=String(team.abbreviation||'').toUpperCase(),row=document.createElement('div');row.className='follow-row';
+    const btn=(kind,item,label)=>{const b=document.createElement('button');b.type='button';b.className='follow-btn';const sync=()=>{const on=has(kind,item.name);b.classList.toggle('on',on);b.setAttribute('aria-pressed',String(on));b.textContent=on?`✓ Following${kind==='teams'?' '+label:''}`:`＋ Follow ${label}`};sync();b.onclick=e=>{e.stopPropagation();const on=toggle(kind,item);sync();const hint=row.parentElement?.querySelector('.follow-hint');if(hint)hint.hidden=!(on&&kind==='players')};return b};
+    row.appendChild(btn('players',{name:p.player,sport:p.sport||'NFL',team:abbr},'player'));
+    if(abbr)row.appendChild(btn('teams',{name:abbr,full:team.full_name||'',sport:p.sport||'NFL'},abbr));
+    const host=head.querySelector('div:not(.pp-photo)')||head;host.appendChild(row);
+    const hint=document.createElement('p');hint.className='follow-hint';hint.hidden=true;hint.innerHTML=document.documentElement.classList.contains('alerts-on')?'We’ll alert you when a top sportsbook has a good-value price on this player.':'Turn on <button type="button" class="follow-hint-btn">pick alerts</button> to hear when a top sportsbook has a good-value price on this player.';
+    hint.querySelector('.follow-hint-btn')?.addEventListener('click',()=>{document.getElementById('playerDialog')?.close?.();document.querySelector('[data-alerts-toggle]')?.click()});host.appendChild(hint)}catch{}return out};
+  // Following list.
+  const panel=document.createElement('section');panel.className='follow-panel';panel.id='followPanel';panel.setAttribute('aria-labelledby','followTitle');
+  const esc=s=>htmlEscape(s);
+  function drawPanel(){const v=read(),list=[...v.players.map(x=>({...x,kind:'players'})),...v.teams.map(x=>({...x,kind:'teams'}))];
+    panel.classList.toggle('empty',!list.length);
+    if(!list.length){panel.innerHTML=`<h2 id="followTitle">Following</h2><p class="follow-empty">Follow players and teams from their stats screen. They’ll be tagged on the board and listed here.</p>`;return}
+    const rows=list.slice(0,12).map((x,i)=>{const theirs=(typeof props!=='undefined'?props:[]).filter(p=>x.kind==='players'?norm(p.player)===norm(x.name):x.full&&teamsOf(p).includes(String(x.full).toLowerCase()));
+      const colors=window.BTGTeamColors?.({abbreviation:x.kind==='teams'?x.name:x.team},x.sport),style=colors?` style="background:linear-gradient(135deg,${colors[0]},${colors[1]})"`:'';
+      const initials=x.kind==='teams'?x.name:String(x.name).split(' ').map(w=>w[0]).join('').slice(0,3);
+      const sub=theirs.length?`${theirs.length} prop${theirs.length===1?'':'s'} on the board`:'Nothing on the board right now';
+      return `<li><button type="button" class="follow-item" data-follow-i="${i}"${theirs.length?'':' disabled'}><span class="fi-badge"${style}>${esc(initials)}</span><span class="fi-text"><b>${esc(x.kind==='teams'?(x.full||x.name):x.name)}</b><small>${sub}</small></span></button><button type="button" class="fi-x" data-unfollow="${i}" aria-label="Unfollow ${esc(x.name)}">×</button></li>`}).join('');
+    panel.innerHTML=`<h2 id="followTitle">Following</h2><ul class="follow-list">${rows}</ul>`;
+    panel.querySelectorAll('[data-follow-i]').forEach(b=>b.onclick=()=>{const x=list[+b.dataset.followI],p=(props||[]).find(q=>x.kind==='players'?norm(q.player)===norm(x.name):teamsOf(q).includes(String(x.full).toLowerCase()));if(!p)return;if(x.kind==='players')openPlayerProfile(p);else window.BTGSheet?.prop?.(p)});
+    panel.querySelectorAll('[data-unfollow]').forEach(b=>b.onclick=()=>{const x=list[+b.dataset.unfollow];toggle(x.kind,x)})}
+  function refresh(){drawPanel();try{if(typeof render==='function')render()}catch{}}
+  // Desktop rail: on wide screens the record, your bets, alerts and Following
+  // sit in a sticky column beside the picks; on phones they stay in the flow.
+  const board=document.querySelector('.workspace .board'),rail=document.createElement('aside');rail.className='desk-rail';rail.setAttribute('aria-label','Your corner');
+  const parts=['heroBanner','myRecord','alertsHero'].map(id=>document.getElementById(id)).filter(Boolean),marks=parts.map(el=>{const m=document.createComment('rail');el.before(m);return m});
+  const official=document.getElementById('officialNow');
+  const wide=window.matchMedia?.('(min-width: 1180px)');
+  function place(){if(!board)return;if(wide?.matches){board.classList.add('has-rail');board.prepend(rail);parts.forEach(el=>rail.appendChild(el));rail.appendChild(panel)}else{board.classList.remove('has-rail');parts.forEach((el,i)=>marks[i].after(el));rail.remove();(document.getElementById('alertsHero')||official?.lastElementChild)?.after?.(panel)}}
+  if(official&&!document.getElementById('alertsHero'))official.appendChild(panel);
+  place();wide?.addEventListener?.('change',place);drawPanel();
+  addEventListener('storage',e=>{if(e.key===KEY)refresh()});
+  const baseBind=bindCards;bindCards=function(){baseBind();drawPanel()};
 })();

@@ -31,6 +31,8 @@ const payload=async url=>(await context.worker.fetch(new Request('https://test.l
   const m=(market,sport='NBA')=>run(`BTGStats.metric(${JSON.stringify({market,sport})},row).value`);
   assert.deepEqual([m('Points'),m('Rebounds'),m('Assists'),m('3-Pointers Made'),m('Points + Rebounds + Assists'),m('Rebounds + Assists'),m('Double-Double'),m('Triple-Double')],[31,9,11,5,51,20,1,0]);
   assert.equal(run("BTGStats.metric({market:'Assists',sport:'NFL'},{assisted_tackles:3}).value"),3,'NFL assists are unchanged');
+  assert.equal(run("BTGStats.metric({market:'Points',sport:'NBA'},{pts:0,reb:0,ast:0,min:'00'}).value"),null,'a did-not-play line has no value');
+  assert.equal(run("BTGStats.nbaPlayed({min:'00'})||BTGStats.nbaPlayed({min:''})"),false);assert.equal(run("BTGStats.nbaPlayed({min:'34:12'})"),true);
   assert.ok(run("BTGStats.supports({market:'Points + Rebounds + Assists',sport:'NBA'})")&&!run("BTGStats.supports({market:'First Basket',sport:'NBA'})"));
   // Grading: a finished NBA pick finds its game (a late tip-off dated the day before in UTC) and the player's line.
   context.record={sport:'NBA',player:'Jayson Tatum',team:'New York Knicks · @ Boston Celtics',gameTime:'2026-10-27T23:30:00Z',market:'Points',side:'Over',line:28.5};

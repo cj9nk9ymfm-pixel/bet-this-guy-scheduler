@@ -310,6 +310,8 @@ async function gradeNbaShadow(env,now=Date.now()){
     const record={sport:'NBA',player:r.player,team:r.team,gameTime:r.game_time,market:r.market,side:r.side,line:r.line};
     const stat=await recordPlayerStats(record,env,undefined,cache).catch(()=>null);
     if(!stat||!stat.scoreboardFinal||stat.missingPlayerStats)continue;
+    // Didn't play: sportsbooks void the prop, so it's no action, never a loss.
+    if(!BTGStats.nbaPlayed(stat)){statements.push(env.DB.prepare('UPDATE nba_shadow SET actual=NULL,result=?,graded_at=? WHERE id=?').bind('void',new Date(now).toISOString(),r.id));continue}
     const value=BTGStats.metric(record,stat).value,result=value===null?null:BTGStats.grade(r.side,r.line,value);
     if(result)statements.push(env.DB.prepare('UPDATE nba_shadow SET actual=?,result=?,graded_at=? WHERE id=?').bind(value,result,new Date(now).toISOString(),r.id));
   }
@@ -378,7 +380,7 @@ const weeklyMoney=v=>(v<0?'−':'+')+'\u0024'+Math.abs(Math.round(v)).toLocaleSt
 const weeklyDay=iso=>{const d=new Date(iso);return Number.isFinite(d.getTime())?d.toLocaleString('en-US',{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZone:'America/New_York'})+' ET':''};
 const weeklyRange=start=>{const a=new Date(Date.parse(`${start}T12:00:00Z`)),b=new Date(a.getTime()+6*86400000),f=d=>d.toLocaleDateString('en-US',{month:'short',day:'numeric',timeZone:'UTC'});const end=a.getUTCMonth()===b.getUTCMonth()?String(b.getUTCDate()):f(b);return `${f(a)}–${end}, ${b.getUTCFullYear()}`};
 function weeklyShell({title,description,path,body}){
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#0e1013"><title>${weeklyEscape(title)}</title><meta name="description" content="${weeklyEscape(description)}"><link rel="canonical" href="${SITE_URL}${path}"><meta property="og:type" content="website"><meta property="og:title" content="${weeklyEscape(title)}"><meta property="og:description" content="${weeklyEscape(description)}"><meta property="og:url" content="${SITE_URL}${path}"><meta property="og:image" content="${SITE_URL}/og-image-v2.jpg"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image"><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#0e1013"><title>${weeklyEscape(title)}</title><meta name="description" content="${weeklyEscape(description)}"><link rel="canonical" href="${SITE_URL}${path}"><meta property="og:type" content="website"><meta property="og:title" content="${weeklyEscape(title)}"><meta property="og:description" content="${weeklyEscape(description)}"><meta property="og:url" content="${SITE_URL}${path}"><meta property="og:image" content="${SITE_URL}/og-image-v3.jpg"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image"><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
 <style>body{margin:0;background:#0e1013;color:#edf1f7;font:15px/1.55 "DM Sans",system-ui,sans-serif}a{color:#6aa8ff}main{max-width:860px;margin:0 auto;padding:20px 16px 48px}header.top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}header.top img{width:auto;height:28px;display:block}h1,h2{font-family:"Space Grotesk",sans-serif;line-height:1.15;color:#fff}h1{font-size:clamp(26px,5vw,38px);margin:6px 0 6px}h2{font-size:20px;margin:28px 0 10px}.eyebrow{margin:0;color:#5ff0b5;font:700 12px "Space Grotesk",sans-serif;letter-spacing:.16em}.lead{color:#b5b9bf;margin:0 0 16px}.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:0 0 18px}@media(max-width:480px){.stats{grid-template-columns:1fr 1fr}}.stat{padding:12px 14px;border-radius:14px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1)}.stat strong{display:block;font:700 22px "Space Grotesk",sans-serif;color:#fff}.stat.up strong{color:#5ff0b5}.stat.down strong{color:#ff9d9d}.stat span{color:#b5b9bf;font-size:12.5px}.cta{display:inline-block;margin:4px 12px 4px 0;padding:11px 20px;border-radius:999px;background:#2563eb;color:#fff;font-weight:700;text-decoration:none}.picks{list-style:none;margin:0;padding:0;display:grid;gap:8px}.pick{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:12px 14px;border-radius:14px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.09)}.pick strong{color:#fff}.pick .bet{grid-column:1}.pick .meta{grid-column:1/-1;color:#a6aab0;font-size:12.5px}.pick .price{grid-row:1/3;grid-column:2;text-align:right;font:700 16px "Space Grotesk",sans-serif}.res{display:inline-block;margin-left:6px;padding:2px 8px;border-radius:999px;font-weight:700;font-size:11.5px;vertical-align:2px;background:#1e222a;color:#98a1ad}.res.won{background:rgba(34,197,94,.14);color:#22c55e}.res.lost{background:rgba(240,96,96,.14);color:#f06060}.won{color:#5ff0b5}.lost{color:#ff9d9d}.push,.pending{color:#ffd66e}.legs{margin:6px 0 0;padding-left:18px;color:#dce0e6;font-size:13.5px}.weeks{list-style:none;margin:0;padding:0;display:grid;gap:8px}.weeks a{display:flex;justify-content:space-between;gap:12px;padding:14px 16px;border-radius:14px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:#fff;text-decoration:none}.weeks small{color:#b5b9bf}.pager{display:flex;justify-content:space-between;gap:12px;margin-top:28px}.pager a,header.top>a:last-child{display:inline-block;padding:10px 0}.site-nav{display:flex;align-items:center;gap:18px}.site-nav a{color:#98a1ad;font:600 14px/1 "DM Sans",sans-serif;text-decoration:none;padding:10px 0}.site-nav a[aria-current=page]{color:#f2f4f7}.site-nav a:hover{color:#f2f4f7}.fine{margin-top:32px;color:#969aa0;font-size:12px}@media (display-mode: standalone){body{padding-top:env(safe-area-inset-top)}}</style></head><body><main><header class="top"><a href="/"><img src="/logo.png" alt="Bet This Guy"></a><nav class="site-nav" aria-label="Main"><a href="/">Picks</a><a href="/trust">Results</a><a href="/about">About</a></nav></header>${body}<p class="fine">Research and entertainment only. Every official pick is locked before kickoff and graded from box scores; past results don’t guarantee future ones. Profit assumes $100 per pick at the posted price. 21+ where legal. If gambling stops being fun, call 1-800-GAMBLER. Questions? <a href="mailto:support@betthisguy.com">support@betthisguy.com</a></p><p class="fine">© 2026 Bet This Guy</p></main></body></html>`;
 }
 async function weeklyRows(env,weekStart){
@@ -704,7 +706,7 @@ async function alertsApi(request,env){
   if(url.pathname==='/api/alerts/subscribe'){
     const p256dh=String(body?.keys?.p256dh||''),auth=String(body?.keys?.auth||'');
     if(!/^[A-Za-z0-9_-]{40,200}$/.test(p256dh)||!/^[A-Za-z0-9_-]{8,60}$/.test(auth))return reply({success:false,error:'Invalid subscription.'},400);
-    await env.DB.prepare('INSERT INTO push_subscriptions (endpoint,p256dh,auth,created_at,failures,books_json) VALUES (?,?,?,?,0,?) ON CONFLICT(endpoint) DO UPDATE SET p256dh=excluded.p256dh,auth=excluded.auth,failures=0,books_json=excluded.books_json').bind(endpoint,p256dh,auth,new Date().toISOString(),JSON.stringify(cleanBooks(body?.books))).run();
+    await env.DB.prepare('INSERT INTO push_subscriptions (endpoint,p256dh,auth,created_at,failures,books_json,follows_json) VALUES (?,?,?,?,0,?,?) ON CONFLICT(endpoint) DO UPDATE SET p256dh=excluded.p256dh,auth=excluded.auth,failures=0,books_json=excluded.books_json,follows_json=excluded.follows_json').bind(endpoint,p256dh,auth,new Date().toISOString(),JSON.stringify(cleanBooks(body?.books)),JSON.stringify(cleanFollows(body?.follows))).run();
     return reply({success:true});
   }
   return reply({success:false},404);
@@ -734,7 +736,7 @@ function emailPickRow(r){
 function emailAlertHtml(picks,unsubscribeUrl,postal,opts={}){
   const font="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
   const heading=opts.heading||(picks.length===1?'A new official pick just posted':`${picks.length} new official picks just posted`);
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>${weeklyEscape(opts.subject||emailSubject(picks))}</title></head><body style="margin:0;padding:0;background:#eef3f9;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#eef3f9;"><tr><td align="center" style="padding:28px 12px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;"><tr><td align="center" style="background:#0e1013;border-radius:18px 18px 0 0;padding:24px;"><a href="${SITE_URL}" style="text-decoration:none;"><img src="${SITE_URL}/logo.png" width="220" alt="Bet This Guy" style="display:block;width:200px;max-width:70%;height:auto;border:0;color:#ffffff;font-family:Arial,sans-serif;font-size:22px;font-weight:700;"></a></td></tr><tr><td style="background:#ffffff;border-radius:0 0 18px 18px;padding:28px 24px;font-family:${font};color:#10213d;"><p style="margin:0 0 6px;font-size:12px;font-weight:700;letter-spacing:.14em;color:#08875e;">${weeklyEscape(opts.eyebrow||'PICK ALERT')}</p><h1 style="margin:0 0 8px;font-size:24px;line-height:1.25;">${heading}</h1><p style="margin:0 0 20px;font-size:15px;line-height:1.5;color:#40597a;">${weeklyEscape(opts.lede||'Locked before kickoff and graded in public on our results page.')}</p><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${picks.map(emailPickRow).join('')}</table><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:14px 0 0;"><tr><td style="border-radius:999px;background:#1fd88f;"><a href="${SITE_URL}/" style="display:inline-block;padding:14px 28px;font-size:16px;font-weight:700;color:#04121f;text-decoration:none;border-radius:999px;">See the picks</a></td></tr></table><p style="margin:18px 0 0;font-size:13px;line-height:1.5;color:#5a6f8c;">Odds move. Check the price at your sportsbook before you bet.</p></td></tr><tr><td align="center" style="padding:20px 16px 0;font-family:${font};font-size:12px;line-height:1.6;color:#7f96b8;">You’re getting this because you turned on email alerts for your Bet This Guy account. Questions? Just reply.<br><a href="${weeklyEscape(unsubscribeUrl)}" style="color:#7f96b8;">Unsubscribe</a> · 21+ where legal. Gambling problem? Call 1-800-GAMBLER.${postal?`<br>${weeklyEscape(postal)}`:''}</td></tr></table></td></tr></table></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>${weeklyEscape(opts.subject||emailSubject(picks))}</title></head><body style="margin:0;padding:0;background:#eef3f9;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#eef3f9;"><tr><td align="center" style="padding:28px 12px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;"><tr><td align="center" style="background:#0e1013;border-radius:18px 18px 0 0;padding:24px;"><a href="${SITE_URL}" style="text-decoration:none;"><img src="${SITE_URL}/logo.png" width="220" alt="Bet This Guy" style="display:block;width:200px;max-width:70%;height:auto;border:0;color:#ffffff;font-family:Arial,sans-serif;font-size:22px;font-weight:700;"></a></td></tr><tr><td style="background:#ffffff;border-radius:0 0 18px 18px;padding:28px 24px;font-family:${font};color:#10213d;"><p style="margin:0 0 6px;font-size:12px;font-weight:700;letter-spacing:.14em;color:#08875e;">${weeklyEscape(opts.eyebrow||'PICK ALERT')}</p><h1 style="margin:0 0 8px;font-size:24px;line-height:1.25;">${heading}</h1><p style="margin:0 0 20px;font-size:15px;line-height:1.5;color:#40597a;">${weeklyEscape(opts.lede||'Locked before kickoff and graded in public on our results page.')}</p><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${opts.rowsHtml??picks.map(emailPickRow).join('')}</table><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:14px 0 0;"><tr><td style="border-radius:999px;background:#1fd88f;"><a href="${weeklyEscape(opts.ctaUrl||SITE_URL+'/')}" style="display:inline-block;padding:14px 28px;font-size:16px;font-weight:700;color:#04121f;text-decoration:none;border-radius:999px;">${weeklyEscape(opts.ctaLabel||'See the picks')}</a></td></tr></table><p style="margin:18px 0 0;font-size:13px;line-height:1.5;color:#5a6f8c;">Odds move. Check the price at your sportsbook before you bet.</p></td></tr><tr><td align="center" style="padding:20px 16px 0;font-family:${font};font-size:12px;line-height:1.6;color:#7f96b8;">You’re getting this because you turned on email alerts for your Bet This Guy account. Questions? Just reply.<br><a href="${weeklyEscape(unsubscribeUrl)}" style="color:#7f96b8;">Unsubscribe</a> · 21+ where legal. Gambling problem? Call 1-800-GAMBLER.${postal?`<br>${weeklyEscape(postal)}`:''}</td></tr></table></td></tr></table></body></html>`;
 }
 function emailAlertText(picks,unsubscribeUrl,postal,opts={}){
   return `${opts.heading||(picks.length===1?'A new official pick just posted':`${picks.length} new official picks just posted`)}:${opts.lede?`\n${opts.lede}`:''}\n\n${picks.map(r=>`- ${emailPickText(r)} · ${weeklyDay(r.game_time)}`).join('\n')}\n\nSee the picks: ${SITE_URL}/\n\nOdds move. Check the price at your sportsbook before you bet.\n\nUnsubscribe: ${unsubscribeUrl}\n21+ where legal. Gambling problem? Call 1-800-GAMBLER.${postal?`\n${postal}`:''}\n`;
@@ -766,6 +768,48 @@ async function sendEmailAlerts(env,now=Date.now()){
   }
   return {sent,total:people.length,picks:picks.length};
 }
+// Weekly digest: Tuesday mornings (after Monday night is graded), one email
+// with last week's official picks and results plus the season record, to
+// everyone with email alerts on. A week with no picks sends nothing.
+function digestRow(r){
+  const legs=recordLegs(r),res=weeklyGraded(r)?r.result:'pending',label={won:'Won',lost:'Lost',push:'Push',pending:'Pending'}[res],color={won:'#08875e',lost:'#c62828',push:'#5a6f8c',pending:'#5a6f8c'}[res];
+  const d=weeklyDecimal(r.kind==='parlay'?r.combined_odds:r.odds),net=res==='won'&&d?100*(d-1):res==='lost'?-100:0;
+  const title=r.kind==='parlay'?`${legs.length}-leg parlay (${weeklyOdds(r.combined_odds)})`:`${r.player} · ${weeklyLegText(r)} (${weeklyOdds(r.odds)})`;
+  const sub=r.kind==='parlay'?legs.map(l=>`${l.player} ${weeklyLegText(l)}`).join(' + '):(legs[0]?.actualValue!=null?`Had ${legs[0].actualValue}`:'');
+  return `<tr><td style="padding:10px 0;border-bottom:1px solid #e3ebf5;"><div style="font-size:15px;font-weight:700;color:#10213d;">${weeklyEscape(title)}</div>${sub?`<div style="margin-top:2px;font-size:13px;color:#5a6f8c;">${weeklyEscape(sub)}</div>`:''}</td><td align="right" style="padding:10px 0 10px 12px;border-bottom:1px solid #e3ebf5;white-space:nowrap;vertical-align:top;"><div style="font-size:14px;font-weight:700;color:${color};">${label}</div>${res==='won'||res==='lost'?`<div style="font-size:13px;color:${color};">${weeklyMoney(net)}</div>`:''}</td></tr>`;
+}
+function digestRecord(s){return `${s.wins}–${s.losses}${s.pushes?`–${s.pushes}`:''}`}
+async function sendWeeklyDigest(env,now=Date.now()){
+  if(!env.DB||!env.RESEND_API_KEY)return {sent:0,disabled:true};
+  const day=new Date(now);if(day.getUTCDay()!==2||day.getUTCHours()<15)return {sent:0,due:false};
+  const week=new Date(Date.parse(`${officialWeek(now)}T00:00:00Z`)-7*86400000).toISOString().slice(0,10);
+  const last=await appSetting(env,'weekly-digest');if(last===week)return {sent:0,done:true};
+  // Claim the week first so two Worker instances can't both send it.
+  const claim=last==null?await env.DB.prepare('INSERT OR IGNORE INTO app_settings (key,value) VALUES (?,?)').bind('weekly-digest',week).run():await env.DB.prepare('UPDATE app_settings SET value=? WHERE key=? AND value=?').bind(week,'weekly-digest',last).run();
+  if(!Number(claim?.meta?.changes??claim?.changes))return {sent:0,claimed:false};
+  const rows=await weeklyRows(env,week);if(!rows.length)return {sent:0,empty:true};
+  const all=(await env.DB.prepare("SELECT kind,odds,combined_odds,status,result,closing_line,closing_odds,closing_captured_at,line FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND id<?").bind(`official|${week}|\uffff`).all()).results||[];
+  const s=weeklySummary(rows),season=weeklySummary(all),info=nflWeekOf(week),name=info?`Week ${info.week}`:'Last week';
+  const headline=s.wins+s.losses+s.pushes?`${name}: ${digestRecord(s)} on props, ${weeklyMoney(s.profit)}`:`${name} results`;
+  const parlays=s.parlayWins+s.parlayLosses?` Parlays ${s.parlayWins}–${s.parlayLosses} (${weeklyMoney(s.parlayProfit)}).`:'';
+  const lede=`Betting \u0024100 a pick.${parlays} Season: ${digestRecord(season)} on props, ${weeklyMoney(season.profit)}. This week's picks post the moment a price qualifies, any day before kickoff, and we'll email you when they do.`;
+  const subject=`📊 ${headline}`,page=info?`${SITE_URL}/picks/${info.season}/week-${info.week}`:`${SITE_URL}/trust`;
+  const people=(await env.DB.prepare('SELECT a.token,p.email FROM email_alerts a JOIN user_profiles p ON p.auth_user_id=a.auth_user_id WHERE a.enabled=1 ORDER BY a.created_at LIMIT 2000').all()).results||[];
+  const from=env.EMAIL_FROM||EMAIL_ALERT_FROM,postal=String(env.EMAIL_POSTAL_ADDRESS||'').trim(),opts={subject,heading:weeklyEscape(headline),eyebrow:'WEEKLY RESULTS',lede,rowsHtml:rows.map(digestRow).join(''),ctaLabel:`See ${name}`,ctaUrl:page};
+  const text=unsubscribe=>`${headline}\n${lede}\n\n${rows.map(r=>`- ${emailPickText(r)}: ${weeklyGraded(r)?r.result:'pending'}`).join('\n')}\n\nEvery pick: ${page}\n\nUnsubscribe: ${unsubscribe}\n21+ where legal. Gambling problem? Call 1-800-GAMBLER.${postal?`\n${postal}`:''}\n`;
+  let sent=0;
+  for(let i=0;i<people.length;i+=100){
+    const batch=people.slice(i,i+100).map(person=>{
+      const unsubscribe=`${SITE_URL}/api/email-alerts/unsubscribe?token=${person.token}`;
+      return {from,to:[person.email],reply_to:env.EMAIL_REPLY_TO||'support@betthisguy.com',subject,html:emailAlertHtml(rows,unsubscribe,postal,opts),text:text(unsubscribe),headers:{'List-Unsubscribe':`<${unsubscribe}>`,'List-Unsubscribe-Post':'List-Unsubscribe=One-Click'}};
+    });
+    try{
+      const response=await fetch('https://api.resend.com/emails/batch',{method:'POST',headers:{authorization:`Bearer ${env.RESEND_API_KEY}`,'content-type':'application/json'},body:JSON.stringify(batch),signal:AbortSignal.timeout(15000)});
+      if(response.ok)sent+=batch.length;else console.warn('weekly_digest_failed',response.status);
+    }catch(error){console.warn('weekly_digest_failed',error.message)}
+  }
+  return {sent,total:people.length,picks:rows.length,week};
+}
 // "My book" alerts: a good-value price at one of someone's own sportsbooks.
 // The fair price always comes from every book (3+ pricing both sides, the same
 // bar as official picks); a book qualifies when its own price beats that fair
@@ -773,6 +817,9 @@ async function sendEmailAlerts(env,now=Date.now()){
 // At most one message an hour and 3 props a day per person, never the same prop twice.
 const BOOK_ALERT_DAILY=3,BOOK_ALERT_GAP=60*60000;
 const bookKey=value=>{const key=String(value||'').toLowerCase().replace(/[^a-z0-9]/g,'');return key==='espnbet'?'thescorebet':key==='williamhillus'?'caesars':key};
+// Followed player names: from a list of names or {name} objects.
+function cleanFollows(list){return Array.isArray(list)?[...new Set(list.map(f=>String((f&&typeof f==='object'?f.name:f)||'').trim().slice(0,60)).filter(n=>/^[A-Za-z][A-Za-z .'-]{1,59}$/.test(n)))].slice(0,40):[]}
+const followKey=name=>String(name||'').toLowerCase().replace(/[^a-z]/g,'');
 function cleanBooks(list){return Array.isArray(list)?[...new Set(list.map(b=>String(b||'').slice(0,40)).filter(b=>/^[A-Za-z0-9 .&'+-]{2,40}$/.test(b)))].slice(0,20):[]}
 const LINE_ALERT_MIN=2;
 function bookValueCandidates(events,now=Date.now()){
@@ -818,20 +865,24 @@ function bookValueCandidates(events,now=Date.now()){
 }
 // The props worth telling one person about: best of their own books per prop,
 // one prop per player and game, not an official pick, not sent before.
-function bookAlertPicks(candidates,books,sentKeys,officialKeys,limit){
-  const wanted=new Set(books.map(bookKey)),best=new Map();
+// Followed players count at any of the five big books (or the person's own).
+const BIG_BOOK_KEYS=new Set([...OFFICIAL_BOOKS].map(bookKey));
+function bookAlertPicks(candidates,books,sentKeys,officialKeys,limit,follows=[]){
+  const wanted=new Set(books.map(bookKey)),followed=new Set(follows.map(followKey)),best=new Map();
   for(const c of candidates){
-    if(!wanted.has(c.bookKey)&&!wanted.has(c.bookTitleKey))continue;
+    const mine=wanted.has(c.bookKey)||wanted.has(c.bookTitleKey),fan=followed.has(followKey(c.player))&&(mine||BIG_BOOK_KEYS.has(c.bookKey)||BIG_BOOK_KEYS.has(c.bookTitleKey));
+    if(!mine&&!fan)continue;
     const key=c.propKey.toLowerCase();if(sentKeys.has(c.propKey)||officialKeys.has(key))continue;
-    const prior=best.get(c.propKey);if(!prior||c.edge>prior.edge)best.set(c.propKey,c);
+    const prior=best.get(c.propKey);if(!prior||c.edge>prior.edge)best.set(c.propKey,{...c,followed:fan});
   }
   const seenPlayer=new Set();
   return [...best.values()].sort((a,b)=>b.edge-a.edge).filter(c=>{const k=`${c.propKey.split('|')[0]}|${c.player}`;if(seenPlayer.has(k))return false;seenPlayer.add(k);return true}).slice(0,Math.max(0,limit));
 }
 const bookAlertRow=c=>({kind:'prop',player:c.player,market:c.market,side:c.side,line:c.line,odds:c.odds,game_time:c.game_time,legs_json:JSON.stringify([{book:c.lineNote?`${c.book} (${c.lineNote})`:c.book}])});
 function bookAlertMessage(picks){
-  const books=[...new Set(picks.map(c=>c.book))],where=books.length===1?books[0]:'your sportsbooks';
-  return {title:`Good value at ${where}`,body:picks.map(c=>`${c.player} ${weeklyLegText(c)} (${weeklyOdds(c.odds)}${books.length>1?` at ${c.book}`:''})${c.lineNote?` · ${c.lineNote}`:''}`).join('\n')+'\nNot an official pick.',url:'/',where};
+  const books=[...new Set(picks.map(c=>c.book))],where=books.length===1?books[0]:picks.some(c=>c.followed)?'top sportsbooks':'your sportsbooks';
+  const fans=picks.every(c=>c.followed);
+  return {title:fans?(picks.length===1?`${picks[0].player}: good value at ${where}`:'Good value on players you follow'):`Good value at ${where}`,body:picks.map(c=>`${c.player} ${weeklyLegText(c)} (${weeklyOdds(c.odds)}${books.length>1?` at ${c.book}`:''})${c.lineNote?` · ${c.lineNote}`:''}`).join('\n')+'\nNot an official pick.',url:'/',where};
 }
 async function sendBookAlerts(env,events,now=Date.now()){
   if(!env.DB)return {sent:0};
@@ -841,14 +892,14 @@ async function sendBookAlerts(env,events,now=Date.now()){
   const eventIds=new Map(candidates.map(c=>[`${c.player}|${c.market}|${c.line}|${c.side}|${c.game_time}`.toLowerCase(),c.propKey.toLowerCase()]));
   const officialKeys=new Set(official.map(r=>eventIds.get(`${r.player}|${r.market}|${r.line}|${r.side}|${new Date(r.game_time).toISOString()}`.toLowerCase())).filter(Boolean));
   const recipients=[];
-  for(const row of (await env.DB.prepare("SELECT endpoint,books_json FROM push_subscriptions WHERE books_json IS NOT NULL AND books_json<>'[]' LIMIT 2000").all()).results||[]){let books=[];try{books=cleanBooks(JSON.parse(row.books_json))}catch{}if(books.length)recipients.push({id:`push:${row.endpoint}`,push:row,books})}
-  if(env.RESEND_API_KEY)for(const row of (await env.DB.prepare('SELECT a.auth_user_id,a.token,p.email,u.preferences_json FROM email_alerts a JOIN user_profiles p ON p.auth_user_id=a.auth_user_id JOIN user_preferences u ON u.auth_user_id=a.auth_user_id WHERE a.enabled=1 LIMIT 2000').all()).results||[]){let books=[];try{books=cleanBooks(JSON.parse(row.preferences_json||'{}').books)}catch{}if(books.length&&row.email)recipients.push({id:`email:${row.auth_user_id}`,email:row,books})}
+  for(const row of (await env.DB.prepare("SELECT endpoint,books_json,follows_json FROM push_subscriptions WHERE (books_json IS NOT NULL AND books_json<>'[]') OR (follows_json IS NOT NULL AND follows_json<>'[]') LIMIT 2000").all()).results||[]){let books=[],follows=[];try{books=cleanBooks(JSON.parse(row.books_json||'[]'))}catch{}try{follows=cleanFollows(JSON.parse(row.follows_json||'[]'))}catch{}if(books.length||follows.length)recipients.push({id:`push:${row.endpoint}`,push:row,books,follows})}
+  if(env.RESEND_API_KEY)for(const row of (await env.DB.prepare('SELECT a.auth_user_id,a.token,p.email,u.preferences_json FROM email_alerts a JOIN user_profiles p ON p.auth_user_id=a.auth_user_id JOIN user_preferences u ON u.auth_user_id=a.auth_user_id WHERE a.enabled=1 LIMIT 2000').all()).results||[]){let books=[],follows=[];try{const prefs=JSON.parse(row.preferences_json||'{}');books=cleanBooks(prefs.books);follows=cleanFollows(prefs.follows?.players)}catch{}if((books.length||follows.length)&&row.email)recipients.push({id:`email:${row.auth_user_id}`,email:row,books,follows})}
   let sent=0;const dayAgo=new Date(now-24*3600000).toISOString();
   for(const r of recipients){
     const history=(await env.DB.prepare('SELECT prop_key,sent_at FROM book_alerts WHERE recipient=? AND sent_at>? ORDER BY sent_at DESC').bind(r.id,new Date(now-7*86400000).toISOString()).all()).results||[];
     if(history[0]&&now-Date.parse(history[0].sent_at)<BOOK_ALERT_GAP)continue;
     const today=history.filter(h=>h.sent_at>dayAgo).length;
-    const picks=bookAlertPicks(candidates,r.books,new Set(history.map(h=>h.prop_key)),officialKeys,BOOK_ALERT_DAILY-today);
+    const picks=bookAlertPicks(candidates,r.books,new Set(history.map(h=>h.prop_key)),officialKeys,BOOK_ALERT_DAILY-today,r.follows||[]);
     if(!picks.length)continue;
     const message=bookAlertMessage(picks),stamp=new Date(now).toISOString();
     // Claim first so two Worker instances can't send the same prop twice.
@@ -861,7 +912,7 @@ async function sendBookAlerts(env,events,now=Date.now()){
         if(response.ok)sent++;
       }else{
         const unsubscribe=`${SITE_URL}/api/email-alerts/unsubscribe?token=${r.email.token}`,postal=String(env.EMAIL_POSTAL_ADDRESS||'').trim(),rows=picks.map(bookAlertRow);
-        const opts={subject:`${message.title}: ${picks.length===1?`${picks[0].player} ${weeklyLegText(picks[0])}`:`${picks.length} props`}`,heading:message.title,eyebrow:'YOUR SPORTSBOOK',lede:`These prices at ${message.where} beat the market's fair price. They are not official Bet This Guy picks and are not part of our record.`};
+        const fans=picks.every(c=>c.followed),opts={subject:fans&&picks.length===1?`${message.title}: ${weeklyLegText(picks[0])}`:`${message.title}: ${picks.length===1?`${picks[0].player} ${weeklyLegText(picks[0])}`:`${picks.length} props`}`,heading:message.title,eyebrow:fans?'PLAYERS YOU FOLLOW':'YOUR SPORTSBOOK',lede:`These prices at ${message.where} beat the market's fair price. They are not official Bet This Guy picks and are not part of our record.`};
         const response=await fetch('https://api.resend.com/emails',{method:'POST',headers:{authorization:`Bearer ${env.RESEND_API_KEY}`,'content-type':'application/json'},body:JSON.stringify({from:env.EMAIL_FROM||EMAIL_ALERT_FROM,to:[r.email.email],reply_to:env.EMAIL_REPLY_TO||'support@betthisguy.com',subject:opts.subject,html:emailAlertHtml(rows,unsubscribe,postal,opts),text:emailAlertText(rows,unsubscribe,postal,opts),headers:{'List-Unsubscribe':`<${unsubscribe}>`,'List-Unsubscribe-Post':'List-Unsubscribe=One-Click'}}),signal:AbortSignal.timeout(15000)});
         if(response.ok)sent++;else console.warn('book_alert_email_failed',response.status);
       }

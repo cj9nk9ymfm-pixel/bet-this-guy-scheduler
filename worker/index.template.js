@@ -434,7 +434,7 @@ async function playerStats(request, env, ctx) {
     }
     const rawStats = Array.isArray(statPayload?.data) ? statPayload.data : statPayload?.data ? [statPayload.data] : Array.isArray(statPayload) ? statPayload : [];
     // NBA: completed games only, newest first, and only games the player played.
-    const stats = sportLabel === "NBA" ? rawStats.filter(row => nbaGameState(row?.game) === "final" && String(row?.min ?? "").replace(/:.*/, "") !== "0" && String(row?.min ?? "") !== "").sort((a, b) => Date.parse(b?.game?.date || "") - Date.parse(a?.game?.date || "")) : sportLabel === "NFL" ? rawStats.filter(row => {
+    const stats = sportLabel === "NBA" ? rawStats.filter(row => nbaGameState(row?.game) === "final" && BTGStats.nbaPlayed(row)).sort((a, b) => Date.parse(b?.game?.date || "") - Date.parse(a?.game?.date || "")) : sportLabel === "NFL" ? rawStats.filter(row => {
       const game = row?.game || {};
       // Ongoing games belong in Current Game, never the historical hit rate.
       if (game.status_state && game.status_state !== "final") return false;
@@ -457,14 +457,16 @@ async function playerStats(request, env, ctx) {
 }
 
 async function playerPhoto(request) {
-  const name = new URL(request.url).searchParams.get("name")?.trim() || "";
+  const params = new URL(request.url).searchParams;
+  const name = params.get("name")?.trim() || "";
+  const league = params.get("sport") === "NBA" ? "nba" : "nfl";
   if (!/^[A-Za-z .'-]{2,80}$/.test(name)) return new Response("", { status: 404 });
   try {
     const response = await fetch(`https://site.web.api.espn.com/apis/search/v2?query=${encodeURIComponent(name)}&limit=8`, { headers: { accept: "application/json" } });
     if (!response.ok) throw new Error("Search unavailable");
     const payload = await response.json();
     const players = (payload.results || []).find(group => group.type === "player")?.contents || [];
-    const exact = players.find(player => normalizedName(player.displayName) === normalizedName(name) && (player.description === "NFL" || player.defaultLeagueSlug === "nfl"));
+    const exact = players.find(player => normalizedName(player.displayName) === normalizedName(name) && (player.description === league.toUpperCase() || player.defaultLeagueSlug === league));
     const imageURL = exact?.image?.default || exact?.image?.defaultDark;
     if (!imageURL) throw new Error("No image");
     const image = await fetch(imageURL);
@@ -980,6 +982,21 @@ function homeLayout(rows, now = Date.now()) {
   return { stats: true, hits: weeks.get(week).some(r => graded(r) && r.result === "won") };
 }
 
+// Public proof the pick engine is running: the latest scan and the last 24 hours.
+async function engineStatus(env) {
+  if (!env.DB) return json({ success: false }, 503);
+  try {
+    const since = new Date(Date.now() - 86400000).toISOString();
+    const [last, day] = await Promise.all([
+      env.DB.prepare("SELECT at, games, props FROM pick_runs ORDER BY at DESC LIMIT 1").first(),
+      env.DB.prepare("SELECT COUNT(*) AS runs, COALESCE(SUM(props),0) AS props FROM pick_runs WHERE at>=?").bind(since).first()
+    ]);
+    return json({ success: true, last: last ? { at: last.at, games: last.games, props: last.props } : null, day: { runs: day?.runs || 0, props: day?.props || 0 } }, 200, { "cache-control": "public, max-age=60" });
+  } catch {
+    return json({ success: false }, 503);
+  }
+}
+
 async function publicRecord(request, env, ctx) {
   if (!env.DB) return json({ success: false, error: "The public record database is not connected yet." }, 503);
   if (request.method === "GET" && new URL(request.url).searchParams.get("view") === "home") {
@@ -1039,7 +1056,7 @@ async function scheduledMaintenance(request,env,ctx){
   if(!await maintenanceAuthorized(request,env))return json({success:false,error:'Unauthorized'},401);
   if(!env.DB||!env.THE_ODDS_API_KEY||!env.BALLDONTLIE_API_KEY)return json({success:false,error:'Maintenance configuration incomplete'},503);
   const job=new URL(request.url).searchParams.get('job');
-  const jobs={publish:()=>publishOfficialPicks(request,env,ctx),grade:()=>settlePublicRecords(env),closing:()=>captureClosingLines(env)};
+  const jobs={publish:()=>publishOfficialPicks(request,env,ctx),digest:()=>sendWeeklyDigest(env),grade:()=>settlePublicRecords(env),closing:()=>captureClosingLines(env)};
   if(!Object.hasOwn(jobs,job))return json({success:false,error:'Unknown maintenance job'},400);
   let work=scheduledJobs.get(job);
   if(!work){work=Promise.resolve().then(jobs[job]).finally(()=>scheduledJobs.delete(job));scheduledJobs.set(job,work)}
@@ -1070,6 +1087,7 @@ async function runCron(controller,env,ctx){
   // or fail NFL publishing or grading.
   if(due.includes('publish'))due.push('nbaShadow');
   if(due.includes('grade'))due.push('nbaGrade');
+  if(due.includes('publish'))due.push('digest');
   for(const job of due){
     let work=scheduledJobs.get(job);
     if(!work){work=Promise.resolve().then(jobs[job]).finally(()=>scheduledJobs.delete(job));scheduledJobs.set(job,work)}
@@ -1138,6 +1156,7 @@ async function routeRequest(request, env, ctx) {
     if (url.pathname === "/api/player-photo") return playerPhoto(request);
     if (url.pathname === "/api/feed-status") return json({ configured: Boolean(env.THE_ODDS_API_KEY), provider: "The Odds API" });
     if (url.pathname === "/api/record") return publicRecord(request, env, ctx);
+    if (url.pathname === "/api/engine") return engineStatus(env);
     if (url.pathname === "/api/hit") return usageHit(request, env, ctx);
     if (url.pathname === "/api/affiliate") return affiliateApi(request, env);
     if (url.pathname.startsWith("/api/alerts/")) return alertsApi(request, env);
