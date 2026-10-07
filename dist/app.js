@@ -2088,7 +2088,7 @@ function statsProp(l){
 
 /* Engine status: shows the pick engine is scanning, from the latest pick run. */
 (()=>{
-  const host=document.getElementById('engineStatus');if(!host||typeof fetch!=='function')return;
+  const host=typeof document.getElementById==='function'?document.getElementById('engineStatus'):null;if(!host||typeof fetch!=='function')return;
   const ago=ms=>{const m=Math.round(ms/60000);return m<1?'just now':m<60?`${m} min ago`:`${Math.round(m/60)} hr ago`};
   const draw=body=>{const last=body?.last,age=last?Date.now()-Date.parse(last.at):Infinity;
     if(!last||!(age<45*60000)||!last.props){host.hidden=true;return}
