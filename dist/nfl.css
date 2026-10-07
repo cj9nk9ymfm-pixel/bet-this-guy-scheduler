@@ -1337,21 +1337,21 @@ html body #propList .prop-card[data-team] .avatar.player-photo>span,html body .p
 html body .prop-card[data-team],html body #propList .prop-card[data-team]{border-left:4px solid var(--team-accent)!important;transition:border-color .3s}
 /* Premium official pick cards */
 html body .on-list{border:0;background:transparent;overflow:visible;display:flex;flex-direction:column;gap:10px}
-html body .on-row{position:relative;align-items:center;padding:14px 14px 14px 16px;border:1px solid color-mix(in srgb,#f5c451 34%,var(--line));border-left:4px solid #f5c451;border-radius:16px;background:linear-gradient(135deg,color-mix(in srgb,#f5c451 9%,var(--panel)),var(--panel) 55%);box-shadow:0 6px 18px rgba(0,0,0,.18)}
-html body .on-row:first-child{border-top:1px solid color-mix(in srgb,#f5c451 34%,var(--line))}
-html body .on-row[data-team]{border-left-color:var(--team-accent)}
-html body button.on-row:hover{background:linear-gradient(135deg,color-mix(in srgb,#f5c451 14%,var(--panel)),var(--panel2) 60%)}
+html body .on-row{position:relative;align-items:center;padding:14px 14px 14px 16px;border:1px solid color-mix(in srgb,#2ee6a8 34%,var(--line));border-left:4px solid #2ee6a8;border-radius:16px;background:linear-gradient(135deg,color-mix(in srgb,#2ee6a8 9%,var(--panel)),var(--panel) 55%);box-shadow:0 6px 18px rgba(0,0,0,.18)}
+html body .on-row:first-child{border-top:1px solid color-mix(in srgb,#2ee6a8 34%,var(--line))}
+
+html body button.on-row:hover{background:linear-gradient(135deg,color-mix(in srgb,#2ee6a8 14%,var(--panel)),var(--panel2) 60%)}
 html body .on-won-row{border-color:#22c55e55;border-left-color:#22c55e}
 html body .on-lost-row{opacity:.82}
-html body .on-who .on-kicker{display:inline-flex;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;align-items:center;gap:4px;margin-bottom:2px;color:#f5c451;font:700 10.5px/1.2 "Space Grotesk",sans-serif;letter-spacing:.06em;text-transform:uppercase}
+html body .on-who .on-kicker{display:inline-flex;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;align-items:center;gap:4px;margin-bottom:2px;color:#2ee6a8;font:700 10.5px/1.2 "Space Grotesk",sans-serif;letter-spacing:.06em;text-transform:uppercase}
 .on-kicker .ico{width:12px;height:12px;fill:currentColor}
 html body .on-row .on-who b{font-size:16.5px}
 .on-why{margin-top:3px;font-style:normal;font-size:12.5px;font-weight:600;color:#22c55e}
 .on-why::before{content:"▲ ";font-size:9px;vertical-align:1px}
 html body .on-row .on-avatar{width:52px;height:52px}
 html body .on-row[data-team] .on-avatar{background:linear-gradient(135deg,var(--team),var(--team2));color:#fff;box-shadow:0 0 0 2px color-mix(in srgb,var(--team-accent) 60%,transparent)}
-html body .on-row .on-price{font-size:17px;background:color-mix(in srgb,#f5c451 12%,var(--panel2))}
-html body.light .on-who .on-kicker{color:#a16207}
+html body .on-row .on-price{font-size:17px;background:color-mix(in srgb,#2ee6a8 12%,var(--panel2))}
+html body.light .on-who .on-kicker{color:#047857}
 body.light .on-row{box-shadow:0 4px 14px rgba(15,23,42,.07)}
 body.light .on-why{color:#15803d}
 /* Board card "why" line */
@@ -1403,12 +1403,12 @@ body.light .my-pl-net.up{color:#15803d}body.light .my-pl-net.down{color:#c62828}
 .my-pl-pending{color:var(--muted);font-size:13px}
 .my-pl-go{margin-left:auto;color:var(--muted);font-size:18px}
 /* Follow */
-.follow-tag{display:inline-block;margin-left:8px;white-space:nowrap;padding:1px 7px;border-radius:999px;background:#f5c45122;color:#f5c451;font:700 10.5px/1.6 "Space Grotesk",sans-serif;letter-spacing:.05em;text-transform:uppercase;font-style:normal;vertical-align:2px}
-body.light .follow-tag{background:#fef3c7;color:#a16207}
+.follow-tag{display:inline-block;margin-left:8px;white-space:nowrap;padding:1px 7px;border-radius:999px;background:#2ee6a822;color:#2ee6a8;font:700 10.5px/1.6 "Space Grotesk",sans-serif;letter-spacing:.05em;text-transform:uppercase;font-style:normal;vertical-align:2px}
+body.light .follow-tag{background:#d1fae5;color:#047857}
 .follow-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
 .follow-btn{height:32px;padding:0 12px;border:1px solid var(--line);border-radius:999px;background:var(--panel2);color:var(--text);font:600 13px "DM Sans",sans-serif;cursor:pointer}
-.follow-btn.on{border-color:#f5c45188;background:#f5c4511c;color:#f5c451}
-body.light .follow-btn.on{color:#a16207;background:#fef3c7;border-color:#fcd34d}
+.follow-btn.on{border-color:#2ee6a888;background:#2ee6a81c;color:#2ee6a8}
+body.light .follow-btn.on{color:#047857;background:#d1fae5;border-color:#6ee7b7}
 .follow-panel{margin-top:14px;padding:14px;border:1px solid var(--line);border-radius:16px;background:var(--panel)}
 .follow-panel h2{margin:0 0 8px;font:700 16px "Space Grotesk",sans-serif}
 .follow-empty{margin:0;color:var(--muted);font-size:13px;line-height:1.45}
@@ -1435,8 +1435,11 @@ body.light .follow-btn.on{color:#a16207;background:#fef3c7;border-color:#fcd34d}
   .board.has-rail>.official-now{margin-top:0!important}
 }
 @media(min-width:1180px){@supports(overflow-x:clip){html,html body{overflow-x:clip!important}}}
-html body .prop-card .follow-tag{background:#f5c45122!important;color:#f5c451!important}
-html body.light .prop-card .follow-tag{background:#fef3c7!important;color:#a16207!important}
+html body .prop-card .follow-tag{background:#2ee6a822!important;color:#2ee6a8!important}
+html body.light .prop-card .follow-tag{background:#d1fae5!important;color:#047857!important}
 .follow-hint{margin:8px 0 0;color:var(--muted);font-size:12.5px;line-height:1.4}
 .follow-hint[hidden]{display:none}
 .follow-hint-btn{padding:0;border:0;background:none;color:#6aa8ff;font:inherit;font-weight:700;text-decoration:underline;cursor:pointer}
+/* Mint means "official" only, so the value line under an official pick is neutral */
+html body .on-why{color:#cbd5e1}html body .on-why::before{color:#2ee6a8}
+html body.light .on-why{color:#475569}html body.light .on-why::before{color:#047857}
