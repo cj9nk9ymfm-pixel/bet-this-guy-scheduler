@@ -1425,7 +1425,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     const tag=status[0]==='locked'?`${icon('lock')} Locked`:status[1];
     const books=[...new Set(legs.map(l=>l.book).filter(Boolean))],edges=legs.map(l=>Number(l.edge)).filter(Number.isFinite);
     const kicker=`<span class="on-kicker">${icon('star')} Official${books.length===1?` · ${htmlEscape(books[0])}`:''}</span>`;
-    const why=edges.length?(isParlay?`Every leg priced better than fair`:`${Math.max(...edges).toFixed(1)}% better than fair`):'';
+    const why=edges.length?(isParlay?`Every leg beats fair`:`${Math.max(...edges).toFixed(1)}% better than fair`):'';
     return `<button type="button" class="on-row on-${status[0]}-row" data-on="${i}" data-on-player="${htmlEscape(isParlay?'':r.player||'')}" data-on-team="${htmlEscape(isParlay?'':legs[0]?.team||'')}" aria-label="Details for ${htmlEscape(title)}">${avatar}<span class="on-who">${kicker}<b>${htmlEscape(title)}</b><span>${htmlEscape(sub)}</span><small>${htmlEscape(kickoff(r.game_time))}</small>${why?`<i class="on-why">${htmlEscape(why)}</i>`:''}<em class="on-live" data-on-live="${i}" hidden></em></span><span class="on-end"><b class="on-price">${htmlEscape(formatOdds(odds))}</b><span class="on-tag on-${status[0]}">${tag}</span></span></button>`;
   }
   // Live progress for locked picks, refreshed with the live board (every 5s in games).
@@ -1567,7 +1567,7 @@ if(typeof fetch==='function')window.btgCountVisit?.('view:home');
   const ios=/iPhone|iPad|iPod/.test(navigator.userAgent||'');
   const standalone=()=>window.matchMedia?.('(display-mode: standalone)').matches||navigator.standalone===true;
   const note=text=>{const el=$('#alertsNote');if(!el)return;el.textContent=text;el.hidden=!text};
-  const show=on=>buttons().forEach(button=>{const label=on?'Alerts on':'Get pick alerts';if(button.dataset.alertsSheet!==undefined){const strong=button.querySelector('strong');if(strong)strong.textContent=on?'Pick alerts are on':'Pick alerts';const span=button.querySelector('span');if(span)span.textContent=on?'Tap to turn them off':'Get a notification when a new official pick drops'}else button.textContent=label;button.setAttribute('aria-pressed',String(on))});
+  const show=on=>buttons().forEach(button=>{document.documentElement.classList.toggle('alerts-on',on);const label=on?'Alerts on':'Get pick alerts';if(button.dataset.alertsBanner!==undefined){button.setAttribute('aria-pressed',String(on));return}if(button.dataset.alertsSheet!==undefined){const strong=button.querySelector('strong');if(strong)strong.textContent=on?'Pick alerts are on':'Pick alerts';const span=button.querySelector('span');if(span)span.textContent=on?'Tap to turn them off':'Get a notification when a new official pick drops'}else button.textContent=label;button.setAttribute('aria-pressed',String(on))});
   const keyBytes=key=>{const b=atob(key.replace(/-/g,'+').replace(/_/g,'/')+'='.repeat((4-key.length%4)%4));return Uint8Array.from(b,c=>c.charCodeAt(0))};
   async function current(){try{const reg=await navigator.serviceWorker.getRegistration('/');return reg?await reg.pushManager.getSubscription():null}catch{return null}}
   async function turnOn(){
@@ -2096,4 +2096,24 @@ function statsProp(l){
   let data=null;
   const load=()=>fetch('/api/engine').then(r=>r.ok?r.json():null).then(body=>{data=body?.success?body:null;draw(data)}).catch(()=>{});
   load();setInterval(load,120000);setInterval(()=>data&&draw(data),30000);
+})();
+
+/* Alerts banner and add-to-home prompt: the two ways people come back. */
+(()=>{
+  if(typeof document.getElementById!=='function')return;
+  const store={get:k=>{try{return localStorage.getItem(k)}catch{return null}},set:(k,v)=>{try{localStorage.setItem(k,v)}catch{}}};
+  const days=n=>n*86400000,recent=(k,n)=>{const t=Number(store.get(k));return Number.isFinite(t)&&Date.now()-t<days(n)};
+  const hero=document.getElementById('alertsHero');
+  if(hero&&!recent('btg-alerts-hero-hidden',14)){hero.hidden=false;document.getElementById('alertsHeroClose')?.addEventListener('click',()=>{hero.hidden=true;store.set('btg-alerts-hero-hidden',String(Date.now()));window.btgCount?.('alerts:banner-hide')})}
+  // Add to Home Screen: iPhone needs it for phone alerts; Android can install directly.
+  const standalone=window.matchMedia?.('(display-mode: standalone)').matches||navigator.standalone===true;
+  if(standalone)return;
+  const visits=Number(store.get('btg-visits')||0)+1;store.set('btg-visits',String(visits));
+  const ios=/iPhone|iPad|iPod/.test(navigator.userAgent||'')&&!/CriOS|FxiOS|EdgiOS/.test(navigator.userAgent||'');
+  const toast=(html,onAction)=>{if(recent('btg-a2hs-hidden',30)||document.getElementById('a2hs'))return;const el=document.createElement('div');el.id='a2hs';el.className='a2hs';el.setAttribute('role','dialog');el.setAttribute('aria-label','Add Bet This Guy to your Home Screen');el.innerHTML=`<img src="/apple-touch-icon.png" alt="" width="40" height="40"><div class="a2hs-copy">${html}</div>${onAction?'<button type="button" class="a2hs-go">Install</button>':''}<button type="button" class="a2hs-close" aria-label="Not now">×</button>`;
+    el.querySelector('.a2hs-close').onclick=()=>{el.remove();store.set('btg-a2hs-hidden',String(Date.now()))};
+    if(onAction)el.querySelector('.a2hs-go').onclick=()=>{el.remove();onAction()};
+    document.body.appendChild(el);window.btgCount?.('a2hs:shown')};
+  if(ios&&visits>=2)setTimeout(()=>toast('<strong>Get the app on your iPhone</strong><span>Tap <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="Share"><path d="M12 3v12"/><path d="m8 7 4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg> then <b>Add to Home Screen</b>. Opens like an app, and pick alerts work.</span>'),4000);
+  window.addEventListener('beforeinstallprompt',event=>{event.preventDefault();if(visits<2)return;toast('<strong>Install Bet This Guy</strong><span>One tap to open picks, with alerts when they post.</span>',()=>{event.prompt();event.userChoice?.then(c=>window.btgCount?.(`a2hs:${c.outcome}`))})});
 })();
