@@ -2145,3 +2145,56 @@ function statsProp(l){
   host.onclick=()=>window.BTGAuth?.open?.('record');
   window.BTGMyRecord=draw;addEventListener('btg-auth',draw);setTimeout(draw,1200);
 })();
+
+/* Follow players and teams (kept on this device): a Follow button on the
+   player screen, a "Following" tag on their board cards, and a Following
+   list in the desktop rail / under This week's picks on phones. */
+(()=>{
+  if(typeof document.getElementById!=='function')return;
+  const KEY='btg-follow',read=()=>{try{const v=JSON.parse(localStorage.getItem(KEY)||'{}');return {players:Array.isArray(v.players)?v.players:[],teams:Array.isArray(v.teams)?v.teams:[]}}catch{return {players:[],teams:[]}}};
+  const write=v=>{try{localStorage.setItem(KEY,JSON.stringify(v))}catch{}};
+  const norm=s=>String(s||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+  const has=(kind,name)=>read()[kind].some(x=>norm(x.name)===norm(name));
+  const toggle=(kind,item)=>{const v=read(),list=v[kind],i=list.findIndex(x=>norm(x.name)===norm(item.name));if(i>=0)list.splice(i,1);else list.unshift({...item,at:Date.now()});v[kind]=list.slice(0,40);write(v);window.btgCount?.(`follow:${i>=0?'off':'on'}`);refresh();return i<0};
+  window.BTGFollow={read,has,toggle};
+  const teamsOf=p=>String(p.team||'').toLowerCase();
+  const followedProp=p=>has('players',p.player)||read().teams.some(t=>t.full&&teamsOf(p).includes(String(t.full).toLowerCase()));
+  // Board cards: a small tag on followed players and teams.
+  const baseCard=card;
+  card=function(p,rank=-1,featured=false){const html=baseCard(p,rank,featured);if(!followedProp(p))return html;const team=has('players',p.player)?null:read().teams.find(t=>t.full&&teamsOf(p).includes(String(t.full).toLowerCase()));const tag=team?`${team.name} game`:'Following';return html.replace('<strong>'+p.player+'</strong>',()=>`<strong>${p.player}<em class="follow-tag">${htmlEscape(tag)}</em></strong>`).replace('class="prop-card','class="prop-card is-followed')};
+  // Player screen: Follow buttons for the player and their team.
+  const baseProfile=renderPlayerProfile;
+  renderPlayerProfile=function(p,payload){const out=baseProfile(p,payload);try{
+    const head=document.querySelector('#playerProfile .pp-head');if(!head||head.querySelector('.follow-row'))return out;
+    const team=payload?.player?.team||{},abbr=String(team.abbreviation||'').toUpperCase(),row=document.createElement('div');row.className='follow-row';
+    const btn=(kind,item,label)=>{const b=document.createElement('button');b.type='button';b.className='follow-btn';const sync=()=>{const on=has(kind,item.name);b.classList.toggle('on',on);b.setAttribute('aria-pressed',String(on));b.textContent=on?`✓ Following${kind==='teams'?' '+label:''}`:`＋ Follow ${label}`};sync();b.onclick=e=>{e.stopPropagation();toggle(kind,item);sync()};return b};
+    row.appendChild(btn('players',{name:p.player,sport:p.sport||'NFL',team:abbr},'player'));
+    if(abbr)row.appendChild(btn('teams',{name:abbr,full:team.full_name||'',sport:p.sport||'NFL'},abbr));
+    (head.querySelector('div:not(.pp-photo)')||head).appendChild(row)}catch{}return out};
+  // Following list.
+  const panel=document.createElement('section');panel.className='follow-panel';panel.id='followPanel';panel.setAttribute('aria-labelledby','followTitle');
+  const esc=s=>htmlEscape(s);
+  function drawPanel(){const v=read(),list=[...v.players.map(x=>({...x,kind:'players'})),...v.teams.map(x=>({...x,kind:'teams'}))];
+    panel.classList.toggle('empty',!list.length);
+    if(!list.length){panel.innerHTML=`<h2 id="followTitle">Following</h2><p class="follow-empty">Follow players and teams from their stats screen. They’ll be tagged on the board and listed here.</p>`;return}
+    const rows=list.slice(0,12).map((x,i)=>{const theirs=(typeof props!=='undefined'?props:[]).filter(p=>x.kind==='players'?norm(p.player)===norm(x.name):x.full&&teamsOf(p).includes(String(x.full).toLowerCase()));
+      const colors=window.BTGTeamColors?.({abbreviation:x.kind==='teams'?x.name:x.team},x.sport),style=colors?` style="background:linear-gradient(135deg,${colors[0]},${colors[1]})"`:'';
+      const initials=x.kind==='teams'?x.name:String(x.name).split(' ').map(w=>w[0]).join('').slice(0,3);
+      const sub=theirs.length?`${theirs.length} prop${theirs.length===1?'':'s'} on the board`:'Nothing on the board right now';
+      return `<li><button type="button" class="follow-item" data-follow-i="${i}"${theirs.length?'':' disabled'}><span class="fi-badge"${style}>${esc(initials)}</span><span class="fi-text"><b>${esc(x.kind==='teams'?(x.full||x.name):x.name)}</b><small>${sub}</small></span></button><button type="button" class="fi-x" data-unfollow="${i}" aria-label="Unfollow ${esc(x.name)}">×</button></li>`}).join('');
+    panel.innerHTML=`<h2 id="followTitle">Following</h2><ul class="follow-list">${rows}</ul>`;
+    panel.querySelectorAll('[data-follow-i]').forEach(b=>b.onclick=()=>{const x=list[+b.dataset.followI],p=(props||[]).find(q=>x.kind==='players'?norm(q.player)===norm(x.name):teamsOf(q).includes(String(x.full).toLowerCase()));if(!p)return;if(x.kind==='players')openPlayerProfile(p);else window.BTGSheet?.prop?.(p)});
+    panel.querySelectorAll('[data-unfollow]').forEach(b=>b.onclick=()=>{const x=list[+b.dataset.unfollow];toggle(x.kind,x)})}
+  function refresh(){drawPanel();try{if(typeof render==='function')render()}catch{}}
+  // Desktop rail: on wide screens the record, your bets, alerts and Following
+  // sit in a sticky column beside the picks; on phones they stay in the flow.
+  const board=document.querySelector('.workspace .board'),rail=document.createElement('aside');rail.className='desk-rail';rail.setAttribute('aria-label','Your corner');
+  const parts=['heroBanner','myRecord','alertsHero'].map(id=>document.getElementById(id)).filter(Boolean),marks=parts.map(el=>{const m=document.createComment('rail');el.before(m);return m});
+  const official=document.getElementById('officialNow');
+  const wide=window.matchMedia?.('(min-width: 1180px)');
+  function place(){if(!board)return;if(wide?.matches){board.classList.add('has-rail');board.prepend(rail);parts.forEach(el=>rail.appendChild(el));rail.appendChild(panel)}else{board.classList.remove('has-rail');parts.forEach((el,i)=>marks[i].after(el));rail.remove();(document.getElementById('alertsHero')||official?.lastElementChild)?.after?.(panel)}}
+  if(official&&!document.getElementById('alertsHero'))official.appendChild(panel);
+  place();wide?.addEventListener?.('change',place);drawPanel();
+  addEventListener('storage',e=>{if(e.key===KEY)refresh()});
+  const baseBind=bindCards;bindCards=function(){baseBind();drawPanel()};
+})();
