@@ -59,7 +59,7 @@ async function fetchLiveJSON(url) {
 }
 async function refreshLiveGames() {
   try {
-    const payload = await fetchLiveJSON('/api/live-games');
+    const payload = await fetchLiveJSON(`/api/live-games${typeof leagueParam==='function'?leagueParam():''}`);
     liveBoard.games = Array.isArray(payload.games) ? payload.games : [];
     liveBoard.updatedAt = payload.updatedAt; liveBoard.stale = !!payload.stale; liveBoard.error = '';
   } catch (error) { liveBoard.error = error.message; }
@@ -71,7 +71,7 @@ function liveEventCatalog() {
   const games = new Map(scheduleGames.map(game => [game.eventID, game]));
   for (const prop of props) if (!games.has(prop.eventID)) {
     const teams = gameName(prop).split(/\s+@\s+/);
-    if (teams.length === 2) games.set(prop.eventID, { eventID:prop.eventID, leagueID:'NFL', teams:{away:{names:{short:teams[0]}},home:{names:{short:teams[1]}}}, status:{startsAt:prop.startsAt} });
+    if (teams.length === 2) games.set(prop.eventID, { eventID:prop.eventID, leagueID:typeof LEAGUE==='string'?LEAGUE:'NFL', teams:{away:{names:{short:teams[0]}},home:{names:{short:teams[1]}}}, status:{startsAt:prop.startsAt} });
   }
   return [...games.values()];
 }
@@ -158,7 +158,7 @@ async function refreshCurrentStats() {
   if (cached?.checkedAt && Date.now()-cached.checkedAt<25000) return;
   if (liveBoard.statsPending.has(key)) return liveBoard.statsPending.get(key);
   const request=(async()=>{
-    try { const payload=await fetchLiveJSON(`/api/live-player?game_id=${game.id}&player_id=${playerID}`);liveBoard.stats.set(key,{...payload,checkedAt:Date.now()}); }
+    try { const payload=await fetchLiveJSON(`/api/live-player?game_id=${game.id}&player_id=${playerID}${typeof leagueParam==='function'?leagueParam('&'):''}`);liveBoard.stats.set(key,{...payload,checkedAt:Date.now()}); }
     catch(error){liveBoard.stats.set(key,{...cached,error:error.message,checkedAt:Date.now(),stale:true});}
     renderCurrentGame();
   })().finally(()=>liveBoard.statsPending.delete(key));
@@ -203,7 +203,7 @@ async function refreshLiveGameStats(){
     const key=String(game.id),cached=liveBoard.gameStats.get(key);
     if(cached?.checkedAt&&Date.now()-cached.checkedAt<6500)continue;
     if(liveBoard.gameStatsPending.has(key))continue;
-    const task=(async()=>{try{const payload=await fetchLiveJSON(`/api/live-game-stats?game_id=${encodeURIComponent(game.id)}`);liveBoard.gameStats.set(key,{...payload,checkedAt:Date.now()})}catch(error){liveBoard.gameStats.set(key,{...cached,error:error.message,stale:true,checkedAt:Date.now()})}renderLiveCenter()})().finally(()=>liveBoard.gameStatsPending.delete(key));
+    const task=(async()=>{try{const payload=await fetchLiveJSON(`/api/live-game-stats?game_id=${encodeURIComponent(game.id)}${typeof leagueParam==='function'?leagueParam('&'):''}`);liveBoard.gameStats.set(key,{...payload,checkedAt:Date.now()})}catch(error){liveBoard.gameStats.set(key,{...cached,error:error.message,stale:true,checkedAt:Date.now()})}renderLiveCenter()})().finally(()=>liveBoard.gameStatsPending.delete(key));
     liveBoard.gameStatsPending.set(key,task);
   }
   await Promise.allSettled([...liveBoard.gameStatsPending.values()]);
@@ -225,7 +225,7 @@ function livePropCard(prop,game){
 function renderLiveParlay(game){
   const panel=$('#liveParlayPanel');if(!panel)return;
   const tracked=[...(typeof trackedParlays==='undefined'?[]:trackedParlays)].reverse().find(record=>record.result==='pending'&&Array.isArray(record.liveLegs)&&record.liveLegs.some(leg=>liveGameFor(leg.team,leg.startsAt)?.id===game.id));
-  const trackedLegs=(tracked?.liveLegs||[]).map(saved=>{const p={...saved,id:saved.propID,sport:'NFL'};return{p,side:saved.side,odds:saved.odds}});
+  const trackedLegs=(tracked?.liveLegs||[]).map(saved=>{const p={...saved,id:saved.propID,sport:saved.sport||(typeof LEAGUE==='string'?LEAGUE:'NFL')};return{p,side:saved.side,odds:saved.odds}});
   const legs=(trackedLegs.length?trackedLegs:state.slip).filter(leg=>liveGameFor(gameName(leg.p),leg.p.startsAt)?.id===game.id);
   panel.hidden=!legs.length;if(!legs.length)return;
   const rows=legs.map(leg=>{const status=liveLegState({...leg.p,side:leg.side},game,livePlayerRow(game.id,leg.p.player));return`<div class="live-parlay-leg ${status.key}"><i></i><span><strong>${htmlEscape(leg.p.player)} · ${htmlEscape(leg.side)} ${htmlEscape(String(leg.p.line))}</strong><small>${status.value===null?'Waiting for stats':`${status.value} ${htmlEscape(status.label)}`} · ${htmlEscape(status.detail)}</small></span><b>${htmlEscape(status.title)}</b></div>`}).join(''),hit=legs.filter(leg=>liveLegState({...leg.p,side:leg.side},game,livePlayerRow(game.id,leg.p.player)).key==='hit').length;

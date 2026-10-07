@@ -15,6 +15,11 @@ const recordLabels = {
   player_sacks:'Sacks',player_solo_tackles:'Solo Tackles',player_tackles_assists:'Tackles + Assists',
   player_defensive_interceptions:'Defensive Interceptions',player_tds:'Touchdowns',player_tds_over:'Touchdowns',
   player_anytime_td:'Anytime Touchdown',player_1st_td:'First Touchdown',player_last_td:'Last Touchdown',player_assists:'Assists',
+  // NBA (player_assists above is shared: NFL assisted tackles or NBA passing
+  // assists, told apart by the game's sport).
+  player_points:'Points',player_rebounds:'Rebounds',player_threes:'3-Pointers Made',player_blocks:'Blocks',player_steals:'Steals',
+  player_blocks_steals:'Blocks + Steals',player_turnovers:'Turnovers',player_points_rebounds_assists:'Points + Rebounds + Assists',
+  player_points_rebounds:'Points + Rebounds',player_points_assists:'Points + Assists',player_rebounds_assists:'Rebounds + Assists',
 };
 const recordDecimal = odds => odds > 0 ? 1+odds/100 : 1+100/Math.abs(odds);
 const recordAmerican = decimal => decimal>=2 ? Math.round((decimal-1)*100) : Math.round(-100/(decimal-1));
@@ -40,7 +45,7 @@ function verifiedRecordLeg(input,event,now=Date.now()) {
       const side=binary?(direction==='no'?'Under':'Over') : direction==='over'?'Over':direction==='under'?'Under':null;
       const line=binary?.5:BTGStats.number(outcome.point),odds=BTGStats.number(outcome.price);
       if(player!==input.player||side!==input.side||line!==Number(input.line)||odds===null||Math.abs(odds)<100||Math.abs(odds)>100000)continue;
-      offers.push({player,market:label,side,line,odds,sport:'NFL',gameId:event.eventID||`NFL--${event.id}`,gameTime:new Date(start).toISOString(),team:`${event.away_team} · @ ${event.home_team}`});
+      offers.push({player,market:label,side,line,odds,sport:event.sport_label||'NFL',gameId:event.eventID||`${event.sport_label||'NFL'}--${event.id}`,gameTime:new Date(start).toISOString(),team:`${event.away_team} · @ ${event.home_team}`});
     }
   }
   // Respect selected-book preferences: the requested price must exist in the
@@ -97,7 +102,7 @@ function officialCandidates(events,now=Date.now(),stats={}){
     const groups=new Map();
     for(const book of event.bookmakers||[])for(const market of book.markets||[]){
       const label=recordLabels[market.key],updated=Date.parse(market.last_update||book.last_update||'');
-      if(!label||!BTGStats.supports({market:label})||/_alternate$/.test(market.key)||!Number.isFinite(updated)||now-updated>15*60000||updated>now+60000)continue;
+      if(!label||!BTGStats.supports({market:label,sport:event.sport_label||'NFL'})||/_alternate$/.test(market.key)||!Number.isFinite(updated)||now-updated>15*60000||updated>now+60000)continue;
       for(const outcome of market.outcomes||[]){
         const side=String(outcome.name).toLowerCase(),line=BTGStats.number(outcome.point),odds=BTGStats.number(outcome.price),player=String(outcome.description||'').trim();
         if(!['over','under'].includes(side)||!player||line===null||odds===null||Math.abs(odds)<100||Math.abs(odds)>10000)continue;
@@ -267,6 +272,49 @@ async function recordLineShadow(env,events,now=Date.now()){
   }
   if(statements.length)await env.DB.batch(statements);
   return {logged:rows.length,tracked:open.length};
+}
+// NBA picks in shadow mode: the official rules (big-5 book, 1-12% edge, 3+
+// books pricing both sides) run on tonight's NBA games, and the first
+// qualifying price per player and game is logged, never posted. Each run
+// records the best big-5 price still on offer at the same line, so the last
+// one before tip-off is the closing price; grading follows once stats exist.
+async function recordNbaShadow(request,env,ctx,now=Date.now()){
+  if(!env.DB)return {logged:0};
+  const schedule=await futureSchedule(new Request(new URL('/api/schedule?sport=NBA',request.url)),env,ctx);
+  if(!schedule.ok)throw new Error('NBA schedule unavailable');
+  const games=((await schedule.json()).data||[]).filter(e=>{const t=Date.parse(e.status?.startsAt);return t>now+5*60000&&t<=now+24*3600000}).slice(0,15);
+  const boards=[];
+  for(let i=0;i<games.length;i+=4){const results=await Promise.allSettled(games.slice(i,i+4).map(async e=>{const url=new URL('/api/event',request.url);url.searchParams.set('eventID',e.eventID);const r=await eventProps(new Request(url),env,ctx);if(!r.ok||r.headers.get('x-feed-cache')==='stale')throw new Error('NBA board unavailable');return (await r.json()).data||[]}));for(const r of results)if(r.status==='fulfilled')boards.push(...r.value)}
+  const stamp=new Date(now).toISOString(),picks=officialCandidates(boards,now);
+  const statements=picks.map(p=>env.DB.prepare('INSERT OR IGNORE INTO nba_shadow (id,event_id,player,team,market,side,line,odds,book,edge,game_time,logged_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)').bind(`${p.gameId}|${normalizedName(p.player)}`,p.gameId,p.player,p.team||null,p.market,p.side,p.line,p.odds,p.book,+p.edge.toFixed(2),p.gameTime,stamp));
+  // Closing price: the best big-5 price now at each open pick's line and side.
+  const open=(await env.DB.prepare('SELECT id,event_id,player,market,side,line FROM nba_shadow WHERE game_time>?').bind(stamp).all()).results||[];
+  for(const r of open){
+    const event=boards.find(e=>(e.eventID||`NBA--${e.id}`)===r.event_id);if(!event)continue;
+    let best=null;
+    for(const book of event.bookmakers||[])if(OFFICIAL_BOOKS.has(book.key))for(const market of book.markets||[]){
+      if(recordLabels[market.key]!==r.market)continue;
+      for(const o of market.outcomes||[])if(String(o.description||'').trim()===r.player&&String(o.name).toLowerCase()===r.side.toLowerCase()&&BTGStats.number(o.point)===Number(r.line)){const odds=BTGStats.number(o.price);if(odds!==null&&(best===null||recordDecimal(odds)>recordDecimal(best)))best=odds}
+    }
+    if(best!==null)statements.push(env.DB.prepare('UPDATE nba_shadow SET close_odds=?,close_at=? WHERE id=?').bind(best,stamp,r.id));
+  }
+  if(statements.length)await env.DB.batch(statements);
+  return {games:games.length,boards:boards.length,logged:picks.length,tracked:open.length};
+}
+// Grade shadow picks once their game is final (needs BALLDONTLIE NBA stats).
+async function gradeNbaShadow(env,now=Date.now()){
+  if(!env.DB||!env.BALLDONTLIE_API_KEY)return {graded:0};
+  const rows=(await env.DB.prepare('SELECT * FROM nba_shadow WHERE result IS NULL AND game_time<? ORDER BY game_time LIMIT 25').bind(new Date(now-3*3600000).toISOString()).all()).results||[];
+  const cache=new Map(),statements=[];
+  for(const r of rows){
+    const record={sport:'NBA',player:r.player,team:r.team,gameTime:r.game_time,market:r.market,side:r.side,line:r.line};
+    const stat=await recordPlayerStats(record,env,undefined,cache).catch(()=>null);
+    if(!stat||!stat.scoreboardFinal||stat.missingPlayerStats)continue;
+    const value=BTGStats.metric(record,stat).value,result=value===null?null:BTGStats.grade(r.side,r.line,value);
+    if(result)statements.push(env.DB.prepare('UPDATE nba_shadow SET actual=?,result=?,graded_at=? WHERE id=?').bind(value,result,new Date(now).toISOString(),r.id));
+  }
+  if(statements.length)await env.DB.batch(statements);
+  return {graded:statements.length,checked:rows.length};
 }
 async function publishOfficialPicks(request,env,ctx){
   if(Date.now()<OFFICIAL_START)return {state:"not_started"};

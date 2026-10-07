@@ -38,9 +38,26 @@ globalThis.BTGStats = (() => {
     'rush + receiving touchdowns': ['rushing touchdowns','receiving touchdowns'],
     'pass + rush + receiving tds': ['passing touchdowns','rushing touchdowns','receiving touchdowns'],
   };
+  // NBA box-score fields (BALLDONTLIE NBA stats). "Assists" means passing
+  // assists here, not assisted tackles, so NBA props never use the NFL map.
+  const nbaFields = {points:['pts'], rebounds:['reb'], assists:['ast'], '3-pointers made':['fg3m'], threes:['fg3m'], blocks:['blk'], steals:['stl'], turnovers:['turnover','tov']};
+  const nbaCombos = {'points + rebounds + assists':['points','rebounds','assists'], 'points + rebounds':['points','rebounds'], 'points + assists':['points','assists'], 'rebounds + assists':['rebounds','assists'], 'blocks + steals':['blocks','steals']};
+  const isNba = (prop, row) => String(prop?.sport || '').toUpperCase() === 'NBA' || (!prop?.sport && row && read(row,['pts']) !== null && read(row,['reb']) !== null);
+  function nbaMetric(label, key, row) {
+    if (nbaFields[key]) return {label, value:read(row, nbaFields[key])};
+    if (nbaCombos[key]) { const values = nbaCombos[key].map(name => read(row, nbaFields[name])); return {label, value:values.every(v => v !== null) ? values.reduce((a,b) => a+b, 0) : null}; }
+    if (key === 'double-double' || key === 'triple-double') {
+      // Yes/No props on a 0.5 line: 1 when enough categories reach 10.
+      const values = ['points','rebounds','assists','steals','blocks'].map(name => read(row, nbaFields[name]));
+      if (values.slice(0,3).some(v => v === null)) return {label, value:null};
+      return {label, value:values.filter(v => v !== null && v >= 10).length >= (key === 'double-double' ? 2 : 3) ? 1 : 0};
+    }
+    return {label, value:null};
+  }
   function metric(prop, row) {
     const label = String(prop?.market || ''), key = label.toLowerCase().trim().replace(/^alternate\s+/, '');
     if (!row) return {label, value:null};
+    if (isNba(prop, row)) return nbaMetric(label, key, row);
     // A game-total box score cannot establish scoring order or quarter totals.
     if (/first|last|quarter|half/.test(key)) return {label, value:null};
     const alias = {'field goals':'field goals made',pats:'extra points','longest completion':'longest pass completion'}[key] || key;
@@ -73,6 +90,7 @@ globalThis.BTGStats = (() => {
   }
   function supports(prop){
     const key=String(prop?.market||'').toLowerCase().trim().replace(/^alternate\s+/,'');
+    if(String(prop?.sport||'').toUpperCase()==='NBA')return Boolean(nbaFields[key]||nbaCombos[key]||key==='double-double'||key==='triple-double');
     return Boolean(fields[key]||combinations[key]||['tackles + assists','anytime touchdown','touchdowns','field goals','pats','longest completion'].includes(key));
   }
   return {number,read,metric,grade,supports};

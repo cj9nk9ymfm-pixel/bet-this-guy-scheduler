@@ -43,7 +43,17 @@ const BDL_SPORTS = {
 const SPORTS = [
   { key: "americanfootball_nfl", label: "NFL", markets: ["player_anytime_td", "player_1st_td", "player_last_td", "player_tds", "player_tds_over", "player_assists", "player_pass_yds", "player_pass_yds_q1", "player_pass_tds", "player_pass_completions", "player_pass_attempts", "player_pass_interceptions", "player_pass_longest_completion", "player_pass_rush_yds", "player_pass_rush_reception_tds", "player_pass_rush_reception_yds", "player_rush_yds", "player_rush_attempts", "player_rush_longest", "player_rush_tds", "player_receptions", "player_reception_yds", "player_reception_longest", "player_reception_tds", "player_rush_reception_yds", "player_rush_reception_tds", "player_kicking_points", "player_field_goals", "player_pats", "player_sacks", "player_solo_tackles", "player_tackles_assists", "player_defensive_interceptions"], expandedMarkets: ["player_assists_alternate", "player_field_goals_alternate", "player_kicking_points_alternate", "player_pass_attempts_alternate", "player_pass_completions_alternate", "player_pass_interceptions_alternate", "player_pass_longest_completion_alternate", "player_pass_rush_yds_alternate", "player_pass_rush_reception_tds_alternate", "player_pass_rush_reception_yds_alternate", "player_pass_tds_alternate", "player_pass_yds_alternate", "player_pats_alternate", "player_receptions_alternate", "player_reception_longest_alternate", "player_reception_tds_alternate", "player_reception_yds_alternate", "player_rush_attempts_alternate", "player_rush_longest_alternate", "player_rush_reception_tds_alternate", "player_rush_reception_yds_alternate", "player_rush_tds_alternate", "player_rush_yds_alternate", "player_sacks_alternate", "player_solo_tackles_alternate", "player_tackles_assists_alternate"] },
 ];
-const SPORTS_BY_LABEL = Object.fromEntries(SPORTS.map(sport => [sport.label, sport]));
+// NBA has its own feed (/api/props?sport=NBA, /api/schedule?sport=NBA) so the
+// NFL board, its caches and the NFL pick job are unchanged by it.
+const NBA_SPORT = { key: "basketball_nba", label: "NBA",
+  markets: ["player_points", "player_rebounds", "player_assists", "player_threes", "player_points_rebounds_assists", "player_points_rebounds", "player_points_assists", "player_rebounds_assists", "player_blocks", "player_steals", "player_blocks_steals", "player_turnovers", "player_double_double", "player_triple_double"],
+  expandedMarkets: ["player_points_alternate", "player_rebounds_alternate", "player_assists_alternate", "player_threes_alternate", "player_points_rebounds_assists_alternate", "player_points_rebounds_alternate", "player_points_assists_alternate", "player_rebounds_assists_alternate", "player_blocks_alternate", "player_steals_alternate", "player_turnovers_alternate"],
+  movementMarkets: ["player_points", "player_rebounds", "player_assists", "player_threes", "player_points_rebounds_assists"] };
+SPORTS[0].movementMarkets = ["player_pass_yds", "player_rush_yds", "player_reception_yds", "player_receptions", "player_pass_tds", "player_anytime_td"];
+const SPORTS_BY_LABEL = Object.fromEntries([...SPORTS, NBA_SPORT].map(sport => [sport.label, sport]));
+// ?sport=NBA selects the NBA feed; anything else is the NFL feed as before.
+const feedSports = request => new URL(request.url).searchParams.get("sport") === "NBA" ? [NBA_SPORT] : SPORTS;
+const feedSuffix = sports => sports[0] === NBA_SPORT ? "-nba" : "";
 const runtimeFeedCache = new Map();
 
 function json(data, status = 200, extra = {}) {
@@ -161,8 +171,8 @@ function scheduleRecord(event) {
   };
 }
 
-async function allUpcomingEvents(apiKey) {
-  const results = await Promise.allSettled(SPORTS.map(sport => fetchSportEvents(sport, apiKey)));
+async function allUpcomingEvents(apiKey, sports = SPORTS) {
+  const results = await Promise.allSettled(sports.map(sport => fetchSportEvents(sport, apiKey)));
   const events = results.flatMap(result => result.status === "fulfilled" ? result.value : []);
   const errors = results.filter(result => result.status === "rejected").map(result => result.reason?.message).filter(Boolean);
   return { events, errors };
@@ -170,12 +180,13 @@ async function allUpcomingEvents(apiKey) {
 
 async function liveProps(request, env, ctx) {
   if (!env.THE_ODDS_API_KEY) return json({ success: false, error: "Live feed is not configured." }, 503);
-  const saved = await readFeedCache(request, "the-odds-api-live-props-nfl-v10");
+  const sports = feedSports(request);
+  const saved = await readFeedCache(request, `the-odds-api-live-props-nfl-v10${feedSuffix(sports)}`);
   if (saved.response && cacheAge(saved.response) < 10 * 60 * 1000) return cachedForClient(saved.response, "fresh");
   try {
     const now = Date.now();
-    const { events, errors: scheduleErrors } = await allUpcomingEvents(env.THE_ODDS_API_KEY);
-    const slate = SPORTS.flatMap(sport => events
+    const { events, errors: scheduleErrors } = await allUpcomingEvents(env.THE_ODDS_API_KEY, sports);
+    const slate = sports.flatMap(sport => events
       .filter(event => {
         const starts = Date.parse(event.commence_time);
         return event.sport_label === sport.label && Number.isFinite(starts) && starts >= now - 4 * 60 * 60 * 1000 && starts <= now + 7 * 24 * 60 * 60 * 1000;
@@ -219,10 +230,11 @@ async function liveProps(request, env, ctx) {
 
 async function futureSchedule(request, env, ctx) {
   if (!env.THE_ODDS_API_KEY) return json({ success: false, error: "Live feed is not configured." }, 503);
-  const saved = await readFeedCache(request, "the-odds-api-future-schedule-v1");
+  const sports = feedSports(request);
+  const saved = await readFeedCache(request, `the-odds-api-future-schedule-v1${feedSuffix(sports)}`);
   if (saved.response && cacheAge(saved.response) < 6 * 60 * 60 * 1000) return cachedForClient(saved.response, "fresh");
   try {
-    const { events, errors } = await allUpcomingEvents(env.THE_ODDS_API_KEY);
+    const { events, errors } = await allUpcomingEvents(env.THE_ODDS_API_KEY, sports);
     const data = events.filter(event => Date.parse(event.commence_time) > Date.now() - 4 * 60 * 60 * 1000).map(scheduleRecord);
     if (!data.length && errors.length) throw new Error(errors[0]);
     const stored = storedResponse(JSON.stringify({ success: true, data, updatedAt: new Date().toISOString(), partial: errors.length }), 7 * 24 * 60 * 60);
@@ -245,9 +257,9 @@ async function allowProviderCall(request, limiter) {
   try { return (await limiter.limit({ key: visitor })).success; } catch { return true; }
 }
 
-async function scheduledEventIDs(request, env, ctx) {
+async function scheduledEventIDs(request, env, ctx, sportLabel = "NFL") {
   try {
-    const response = await futureSchedule(new Request(new URL("/api/schedule", request.url)), env, ctx);
+    const response = await futureSchedule(new Request(new URL(sportLabel === "NBA" ? "/api/schedule?sport=NBA" : "/api/schedule", request.url)), env, ctx);
     if (!response.ok) return null;
     return new Set(((await response.json()).data || []).map(event => event.eventID));
   } catch {
@@ -259,7 +271,7 @@ async function scheduledEventIDs(request, env, ctx) {
 // the schedule check; scheduled events are never limited.
 async function allowEventLookup(request, env, ctx, eventID) {
   if (!request.headers.get("cf-connecting-ip") || !env.UNKNOWN_EVENT_LIMITER) return true;
-  const known = await scheduledEventIDs(request, env, ctx);
+  const known = await scheduledEventIDs(request, env, ctx, eventID.split("--")[0]);
   if (known?.has(eventID)) return true;
   return allowProviderCall(request, env.UNKNOWN_EVENT_LIMITER);
 }
@@ -285,7 +297,7 @@ async function eventProps(request, env, ctx) {
   if (saved.response && cacheAge(saved.response) < (inPlay || movement ? 60000 : 540000)) return cachedForClient(saved.response, "fresh");
   if (!await allowEventLookup(request, env, ctx, eventID)) return tooManyRequests(saved);
   try {
-    const selectedSport = movement ? {...sport, markets:["player_pass_yds","player_rush_yds","player_reception_yds","player_receptions","player_pass_tds","player_anytime_td"],expandedMarkets:[]} : sport;
+    const selectedSport = movement ? {...sport, markets:sport.movementMarkets,expandedMarkets:[]} : sport;
     const data = await fetchEventOdds(selectedSport, providerEventID, env.THE_ODDS_API_KEY, !movement);
     if(env.DB)ctx.waitUntil(saveMovementSnapshot(data,env).catch(()=>{}));
     // Books can suspend or remove in-play markets. Never resurrect the opening
@@ -342,6 +354,30 @@ async function bdlRequest(path, apiKey, signal) {
   return JSON.parse(body);
 }
 
+// BALLDONTLIE serves the NBA under /v1 (its original API); newer sports use
+// /<sport>/v1. Try /v1 first and fall back to /nba/v1 once if that 404s.
+let nbaPrefix = null;
+async function nbaRequest(path, apiKey, signal) {
+  if (nbaPrefix) return bdlRequest(`${nbaPrefix}${path}`, apiKey, signal);
+  try { const payload = await bdlRequest(`/v1${path}`, apiKey, signal); nbaPrefix = "/v1"; return payload; }
+  catch (error) { if (error.status !== 404) throw error; const payload = await bdlRequest(`/nba/v1${path}`, apiKey, signal); nbaPrefix = "/nba/v1"; return payload; }
+}
+// The same request for any sport: NBA through nbaRequest, others by slug.
+const sportRequest = (sport, path, apiKey, signal) => sport === "NBA" ? nbaRequest(path, apiKey, signal) : bdlRequest(`/${BDL_SPORTS[sport].slug}/v1${path}`, apiKey, signal);
+// NBA game status: "Final", a quarter ("3rd Qtr", "Half", "OT"), or the
+// scheduled tip-off time.
+function nbaGameState(game) {
+  const text = String(game?.status || "");
+  if (/final/i.test(text)) return "final";
+  if (/postponed/i.test(text)) return "postponed";
+  if (/cancel/i.test(text)) return "canceled";
+  if (/qtr|quarter|half|\bOT\b|overtime/i.test(text) || (Number(game?.period) > 0 && !/^\d{4}-\d{2}-\d{2}T/.test(text) && !/\b(am|pm)\b/i.test(text))) return "in_progress";
+  return "scheduled";
+}
+const nbaTipoff = game => { const t = Date.parse(game?.datetime || (/^\d{4}-\d{2}-\d{2}T/.test(String(game?.status || "")) ? game.status : "") || ""); return Number.isFinite(t) ? t : null; };
+// NBA seasons are named for the year they start (2026-27 is 2026).
+const nbaSeason = (date = new Date()) => date.getUTCMonth() >= 8 ? date.getUTCFullYear() : date.getUTCFullYear() - 1;
+
 async function playerStats(request, env, ctx) {
   if (!env.BALLDONTLIE_API_KEY) return json({ success: false, error: "Player stats are not connected." }, 503);
   const url = new URL(request.url);
@@ -360,7 +396,7 @@ async function playerStats(request, env, ctx) {
     // Search on the surname and use selectPlayer() to resolve the full name.
     const nameParts = name.replace(/\b(Jr\.?|Sr\.?|II|III|IV)\b/gi, "").trim().split(/\s+/).filter(Boolean);
     const search = new URLSearchParams({ search: nameParts.at(-1) || name, per_page: "25" });
-    const playerPayload = await bdlRequest(`/${config.slug}/v1/players?${search}`, env.BALLDONTLIE_API_KEY);
+    const playerPayload = await sportRequest(sportLabel, `/players?${search}`, env.BALLDONTLIE_API_KEY);
     const player = selectPlayer(Array.isArray(playerPayload?.data) ? playerPayload.data : [], name, team);
     if (!player) return json({ success: false, error: "This player could not be matched to the stats feed yet." }, 404);
     let statPayload;
@@ -378,12 +414,16 @@ async function playerStats(request, env, ctx) {
         query.append("seasons[]", String(season));
         query.append("seasons[]", String(season - 1));
         query.append("seasons[]", String(season - 2));
+      } else if (sportLabel === "NBA") {
+        const season = nbaSeason();
+        query.append("seasons[]", String(season));
+        query.append("seasons[]", String(season - 1));
       }
       const pages=[];let cursor=null;
       for(let page=0;page<2;page++){
         const pageQuery=new URLSearchParams(query);
         if(cursor)pageQuery.set('cursor',String(cursor));
-        const response=await bdlRequest(`${config.stats}?${pageQuery}`, env.BALLDONTLIE_API_KEY);
+        const response=sportLabel==='NBA'?await nbaRequest(`/stats?${pageQuery}`, env.BALLDONTLIE_API_KEY):await bdlRequest(`${config.stats}?${pageQuery}`, env.BALLDONTLIE_API_KEY);
         pages.push(response);
         cursor=response?.meta?.next_cursor||response?.meta?.nextCursor||null;
         if(!cursor)break;
@@ -393,7 +433,8 @@ async function playerStats(request, env, ctx) {
       statPayload = await bdlRequest(`/${config.slug}/v1/players/${encodeURIComponent(player.id)}/season_stats`, env.BALLDONTLIE_API_KEY);
     }
     const rawStats = Array.isArray(statPayload?.data) ? statPayload.data : statPayload?.data ? [statPayload.data] : Array.isArray(statPayload) ? statPayload : [];
-    const stats = sportLabel === "NFL" ? rawStats.filter(row => {
+    // NBA: completed games only, newest first, and only games the player played.
+    const stats = sportLabel === "NBA" ? rawStats.filter(row => nbaGameState(row?.game) === "final" && String(row?.min ?? "").replace(/:.*/, "") !== "0" && String(row?.min ?? "") !== "").sort((a, b) => Date.parse(b?.game?.date || "") - Date.parse(a?.game?.date || "")) : sportLabel === "NFL" ? rawStats.filter(row => {
       const game = row?.game || {};
       // Ongoing games belong in Current Game, never the historical hit rate.
       if (game.status_state && game.status_state !== "final") return false;
@@ -499,19 +540,23 @@ async function recordGameBoxscore(record,env,signal,cache){
   const time=Date.parse(record.gameTime||''),teams=String(record.team||'').split(/\s*·\s*(?:@|vs)\s*/).map(normalizedName);
   if(!Number.isFinite(time)||teams.length!==2||teams.some(team=>!team))return undefined;
   if(time>Date.now())return null;
-  const day=new Date(time).toISOString().slice(0,10),key=`scoreboard|${day}`;
-  if(!cache.has(key))cache.set(key,bdlRequest(`/nfl/v1/games?${new URLSearchParams({'dates[]':day,per_page:'100'})}`,env.BALLDONTLIE_API_KEY,signal));
+  const nba=String(record.sport||'').toUpperCase()==='NBA',stateOf=nba?nbaGameState:nflGameState;
+  const day=new Date(time).toISOString().slice(0,10),key=`scoreboard|${nba?'nba':'nfl'}|${day}`;
+  // NBA games are dated in US Eastern time, so a late tip-off (after 8pm ET)
+  // falls on the previous UTC day: ask for both.
+  if(!cache.has(key))cache.set(key,nba?nbaRequest(`/games?${new URLSearchParams([['dates[]',new Date(time-86400000).toISOString().slice(0,10)],['dates[]',day],['per_page','100']])}`,env.BALLDONTLIE_API_KEY,signal):bdlRequest(`/nfl/v1/games?${new URLSearchParams({'dates[]':day,per_page:'100'})}`,env.BALLDONTLIE_API_KEY,signal));
   const payload=await cache.get(key);
-  const matches=(payload?.data||[]).filter(game=>Math.abs(Date.parse(game.date)-time)<6*3600000&&[game.home_team,game.visitor_team].every(team=>teams.includes(normalizedName(team?.full_name))));
+  const sameTeams=game=>[game.home_team,game.visitor_team].every(team=>teams.includes(normalizedName(team?.full_name)));
+  const matches=(payload?.data||[]).filter(game=>sameTeams(game)&&(nba?Math.abs((nbaTipoff(game)??Date.parse(`${game.date}T23:00:00Z`))-time)<18*3600000:Math.abs(Date.parse(game.date)-time)<6*3600000));
   if(matches.length!==1)return null;
   const game=matches[0];
-  if(!['final','in_progress'].includes(nflGameState(game)))return null;
+  if(!['final','in_progress'].includes(stateOf(game)))return null;
   const boxKey=`boxscore|${game.id}`;
   if(!cache.has(boxKey))cache.set(boxKey,(async()=>{
     const rows=[],seen=new Set();let cursor=null;
     for(let page=0;page<10;page++){
       const params=new URLSearchParams({'game_ids[]':String(game.id),per_page:'100'});if(cursor)params.set('cursor',String(cursor));
-      const data=await bdlRequest(`/nfl/v1/stats?${params}`,env.BALLDONTLIE_API_KEY,signal);
+      const data=nba?await nbaRequest(`/stats?${params}`,env.BALLDONTLIE_API_KEY,signal):await bdlRequest(`/nfl/v1/stats?${params}`,env.BALLDONTLIE_API_KEY,signal);
       rows.push(...(data.data||[]).filter(row=>String(row.game?.id)===String(game.id)));
       cursor=data.meta?.next_cursor;if(!cursor)return rows;if(seen.has(cursor))break;seen.add(cursor);
     }
@@ -522,8 +567,8 @@ async function recordGameBoxscore(record,env,signal,cache){
   // Feeds disagree on first names (Andres vs Andy). Within one game, a unique
   // last name plus first initial is the same player.
   if(!found.length)found=rows.filter(row=>sameInitialAndSurname(playerLabel(row.player),record.player));
-  if(found.length!==1)return {game,scoreboardFinal:nflGameState(game)==='final',scoreboardState:nflGameState(game),missingPlayerStats:true,boxMatches:found.length,boxRowCount:rows.length};
-  return {...found[0],scoreboardFinal:nflGameState(game)==='final',scoreboardState:nflGameState(game)};
+  if(found.length!==1)return {game,scoreboardFinal:stateOf(game)==='final',scoreboardState:stateOf(game),missingPlayerStats:true,boxMatches:found.length,boxRowCount:rows.length};
+  return {...found[0],scoreboardFinal:stateOf(game)==='final',scoreboardState:stateOf(game)};
 }
 
 async function recordPlayerStats(record, env, signal, cache=new Map()) {
@@ -534,7 +579,7 @@ async function recordPlayerStats(record, env, signal, cache=new Map()) {
   if (!config?.stats || !record?.player || !record?.gameTime) return null;
   const nameParts = String(record.player).replace(/\b(Jr\.?|Sr\.?|II|III|IV)\b/gi, "").trim().split(/\s+/).filter(Boolean);
   const search = new URLSearchParams({ search: nameParts.at(-1) || record.player, per_page: "25" });
-  const playerPayload = await bdlRequest(`/${config.slug}/v1/players?${search}`, env.BALLDONTLIE_API_KEY, signal);
+  const playerPayload = await sportRequest(sport, `/players?${search}`, env.BALLDONTLIE_API_KEY, signal);
   const player = selectPlayer(Array.isArray(playerPayload?.data) ? playerPayload.data : [], record.player, record.team || "");
   if (!player) return gameRow===undefined?null:gameRow;
   if(gameRow?.missingPlayerStats)return {...gameRow,player,player_id:player.id};
@@ -547,13 +592,15 @@ async function recordPlayerStats(record, env, signal, cache=new Map()) {
     const season = now.getUTCMonth() < 2 ? now.getUTCFullYear() - 1 : now.getUTCFullYear();
     query.append("seasons[]", String(season));
     query.append("seasons[]", String(season - 1));
+  } else if (sport === "NBA") {
+    query.append("seasons[]", String(nbaSeason(new Date(record.gameTime))));
   }
   const pages = [];
   let cursor = null;
   for (let page = 0; page < 6; page += 1) {
     const pageQuery = new URLSearchParams(query);
     if (cursor) pageQuery.set("cursor", String(cursor));
-    const payload = await bdlRequest(`${config.stats}?${pageQuery}`, env.BALLDONTLIE_API_KEY, signal);
+    const payload = sport === "NBA" ? await nbaRequest(`/stats?${pageQuery}`, env.BALLDONTLIE_API_KEY, signal) : await bdlRequest(`${config.stats}?${pageQuery}`, env.BALLDONTLIE_API_KEY, signal);
     pages.push(payload);
     cursor = payload?.meta?.next_cursor || payload?.meta?.nextCursor || null;
     if (!cursor) break;
@@ -1018,7 +1065,11 @@ function cronJobs(date){
 async function runCron(controller,env,ctx){
   const due=cronJobs(new Date(controller.scheduledTime));
   if(!due.length||!env.DB||!env.THE_ODDS_API_KEY||!env.BALLDONTLIE_API_KEY)return;
-  const request=new Request(`${SITE_URL}/api/maintenance`),jobs={publish:()=>publishOfficialPicks(request,env,ctx),grade:()=>settlePublicRecords(env)};
+  const request=new Request(`${SITE_URL}/api/maintenance`),jobs={publish:()=>publishOfficialPicks(request,env,ctx),grade:()=>settlePublicRecords(env),nbaShadow:()=>recordNbaShadow(request,env,ctx),nbaGrade:()=>gradeNbaShadow(env)};
+  // NBA shadow runs after the NFL jobs and on its own: it can never hold up
+  // or fail NFL publishing or grading.
+  if(due.includes('publish'))due.push('nbaShadow');
+  if(due.includes('grade'))due.push('nbaGrade');
   for(const job of due){
     let work=scheduledJobs.get(job);
     if(!work){work=Promise.resolve().then(jobs[job]).finally(()=>scheduledJobs.delete(job));scheduledJobs.set(job,work)}
