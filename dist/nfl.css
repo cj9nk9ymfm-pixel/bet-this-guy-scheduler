@@ -1363,3 +1363,11 @@ html body .prop-card .card-why-read{color:#f08080}
 html body.light .prop-card .card-why-read{color:#b42318}
 html body .prop-card.compact-card:has(>.card-why){grid-template-areas:"head head" "pick pick" "why why" "money money"!important}
 html body .prop-card.compact-card>.card-why{grid-area:why;margin:-2px 2px 0}
+/* Engine status line */
+.on-engine{display:flex;align-items:center;gap:8px;margin:-2px 0 10px;color:var(--muted);font-size:12.5px;line-height:1.35}
+.on-engine[hidden]{display:none}
+.on-engine b{color:var(--text);font-weight:700}
+.on-engine-dot{flex:none;width:8px;height:8px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 0 #22c55e88;animation:onPulse 2s infinite}
+@keyframes onPulse{0%{box-shadow:0 0 0 0 #22c55e88}70%{box-shadow:0 0 0 7px #22c55e00}100%{box-shadow:0 0 0 0 #22c55e00}}
+@media (prefers-reduced-motion:reduce){.on-engine-dot{animation:none}}
+#heroTitle b,#heroTitle .hero-profit{white-space:nowrap}

@@ -1380,7 +1380,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     const hero=$('#heroBanner'),strip=$('#hitsStrip');if(!hero)return;
     if(!s){hero.hidden=false;return}
     $('#heroEyebrow').textContent='OFFICIAL RECORD';
-    $('#heroTitle').innerHTML=`${htmlEscape(s.label==='LAST WEEK'?'Last week':s.label==='THIS WEEK SO FAR'?'This week so far':s.label.charAt(0)+s.label.slice(1).toLowerCase())} <b>${s.wins}–${s.losses}${s.pushes?`–${s.pushes}`:''}</b> <span class="hero-profit ${s.profit>=0?'up':'down'}">${htmlEscape(money(s.profit))}</span>`;
+    $('#heroTitle').innerHTML=`${htmlEscape(s.label==='LAST WEEK'?'Last week':s.label==='THIS WEEK SO FAR'?'This week so far':(s.label.startsWith('WEEK OF ')?`Week of ${s.label.charAt(8)}${s.label.slice(9).toLowerCase()}`:s.label.charAt(0)+s.label.slice(1).toLowerCase()))} <b>${s.wins}–${s.losses}${s.pushes?`–${s.pushes}`:''}</b> <span class="hero-profit ${s.profit>=0?'up':'down'}">${htmlEscape(money(s.profit))}</span>`;
     const stats=[[money(s.profit),`betting ${stakeText()} a pick`,s.profit>=0?'up':'down']];
     if(s.tracked)stats.push([`${s.beat} of ${s.tracked}`,'beat the closing line','']);
     if(s.parlayWins+s.parlayLosses)stats.push([`${s.parlayWins}–${s.parlayLosses}`,`parlays · ${money(s.parlayProfit)}`,s.parlayProfit>=0?'up':'down']);
@@ -2084,4 +2084,16 @@ function statsProp(l){
   card=function(p,rank=-1,featured=false){const html=baseCard(p,rank,featured);if(!html.includes('<p class="card-money">'))return html;const why=whyText(p);return why?html.replace('<p class="card-money">',()=>`<p class="card-why card-why-${propVerdict(p).key}">${htmlEscape(why)}</p><p class="card-money">`):html};
   const baseProfile=renderPlayerProfile;
   renderPlayerProfile=function(p,payload){const out=baseProfile(p,payload);try{paint(document.querySelector('#playerProfile .pp-head'),payload?.player?.team,p.sport)}catch{}return out};
+})();
+
+/* Engine status: shows the pick engine is scanning, from the latest pick run. */
+(()=>{
+  const host=document.getElementById('engineStatus');if(!host||typeof fetch!=='function')return;
+  const ago=ms=>{const m=Math.round(ms/60000);return m<1?'just now':m<60?`${m} min ago`:`${Math.round(m/60)} hr ago`};
+  const draw=body=>{const last=body?.last,age=last?Date.now()-Date.parse(last.at):Infinity;
+    if(!last||!(age<45*60000)||!last.props){host.hidden=true;return}
+    host.innerHTML=`<span class="on-engine-dot" aria-hidden="true"></span><span><b>Engine live</b> · checked ${Number(last.props).toLocaleString('en-US')} props ${ago(age)}${body.day?.runs>1?` · ${body.day.runs} scans today`:''}</span>`;host.hidden=false};
+  let data=null;
+  const load=()=>fetch('/api/engine').then(r=>r.ok?r.json():null).then(body=>{data=body?.success?body:null;draw(data)}).catch(()=>{});
+  load();setInterval(load,120000);setInterval(()=>data&&draw(data),30000);
 })();

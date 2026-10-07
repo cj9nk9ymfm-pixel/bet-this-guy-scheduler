@@ -982,6 +982,21 @@ function homeLayout(rows, now = Date.now()) {
   return { stats: true, hits: weeks.get(week).some(r => graded(r) && r.result === "won") };
 }
 
+// Public proof the pick engine is running: the latest scan and the last 24 hours.
+async function engineStatus(env) {
+  if (!env.DB) return json({ success: false }, 503);
+  try {
+    const since = new Date(Date.now() - 86400000).toISOString();
+    const [last, day] = await Promise.all([
+      env.DB.prepare("SELECT at, games, props FROM pick_runs ORDER BY at DESC LIMIT 1").first(),
+      env.DB.prepare("SELECT COUNT(*) AS runs, COALESCE(SUM(props),0) AS props FROM pick_runs WHERE at>=?").bind(since).first()
+    ]);
+    return json({ success: true, last: last ? { at: last.at, games: last.games, props: last.props } : null, day: { runs: day?.runs || 0, props: day?.props || 0 } }, 200, { "cache-control": "public, max-age=60" });
+  } catch {
+    return json({ success: false }, 503);
+  }
+}
+
 async function publicRecord(request, env, ctx) {
   if (!env.DB) return json({ success: false, error: "The public record database is not connected yet." }, 503);
   if (request.method === "GET" && new URL(request.url).searchParams.get("view") === "home") {
@@ -1140,6 +1155,7 @@ async function routeRequest(request, env, ctx) {
     if (url.pathname === "/api/player-photo") return playerPhoto(request);
     if (url.pathname === "/api/feed-status") return json({ configured: Boolean(env.THE_ODDS_API_KEY), provider: "The Odds API" });
     if (url.pathname === "/api/record") return publicRecord(request, env, ctx);
+    if (url.pathname === "/api/engine") return engineStatus(env);
     if (url.pathname === "/api/hit") return usageHit(request, env, ctx);
     if (url.pathname === "/api/affiliate") return affiliateApi(request, env);
     if (url.pathname.startsWith("/api/alerts/")) return alertsApi(request, env);
