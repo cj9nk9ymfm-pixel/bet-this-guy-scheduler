@@ -310,6 +310,8 @@ async function gradeNbaShadow(env,now=Date.now()){
     const record={sport:'NBA',player:r.player,team:r.team,gameTime:r.game_time,market:r.market,side:r.side,line:r.line};
     const stat=await recordPlayerStats(record,env,undefined,cache).catch(()=>null);
     if(!stat||!stat.scoreboardFinal||stat.missingPlayerStats)continue;
+    // Didn't play: sportsbooks void the prop, so it's no action, never a loss.
+    if(!BTGStats.nbaPlayed(stat)){statements.push(env.DB.prepare('UPDATE nba_shadow SET actual=NULL,result=?,graded_at=? WHERE id=?').bind('void',new Date(now).toISOString(),r.id));continue}
     const value=BTGStats.metric(record,stat).value,result=value===null?null:BTGStats.grade(r.side,r.line,value);
     if(result)statements.push(env.DB.prepare('UPDATE nba_shadow SET actual=?,result=?,graded_at=? WHERE id=?').bind(value,result,new Date(now).toISOString(),r.id));
   }

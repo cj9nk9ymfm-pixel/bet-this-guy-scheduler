@@ -434,7 +434,7 @@ async function playerStats(request, env, ctx) {
     }
     const rawStats = Array.isArray(statPayload?.data) ? statPayload.data : statPayload?.data ? [statPayload.data] : Array.isArray(statPayload) ? statPayload : [];
     // NBA: completed games only, newest first, and only games the player played.
-    const stats = sportLabel === "NBA" ? rawStats.filter(row => nbaGameState(row?.game) === "final" && String(row?.min ?? "").replace(/:.*/, "") !== "0" && String(row?.min ?? "") !== "").sort((a, b) => Date.parse(b?.game?.date || "") - Date.parse(a?.game?.date || "")) : sportLabel === "NFL" ? rawStats.filter(row => {
+    const stats = sportLabel === "NBA" ? rawStats.filter(row => nbaGameState(row?.game) === "final" && BTGStats.nbaPlayed(row)).sort((a, b) => Date.parse(b?.game?.date || "") - Date.parse(a?.game?.date || "")) : sportLabel === "NFL" ? rawStats.filter(row => {
       const game = row?.game || {};
       // Ongoing games belong in Current Game, never the historical hit rate.
       if (game.status_state && game.status_state !== "final") return false;
