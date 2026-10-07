@@ -457,14 +457,16 @@ async function playerStats(request, env, ctx) {
 }
 
 async function playerPhoto(request) {
-  const name = new URL(request.url).searchParams.get("name")?.trim() || "";
+  const params = new URL(request.url).searchParams;
+  const name = params.get("name")?.trim() || "";
+  const league = params.get("sport") === "NBA" ? "nba" : "nfl";
   if (!/^[A-Za-z .'-]{2,80}$/.test(name)) return new Response("", { status: 404 });
   try {
     const response = await fetch(`https://site.web.api.espn.com/apis/search/v2?query=${encodeURIComponent(name)}&limit=8`, { headers: { accept: "application/json" } });
     if (!response.ok) throw new Error("Search unavailable");
     const payload = await response.json();
     const players = (payload.results || []).find(group => group.type === "player")?.contents || [];
-    const exact = players.find(player => normalizedName(player.displayName) === normalizedName(name) && (player.description === "NFL" || player.defaultLeagueSlug === "nfl"));
+    const exact = players.find(player => normalizedName(player.displayName) === normalizedName(name) && (player.description === league.toUpperCase() || player.defaultLeagueSlug === league));
     const imageURL = exact?.image?.default || exact?.image?.defaultDark;
     if (!imageURL) throw new Error("No image");
     const image = await fetch(imageURL);
