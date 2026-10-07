@@ -736,7 +736,7 @@ function emailPickRow(r){
 function emailAlertHtml(picks,unsubscribeUrl,postal,opts={}){
   const font="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
   const heading=opts.heading||(picks.length===1?'A new official pick just posted':`${picks.length} new official picks just posted`);
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>${weeklyEscape(opts.subject||emailSubject(picks))}</title></head><body style="margin:0;padding:0;background:#eef3f9;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#eef3f9;"><tr><td align="center" style="padding:28px 12px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;"><tr><td align="center" style="background:#0e1013;border-radius:18px 18px 0 0;padding:24px;"><a href="${SITE_URL}" style="text-decoration:none;"><img src="${SITE_URL}/logo.png" width="220" alt="Bet This Guy" style="display:block;width:200px;max-width:70%;height:auto;border:0;color:#ffffff;font-family:Arial,sans-serif;font-size:22px;font-weight:700;"></a></td></tr><tr><td style="background:#ffffff;border-radius:0 0 18px 18px;padding:28px 24px;font-family:${font};color:#10213d;"><p style="margin:0 0 6px;font-size:12px;font-weight:700;letter-spacing:.14em;color:#08875e;">${weeklyEscape(opts.eyebrow||'PICK ALERT')}</p><h1 style="margin:0 0 8px;font-size:24px;line-height:1.25;">${heading}</h1><p style="margin:0 0 20px;font-size:15px;line-height:1.5;color:#40597a;">${weeklyEscape(opts.lede||'Locked before kickoff and graded in public on our results page.')}</p><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${picks.map(emailPickRow).join('')}</table><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:14px 0 0;"><tr><td style="border-radius:999px;background:#1fd88f;"><a href="${SITE_URL}/" style="display:inline-block;padding:14px 28px;font-size:16px;font-weight:700;color:#04121f;text-decoration:none;border-radius:999px;">See the picks</a></td></tr></table><p style="margin:18px 0 0;font-size:13px;line-height:1.5;color:#5a6f8c;">Odds move. Check the price at your sportsbook before you bet.</p></td></tr><tr><td align="center" style="padding:20px 16px 0;font-family:${font};font-size:12px;line-height:1.6;color:#7f96b8;">You’re getting this because you turned on email alerts for your Bet This Guy account. Questions? Just reply.<br><a href="${weeklyEscape(unsubscribeUrl)}" style="color:#7f96b8;">Unsubscribe</a> · 21+ where legal. Gambling problem? Call 1-800-GAMBLER.${postal?`<br>${weeklyEscape(postal)}`:''}</td></tr></table></td></tr></table></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>${weeklyEscape(opts.subject||emailSubject(picks))}</title></head><body style="margin:0;padding:0;background:#eef3f9;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#eef3f9;"><tr><td align="center" style="padding:28px 12px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;"><tr><td align="center" style="background:#0e1013;border-radius:18px 18px 0 0;padding:24px;"><a href="${SITE_URL}" style="text-decoration:none;"><img src="${SITE_URL}/logo.png" width="220" alt="Bet This Guy" style="display:block;width:200px;max-width:70%;height:auto;border:0;color:#ffffff;font-family:Arial,sans-serif;font-size:22px;font-weight:700;"></a></td></tr><tr><td style="background:#ffffff;border-radius:0 0 18px 18px;padding:28px 24px;font-family:${font};color:#10213d;"><p style="margin:0 0 6px;font-size:12px;font-weight:700;letter-spacing:.14em;color:#08875e;">${weeklyEscape(opts.eyebrow||'PICK ALERT')}</p><h1 style="margin:0 0 8px;font-size:24px;line-height:1.25;">${heading}</h1><p style="margin:0 0 20px;font-size:15px;line-height:1.5;color:#40597a;">${weeklyEscape(opts.lede||'Locked before kickoff and graded in public on our results page.')}</p><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${opts.rowsHtml??picks.map(emailPickRow).join('')}</table><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:14px 0 0;"><tr><td style="border-radius:999px;background:#1fd88f;"><a href="${weeklyEscape(opts.ctaUrl||SITE_URL+'/')}" style="display:inline-block;padding:14px 28px;font-size:16px;font-weight:700;color:#04121f;text-decoration:none;border-radius:999px;">${weeklyEscape(opts.ctaLabel||'See the picks')}</a></td></tr></table><p style="margin:18px 0 0;font-size:13px;line-height:1.5;color:#5a6f8c;">Odds move. Check the price at your sportsbook before you bet.</p></td></tr><tr><td align="center" style="padding:20px 16px 0;font-family:${font};font-size:12px;line-height:1.6;color:#7f96b8;">You’re getting this because you turned on email alerts for your Bet This Guy account. Questions? Just reply.<br><a href="${weeklyEscape(unsubscribeUrl)}" style="color:#7f96b8;">Unsubscribe</a> · 21+ where legal. Gambling problem? Call 1-800-GAMBLER.${postal?`<br>${weeklyEscape(postal)}`:''}</td></tr></table></td></tr></table></body></html>`;
 }
 function emailAlertText(picks,unsubscribeUrl,postal,opts={}){
   return `${opts.heading||(picks.length===1?'A new official pick just posted':`${picks.length} new official picks just posted`)}:${opts.lede?`\n${opts.lede}`:''}\n\n${picks.map(r=>`- ${emailPickText(r)} · ${weeklyDay(r.game_time)}`).join('\n')}\n\nSee the picks: ${SITE_URL}/\n\nOdds move. Check the price at your sportsbook before you bet.\n\nUnsubscribe: ${unsubscribeUrl}\n21+ where legal. Gambling problem? Call 1-800-GAMBLER.${postal?`\n${postal}`:''}\n`;
@@ -767,6 +767,48 @@ async function sendEmailAlerts(env,now=Date.now()){
     }catch(error){console.warn('email_alerts_failed',error.message)}
   }
   return {sent,total:people.length,picks:picks.length};
+}
+// Weekly digest: Tuesday mornings (after Monday night is graded), one email
+// with last week's official picks and results plus the season record, to
+// everyone with email alerts on. A week with no picks sends nothing.
+function digestRow(r){
+  const legs=recordLegs(r),res=weeklyGraded(r)?r.result:'pending',label={won:'Won',lost:'Lost',push:'Push',pending:'Pending'}[res],color={won:'#08875e',lost:'#c62828',push:'#5a6f8c',pending:'#5a6f8c'}[res];
+  const d=weeklyDecimal(r.kind==='parlay'?r.combined_odds:r.odds),net=res==='won'&&d?100*(d-1):res==='lost'?-100:0;
+  const title=r.kind==='parlay'?`${legs.length}-leg parlay (${weeklyOdds(r.combined_odds)})`:`${r.player} · ${weeklyLegText(r)} (${weeklyOdds(r.odds)})`;
+  const sub=r.kind==='parlay'?legs.map(l=>`${l.player} ${weeklyLegText(l)}`).join(' + '):(legs[0]?.actualValue!=null?`Had ${legs[0].actualValue}`:'');
+  return `<tr><td style="padding:10px 0;border-bottom:1px solid #e3ebf5;"><div style="font-size:15px;font-weight:700;color:#10213d;">${weeklyEscape(title)}</div>${sub?`<div style="margin-top:2px;font-size:13px;color:#5a6f8c;">${weeklyEscape(sub)}</div>`:''}</td><td align="right" style="padding:10px 0 10px 12px;border-bottom:1px solid #e3ebf5;white-space:nowrap;vertical-align:top;"><div style="font-size:14px;font-weight:700;color:${color};">${label}</div>${res==='won'||res==='lost'?`<div style="font-size:13px;color:${color};">${weeklyMoney(net)}</div>`:''}</td></tr>`;
+}
+function digestRecord(s){return `${s.wins}–${s.losses}${s.pushes?`–${s.pushes}`:''}`}
+async function sendWeeklyDigest(env,now=Date.now()){
+  if(!env.DB||!env.RESEND_API_KEY)return {sent:0,disabled:true};
+  const day=new Date(now);if(day.getUTCDay()!==2||day.getUTCHours()<15)return {sent:0,due:false};
+  const week=new Date(Date.parse(`${officialWeek(now)}T00:00:00Z`)-7*86400000).toISOString().slice(0,10);
+  const last=await appSetting(env,'weekly-digest');if(last===week)return {sent:0,done:true};
+  // Claim the week first so two Worker instances can't both send it.
+  const claim=last==null?await env.DB.prepare('INSERT OR IGNORE INTO app_settings (key,value) VALUES (?,?)').bind('weekly-digest',week).run():await env.DB.prepare('UPDATE app_settings SET value=? WHERE key=? AND value=?').bind(week,'weekly-digest',last).run();
+  if(!Number(claim?.meta?.changes??claim?.changes))return {sent:0,claimed:false};
+  const rows=await weeklyRows(env,week);if(!rows.length)return {sent:0,empty:true};
+  const all=(await env.DB.prepare("SELECT kind,odds,combined_odds,status,result,closing_line,closing_odds,closing_captured_at,line FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND id<?").bind(`official|${week}|\uffff`).all()).results||[];
+  const s=weeklySummary(rows),season=weeklySummary(all),info=nflWeekOf(week),name=info?`Week ${info.week}`:'Last week';
+  const headline=s.wins+s.losses+s.pushes?`${name}: ${digestRecord(s)} on props, ${weeklyMoney(s.profit)}`:`${name} results`;
+  const parlays=s.parlayWins+s.parlayLosses?` Parlays ${s.parlayWins}–${s.parlayLosses} (${weeklyMoney(s.parlayProfit)}).`:'';
+  const lede=`Betting \u0024100 a pick.${parlays} Season: ${digestRecord(season)} on props, ${weeklyMoney(season.profit)}. This week's picks post the moment a price qualifies, any day before kickoff, and we'll email you when they do.`;
+  const subject=`📊 ${headline}`,page=info?`${SITE_URL}/picks/${info.season}/week-${info.week}`:`${SITE_URL}/trust`;
+  const people=(await env.DB.prepare('SELECT a.token,p.email FROM email_alerts a JOIN user_profiles p ON p.auth_user_id=a.auth_user_id WHERE a.enabled=1 ORDER BY a.created_at LIMIT 2000').all()).results||[];
+  const from=env.EMAIL_FROM||EMAIL_ALERT_FROM,postal=String(env.EMAIL_POSTAL_ADDRESS||'').trim(),opts={subject,heading:weeklyEscape(headline),eyebrow:'WEEKLY RESULTS',lede,rowsHtml:rows.map(digestRow).join(''),ctaLabel:`See ${name}`,ctaUrl:page};
+  const text=unsubscribe=>`${headline}\n${lede}\n\n${rows.map(r=>`- ${emailPickText(r)}: ${weeklyGraded(r)?r.result:'pending'}`).join('\n')}\n\nEvery pick: ${page}\n\nUnsubscribe: ${unsubscribe}\n21+ where legal. Gambling problem? Call 1-800-GAMBLER.${postal?`\n${postal}`:''}\n`;
+  let sent=0;
+  for(let i=0;i<people.length;i+=100){
+    const batch=people.slice(i,i+100).map(person=>{
+      const unsubscribe=`${SITE_URL}/api/email-alerts/unsubscribe?token=${person.token}`;
+      return {from,to:[person.email],reply_to:env.EMAIL_REPLY_TO||'support@betthisguy.com',subject,html:emailAlertHtml(rows,unsubscribe,postal,opts),text:text(unsubscribe),headers:{'List-Unsubscribe':`<${unsubscribe}>`,'List-Unsubscribe-Post':'List-Unsubscribe=One-Click'}};
+    });
+    try{
+      const response=await fetch('https://api.resend.com/emails/batch',{method:'POST',headers:{authorization:`Bearer ${env.RESEND_API_KEY}`,'content-type':'application/json'},body:JSON.stringify(batch),signal:AbortSignal.timeout(15000)});
+      if(response.ok)sent+=batch.length;else console.warn('weekly_digest_failed',response.status);
+    }catch(error){console.warn('weekly_digest_failed',error.message)}
+  }
+  return {sent,total:people.length,picks:rows.length,week};
 }
 // "My book" alerts: a good-value price at one of someone's own sportsbooks.
 // The fair price always comes from every book (3+ pricing both sides, the same
