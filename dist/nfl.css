@@ -545,7 +545,7 @@ body.light .hit-dialog-close{background:#f4f8fd;border-color:#dbe6f2;color:#1021
 .prop-card.compact-card .prop-player strong{display:block;font-size:16px!important;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .prop-card.compact-card .prop-player span,.prop-card.compact-card .prop-player small{display:inline!important;font-size:12px!important;color:#8fa9c8}
 .prop-card.compact-card .prop-player small::before{content:' · '}
-.prop-card.compact-card>*:not(.prop-player):not(.mockup-pick):not(.card-money):not(.card-more):not([data-board-progress]):not(.bookmark):not(.card-gate){display:none!important}
+.prop-card.compact-card>*:not(.prop-player):not(.mockup-pick):not(.card-money):not(.card-why):not(.card-more):not([data-board-progress]):not(.bookmark):not(.card-gate){display:none!important}
 .prop-card.compact-card>.prop-player{padding-right:34px!important}
 .prop-card.compact-card .prop-player>div:last-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .prop-card.compact-card .player-photo span{display:block!important;inset:0!important;line-height:40px!important;text-align:center!important}
@@ -1335,3 +1335,31 @@ body.light .trust-inline{color:#1d4ed8!important}
 html body .prop-card[data-team] .avatar.player-photo,html body #propList .prop-card[data-team] .avatar.player-photo,html body .pp-head[data-team] .pp-photo{background:linear-gradient(135deg,var(--team),var(--team2))!important;background-image:linear-gradient(135deg,var(--team),var(--team2))!important;border-color:transparent!important;box-shadow:0 0 0 2px color-mix(in srgb,var(--team-accent) 60%,transparent)}
 html body #propList .prop-card[data-team] .avatar.player-photo>span,html body .prop-card[data-team] .avatar.player-photo>span,html body .pp-head[data-team] .pp-photo>span{color:#fff!important;background:transparent!important;text-shadow:0 1px 3px rgba(0,0,0,.45)}
 html body .prop-card[data-team],html body #propList .prop-card[data-team]{border-left:4px solid var(--team-accent)!important;transition:border-color .3s}
+/* Premium official pick cards */
+html body .on-list{border:0;background:transparent;overflow:visible;display:flex;flex-direction:column;gap:10px}
+html body .on-row{position:relative;align-items:center;padding:14px 14px 14px 16px;border:1px solid color-mix(in srgb,#f5c451 34%,var(--line));border-left:4px solid #f5c451;border-radius:16px;background:linear-gradient(135deg,color-mix(in srgb,#f5c451 9%,var(--panel)),var(--panel) 55%);box-shadow:0 6px 18px rgba(0,0,0,.18)}
+html body .on-row:first-child{border-top:1px solid color-mix(in srgb,#f5c451 34%,var(--line))}
+html body .on-row[data-team]{border-left-color:var(--team-accent)}
+html body button.on-row:hover{background:linear-gradient(135deg,color-mix(in srgb,#f5c451 14%,var(--panel)),var(--panel2) 60%)}
+html body .on-won-row{border-color:#22c55e55;border-left-color:#22c55e}
+html body .on-lost-row{opacity:.82}
+html body .on-who .on-kicker{display:inline-flex;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;align-items:center;gap:4px;margin-bottom:2px;color:#f5c451;font:700 10.5px/1.2 "Space Grotesk",sans-serif;letter-spacing:.06em;text-transform:uppercase}
+.on-kicker .ico{width:12px;height:12px;fill:currentColor}
+html body .on-row .on-who b{font-size:16.5px}
+.on-why{margin-top:3px;font-style:normal;font-size:12.5px;font-weight:600;color:#22c55e}
+.on-why::before{content:"▲ ";font-size:9px;vertical-align:1px}
+html body .on-row .on-avatar{width:52px;height:52px}
+html body .on-row[data-team] .on-avatar{background:linear-gradient(135deg,var(--team),var(--team2));color:#fff;box-shadow:0 0 0 2px color-mix(in srgb,var(--team-accent) 60%,transparent)}
+html body .on-row .on-price{font-size:17px;background:color-mix(in srgb,#f5c451 12%,var(--panel2))}
+html body.light .on-who .on-kicker{color:#a16207}
+body.light .on-row{box-shadow:0 4px 14px rgba(15,23,42,.07)}
+body.light .on-why{color:#15803d}
+/* Board card "why" line */
+html body .prop-card .card-why{margin:8px 2px 0;font-size:12.5px;line-height:1.35;color:var(--muted);font-weight:500}
+html body .prop-card .card-why-send{color:#22c55e;font-weight:600}
+html body .prop-card .card-why-send::before{content:"▲ ";font-size:9px;vertical-align:1px}
+html body.light .prop-card .card-why-send{color:#15803d}
+html body .prop-card .card-why-read{color:#f08080}
+html body.light .prop-card .card-why-read{color:#b42318}
+html body .prop-card.compact-card:has(>.card-why){grid-template-areas:"head head" "pick pick" "why why" "money money"!important}
+html body .prop-card.compact-card>.card-why{grid-area:why;margin:-2px 2px 0}

@@ -1423,7 +1423,10 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     const initials=String(r.player||'').split(' ').map(x=>x[0]||'').join('').slice(0,3);
     const avatar=isParlay?`<span class="on-avatar on-parlay">${icon('layers')}</span>`:`<span class="on-avatar"><span>${htmlEscape(initials)}</span><img loading="lazy" decoding="async" src="/api/player-photo?name=${encodeURIComponent(r.player||'')}${(r.sport||r.sport_label)==='NBA'?'&sport=NBA':''}" alt="" onerror="this.remove()"></span>`;
     const tag=status[0]==='locked'?`${icon('lock')} Locked`:status[1];
-    return `<button type="button" class="on-row" data-on="${i}" aria-label="Details for ${htmlEscape(title)}">${avatar}<span class="on-who"><b>${htmlEscape(title)}</b><span>${htmlEscape(sub)}</span><small>${htmlEscape(kickoff(r.game_time))}</small><em class="on-live" data-on-live="${i}" hidden></em></span><span class="on-end"><b class="on-price">${htmlEscape(formatOdds(odds))}</b><span class="on-tag on-${status[0]}">${tag}</span></span></button>`;
+    const books=[...new Set(legs.map(l=>l.book).filter(Boolean))],edges=legs.map(l=>Number(l.edge)).filter(Number.isFinite);
+    const kicker=`<span class="on-kicker">${icon('star')} Official${books.length===1?` · ${htmlEscape(books[0])}`:''}</span>`;
+    const why=edges.length?(isParlay?`Every leg priced better than fair`:`${Math.max(...edges).toFixed(1)}% better than fair`):'';
+    return `<button type="button" class="on-row on-${status[0]}-row" data-on="${i}" data-on-player="${htmlEscape(isParlay?'':r.player||'')}" data-on-team="${htmlEscape(isParlay?'':legs[0]?.team||'')}" aria-label="Details for ${htmlEscape(title)}">${avatar}<span class="on-who">${kicker}<b>${htmlEscape(title)}</b><span>${htmlEscape(sub)}</span><small>${htmlEscape(kickoff(r.game_time))}</small>${why?`<i class="on-why">${htmlEscape(why)}</i>`:''}<em class="on-live" data-on-live="${i}" hidden></em></span><span class="on-end"><b class="on-price">${htmlEscape(formatOdds(odds))}</b><span class="on-tag on-${status[0]}">${tag}</span></span></button>`;
   }
   // Live progress for locked picks, refreshed with the live board (every 5s in games).
   let officialLiveList=[];
@@ -1453,6 +1456,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     $('#officialNowList').innerHTML=list.length?list.map(officialRow).join(''):'<div class="on-empty"><strong>No picks yet this week.</strong><span>They post the moment a price qualifies, any day before kickoff.</span></div>';
     $$('#officialNowList button[data-on]').forEach(b=>b.onclick=()=>openPick(list[+b.dataset.on]));
     officialLiveList=list;updateOfficialLive();
+    $$('#officialNowList [data-on-player]').forEach(row=>{const player=row.dataset.onPlayer;if(!player||typeof playerStatsFor!=='function')return;const r=list[+row.dataset.on];playerStatsFor({sport:r?.sport||'NFL',player,team:row.dataset.onTeam}).then(payload=>window.BTGPaintTeam?.(row,payload?.player?.team,r?.sport||'NFL')).catch(()=>{})});
     host.hidden=false;
   }
   let heroRows=null;
@@ -2063,12 +2067,21 @@ function statsProp(l){
   const colors=(team,sport)=>{const key=String(team?.abbreviation||'').toUpperCase();return (sport==='NBA'?NBA:NFL)[key]||null};
   window.BTGTeamColors=colors;
   const paint=(el,team,sport)=>{const pair=colors(team,sport);if(!el||!pair)return;const [a,b]=pair;el.style.setProperty('--team',a);el.style.setProperty('--team2',b);el.style.setProperty('--team-accent',light(a)>=light(b)?a:b);el.dataset.team=String(team.abbreviation).toUpperCase()};
+  window.BTGPaintTeam=(el,team,sport)=>paint(el,team,sport);
   const fromStats=async(host,p)=>{try{if(p.teamMarket)return;const payload=await playerStatsFor(p);paint(host.closest('.prop-card'),payload?.player?.team,p.sport)}catch{}};
   let seen=null;
   const baseBind=bindCards;
   bindCards=function(){baseBind();seen?.disconnect();const cards=$$('.prop-card[data-id]:not([data-team])'),go=el=>{const p=props.find(item=>item.id===+el.dataset.id);if(p)fromStats(el,p)};
     if(typeof IntersectionObserver!=='function'){cards.slice(0,12).forEach(go);return}
     seen=new IntersectionObserver(items=>items.forEach(item=>{if(!item.isIntersecting)return;seen.unobserve(item.target);go(item.target)}),{rootMargin:'200px 0px'});cards.forEach(el=>seen.observe(el))};
+  // One plain line on each board card saying why it got its rating.
+  const bookFrom=p=>(String(p.note||'').match(/^(?:Best (?:price |total )?at )?(.+?) (?:price )?vs\b/)||[])[1]||'';
+  const whyText=p=>{const v=typeof propVerdict==='function'?propVerdict(p):null,edge=Number(p.rawEdge),n=Number(p.pairedBooks)||0;if(!v||!Number.isFinite(edge))return '';const book=bookFrom(p);
+    if(v.key==='send')return `${book||'This book'} pays ${edge.toFixed(1)}% more than fair${n?` (${n} books)`:''}`;
+    if(v.key==='read')return `${Math.abs(edge).toFixed(1)}% worse than the fair price`;
+    return n?`In line with the fair price across ${n} books`:''};
+  const baseCard=card;
+  card=function(p,rank=-1,featured=false){const html=baseCard(p,rank,featured);if(!html.includes('<p class="card-money">'))return html;const why=whyText(p);return why?html.replace('<p class="card-money">',()=>`<p class="card-why card-why-${propVerdict(p).key}">${htmlEscape(why)}</p><p class="card-money">`):html};
   const baseProfile=renderPlayerProfile;
   renderPlayerProfile=function(p,payload){const out=baseProfile(p,payload);try{paint(document.querySelector('#playerProfile .pp-head'),payload?.player?.team,p.sport)}catch{}return out};
 })();
