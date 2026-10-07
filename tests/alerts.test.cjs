@@ -1,6 +1,6 @@
 const assert=require('node:assert/strict'),vm=require('node:vm'),{webcrypto}=require('node:crypto'),{DatabaseSync}=require('node:sqlite');
 const {read}=require('./helpers/client.cjs');
-const db=new DatabaseSync(':memory:');for(const f of ['0000_public_record.sql','0001_record_settlement.sql','0002_historical_replays.sql','0005_usage_counts.sql','0006_push_alerts.sql','0008_book_alerts.sql'])db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''));
+const db=new DatabaseSync(':memory:');for(const f of ['0000_public_record.sql','0001_record_settlement.sql','0002_historical_replays.sql','0005_usage_counts.sql','0006_push_alerts.sql','0008_book_alerts.sql','0013_follow_alerts.sql'])db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''));
 const DB={prepare(sql){return{sql,args:[],bind(...args){return{sql,args,all:async()=>({results:db.prepare(sql).all(...args)}),run:async()=>db.prepare(sql).run(...args)}},all:async()=>({results:db.prepare(sql).all()})}},batch:async s=>s.map(x=>db.prepare(x.sql).run(...x.args))};
 const pushes=[];
 const context=vm.createContext({URL,URLSearchParams,Request,Response,Headers,AbortSignal,Date,console,setTimeout,clearTimeout,crypto:webcrypto,TextEncoder,btoa,atob,fetch:async(url,init={})=>{pushes.push({url,init});return new Response(null,{status:String(url).includes('gone')?410:String(url).includes('broken')?500:201})}});

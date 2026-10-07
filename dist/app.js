@@ -1595,12 +1595,12 @@ if(typeof fetch==='function')window.btgCountVisit?.('view:home');
     const reg=await navigator.serviceWorker.register('/sw.js');await navigator.serviceWorker.ready;
     const {publicKey}=await (await fetch('/api/alerts/key')).json();
     const sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:keyBytes(publicKey)});
-    const response=await fetch('/api/alerts/subscribe',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...sub.toJSON(),books:preferences.books||[]})});
+    const response=await fetch('/api/alerts/subscribe',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...sub.toJSON(),books:preferences.books||[],follows:(window.BTGFollow?.read().players||[]).map(f=>f.name)})});
     if(!response.ok){await sub.unsubscribe().catch(()=>{});note('Couldn’t turn alerts on right now. Try again in a minute.');return}
     show(true);note(preferences.books?.length?`Alerts are on. We’ll ping you when a new official pick drops, and when ${preferences.books.length===1?preferences.books[0]:'one of your sportsbooks'} has a good-value price.`:'Alerts are on. We’ll ping you when a new official pick drops.');window.btgCount?.('alerts:on');
   }
   // Saving Settings keeps the books stored with this phone's alerts up to date.
-  window.BTGSyncAlertBooks=async()=>{try{if(!('serviceWorker' in navigator))return;const reg=await navigator.serviceWorker.getRegistration('/sw.js');const sub=await reg?.pushManager?.getSubscription();if(sub)await fetch('/api/alerts/subscribe',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...sub.toJSON(),books:preferences.books||[]})})}catch{}};
+  window.BTGSyncAlertBooks=async()=>{try{if(!('serviceWorker' in navigator))return;const reg=await navigator.serviceWorker.getRegistration('/sw.js');const sub=await reg?.pushManager?.getSubscription();if(sub)await fetch('/api/alerts/subscribe',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...sub.toJSON(),books:preferences.books||[],follows:(window.BTGFollow?.read().players||[]).map(f=>f.name)})})}catch{}};
   async function turnOff(sub){
     await fetch('/api/alerts/unsubscribe',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({endpoint:sub.endpoint})}).catch(()=>{});
     await sub.unsubscribe().catch(()=>{});show(false);note('Alerts are off.');window.btgCount?.('alerts:off');
@@ -2155,7 +2155,14 @@ function statsProp(l){
   const write=v=>{try{localStorage.setItem(KEY,JSON.stringify(v))}catch{}};
   const norm=s=>String(s||'').toLowerCase().replace(/[^a-z0-9]/g,'');
   const has=(kind,name)=>read()[kind].some(x=>norm(x.name)===norm(name));
-  const toggle=(kind,item)=>{const v=read(),list=v[kind],i=list.findIndex(x=>norm(x.name)===norm(item.name));if(i>=0)list.splice(i,1);else list.unshift({...item,at:Date.now()});v[kind]=list.slice(0,40);write(v);window.btgCount?.(`follow:${i>=0?'off':'on'}`);refresh();return i<0};
+  // Follows also live in the account (preferences.follows) and with this
+  // phone's alerts, so they carry across devices and trigger alerts.
+  const sync=v=>{try{preferences={...preferences,follows:v};savePreferences()?.catch?.(()=>{})}catch{}window.BTGSyncAlertBooks?.()};
+  const toggle=(kind,item)=>{const v=read(),list=v[kind],i=list.findIndex(x=>norm(x.name)===norm(item.name));if(i>=0)list.splice(i,1);else list.unshift({...item,at:Date.now()});v[kind]=list.slice(0,40);write(v);sync(v);window.btgCount?.(`follow:${i>=0?'off':'on'}`);refresh();return i<0};
+  // Signing in merges the account's follows with this device's.
+  addEventListener('btg:preferences-loaded',event=>{const remote=event.detail?.follows;if(!remote||typeof remote!=='object'){const l=read();if(l.players.length||l.teams.length)sync(l);return}const local=read(),merged={players:[],teams:[]};let extra=false;
+    for(const kind of ['players','teams']){const seen=new Set();for(const x of [...(Array.isArray(remote[kind])?remote[kind]:[]),...local[kind]]){if(!x?.name||seen.has(norm(x.name)))continue;seen.add(norm(x.name));merged[kind].push(x)}merged[kind]=merged[kind].slice(0,40);if(merged[kind].length>(Array.isArray(remote[kind])?remote[kind].length:0))extra=true}
+    write(merged);if(extra)sync(merged);else window.BTGSyncAlertBooks?.();refresh()});
   window.BTGFollow={read,has,toggle};
   const teamsOf=p=>String(p.team||'').toLowerCase();
   const followedProp=p=>has('players',p.player)||read().teams.some(t=>t.full&&teamsOf(p).includes(String(t.full).toLowerCase()));
@@ -2167,10 +2174,12 @@ function statsProp(l){
   renderPlayerProfile=function(p,payload){const out=baseProfile(p,payload);try{
     const head=document.querySelector('#playerProfile .pp-head');if(!head||head.querySelector('.follow-row'))return out;
     const team=payload?.player?.team||{},abbr=String(team.abbreviation||'').toUpperCase(),row=document.createElement('div');row.className='follow-row';
-    const btn=(kind,item,label)=>{const b=document.createElement('button');b.type='button';b.className='follow-btn';const sync=()=>{const on=has(kind,item.name);b.classList.toggle('on',on);b.setAttribute('aria-pressed',String(on));b.textContent=on?`✓ Following${kind==='teams'?' '+label:''}`:`＋ Follow ${label}`};sync();b.onclick=e=>{e.stopPropagation();toggle(kind,item);sync()};return b};
+    const btn=(kind,item,label)=>{const b=document.createElement('button');b.type='button';b.className='follow-btn';const sync=()=>{const on=has(kind,item.name);b.classList.toggle('on',on);b.setAttribute('aria-pressed',String(on));b.textContent=on?`✓ Following${kind==='teams'?' '+label:''}`:`＋ Follow ${label}`};sync();b.onclick=e=>{e.stopPropagation();const on=toggle(kind,item);sync();const hint=row.parentElement?.querySelector('.follow-hint');if(hint)hint.hidden=!(on&&kind==='players')};return b};
     row.appendChild(btn('players',{name:p.player,sport:p.sport||'NFL',team:abbr},'player'));
     if(abbr)row.appendChild(btn('teams',{name:abbr,full:team.full_name||'',sport:p.sport||'NFL'},abbr));
-    (head.querySelector('div:not(.pp-photo)')||head).appendChild(row)}catch{}return out};
+    const host=head.querySelector('div:not(.pp-photo)')||head;host.appendChild(row);
+    const hint=document.createElement('p');hint.className='follow-hint';hint.hidden=true;hint.innerHTML=document.documentElement.classList.contains('alerts-on')?'We’ll alert you when a top sportsbook has a good-value price on this player.':'Turn on <button type="button" class="follow-hint-btn">pick alerts</button> to hear when a top sportsbook has a good-value price on this player.';
+    hint.querySelector('.follow-hint-btn')?.addEventListener('click',()=>{document.getElementById('playerDialog')?.close?.();document.querySelector('[data-alerts-toggle]')?.click()});host.appendChild(hint)}catch{}return out};
   // Following list.
   const panel=document.createElement('section');panel.className='follow-panel';panel.id='followPanel';panel.setAttribute('aria-labelledby','followTitle');
   const esc=s=>htmlEscape(s);

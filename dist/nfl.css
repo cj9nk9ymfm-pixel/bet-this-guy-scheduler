@@ -1437,3 +1437,6 @@ body.light .follow-btn.on{color:#a16207;background:#fef3c7;border-color:#fcd34d}
 @media(min-width:1180px){@supports(overflow-x:clip){html,html body{overflow-x:clip!important}}}
 html body .prop-card .follow-tag{background:#f5c45122!important;color:#f5c451!important}
 html body.light .prop-card .follow-tag{background:#fef3c7!important;color:#a16207!important}
+.follow-hint{margin:8px 0 0;color:var(--muted);font-size:12.5px;line-height:1.4}
+.follow-hint[hidden]{display:none}
+.follow-hint-btn{padding:0;border:0;background:none;color:#6aa8ff;font:inherit;font-weight:700;text-decoration:underline;cursor:pointer}

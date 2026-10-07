@@ -706,7 +706,7 @@ async function alertsApi(request,env){
   if(url.pathname==='/api/alerts/subscribe'){
     const p256dh=String(body?.keys?.p256dh||''),auth=String(body?.keys?.auth||'');
     if(!/^[A-Za-z0-9_-]{40,200}$/.test(p256dh)||!/^[A-Za-z0-9_-]{8,60}$/.test(auth))return reply({success:false,error:'Invalid subscription.'},400);
-    await env.DB.prepare('INSERT INTO push_subscriptions (endpoint,p256dh,auth,created_at,failures,books_json) VALUES (?,?,?,?,0,?) ON CONFLICT(endpoint) DO UPDATE SET p256dh=excluded.p256dh,auth=excluded.auth,failures=0,books_json=excluded.books_json').bind(endpoint,p256dh,auth,new Date().toISOString(),JSON.stringify(cleanBooks(body?.books))).run();
+    await env.DB.prepare('INSERT INTO push_subscriptions (endpoint,p256dh,auth,created_at,failures,books_json,follows_json) VALUES (?,?,?,?,0,?,?) ON CONFLICT(endpoint) DO UPDATE SET p256dh=excluded.p256dh,auth=excluded.auth,failures=0,books_json=excluded.books_json,follows_json=excluded.follows_json').bind(endpoint,p256dh,auth,new Date().toISOString(),JSON.stringify(cleanBooks(body?.books)),JSON.stringify(cleanFollows(body?.follows))).run();
     return reply({success:true});
   }
   return reply({success:false},404);
@@ -817,6 +817,9 @@ async function sendWeeklyDigest(env,now=Date.now()){
 // At most one message an hour and 3 props a day per person, never the same prop twice.
 const BOOK_ALERT_DAILY=3,BOOK_ALERT_GAP=60*60000;
 const bookKey=value=>{const key=String(value||'').toLowerCase().replace(/[^a-z0-9]/g,'');return key==='espnbet'?'thescorebet':key==='williamhillus'?'caesars':key};
+// Followed player names: from a list of names or {name} objects.
+function cleanFollows(list){return Array.isArray(list)?[...new Set(list.map(f=>String((f&&typeof f==='object'?f.name:f)||'').trim().slice(0,60)).filter(n=>/^[A-Za-z][A-Za-z .'-]{1,59}$/.test(n)))].slice(0,40):[]}
+const followKey=name=>String(name||'').toLowerCase().replace(/[^a-z]/g,'');
 function cleanBooks(list){return Array.isArray(list)?[...new Set(list.map(b=>String(b||'').slice(0,40)).filter(b=>/^[A-Za-z0-9 .&'+-]{2,40}$/.test(b)))].slice(0,20):[]}
 const LINE_ALERT_MIN=2;
 function bookValueCandidates(events,now=Date.now()){
@@ -862,20 +865,24 @@ function bookValueCandidates(events,now=Date.now()){
 }
 // The props worth telling one person about: best of their own books per prop,
 // one prop per player and game, not an official pick, not sent before.
-function bookAlertPicks(candidates,books,sentKeys,officialKeys,limit){
-  const wanted=new Set(books.map(bookKey)),best=new Map();
+// Followed players count at any of the five big books (or the person's own).
+const BIG_BOOK_KEYS=new Set([...OFFICIAL_BOOKS].map(bookKey));
+function bookAlertPicks(candidates,books,sentKeys,officialKeys,limit,follows=[]){
+  const wanted=new Set(books.map(bookKey)),followed=new Set(follows.map(followKey)),best=new Map();
   for(const c of candidates){
-    if(!wanted.has(c.bookKey)&&!wanted.has(c.bookTitleKey))continue;
+    const mine=wanted.has(c.bookKey)||wanted.has(c.bookTitleKey),fan=followed.has(followKey(c.player))&&(mine||BIG_BOOK_KEYS.has(c.bookKey)||BIG_BOOK_KEYS.has(c.bookTitleKey));
+    if(!mine&&!fan)continue;
     const key=c.propKey.toLowerCase();if(sentKeys.has(c.propKey)||officialKeys.has(key))continue;
-    const prior=best.get(c.propKey);if(!prior||c.edge>prior.edge)best.set(c.propKey,c);
+    const prior=best.get(c.propKey);if(!prior||c.edge>prior.edge)best.set(c.propKey,{...c,followed:fan});
   }
   const seenPlayer=new Set();
   return [...best.values()].sort((a,b)=>b.edge-a.edge).filter(c=>{const k=`${c.propKey.split('|')[0]}|${c.player}`;if(seenPlayer.has(k))return false;seenPlayer.add(k);return true}).slice(0,Math.max(0,limit));
 }
 const bookAlertRow=c=>({kind:'prop',player:c.player,market:c.market,side:c.side,line:c.line,odds:c.odds,game_time:c.game_time,legs_json:JSON.stringify([{book:c.lineNote?`${c.book} (${c.lineNote})`:c.book}])});
 function bookAlertMessage(picks){
-  const books=[...new Set(picks.map(c=>c.book))],where=books.length===1?books[0]:'your sportsbooks';
-  return {title:`Good value at ${where}`,body:picks.map(c=>`${c.player} ${weeklyLegText(c)} (${weeklyOdds(c.odds)}${books.length>1?` at ${c.book}`:''})${c.lineNote?` · ${c.lineNote}`:''}`).join('\n')+'\nNot an official pick.',url:'/',where};
+  const books=[...new Set(picks.map(c=>c.book))],where=books.length===1?books[0]:picks.some(c=>c.followed)?'top sportsbooks':'your sportsbooks';
+  const fans=picks.every(c=>c.followed);
+  return {title:fans?(picks.length===1?`${picks[0].player}: good value at ${where}`:'Good value on players you follow'):`Good value at ${where}`,body:picks.map(c=>`${c.player} ${weeklyLegText(c)} (${weeklyOdds(c.odds)}${books.length>1?` at ${c.book}`:''})${c.lineNote?` · ${c.lineNote}`:''}`).join('\n')+'\nNot an official pick.',url:'/',where};
 }
 async function sendBookAlerts(env,events,now=Date.now()){
   if(!env.DB)return {sent:0};
@@ -885,14 +892,14 @@ async function sendBookAlerts(env,events,now=Date.now()){
   const eventIds=new Map(candidates.map(c=>[`${c.player}|${c.market}|${c.line}|${c.side}|${c.game_time}`.toLowerCase(),c.propKey.toLowerCase()]));
   const officialKeys=new Set(official.map(r=>eventIds.get(`${r.player}|${r.market}|${r.line}|${r.side}|${new Date(r.game_time).toISOString()}`.toLowerCase())).filter(Boolean));
   const recipients=[];
-  for(const row of (await env.DB.prepare("SELECT endpoint,books_json FROM push_subscriptions WHERE books_json IS NOT NULL AND books_json<>'[]' LIMIT 2000").all()).results||[]){let books=[];try{books=cleanBooks(JSON.parse(row.books_json))}catch{}if(books.length)recipients.push({id:`push:${row.endpoint}`,push:row,books})}
-  if(env.RESEND_API_KEY)for(const row of (await env.DB.prepare('SELECT a.auth_user_id,a.token,p.email,u.preferences_json FROM email_alerts a JOIN user_profiles p ON p.auth_user_id=a.auth_user_id JOIN user_preferences u ON u.auth_user_id=a.auth_user_id WHERE a.enabled=1 LIMIT 2000').all()).results||[]){let books=[];try{books=cleanBooks(JSON.parse(row.preferences_json||'{}').books)}catch{}if(books.length&&row.email)recipients.push({id:`email:${row.auth_user_id}`,email:row,books})}
+  for(const row of (await env.DB.prepare("SELECT endpoint,books_json,follows_json FROM push_subscriptions WHERE (books_json IS NOT NULL AND books_json<>'[]') OR (follows_json IS NOT NULL AND follows_json<>'[]') LIMIT 2000").all()).results||[]){let books=[],follows=[];try{books=cleanBooks(JSON.parse(row.books_json||'[]'))}catch{}try{follows=cleanFollows(JSON.parse(row.follows_json||'[]'))}catch{}if(books.length||follows.length)recipients.push({id:`push:${row.endpoint}`,push:row,books,follows})}
+  if(env.RESEND_API_KEY)for(const row of (await env.DB.prepare('SELECT a.auth_user_id,a.token,p.email,u.preferences_json FROM email_alerts a JOIN user_profiles p ON p.auth_user_id=a.auth_user_id JOIN user_preferences u ON u.auth_user_id=a.auth_user_id WHERE a.enabled=1 LIMIT 2000').all()).results||[]){let books=[],follows=[];try{const prefs=JSON.parse(row.preferences_json||'{}');books=cleanBooks(prefs.books);follows=cleanFollows(prefs.follows?.players)}catch{}if((books.length||follows.length)&&row.email)recipients.push({id:`email:${row.auth_user_id}`,email:row,books,follows})}
   let sent=0;const dayAgo=new Date(now-24*3600000).toISOString();
   for(const r of recipients){
     const history=(await env.DB.prepare('SELECT prop_key,sent_at FROM book_alerts WHERE recipient=? AND sent_at>? ORDER BY sent_at DESC').bind(r.id,new Date(now-7*86400000).toISOString()).all()).results||[];
     if(history[0]&&now-Date.parse(history[0].sent_at)<BOOK_ALERT_GAP)continue;
     const today=history.filter(h=>h.sent_at>dayAgo).length;
-    const picks=bookAlertPicks(candidates,r.books,new Set(history.map(h=>h.prop_key)),officialKeys,BOOK_ALERT_DAILY-today);
+    const picks=bookAlertPicks(candidates,r.books,new Set(history.map(h=>h.prop_key)),officialKeys,BOOK_ALERT_DAILY-today,r.follows||[]);
     if(!picks.length)continue;
     const message=bookAlertMessage(picks),stamp=new Date(now).toISOString();
     // Claim first so two Worker instances can't send the same prop twice.
@@ -905,7 +912,7 @@ async function sendBookAlerts(env,events,now=Date.now()){
         if(response.ok)sent++;
       }else{
         const unsubscribe=`${SITE_URL}/api/email-alerts/unsubscribe?token=${r.email.token}`,postal=String(env.EMAIL_POSTAL_ADDRESS||'').trim(),rows=picks.map(bookAlertRow);
-        const opts={subject:`${message.title}: ${picks.length===1?`${picks[0].player} ${weeklyLegText(picks[0])}`:`${picks.length} props`}`,heading:message.title,eyebrow:'YOUR SPORTSBOOK',lede:`These prices at ${message.where} beat the market's fair price. They are not official Bet This Guy picks and are not part of our record.`};
+        const fans=picks.every(c=>c.followed),opts={subject:fans&&picks.length===1?`${message.title}: ${weeklyLegText(picks[0])}`:`${message.title}: ${picks.length===1?`${picks[0].player} ${weeklyLegText(picks[0])}`:`${picks.length} props`}`,heading:message.title,eyebrow:fans?'PLAYERS YOU FOLLOW':'YOUR SPORTSBOOK',lede:`These prices at ${message.where} beat the market's fair price. They are not official Bet This Guy picks and are not part of our record.`};
         const response=await fetch('https://api.resend.com/emails',{method:'POST',headers:{authorization:`Bearer ${env.RESEND_API_KEY}`,'content-type':'application/json'},body:JSON.stringify({from:env.EMAIL_FROM||EMAIL_ALERT_FROM,to:[r.email.email],reply_to:env.EMAIL_REPLY_TO||'support@betthisguy.com',subject:opts.subject,html:emailAlertHtml(rows,unsubscribe,postal,opts),text:emailAlertText(rows,unsubscribe,postal,opts),headers:{'List-Unsubscribe':`<${unsubscribe}>`,'List-Unsubscribe-Post':'List-Unsubscribe=One-Click'}}),signal:AbortSignal.timeout(15000)});
         if(response.ok)sent++;else console.warn('book_alert_email_failed',response.status);
       }

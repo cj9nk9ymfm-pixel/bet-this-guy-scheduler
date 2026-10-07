@@ -13,7 +13,7 @@ const context=vm.createContext({URL,URLSearchParams,Request,Response,Headers,Abo
 const template=read('worker/index.template.js');
 vm.runInContext(template.slice(template.indexOf('const API_BASE')).replace('__MOVEMENT_SERVER__',read('worker/movement.js')).replace('__LIVE_SERVER__',read('worker/live.js')).replace('__STATS_SHARED__',read('dist/stats.js')).replace('__RECORDS_SERVER__',read('worker/records.js')).replace('__ACCOUNTS_SERVER__',read('worker/accounts.js')).replace('export default {','this.worker={'),context);
 const db=new DatabaseSync(':memory:');
-for(const f of ['0000_public_record.sql','0001_record_settlement.sql','0002_historical_replays.sql','0004_user_accounts.sql','0006_push_alerts.sql','0007_email_alerts.sql','0008_book_alerts.sql'])db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''));
+for(const f of ['0000_public_record.sql','0001_record_settlement.sql','0002_historical_replays.sql','0004_user_accounts.sql','0006_push_alerts.sql','0007_email_alerts.sql','0008_book_alerts.sql','0013_follow_alerts.sql'])db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''));
 const wrap=(sql,args=[])=>({bind(...values){return wrap(sql,values)},async first(){return db.prepare(sql).get(...args)||null},async all(){return{results:db.prepare(sql).all(...args)}},async run(){const r=db.prepare(sql).run(...args);return{success:true,meta:{changes:Number(r.changes)}}}});
 const DB={prepare:sql=>wrap(sql),async batch(list){const out=[];for(const s of list)out.push(await s.run());return out}};
 const env={DB,RESEND_API_KEY:'test'};context.env=env;
@@ -59,5 +59,22 @@ const keys={p256dh:'B'.repeat(87),auth:'a'.repeat(22)};
   // Within the hour nothing more; later, only props not sent before, and never past 3 a day.
   result=JSON.parse(JSON.stringify(await run(`sendBookAlerts(env,events,${now+10*60000})`)));assert.equal(result.sent,0,'at most one message an hour');
   result=JSON.parse(JSON.stringify(await run(`sendBookAlerts(env,events,${now+2*3600000})`)));assert.equal(result.sent,0,'the daily cap of 3 holds and nothing repeats');
-  console.log('PASS: my-book alerts tell only people whose own sportsbook beats the all-book fair price, skip official picks, cap at 3 a day and 1 message an hour, never repeat, and push and email the right text');
+  // Followed players: a phone with no books still hears about a player it follows
+  // at one of the big five books, and an account follows through its preferences.
+  const followPhone='https://fcm.googleapis.com/fcm/send/follows-b';
+  await api('/api/alerts/subscribe',{endpoint:followPhone,keys,books:[],follows:['B Player','<script>',{name:'Nobody Here'}]});
+  assert.equal(db.prepare('SELECT follows_json FROM push_subscriptions WHERE endpoint=?').get(followPhone).follows_json,'["B Player","Nobody Here"]','follow names are cleaned');
+  db.prepare("INSERT INTO user_profiles(auth_user_id,email,created_at,updated_at) VALUES('u2','follower@example.com','x','x')").run();
+  db.prepare("INSERT INTO user_preferences(auth_user_id,preferences_json,created_at,updated_at) VALUES('u2',?, 'x','x')").run(JSON.stringify({follows:{players:[{name:'C Player'}],teams:[]}}));
+  db.prepare("INSERT INTO email_alerts(auth_user_id,enabled,token,created_at,updated_at) VALUES('u2',1,?,'x','x')").run('e'.repeat(64));
+  const before=pushes.length,mailsBefore=emails.length;
+  context.later=JSON.parse(JSON.stringify(events).replaceAll(fresh,iso(now+3*3600000-60000)));
+  result=JSON.parse(JSON.stringify(await run(`sendBookAlerts(env,later,${now+3*3600000})`)));
+  assert.deepEqual(pushes.slice(before),[followPhone],'only the follower phone is new');
+  assert.deepEqual(db.prepare("SELECT prop_key FROM book_alerts WHERE recipient=?").all(`push:${followPhone}`).map(r=>r.prop_key.split('|')[1]),['B Player'],'only the followed player');
+  const fanNote=await (await api(`/api/alerts/latest?endpoint=${encodeURIComponent(followPhone)}`)).json();
+  assert.equal(fanNote.title,'B Player: good value at FanDuel');
+  const fanMail=emails.slice(mailsBefore).find(m=>m.to[0]==='follower@example.com');
+  assert.ok(fanMail&&/PLAYERS YOU FOLLOW/.test(fanMail.html)&&/C Player/.test(fanMail.subject),'the follower account gets an email about C Player');
+  console.log('PASS: my-book alerts tell only people whose own sportsbook beats the all-book fair price, skip official picks, cap at 3 a day and 1 message an hour, never repeat, push and email the right text, and cover followed players at the big five books');
 })().catch(error=>{console.error(error);process.exit(1)});
