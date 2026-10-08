@@ -365,7 +365,6 @@ async function publishOfficialPicks(request,env,ctx){
     if(posted){const alerts=sendPickAlerts(env).catch(error=>console.warn('pick_alerts_failed',error.message));if(ctx?.waitUntil)ctx.waitUntil(alerts);else await alerts}
     // Emails check every run: picks held back by the hourly limit go out on a later run.
     {const emails=sendEmailAlerts(env).catch(error=>console.warn('email_alerts_failed',error.message));if(ctx?.waitUntil)ctx.waitUntil(emails);else await emails}
-    {const x=postPicksToX(env).catch(error=>console.warn('x_post_failed',error.message));if(ctx?.waitUntil)ctx.waitUntil(x);else await x}
     {const mine=sendBookAlerts(env,boards).catch(error=>console.warn('book_alerts_failed',error.message));if(ctx?.waitUntil)ctx.waitUntil(mine);else await mine}
     // Odds snapshots older than a week are no longer read; clear them hourly so
     // the database stays small (the history endpoint's own cleanup rarely runs).
@@ -881,9 +880,11 @@ async function postPicksToX(env,now=Date.now()){
   const picks=(await env.DB.prepare("SELECT id,kind,sport,player,market,side,line,odds,combined_odds,legs_json,game_time FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND posted_at>? AND game_time>? ORDER BY posted_at LIMIT 6").bind(since,start).all()).results||[];
   if(!picks.length)return {posted:0};
   const seasonRows=(await env.DB.prepare("SELECT kind,line,odds,combined_odds,status,result,closing_line,closing_odds,closing_captured_at FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%'").all()).results||[];
-  const season=weeklySummary(seasonRows);let posted=0;
+  const season=weeklySummary(seasonRows);let posted=0,attempts=0;
   for(const r of picks){
     if(await appSetting(env,`xi:${r.id}`))continue;
+    // At most two picks per run: each uses about a dozen requests.
+    if(++attempts>2)break;
     // Count attempts before the heavy work, so a crash mid-render still counts.
     const tries=Number(await appSetting(env,`xtry:${r.id}`)||0)+1;await setAppSetting(env,`xtry:${r.id}`,String(tries));
     // Claim first so two Worker instances can't post the same pick twice.
