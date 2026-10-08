@@ -1465,3 +1465,45 @@ body.light .board-nudge .gate-eyebrow{color:#1d4ed8!important}body.light .gate-a
 .auth-test-email{display:block;margin:8px 0 0;padding:8px 0;min-height:36px;border:0;background:none;color:#6aa8ff;font:600 13.5px 'DM Sans',sans-serif;text-decoration:underline;cursor:pointer}
 .auth-test-email:disabled{opacity:.6;cursor:wait}
 html body.light .auth-test-email{color:#1d4ed8}
+/* Settings, reworked: labelled fields with a one-line hint each, money
+   inputs with a $ sign, short tabs that fit a phone, a real help box. */
+#settingsDialog .settings-tabs{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+#settingsDialog .settings-tabs button{min-width:0;padding:0 6px;white-space:nowrap;font-size:13.5px}
+#settingsDialog .settings-panel>h3{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+#settingsDialog .set-count{font:600 13px 'DM Sans',sans-serif;color:#98a1ad}
+#settingsDialog .set-fields{display:grid;gap:18px;margin:6px 0 16px}
+@media(min-width:760px){#settingsDialog .set-fields{grid-template-columns:1fr 1fr}}
+#settingsDialog .set-field{display:grid;gap:6px;padding:0!important;background:none!important;border:0!important}
+#settingsDialog .set-label{font:700 14px 'DM Sans',sans-serif;color:#f2f4f7}
+#settingsDialog .set-field small,#settingsDialog .set-foot{font-size:12.5px;line-height:1.45;color:#98a1ad}
+#settingsDialog .set-field select,#settingsDialog .set-money{height:46px;border-radius:12px;border:1px solid #2c323c;background:#1e222a;color:#f2f4f7;font:600 15px 'DM Sans',sans-serif}
+#settingsDialog .set-field select{padding:0 12px;width:100%}
+#settingsDialog .set-money{display:flex;align-items:center;padding:0 12px;gap:6px}
+#settingsDialog .set-money>span{color:#98a1ad;font-weight:700}
+#settingsDialog .set-money input{flex:1;min-width:0;height:100%;border:0!important;background:transparent!important;color:inherit;font:inherit;outline:none;padding:0!important;box-shadow:none!important}
+#settingsDialog .set-money:focus-within,#settingsDialog .set-field select:focus{border-color:#2563eb;outline:2px solid rgba(37,99,235,.35);outline-offset:1px}
+#settingsDialog label.control-disabled .set-money{opacity:.5}
+#settingsDialog .set-foot{display:block;margin-top:10px}
+#settingsDialog .set-help{display:grid;gap:8px;margin-top:16px;padding:16px;border-radius:14px;background:#1e222a!important;border:1px solid #2c323c!important;border-left:3px solid #2563eb!important}
+#settingsDialog .set-help strong{font:700 16px 'Space Grotesk',sans-serif;color:#f2f4f7}
+#settingsDialog .set-help span{font-size:13.5px;line-height:1.5;color:#b5b9bf}
+#settingsDialog .set-help a{color:#6aa8ff}
+#settingsDialog .set-help .set-fine{font-size:12px;color:#8a929d}
+#settingsDialog .set-links{display:flex;flex-wrap:wrap;gap:6px 18px;margin:16px 0 4px}
+#settingsDialog .set-links a{color:#6aa8ff;font-weight:600;font-size:14px;text-decoration:none;padding:6px 0}
+#settingsDialog .settings-clear{margin-top:14px;width:auto;padding:0 16px;height:40px;font-size:13.5px;background:transparent!important;border:1px solid #3a2a2a!important;color:#ff9d9d!important}
+body.light #settingsDialog .set-label,body.light #settingsDialog .set-help strong{color:#0f172a}
+body.light #settingsDialog .set-field small,body.light #settingsDialog .set-foot,body.light #settingsDialog .set-count{color:#5b6472}
+body.light #settingsDialog .set-field select,body.light #settingsDialog .set-money{background:#fff;border-color:#cbdced;color:#0f172a}
+body.light #settingsDialog .set-help{background:#f4f8fd!important;border-color:#dbe4ef!important;border-left-color:#2563eb!important}
+body.light #settingsDialog .set-help span{color:#334155}body.light #settingsDialog .set-help .set-fine{color:#5b6472}
+body.light #settingsDialog .set-help a,body.light #settingsDialog .set-links a{color:#1d4ed8}
+body.light #settingsDialog .settings-clear{border-color:#f2c9c9!important;color:#b42318!important}
+html body:not(.light) #settingsDialog .tracking-summary div{background:#1e222a!important;border:1px solid #2c323c!important;color:#f2f4f7}
+#settingsDialog .tracking-summary small{color:#98a1ad}
+body.light #settingsDialog .set-money input{background:transparent!important;border:0!important;box-shadow:none!important}
+/* Light mode had no focus colour for close buttons, so the browser's own (orange on some systems) showed. */
+html body.light :is(.dialog-close,.more-sheet-close,.account-close){outline-color:#2563eb}
+html body.light :is(.dialog-close,.more-sheet-close,.account-close):focus:not(:focus-visible){outline:none!important}
+body.light #settingsDialog .set-money input:not([type="checkbox"]):not([type="radio"]),html body #settingsDialog .set-money input:not([type="checkbox"]):not([type="radio"]){background:transparent!important;border:0!important;box-shadow:none!important;height:100%!important;min-height:0!important;padding:0!important}
+#settingsDialog .set-field{align-content:start}
