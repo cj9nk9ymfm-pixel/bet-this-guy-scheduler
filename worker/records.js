@@ -854,7 +854,7 @@ const xReady=env=>Boolean(env.X_API_KEY&&env.X_API_SECRET&&env.X_ACCESS_TOKEN&&e
 async function xPost(env,text){
   const url='https://api.twitter.com/2/tweets';
   const response=await fetch(url,{method:'POST',headers:{authorization:await xOAuthHeader(env,'POST',url),'content-type':'application/json'},body:JSON.stringify({text}),signal:AbortSignal.timeout(15000)});
-  if(!response.ok)throw new Error(`X post failed (${response.status})`);
+  if(!response.ok){const data=await response.json().catch(()=>({}));const why=String(data?.detail||data?.title||data?.errors?.[0]?.message||'').slice(0,200);throw new Error(`X post failed (${response.status})${why?`: ${why}`:''}`)}
   return response.json().catch(()=>({}));
 }
 const xShort=text=>{const t=String(text||'');return t.length>280?t.slice(0,277)+'…':t};
@@ -876,8 +876,8 @@ async function postPicksToX(env,now=Date.now()){
     // Claim first so two Worker instances can't post the same pick twice.
     const claim=await env.DB.prepare('INSERT OR IGNORE INTO app_settings (key,value) VALUES (?,?)').bind(`x:${r.id}`,start).run();
     if(!Number(claim?.meta?.changes??claim?.changes))continue;
-    try{await xPost(env,xPickText(r,season));posted++}
-    catch(error){console.warn('x_post_failed',error.message);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(`x:${r.id}`).run().catch(()=>{});break}
+    try{await xPost(env,xPickText(r,season));posted++;await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} ${r.id}`).catch(()=>{})}
+    catch(error){console.warn('x_post_failed',error.message);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(`x:${r.id}`).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});break}
   }
   return {posted,picks:picks.length};
 }
@@ -893,6 +893,7 @@ async function xStatus(env,now=Date.now()){
     const data=await response.json().catch(()=>({}));
     body=response.ok?{configured:true,ok:true,username:data?.data?.username||null}:{configured:true,ok:false,status:response.status,problem:String(data?.title||data?.detail||'').slice(0,120)};
   }catch(error){body={configured:true,ok:false,problem:error.message}}
+  body={...body,lastPost:await appSetting(env,'x-last-post').catch(()=>null),lastError:await appSetting(env,'x-last-error').catch(()=>null)};
   xStatusCache={at:now,body};return body;
 }
 // Tuesday results post, alongside the weekly email.
