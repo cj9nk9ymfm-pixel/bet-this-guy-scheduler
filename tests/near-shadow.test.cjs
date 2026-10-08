@@ -7,7 +7,7 @@ const context=vm.createContext({URL,URLSearchParams,Request,Response,Headers,Abo
 const template=read('worker/index.template.js');
 vm.runInContext(template.slice(template.indexOf('const API_BASE')).replace('__MOVEMENT_SERVER__',read('worker/movement.js')).replace('__LIVE_SERVER__',read('worker/live.js')).replace('__STATS_SHARED__',read('dist/stats.js')).replace('__RECORDS_SERVER__',read('worker/records.js')).replace('__ACCOUNTS_SERVER__',read('worker/accounts.js')).replace('export default {','this.worker={'),context);
 const db=new DatabaseSync(':memory:');
-db.exec(read('drizzle/0015_near_shadow.sql').replaceAll('--> statement-breakpoint',''));
+for(const f of ['0000_public_record.sql','0001_record_settlement.sql','0002_historical_replays.sql','0015_near_shadow.sql'])db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''));
 const wrap=(sql,args=[])=>({bind(...values){return wrap(sql,values)},async first(){return db.prepare(sql).get(...args)||null},async all(){return{results:db.prepare(sql).all(...args)}},async run(){const r=db.prepare(sql).run(...args);return{success:true,meta:{changes:Number(r.changes)}}}});
 context.env={DB:{prepare:sql=>wrap(sql),async batch(list){for(const s of list)await s.run()}}};
 const run=code=>vm.runInContext(code,context);
@@ -36,6 +36,12 @@ const run=code=>vm.runInContext(code,context);
   assert.equal(rows.length,1,'logged once per player and game');
   assert.equal(rows[0].odds,106,'the logged price is kept');
   assert.equal(rows[0].close_odds,100,'closing price: best big-5 price at the same line and side');
+  // A player with an official pick in that game is never logged as a near miss,
+  // even after their price drifts below the bar.
+  db.prepare("INSERT INTO public_recommendations(id,kind,player,market,side,line,odds,game_id,game_time,legs_json,posted_at,status,source) VALUES('official|x|props|prop|n','prop','David Njoku','Receptions','Over',3.5,110,'NFL--evt1',?,'[]',?,'pending','market-verified-v2')").run(kickoff,new Date(now).toISOString());
+  context.boards=[board({'David Njoku':['player_receptions',3.5,106,-120]})];
+  assert.equal(JSON.stringify(run(`officialCandidates(boards,${now},{},{min:.5,below:1})`).map(p=>p.player)),'["David Njoku"]','Njoku is in the near-miss band');
+  assert.equal(JSON.parse(JSON.stringify(await run(`recordNearShadow(env,boards,[],${now})`))).logged,0);
   // Grading once the game is final.
   context.env.BALLDONTLIE_API_KEY='test';
   run('recordPlayerStats=async r=>({scoreboardFinal:true,passing_yards:240})');
