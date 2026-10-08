@@ -111,6 +111,12 @@ async function accountApi(request,env,ctx){
     }catch{return accountJson({success:false,error:'Your email alert setting could not be saved.'},400)}
   }
 
+  if(url.pathname==='/api/me/test-email'){
+    if(method!=='POST')return accountJson({success:false,error:'Method not allowed.'},405,{allow:'POST'});
+    const result=await sendTestEmail(env,user,profile);
+    return accountJson(result.body,result.status);
+  }
+
   if(url.pathname==='/api/me/preferences'){
     if(method==='GET'){
       const row=await env.DB.prepare('SELECT preferences_json,updated_at FROM user_preferences WHERE auth_user_id=?').bind(user.id).first();

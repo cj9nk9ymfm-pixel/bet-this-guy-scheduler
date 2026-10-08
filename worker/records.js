@@ -967,6 +967,34 @@ function emailAlertHtml(picks,unsubscribeUrl,postal,opts={}){
 function emailAlertText(picks,unsubscribeUrl,postal,opts={}){
   return `${opts.heading||(picks.length===1?'A new official pick just posted':`${picks.length} new official picks just posted`)}:${opts.lede?`\n${opts.lede}`:''}\n\n${picks.map(r=>`- ${emailPickText(r)} · ${weeklyDay(r.game_time)}`).join('\n')}\n\nSee the picks: ${SITE_URL}/\n\nOdds move. Check the price at your sportsbook before you bet.\n\nUnsubscribe: ${unsubscribeUrl}\n21+ where legal. Gambling problem? Call 1-800-GAMBLER.${postal?`\n${postal}`:''}\n`;
 }
+// "Send me a test email" in the account panel: one email to the signed-in
+// person's own address, at most once an hour, so email can be checked without
+// waiting for a pick. The reply says exactly what went wrong, and the last
+// result (never the address) is kept in app_settings for diagnosis.
+async function sendTestEmail(env,user,profile,now=Date.now()){
+  const stamp=new Date(now).toISOString(),note=text=>setAppSetting(env,'email-test-last',`${stamp} ${text}`).catch(()=>{});
+  if(!env.RESEND_API_KEY){await note('no RESEND_API_KEY');return {status:503,body:{success:false,error:'Email isn’t connected yet: the site has no RESEND_API_KEY.'}}}
+  const to=String(profile?.email||user?.email||'').trim();
+  if(!to)return {status:400,body:{success:false,error:'Your account has no email address.'}};
+  const key=`test-email:${user.id}`,last=Date.parse(await appSetting(env,key)||'');
+  if(Number.isFinite(last)&&now-last<3600000)return {status:429,body:{success:false,error:`You can send another test in ${Math.ceil((3600000-(now-last))/60000)} minutes.`}};
+  await setAppSetting(env,key,stamp);
+  const token=(await env.DB.prepare('SELECT token FROM email_alerts WHERE auth_user_id=?').bind(user.id).all()).results?.[0]?.token;
+  const unsubscribe=token?`${SITE_URL}/api/email-alerts/unsubscribe?token=${token}`:`${SITE_URL}/`,postal=String(env.EMAIL_POSTAL_ADDRESS||'').trim();
+  const opts={subject:'✅ Bet This Guy email test',heading:'Your pick emails are working',eyebrow:'TEST EMAIL',lede:'This is a test. When an official pick posts, you’ll get an email like this with the pick, the price and the sportsbook.',rowsHtml:'',ctaLabel:'Open the board',ctaUrl:`${SITE_URL}/`};
+  let response;
+  try{response=await fetch('https://api.resend.com/emails',{method:'POST',headers:{authorization:`Bearer ${env.RESEND_API_KEY}`,'content-type':'application/json'},body:JSON.stringify({from:env.EMAIL_FROM||EMAIL_ALERT_FROM,to:[to],reply_to:env.EMAIL_REPLY_TO||'support@betthisguy.com',subject:opts.subject,html:emailAlertHtml([],unsubscribe,postal,opts),text:emailAlertText([],unsubscribe,postal,opts),...(token?{headers:{'List-Unsubscribe':`<${unsubscribe}>`,'List-Unsubscribe-Post':'List-Unsubscribe=One-Click'}}:{})}),signal:AbortSignal.timeout(15000)})}
+  catch(error){response={ok:false,status:0,json:async()=>({message:error.message})}}
+  if(!response.ok){
+    const data=await response.json().catch(()=>({})),why=String(data?.message||data?.name||'no details').slice(0,160);
+    // A failed send doesn't use up the hour, so it can be retried after a fix.
+    await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});
+    await note(`failed ${response.status}: ${why}`);
+    return {status:502,body:{success:false,error:`The email provider refused it (${response.status}): ${why}`}};
+  }
+  await note('sent');
+  return {status:200,body:{success:true,sentTo:to}};
+}
 async function sendEmailAlerts(env,now=Date.now()){
   if(!env.DB||!env.RESEND_API_KEY)return {sent:0,disabled:true};
   const last=await appSetting(env,'email-alert-at'),lastTime=Date.parse(last||'');

@@ -213,6 +213,7 @@ function init(){
   document.querySelectorAll('[data-auth-provider]').forEach(button=>button.onclick=()=>social(button.dataset.authProvider));
   $('#authLoginForm').onsubmit=submitLogin;$('#authSignupForm').onsubmit=submitSignup;$('#authForgotForm').onsubmit=submitForgot;$('#authResetForm').onsubmit=submitReset;
   $('#accountSignOut').onclick=async()=>{await (await auth()).signOut();dialog().close()};
+  $('#sendTestEmail')&&($('#sendTestEmail').onclick=async event=>{const button=event.currentTarget;button.disabled=true;setStatus('');try{const result=await api('/api/me/test-email',{method:'POST'});setStatus(`Sent to ${result.sentTo}. It can take a minute; check spam if it isn’t there.`,'success')}catch(error){setStatus(friendly(error),'error')}finally{button.disabled=false}});
   $('#emailAlertsToggle')&&($('#emailAlertsToggle').onchange=async event=>{const toggle=event.currentTarget,enabled=toggle.checked;toggle.disabled=true;setStatus('');try{await api('/api/me/email-alerts',{method:'PUT',body:JSON.stringify({enabled})});emailAlerts=enabled;setStatus(enabled?'We’ll email you when new picks post.':'Pick emails are off.','success')}catch(error){toggle.checked=!enabled;setStatus(friendly(error),'error')}finally{toggle.disabled=false}});
   $('#openMyRecord').onclick=()=>show('record');$('#recordBack').onclick=()=>show('account');$('#importLegacyBets').onclick=importLegacy;
   if(hasSavedSession()||authLinkInUrl())loadClient().catch(error=>console.warn('auth_unavailable',error.message));
