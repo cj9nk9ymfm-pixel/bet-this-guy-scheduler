@@ -854,7 +854,7 @@ const xReady=env=>Boolean(env.X_API_KEY&&env.X_API_SECRET&&env.X_ACCESS_TOKEN&&e
 async function xPost(env,text){
   const url='https://api.twitter.com/2/tweets';
   const response=await fetch(url,{method:'POST',headers:{authorization:await xOAuthHeader(env,'POST',url),'content-type':'application/json'},body:JSON.stringify({text}),signal:AbortSignal.timeout(15000)});
-  if(!response.ok)throw new Error(`X post failed (${response.status})`);
+  if(!response.ok){const data=await response.json().catch(()=>({}));const why=String(data?.detail||data?.title||data?.errors?.[0]?.message||'').slice(0,200);throw new Error(`X post failed (${response.status})${why?`: ${why}`:''}`)}
   return response.json().catch(()=>({}));
 }
 const xShort=text=>{const t=String(text||'');return t.length>280?t.slice(0,277)+'…':t};
@@ -863,7 +863,8 @@ function xPickText(r,season){
   const edge=Number(first.edge),value=Number.isFinite(edge)&&edge>0?`\n${edge.toFixed(1)}% better than the fair price.`:'';
   const record=season&&season.wins+season.losses>=5?`\nSeason: ${season.wins}–${season.losses}, ${weeklyMoney(season.profit)} at $100 a pick.`:'';
   const head=r.kind==='parlay'?`🔒 Official ${legs.length}-leg parlay (${weeklyOdds(r.combined_odds)})\n${legs.map(l=>`• ${l.player} ${weeklyLegText(l)}`).join('\n')}`:`🔒 Official pick: ${r.player} ${weeklyLegText(r)} (${weeklyOdds(r.odds)}${first.book?`, ${first.book}`:''})\n${matchup}${matchup&&when?' · ':''}${when}`;
-  return xShort(`${head}${value}${record}\n\nLocked before kickoff, graded in public: ${SITE_URL}\n21+ · Odds move.`);
+  // No link in the text: X charges far more for posts with a URL, so the link lives in the bio.
+  return xShort(`${head}${value}${record}\n\nLocked before kickoff, graded in public. Full record: link in bio.\n21+ · Odds move.`);
 }
 async function postPicksToX(env,now=Date.now()){
   if(!env.DB||!xReady(env))return {posted:0,disabled:true};
@@ -876,24 +877,16 @@ async function postPicksToX(env,now=Date.now()){
     // Claim first so two Worker instances can't post the same pick twice.
     const claim=await env.DB.prepare('INSERT OR IGNORE INTO app_settings (key,value) VALUES (?,?)').bind(`x:${r.id}`,start).run();
     if(!Number(claim?.meta?.changes??claim?.changes))continue;
-    try{await xPost(env,xPickText(r,season));posted++}
-    catch(error){console.warn('x_post_failed',error.message);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(`x:${r.id}`).run().catch(()=>{});break}
+    try{await xPost(env,xPickText(r,season));posted++;await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} ${r.id}`).catch(()=>{})}
+    catch(error){console.warn('x_post_failed',error.message);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(`x:${r.id}`).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});break}
   }
   return {posted,picks:picks.length};
 }
-// Read-only check that the X keys work: which account would post. Cached
-// for 10 minutes so the endpoint can't be used to burn API calls.
-let xStatusCache={at:0,body:null};
-async function xStatus(env,now=Date.now()){
+// What the X integration last did: keys present, last post, last error.
+// Never calls X itself (X API calls cost credits).
+async function xStatus(env){
   if(!xReady(env))return {configured:false};
-  if(xStatusCache.body&&now-xStatusCache.at<600000)return xStatusCache.body;
-  const url='https://api.twitter.com/2/users/me';let body;
-  try{
-    const response=await fetch(url,{headers:{authorization:await xOAuthHeader(env,'GET',url)},signal:AbortSignal.timeout(10000)});
-    const data=await response.json().catch(()=>({}));
-    body=response.ok?{configured:true,ok:true,username:data?.data?.username||null}:{configured:true,ok:false,status:response.status,problem:String(data?.title||data?.detail||'').slice(0,120)};
-  }catch(error){body={configured:true,ok:false,problem:error.message}}
-  xStatusCache={at:now,body};return body;
+  return {configured:true,lastPost:await appSetting(env,'x-last-post').catch(()=>null),lastError:await appSetting(env,'x-last-error').catch(()=>null)};
 }
 // Tuesday results post, alongside the weekly email.
 async function postWeeklyToX(env,now=Date.now()){
@@ -906,8 +899,7 @@ async function postWeeklyToX(env,now=Date.now()){
   const s=weeklySummary(rows),info=nflWeekOf(week),name=info?`Week ${info.week}`:'Last week';
   const all=(await env.DB.prepare("SELECT kind,line,odds,combined_odds,status,result,closing_line,closing_odds,closing_captured_at FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND id<?").bind(`official|${week}|￿`).all()).results||[];
   const season=weeklySummary(all),hits=rows.filter(r=>r.kind==='prop'&&r.result==='won').slice(0,3).map(r=>`✅ ${r.player} ${weeklyLegText(r)} (${weeklyOdds(r.odds)})`);
-  const page=info?`${SITE_URL}/picks/${info.season}/week-${info.week}`:`${SITE_URL}/trust`;
-  const text=xShort(`📊 ${name} results: ${s.wins}–${s.losses}${s.pushes?`–${s.pushes}`:''} on props, ${weeklyMoney(s.profit)} at $100 a pick.${s.parlayWins+s.parlayLosses?` Parlays ${s.parlayWins}–${s.parlayLosses}.`:''}\n${hits.join('\n')}${hits.length?'\n':''}Season: ${season.wins}–${season.losses}, ${weeklyMoney(season.profit)}.\n\nEvery pick, wins and losses: ${page}`);
+  const text=xShort(`📊 ${name} results: ${s.wins}–${s.losses}${s.pushes?`–${s.pushes}`:''} on props, ${weeklyMoney(s.profit)} at $100 a pick.${s.parlayWins+s.parlayLosses?` Parlays ${s.parlayWins}–${s.parlayLosses}.`:''}\n${hits.join('\n')}${hits.length?'\n':''}Season: ${season.wins}–${season.losses}, ${weeklyMoney(season.profit)}.\n\nEvery pick, wins and losses: link in bio.`);
   try{await xPost(env,text);return {posted:1,week}}
   catch(error){console.warn('x_weekly_failed',error.message);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(`x-week:${week}`).run().catch(()=>{});return {posted:0,error:error.message}}
 }
