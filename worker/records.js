@@ -863,7 +863,8 @@ function xPickText(r,season){
   const edge=Number(first.edge),value=Number.isFinite(edge)&&edge>0?`\n${edge.toFixed(1)}% better than the fair price.`:'';
   const record=season&&season.wins+season.losses>=5?`\nSeason: ${season.wins}–${season.losses}, ${weeklyMoney(season.profit)} at $100 a pick.`:'';
   const head=r.kind==='parlay'?`🔒 Official ${legs.length}-leg parlay (${weeklyOdds(r.combined_odds)})\n${legs.map(l=>`• ${l.player} ${weeklyLegText(l)}`).join('\n')}`:`🔒 Official pick: ${r.player} ${weeklyLegText(r)} (${weeklyOdds(r.odds)}${first.book?`, ${first.book}`:''})\n${matchup}${matchup&&when?' · ':''}${when}`;
-  return xShort(`${head}${value}${record}\n\nLocked before kickoff, graded in public: ${SITE_URL}\n21+ · Odds move.`);
+  // No link in the text: X charges far more for posts with a URL, so the link lives in the bio.
+  return xShort(`${head}${value}${record}\n\nLocked before kickoff, graded in public. Full record: link in bio.\n21+ · Odds move.`);
 }
 async function postPicksToX(env,now=Date.now()){
   if(!env.DB||!xReady(env))return {posted:0,disabled:true};
@@ -898,8 +899,7 @@ async function postWeeklyToX(env,now=Date.now()){
   const s=weeklySummary(rows),info=nflWeekOf(week),name=info?`Week ${info.week}`:'Last week';
   const all=(await env.DB.prepare("SELECT kind,line,odds,combined_odds,status,result,closing_line,closing_odds,closing_captured_at FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND id<?").bind(`official|${week}|￿`).all()).results||[];
   const season=weeklySummary(all),hits=rows.filter(r=>r.kind==='prop'&&r.result==='won').slice(0,3).map(r=>`✅ ${r.player} ${weeklyLegText(r)} (${weeklyOdds(r.odds)})`);
-  const page=info?`${SITE_URL}/picks/${info.season}/week-${info.week}`:`${SITE_URL}/trust`;
-  const text=xShort(`📊 ${name} results: ${s.wins}–${s.losses}${s.pushes?`–${s.pushes}`:''} on props, ${weeklyMoney(s.profit)} at $100 a pick.${s.parlayWins+s.parlayLosses?` Parlays ${s.parlayWins}–${s.parlayLosses}.`:''}\n${hits.join('\n')}${hits.length?'\n':''}Season: ${season.wins}–${season.losses}, ${weeklyMoney(season.profit)}.\n\nEvery pick, wins and losses: ${page}`);
+  const text=xShort(`📊 ${name} results: ${s.wins}–${s.losses}${s.pushes?`–${s.pushes}`:''} on props, ${weeklyMoney(s.profit)} at $100 a pick.${s.parlayWins+s.parlayLosses?` Parlays ${s.parlayWins}–${s.parlayLosses}.`:''}\n${hits.join('\n')}${hits.length?'\n':''}Season: ${season.wins}–${season.losses}, ${weeklyMoney(season.profit)}.\n\nEvery pick, wins and losses: link in bio.`);
   try{await xPost(env,text);return {posted:1,week}}
   catch(error){console.warn('x_weekly_failed',error.message);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(`x-week:${week}`).run().catch(()=>{});return {posted:0,error:error.message}}
 }

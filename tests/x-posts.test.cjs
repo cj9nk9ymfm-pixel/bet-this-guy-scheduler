@@ -27,7 +27,7 @@ pick('official|2026-10-06|props|prop|a','Travis Kelce',105,null,new Date(now-20*
   const text=posts[0].body.text;
   assert.ok(text.startsWith('🔒 Official pick: Travis Kelce Over 4.5 receptions (+105, FanDuel)'),text);
   assert.ok(text.includes('Kansas City Chiefs @ Buffalo Bills')&&text.includes('2.4% better than the fair price.'),text);
-  assert.ok(text.includes('Season: 4–2, ')&&text.includes('https://betthisguy.com')&&text.includes('21+'),text);
+  assert.ok(text.includes('Season: 4–2, ')&&text.includes('link in bio')&&!/https?:|\.com/.test(text)&&text.includes('21+'),text);
   assert.ok(text.length<=280);assert.match(posts[0].auth,/^OAuth oauth_consumer_key="xvz1evFS4wEEPTGEFPHBog"/);
   // Once per pick, even across runs.
   out=await run(`postPicksToX(env,${now+600000})`);assert.equal(out.posted,0);assert.equal(posts.length,1);
@@ -39,7 +39,7 @@ pick('official|2026-10-06|props|prop|a','Travis Kelce',105,null,new Date(now-20*
   const tue=Date.parse('2026-10-06T15:10:00Z');
   out=await run(`postWeeklyToX(env,${tue})`);assert.equal(out.posted,1);
   const weekly=posts.at(-1).body.text;
-  assert.ok(weekly.startsWith('📊 Week 4 results: 4–2 on props, +')&&weekly.includes('https://betthisguy.com/picks/2026/week-4'),weekly);
+  assert.ok(weekly.startsWith('📊 Week 4 results: 4–2 on props, +')&&weekly.includes('link in bio')&&!/https?:|\.com/.test(weekly),weekly);
   assert.equal((await run(`postWeeklyToX(env,${tue+600000})`)).done,true);
   assert.equal((await run(`postWeeklyToX(env,Date.parse('2026-10-05T16:00:00Z'))`)).due,false,'not on Monday');
   console.log('PASS: X posts sign correctly, post each new official pick once with its price, value and season record, retry failures, and post Tuesday results once');
