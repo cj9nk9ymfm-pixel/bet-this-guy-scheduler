@@ -100,3 +100,6 @@ for name in (os.environ.get("PHOTOS") or "Josh Allen;CeeDee Lamb;Saquon Barkley;
         print(f"   {name}: HTTP {e.code}")
     except Exception as e:
         print(f"   {name}: {type(e).__name__}")
+
+s, xs, t = get("/api/x-status")
+print(f"\n== X posting: HTTP {s} {xs}")
