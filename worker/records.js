@@ -365,6 +365,7 @@ async function publishOfficialPicks(request,env,ctx){
     if(posted){const alerts=sendPickAlerts(env).catch(error=>console.warn('pick_alerts_failed',error.message));if(ctx?.waitUntil)ctx.waitUntil(alerts);else await alerts}
     // Emails check every run: picks held back by the hourly limit go out on a later run.
     {const emails=sendEmailAlerts(env).catch(error=>console.warn('email_alerts_failed',error.message));if(ctx?.waitUntil)ctx.waitUntil(emails);else await emails}
+    {const x=postPicksToX(env).catch(error=>console.warn('x_post_failed',error.message));if(ctx?.waitUntil)ctx.waitUntil(x);else await x}
     {const mine=sendBookAlerts(env,boards).catch(error=>console.warn('book_alerts_failed',error.message));if(ctx?.waitUntil)ctx.waitUntil(mine);else await mine}
     // Odds snapshots older than a week are no longer read; clear them hourly so
     // the database stays small (the history endpoint's own cleanup rarely runs).
@@ -834,6 +835,67 @@ async function sendWeeklyDigest(env,now=Date.now()){
     }catch(error){console.warn('weekly_digest_failed',error.message)}
   }
   return {sent,total:people.length,picks:rows.length,week};
+}
+// X (Twitter) auto-posts: each new official pick is posted to the brand
+// account the moment it locks, plus a weekly results post on Tuesdays.
+// Needs the X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN and X_ACCESS_SECRET
+// secrets (an X developer app with read and write access); without them
+// nothing is posted. Each pick is claimed in app_settings so it posts once.
+const xEnc=v=>encodeURIComponent(String(v)).replace(/[!'()*]/g,c=>'%'+c.charCodeAt(0).toString(16).toUpperCase());
+async function xOAuthHeader(env,method,url,extra={},nonce=crypto.randomUUID().replace(/-/g,''),timestamp=Math.floor(Date.now()/1000)){
+  const oauth={oauth_consumer_key:env.X_API_KEY,oauth_nonce:nonce,oauth_signature_method:'HMAC-SHA1',oauth_timestamp:String(timestamp),oauth_token:env.X_ACCESS_TOKEN,oauth_version:'1.0'};
+  const all={...extra,...oauth},params=Object.keys(all).sort().map(k=>`${xEnc(k)}=${xEnc(all[k])}`).join('&');
+  const base=`${method.toUpperCase()}&${xEnc(url)}&${xEnc(params)}`;
+  const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(`${xEnc(env.X_API_SECRET)}&${xEnc(env.X_ACCESS_SECRET)}`),{name:'HMAC',hash:'SHA-1'},false,['sign']);
+  const sig=btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.sign('HMAC',key,new TextEncoder().encode(base)))));
+  return 'OAuth '+Object.entries({...oauth,oauth_signature:sig}).sort(([a],[b])=>a.localeCompare(b)).map(([k,v])=>`${xEnc(k)}="${xEnc(v)}"`).join(', ');
+}
+const xReady=env=>Boolean(env.X_API_KEY&&env.X_API_SECRET&&env.X_ACCESS_TOKEN&&env.X_ACCESS_SECRET);
+async function xPost(env,text){
+  const url='https://api.twitter.com/2/tweets';
+  const response=await fetch(url,{method:'POST',headers:{authorization:await xOAuthHeader(env,'POST',url),'content-type':'application/json'},body:JSON.stringify({text}),signal:AbortSignal.timeout(15000)});
+  if(!response.ok)throw new Error(`X post failed (${response.status})`);
+  return response.json().catch(()=>({}));
+}
+const xShort=text=>{const t=String(text||'');return t.length>280?t.slice(0,277)+'…':t};
+function xPickText(r,season){
+  const legs=recordLegs(r),first=legs[0]||{},when=weeklyDay(r.game_time||first.gameTime),matchup=String(first.team||'').replace(' · ',' ');
+  const edge=Number(first.edge),value=Number.isFinite(edge)&&edge>0?`\n${edge.toFixed(1)}% better than the fair price.`:'';
+  const record=season&&season.wins+season.losses>=5?`\nSeason: ${season.wins}–${season.losses}, ${weeklyMoney(season.profit)} at $100 a pick.`:'';
+  const head=r.kind==='parlay'?`🔒 Official ${legs.length}-leg parlay (${weeklyOdds(r.combined_odds)})\n${legs.map(l=>`• ${l.player} ${weeklyLegText(l)}`).join('\n')}`:`🔒 Official pick: ${r.player} ${weeklyLegText(r)} (${weeklyOdds(r.odds)}${first.book?`, ${first.book}`:''})\n${matchup}${matchup&&when?' · ':''}${when}`;
+  return xShort(`${head}${value}${record}\n\nLocked before kickoff, graded in public: ${SITE_URL}\n21+ · Odds move.`);
+}
+async function postPicksToX(env,now=Date.now()){
+  if(!env.DB||!xReady(env))return {posted:0,disabled:true};
+  const since=new Date(now-12*3600000).toISOString(),start=new Date(now).toISOString();
+  const picks=(await env.DB.prepare("SELECT id,kind,player,market,side,line,odds,combined_odds,legs_json,game_time FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND posted_at>? AND game_time>? ORDER BY posted_at LIMIT 6").bind(since,start).all()).results||[];
+  if(!picks.length)return {posted:0};
+  const seasonRows=(await env.DB.prepare("SELECT kind,line,odds,combined_odds,status,result,closing_line,closing_odds,closing_captured_at FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%'").all()).results||[];
+  const season=weeklySummary(seasonRows);let posted=0;
+  for(const r of picks){
+    // Claim first so two Worker instances can't post the same pick twice.
+    const claim=await env.DB.prepare('INSERT OR IGNORE INTO app_settings (key,value) VALUES (?,?)').bind(`x:${r.id}`,start).run();
+    if(!Number(claim?.meta?.changes??claim?.changes))continue;
+    try{await xPost(env,xPickText(r,season));posted++}
+    catch(error){console.warn('x_post_failed',error.message);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(`x:${r.id}`).run().catch(()=>{});break}
+  }
+  return {posted,picks:picks.length};
+}
+// Tuesday results post, alongside the weekly email.
+async function postWeeklyToX(env,now=Date.now()){
+  if(!env.DB||!xReady(env))return {posted:0,disabled:true};
+  const day=new Date(now);if(day.getUTCDay()!==2||day.getUTCHours()<15)return {posted:0,due:false};
+  const week=new Date(Date.parse(`${officialWeek(now)}T00:00:00Z`)-7*86400000).toISOString().slice(0,10);
+  const claim=await env.DB.prepare('INSERT OR IGNORE INTO app_settings (key,value) VALUES (?,?)').bind(`x-week:${week}`,new Date(now).toISOString()).run();
+  if(!Number(claim?.meta?.changes??claim?.changes))return {posted:0,done:true};
+  const rows=await weeklyRows(env,week);if(!rows.length)return {posted:0,empty:true};
+  const s=weeklySummary(rows),info=nflWeekOf(week),name=info?`Week ${info.week}`:'Last week';
+  const all=(await env.DB.prepare("SELECT kind,line,odds,combined_odds,status,result,closing_line,closing_odds,closing_captured_at FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND id<?").bind(`official|${week}|￿`).all()).results||[];
+  const season=weeklySummary(all),hits=rows.filter(r=>r.kind==='prop'&&r.result==='won').slice(0,3).map(r=>`✅ ${r.player} ${weeklyLegText(r)} (${weeklyOdds(r.odds)})`);
+  const page=info?`${SITE_URL}/picks/${info.season}/week-${info.week}`:`${SITE_URL}/trust`;
+  const text=xShort(`📊 ${name} results: ${s.wins}–${s.losses}${s.pushes?`–${s.pushes}`:''} on props, ${weeklyMoney(s.profit)} at $100 a pick.${s.parlayWins+s.parlayLosses?` Parlays ${s.parlayWins}–${s.parlayLosses}.`:''}\n${hits.join('\n')}${hits.length?'\n':''}Season: ${season.wins}–${season.losses}, ${weeklyMoney(season.profit)}.\n\nEvery pick, wins and losses: ${page}`);
+  try{await xPost(env,text);return {posted:1,week}}
+  catch(error){console.warn('x_weekly_failed',error.message);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(`x-week:${week}`).run().catch(()=>{});return {posted:0,error:error.message}}
 }
 // "My book" alerts: a good-value price at one of someone's own sportsbooks.
 // The fair price always comes from every book (3+ pricing both sides, the same
