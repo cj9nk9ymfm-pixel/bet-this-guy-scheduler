@@ -23,15 +23,20 @@ async function call(req){context.req=req;return run('worker.fetch(req,env,{waitU
  // 10 minutes in NFL windows and every 6 hours otherwise. GitHub only checks uptime.
  const due=iso=>JSON.stringify(run(`cronJobs(new Date('${iso}'))`));
  assert.equal(due('2026-10-04T16:40:00Z'),'["publish","grade"]','Sunday checks every 10 minutes');
- assert.equal(due('2026-10-04T16:45:00Z'),'[]');
+ assert.equal(due('2026-10-04T16:45:00Z'),'["xpost","lineGrade"]','the in-between run posts to X and grades line value');
  assert.equal(due('2026-10-06T14:00:00Z'),'["publish"]','picks are checked on a quiet Tuesday too');
- assert.equal(due('2026-10-06T14:05:00Z'),'[]');
+ assert.equal(due('2026-10-06T14:05:00Z'),'["xpost"]');
  assert.equal(due('2026-10-06T18:00:00Z'),'["publish","grade"]','grading still runs every 6 hours in quiet periods');
  assert.equal(typeof run('worker.scheduled'),'function','the Worker exports a scheduled handler');
  const ran=[];context.publishOfficialPicks=async()=>{ran.push('publish')};context.settlePublicRecords=async()=>{ran.push('grade')};
  run('publishOfficialPicks=globalThis.publishOfficialPicks;settlePublicRecords=globalThis.settlePublicRecords');
  await run(`worker.scheduled({scheduledTime:Date.parse('2026-10-04T17:00:00Z')},env,{waitUntil(){}})`);
  assert.deepEqual(ran,['publish','grade'],'the cron runs the jobs that are due');
+ // Every job the cron schedules exists (a missing one used to be skipped silently).
+ for(const name of ['postPicksToX','postWeeklyToX','gradeLineShadow','sendWeeklyDigest'])context[name]=async()=>{ran.push(name)};
+ run('postPicksToX=globalThis.postPicksToX;postWeeklyToX=globalThis.postWeeklyToX;gradeLineShadow=globalThis.gradeLineShadow;sendWeeklyDigest=globalThis.sendWeeklyDigest');
+ ran.length=0;await run(`worker.scheduled({scheduledTime:Date.parse('2026-10-04T16:45:00Z')},env,{waitUntil(){}})`);
+ assert.deepEqual(ran.sort(),['gradeLineShadow','postPicksToX','postWeeklyToX','sendWeeklyDigest'],'the in-between run posts to X, sends the digest when due and grades line value');
  const wf=read('.github/workflows/btg-maintenance.yml');
  assert.ok(!/elif active_window/.test(wf),'GitHub no longer publishes on its own schedule');
  assert.match(read('wrangler.jsonc'),/"crons": \["\*\/5 \* \* \* \*"\]/,'the site Worker has a 5-minute cron trigger');

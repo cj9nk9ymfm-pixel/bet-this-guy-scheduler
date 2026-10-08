@@ -1118,7 +1118,7 @@ async function scheduledMaintenance(request,env,ctx){
   if(!await maintenanceAuthorized(request,env))return json({success:false,error:'Unauthorized'},401);
   if(!env.DB||!env.THE_ODDS_API_KEY||!env.BALLDONTLIE_API_KEY)return json({success:false,error:'Maintenance configuration incomplete'},503);
   const job=new URL(request.url).searchParams.get('job');
-  const jobs={publish:()=>publishOfficialPicks(request,env,ctx),digest:()=>Promise.all([sendWeeklyDigest(env),postWeeklyToX(env)]),lineGrade:()=>gradeLineShadow(env),grade:()=>settlePublicRecords(env),closing:()=>captureClosingLines(env)};
+  const jobs={publish:()=>publishOfficialPicks(request,env,ctx),digest:()=>sendWeeklyDigest(env),xpost:()=>Promise.all([postPicksToX(env),postWeeklyToX(env)]),lineGrade:()=>gradeLineShadow(env),grade:()=>settlePublicRecords(env),closing:()=>captureClosingLines(env)};
   if(!Object.hasOwn(jobs,job))return json({success:false,error:'Unknown maintenance job'},400);
   let work=scheduledJobs.get(job);
   if(!work){work=Promise.resolve().then(jobs[job]).finally(()=>scheduledJobs.delete(job));scheduledJobs.set(job,work)}
@@ -1137,21 +1137,25 @@ function nflActiveWindow(date){
 }
 function cronJobs(date){
   const minute=date.getUTCMinutes();
-  const publish=minute%10<5?['publish']:[];
-  if(nflActiveWindow(date))return [...publish,...(minute%10<5?['grade']:[])];
+  // The in-between run (minute 5 of each 10) posts to X and grades
+  // line-value picks on its own, so it has its own request allowance.
+  if(minute%10>=5)return ['xpost',...(nflActiveWindow(date)||(date.getUTCHours()%6===0&&minute<10)?['lineGrade']:[])];
+  const publish=['publish'];
+  if(nflActiveWindow(date))return [...publish,'grade'];
   return [...publish,...(date.getUTCHours()%6===0&&minute<5?['grade']:[])];
 }
 async function runCron(controller,env,ctx){
   const due=cronJobs(new Date(controller.scheduledTime));
-  if(!due.length||!env.DB||!env.THE_ODDS_API_KEY||!env.BALLDONTLIE_API_KEY)return;
-  const request=new Request(`${SITE_URL}/api/maintenance`),jobs={publish:()=>publishOfficialPicks(request,env,ctx),grade:()=>settlePublicRecords(env),nbaShadow:()=>recordNbaShadow(request,env,ctx),nbaGrade:()=>gradeNbaShadow(env)};
+  if(!due.length||!env.DB||!env.BALLDONTLIE_API_KEY)return;
+  if(!env.THE_ODDS_API_KEY)due.splice(0,due.length,...due.filter(job=>job==='xpost'||job==='lineGrade'));
+  const request=new Request(`${SITE_URL}/api/maintenance`),jobs={publish:()=>publishOfficialPicks(request,env,ctx),grade:()=>settlePublicRecords(env),nbaShadow:()=>recordNbaShadow(request,env,ctx),nbaGrade:()=>gradeNbaShadow(env),digest:()=>sendWeeklyDigest(env),xpost:()=>Promise.all([postPicksToX(env),postWeeklyToX(env)]),lineGrade:()=>gradeLineShadow(env)};
   // NBA shadow runs after the NFL jobs and on its own: it can never hold up
   // or fail NFL publishing or grading.
   if(due.includes('publish'))due.push('nbaShadow');
   if(due.includes('grade'))due.push('nbaGrade');
-  if(due.includes('grade'))due.push('lineGrade');
-  if(due.includes('publish'))due.push('digest');
+  if(due.includes('xpost'))due.push('digest');
   for(const job of due){
+    if(!jobs[job]){console.error('cron_failed',job,'unknown job');continue}
     let work=scheduledJobs.get(job);
     if(!work){work=Promise.resolve().then(jobs[job]).finally(()=>scheduledJobs.delete(job));scheduledJobs.set(job,work)}
     try{await work;console.log('cron_completed',job)}catch(error){console.error('cron_failed',job,error.message)}
