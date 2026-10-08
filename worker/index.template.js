@@ -1169,6 +1169,7 @@ async function routeRequest(request, env, ctx) {
     if (url.pathname === "/api/feed-status") return json({ configured: Boolean(env.THE_ODDS_API_KEY), provider: "The Odds API" });
     if (url.pathname === "/api/record") return publicRecord(request, env, ctx);
     if (url.pathname === "/api/engine") return engineStatus(env);
+    if (url.pathname === "/api/x-status") return json(await xStatus(env), 200, { "cache-control": "no-store" });
     if (url.pathname === "/api/hit") return usageHit(request, env, ctx);
     if (url.pathname === "/api/affiliate") return affiliateApi(request, env);
     if (url.pathname.startsWith("/api/alerts/")) return alertsApi(request, env);
