@@ -1443,3 +1443,5 @@ html body.light .prop-card .follow-tag{background:#d1fae5!important;color:#04785
 /* Mint means "official" only, so the value line under an official pick is neutral */
 html body .on-why{color:#cbd5e1}html body .on-why::before{color:#2ee6a8}
 html body.light .on-why{color:#475569}html body.light .on-why::before{color:#047857}
+#heroBanner .hp-week{margin:4px 2px 8px;font-size:13.5px;color:var(--muted)}
+#heroBanner .hp-week b{color:var(--text)}

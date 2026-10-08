@@ -14,6 +14,9 @@ on:
       players:
         description: Players to look up when no odds are posted (Name|Team;Name|Team)
         default: ""
+      mode:
+        description: smoke, or fair (compare fair prices all books vs big five)
+        default: smoke
 permissions:
   contents: read
 jobs:
@@ -27,4 +30,4 @@ jobs:
           SPORT: ${{ inputs.sport }}
           POLL_MINUTES: ${{ inputs.poll_minutes }}
           PLAYERS: ${{ inputs.players }}
-        run: python3 scripts/smoke.py
+        run: if [ "${{ inputs.mode }}" = "fair" ]; then python3 scripts/fair_compare.py; else python3 scripts/smoke.py; fi
