@@ -1083,8 +1083,11 @@ function xBeatClose(r){
   return better?{kind:'line',close:String(close)}:null;
 }
 function xCloseText(r,move){
+  // "on Thursday", or "earlier today" when it locked on game day (Eastern).
+  const et=t=>new Date(t).toLocaleDateString('en-US',{weekday:'long',month:'numeric',day:'numeric',timeZone:'America/New_York'});
   const day=new Date(r.posted_at).toLocaleDateString('en-US',{weekday:'long',timeZone:'America/New_York'});
-  const locked=`We locked ${r.player} ${weeklyLegText(r)} at ${weeklyOdds(r.odds)}${day&&day!=='Invalid Date'?` on ${day}`:''}.`;
+  const when=day==='Invalid Date'?'':et(r.posted_at)===et(r.game_time)?' earlier today':` on ${day}`;
+  const locked=`We locked ${r.player} ${weeklyLegText(r)} at ${weeklyOdds(r.odds)}${when}.`;
   const now=move.kind==='price'?`By kickoff the same bet was ${move.close}.`:`By kickoff the line had moved to ${move.close}.`;
   return xShort(`📈 We beat the closing line.\n${locked}\n${now}\n\nWin or lose, that's how you know the price was good. Result after the game.`);
 }
