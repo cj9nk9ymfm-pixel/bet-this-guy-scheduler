@@ -500,12 +500,24 @@ async function playerTeamOf(env, sport, name, gameTeams) {
 
 // The X graphic for one official pick, rendered without posting (for checks).
 async function xCardPreview(request, env) {
-  const id = new URL(request.url).searchParams.get("id") || "";
-  if (!env.DB || !/^official\|[\w|.-]{8,200}$/.test(id)) return new Response("", { status: 404 });
-  const row = await env.DB.prepare("SELECT * FROM public_recommendations WHERE id = ? AND source = 'market-verified-v2'").bind(id).first();
-  if (!row) return new Response("", { status: 404 });
+  // ?id= shows a pick's graphic (&result=1 for its result graphic once graded);
+  // ?week=YYYY-MM-DD shows that week's results graphic. Never posts anything.
+  const params = new URL(request.url).searchParams, id = params.get("id") || "", week = params.get("week") || "";
+  if (!env.DB) return new Response("", { status: 404 });
   const seasonRows = (await env.DB.prepare("SELECT kind,line,odds,combined_odds,status,result,closing_line,closing_odds,closing_captured_at FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%'").all()).results || [];
-  const png = await renderCardPng(xCardSvg(await xCardData(env, row, weeklySummary(seasonRows))));
+  let svg;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(week)) {
+    const rows = await weeklyRows(env, week), info = nflWeekOf(week);
+    if (!rows.length) return new Response("", { status: 404 });
+    svg = xWeekSvg(xWeekData(rows, weeklySummary(rows), weeklySummary(seasonRows), info ? `Week ${info.week}` : "Last week", weeklyRange(week)));
+  } else {
+    if (!/^official\|[\w|.-]{8,200}$/.test(id)) return new Response("", { status: 404 });
+    const row = await env.DB.prepare("SELECT * FROM public_recommendations WHERE id = ? AND source = 'market-verified-v2'").bind(id).first();
+    if (!row) return new Response("", { status: 404 });
+    const season = weeklySummary(seasonRows), graded = XRESULT[row.result] && params.get("result") === "1";
+    svg = xCardSvg(graded ? await xResultData(env, row, season) : await xCardData(env, row, season));
+  }
+  const png = await renderCardPng(svg);
   return new Response(png, { headers: { "content-type": "image/png", "cache-control": "public, max-age=600" } });
 }
 
@@ -1118,7 +1130,7 @@ async function scheduledMaintenance(request,env,ctx){
   if(!await maintenanceAuthorized(request,env))return json({success:false,error:'Unauthorized'},401);
   if(!env.DB||!env.THE_ODDS_API_KEY||!env.BALLDONTLIE_API_KEY)return json({success:false,error:'Maintenance configuration incomplete'},503);
   const job=new URL(request.url).searchParams.get('job');
-  const jobs={publish:()=>publishOfficialPicks(request,env,ctx),digest:()=>sendWeeklyDigest(env),xpost:()=>Promise.all([postPicksToX(env),postWeeklyToX(env)]),lineGrade:()=>gradeLineShadow(env),grade:()=>settlePublicRecords(env),closing:()=>captureClosingLines(env)};
+  const jobs={publish:()=>publishOfficialPicks(request,env,ctx),digest:()=>sendWeeklyDigest(env),xpost:()=>runXPosts(env),lineGrade:()=>gradeLineShadow(env),grade:()=>settlePublicRecords(env),closing:()=>captureClosingLines(env)};
   if(!Object.hasOwn(jobs,job))return json({success:false,error:'Unknown maintenance job'},400);
   let work=scheduledJobs.get(job);
   if(!work){work=Promise.resolve().then(jobs[job]).finally(()=>scheduledJobs.delete(job));scheduledJobs.set(job,work)}
@@ -1148,7 +1160,7 @@ async function runCron(controller,env,ctx){
   const due=cronJobs(new Date(controller.scheduledTime));
   if(!due.length||!env.DB||!env.BALLDONTLIE_API_KEY)return;
   if(!env.THE_ODDS_API_KEY)due.splice(0,due.length,...due.filter(job=>job==='xpost'||job==='lineGrade'));
-  const request=new Request(`${SITE_URL}/api/maintenance`),jobs={publish:()=>publishOfficialPicks(request,env,ctx),grade:()=>settlePublicRecords(env),nbaShadow:()=>recordNbaShadow(request,env,ctx),nbaGrade:()=>gradeNbaShadow(env),digest:()=>sendWeeklyDigest(env),xpost:()=>Promise.all([postPicksToX(env),postWeeklyToX(env)]),lineGrade:()=>gradeLineShadow(env)};
+  const request=new Request(`${SITE_URL}/api/maintenance`),jobs={publish:()=>publishOfficialPicks(request,env,ctx),grade:()=>settlePublicRecords(env),nbaShadow:()=>recordNbaShadow(request,env,ctx),nbaGrade:()=>gradeNbaShadow(env),digest:()=>sendWeeklyDigest(env),xpost:()=>runXPosts(env),lineGrade:()=>gradeLineShadow(env)};
   // NBA shadow runs after the NFL jobs and on its own: it can never hold up
   // or fail NFL publishing or grading.
   if(due.includes('publish'))due.push('nbaShadow');

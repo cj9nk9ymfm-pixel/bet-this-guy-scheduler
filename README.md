@@ -41,7 +41,7 @@ Optional variable:
 
 - `VISITOR_MAINTENANCE`: leave unset normally. Publishing, grading and closing-line capture run on the GitHub scheduler and the closing-line cron. Set it to `on` only as a fallback if the scheduler is down. Visitor traffic then triggers that work again, at the cost of extra provider calls.
 
-Optional X (Twitter) auto-posts: set `X_API_KEY`, `X_API_SECRET`, `X_ACCESS_TOKEN` and `X_ACCESS_SECRET` (from an X developer app with Read and write permission; generate the access token after setting that permission). Each new official pick is then posted once, plus a results post on Tuesdays. Without them nothing is posted.
+Optional X (Twitter) auto-posts: set `X_API_KEY`, `X_API_SECRET`, `X_ACCESS_TOKEN` and `X_ACCESS_SECRET` (from an X developer app with Read and write permission; generate the access token after setting that permission). Each new official pick is then posted once with a graphic. Replies under each pick follow: a beat-the-closing-line post at kickoff (only when the price moved our way) and a result graphic once the pick is final, wins and losses alike. A weekly results graphic posts on Tuesdays. Without them nothing is posted. Preview any graphic without posting: `/api/x-card.png?id=<pick id>` (add `&result=1` once graded) or `/api/x-card.png?week=YYYY-MM-DD`.
 
 Never commit those secret values. The Supabase publishable browser key is intentionally public; Supabase Row Level Security and the site API enforce access control.
 

@@ -7,8 +7,8 @@ const context=vm.createContext({URL,URLSearchParams,Request,Response,Headers,Abo
 const template=read('worker/index.template.js');
 vm.runInContext(template.slice(template.indexOf('const API_BASE')).replace('__MOVEMENT_SERVER__',read('worker/movement.js')).replace('__LIVE_SERVER__',read('worker/live.js')).replace('__STATS_SHARED__',read('dist/stats.js')).replace('__RECORDS_SERVER__',read('worker/records.js')).replace('__ACCOUNTS_SERVER__',read('worker/accounts.js')).replace('export default {','this.worker={'),context);
 const db=new DatabaseSync(':memory:');
-for(const f of ['0000_public_record.sql','0009_line_shadow.sql','0014_line_shadow_results.sql'])db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''));
-const wrap=(sql,args=[])=>({bind(...values){return wrap(sql,values)},async all(){return{results:db.prepare(sql).all(...args)}},async run(){const r=db.prepare(sql).run(...args);return{success:true,meta:{changes:Number(r.changes)}}}});
+for(const f of ['0000_public_record.sql','0003_shared_movement.sql','0009_line_shadow.sql','0014_line_shadow_results.sql'])db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''));
+const wrap=(sql,args=[])=>({bind(...values){return wrap(sql,values)},async first(){return db.prepare(sql).get(...args)||null},async all(){return{results:db.prepare(sql).all(...args)}},async run(){const r=db.prepare(sql).run(...args);return{success:true,meta:{changes:Number(r.changes)}}}});
 const env={DB:{prepare:sql=>wrap(sql),async batch(list){for(const s of list)await s.run()}}};
 const run=code=>vm.runInContext(code,context);
 (async()=>{
@@ -83,6 +83,13 @@ const run=code=>vm.runInContext(code,context);
   row=db.prepare('SELECT actual,result FROM line_shadow').get();
   assert.deepEqual([row.actual,row.result],[212,'won'],'Over 205.5 with 212 yards wins');
   assert.equal((await run(`gradeLineShadow(env,${now+11*3600000})`)).checked,0,'graded picks are not re-checked');
+  // Rows logged before the team was stored get it from the odds snapshots,
+  // which keep the NFL-- event id prefix.
+  db.prepare("INSERT INTO line_shadow (id,event_id,player,market_key,market,side,line,odds,book,alt,main_line,books,edge,fair,game_time,logged_at,model_json) VALUES ('old','NFL--evt9','Kyler Murray','player_pass_yds','Passing Yards','Over',205.5,-110,'DraftKings',0,205.5,5,2,.5,?,?,'{}')").run(new Date(now).toISOString(),new Date(now-86400000).toISOString());
+  db.prepare("INSERT INTO movement_snapshots (id,event_id,captured_at,kind,payload_json) VALUES ('s1','NFL--evt9',1,'observed',?)").run(JSON.stringify({id:'evt9',home_team:'New York Giants',away_team:'Arizona Cardinals',bookmakers:[]}));
+  seen.length=0;graded=await run(`gradeLineShadow(env,${now+12*3600000})`);
+  assert.equal(graded.graded,1,'older rows are graded too');assert.equal(seen[0].team,'Arizona Cardinals · @ New York Giants');
+  assert.equal(db.prepare("SELECT team FROM line_shadow WHERE id='old'").get().team,'Arizona Cardinals · @ New York Giants');
   // Official picks still lock only at the same line and a big-5 book.
   assert.equal(run(`officialCandidates([lineEvent],${now}).length`),0,'line value is not used for official picks yet');
 

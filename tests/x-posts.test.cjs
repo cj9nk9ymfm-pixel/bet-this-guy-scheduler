@@ -54,5 +54,41 @@ pick('official|2026-10-06|props|prop|a','Travis Kelce',105,null,new Date(now-20*
   assert.ok(weekly.startsWith('📊 Week 4 results: 4–2 on props, +')&&weekly.includes('link in bio')&&!/https?:|\.com/.test(weekly),weekly);
   assert.equal((await run(`postWeeklyToX(env,${tue+600000})`)).done,true);
   assert.equal((await run(`postWeeklyToX(env,Date.parse('2026-10-05T16:00:00Z'))`)).due,false,'not on Monday');
-  console.log('PASS: X posts sign correctly, post each new official pick once with its graphic (text fallback after three failed uploads, never a duplicate), retry failures, and post Tuesday results once');
+  assert.ok(posts.at(-1).body.media,'weekly post carries the results graphic');
+  const week=run('__svg');for(const bit of ['Week 4','4–2','WEEKLY RESULTS','Old Player 0','See every pick graded'])assert.ok(week.includes(bit),bit);
+  // The pick post's id is saved so later posts can reply under it.
+  const kelce='official|2026-10-06|props|prop|a';
+  assert.equal(db.prepare("SELECT value FROM app_settings WHERE key=?").get(`xid:${kelce}`).value,'1');
+  // Closing line: posted under the pick when we beat the close, once; not when we didn't.
+  const kick=Date.parse('2026-10-09T00:15:00Z');
+  db.prepare("UPDATE public_recommendations SET closing_line=4.5,closing_odds=-120,closing_captured_at=? WHERE id=?").run(new Date(kick-15*60000).toISOString(),kelce);
+  db.prepare("UPDATE public_recommendations SET closing_line=4.5,closing_odds=-105,closing_captured_at=? WHERE id=?").run(new Date(kick-15*60000).toISOString(),'official|2026-10-06|props|prop|b');
+  let n=posts.length;out=await run(`postClosingToX(env,${kick-10*60000})`);assert.equal(out.posted,1);assert.equal(posts.length,n+1);
+  const close=posts.at(-1).body;
+  assert.deepEqual(close.reply,{in_reply_to_tweet_id:'1'});
+  assert.ok(close.text.includes('We locked Travis Kelce Over 4.5 receptions at +105 on Thursday.')&&close.text.includes('the same bet was -120'),close.text);
+  assert.equal((await run(`postClosingToX(env,${kick})`)).posted,0,'once');
+  // A line that moved past ours counts too; a line that moved against us doesn't.
+  assert.equal(run(`xBeatClose({kind:'prop',side:'Over',line:4.5,closing_line:5.5,odds:110,closing_odds:-110,closing_captured_at:'x'})`).kind,'line');
+  assert.equal(run(`xBeatClose({kind:'prop',side:'Under',line:4.5,closing_line:5.5,odds:110,closing_odds:-110,closing_captured_at:'x'})`),null);
+  assert.equal(run(`xBeatClose({kind:'prop',side:'Over',line:4.5,closing_line:4.5,odds:110,closing_odds:108,closing_captured_at:'x'})`),null,'tiny moves do not count');
+  // Results: a graded pick we posted gets one result post with its graphic, as a reply.
+  const settle=(id,result,actual)=>db.prepare("UPDATE public_recommendations SET status='final',result=?,settled_at=?,legs_json=json_set(legs_json,'$[0].actualValue',?) WHERE id=?").run(result,new Date(kick+4*3600000).toISOString(),actual,id);
+  settle(kelce,'won',7);settle('official|2026-10-06|props|prop|b','lost',3);
+  n=posts.length;out=await run(`runXPosts(env,${kick+5*3600000})`);assert.equal(out.results.posted,1);
+  const won=posts.at(-1).body;
+  assert.ok(won.text.startsWith('✅ Cashed: Travis Kelce Over 4.5 receptions (+105)\nFinal: had 7 receptions.')&&won.text.includes('Season: 5–3'),won.text);
+  assert.deepEqual(won.reply,{in_reply_to_tweet_id:'1'});assert.ok(won.media);
+  for(const bit of ['WINNER','Had 7 receptions · +\u0024105','See every pick graded'])assert.ok(run('__svg').includes(bit),bit);
+  // Losses post the same way, on the next run.
+  out=await run(`runXPosts(env,${kick+5*3600000+600000})`);assert.equal(out.results.posted,1);
+  const lost=posts.at(-1).body.text;assert.ok(lost.startsWith('❌ Lost: Josh Allen')&&lost.includes('We post every loss too.'),lost);
+  assert.ok(run('__svg').includes('LOSS'));
+  out=await run(`runXPosts(env,${kick+5*3600000+1200000})`);assert.equal(out.results.posted,0,'each result once');
+  // Picks that never went out on X get no result post.
+  pick('official|2026-10-06|props|prop|e','Never Posted',110,'won','2026-10-01T12:00:00Z','2026-10-04T17:00:00Z');
+  db.prepare("UPDATE public_recommendations SET settled_at=? WHERE id='official|2026-10-06|props|prop|e'").run(new Date(kick+4*3600000).toISOString());
+  assert.equal((await run(`postResultsToX(env,${kick+6*3600000})`)).posted,0);
+  for(const t of posts)assert.ok(t.body.text.length<=280&&!/https?:|\.com/.test(t.body.text),t.body.text);
+  console.log('PASS: X posts sign correctly, post each new official pick once with its graphic (text fallback after three failed uploads, never a duplicate), retry failures, post Tuesday results once with a graphic, reply with beat-the-close posts and with every result, wins and losses');
 })().catch(error=>{console.error(error);process.exit(1)});
