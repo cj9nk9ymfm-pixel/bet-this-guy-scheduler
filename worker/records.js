@@ -94,7 +94,10 @@ const OFFICIAL_HORIZON=8*86400000,LOW_ODDS_CREDITS=250000;
 function officialWeek(time){const d=new Date(Number(time)-12*3600000);d.setUTCHours(0,0,0,0);d.setUTCDate(d.getUTCDate()-(d.getUTCDay()+5)%7);return d.toISOString().slice(0,10)}
 const officialPlayer=leg=>`${leg.gameId}|${normalizedName(leg.player)}`;
 // stats (optional) collects what a run saw, for the pick_runs log.
-function officialCandidates(events,now=Date.now(),stats={}){
+// opts.min/opts.below set the edge band (official: 1% up, capped at 12%);
+// the near-miss shadow uses 0.5% to just under 1%.
+function officialCandidates(events,now=Date.now(),stats={},opts={}){
+  const min=opts.min??1,below=opts.below??Infinity;
   const result=[];
   for(const event of events){
     const kickoff=Date.parse(event.commence_time);
@@ -120,7 +123,7 @@ function officialCandidates(events,now=Date.now(),stats={}){
       const best=options[0];
       stats.props=(stats.props||0)+1;
       if(best){stats.best=Math.max(stats.best??-Infinity,best.edge);if(best.edge>=0.5&&best.edge<1)stats.near=(stats.near||0)+1;if(best.edge>=1&&best.edge<=12)stats.qualified=(stats.qualified||0)+1;if(best.edge>12)stats.capped=(stats.capped||0)+1}
-      if(!best||best.edge<1||best.edge>12)continue;
+      if(!best||best.edge<min||best.edge>=below||best.edge>12)continue;
       const leg=verifiedRecordLeg({...group,...best},event,now);
       if(leg)result.push({...leg,edge:best.edge,book:best.book,playerKey:officialPlayer(leg)});
     }
@@ -291,15 +294,54 @@ async function recordNbaShadow(request,env,ctx,now=Date.now()){
   const open=(await env.DB.prepare('SELECT id,event_id,player,market,side,line FROM nba_shadow WHERE game_time>?').bind(stamp).all()).results||[];
   for(const r of open){
     const event=boards.find(e=>(e.eventID||`NBA--${e.id}`)===r.event_id);if(!event)continue;
-    let best=null;
-    for(const book of event.bookmakers||[])if(OFFICIAL_BOOKS.has(book.key))for(const market of book.markets||[]){
-      if(recordLabels[market.key]!==r.market)continue;
-      for(const o of market.outcomes||[])if(String(o.description||'').trim()===r.player&&String(o.name).toLowerCase()===r.side.toLowerCase()&&BTGStats.number(o.point)===Number(r.line)){const odds=BTGStats.number(o.price);if(odds!==null&&(best===null||recordDecimal(odds)>recordDecimal(best)))best=odds}
-    }
+    const best=bigFivePrice(event,r);
     if(best!==null)statements.push(env.DB.prepare('UPDATE nba_shadow SET close_odds=?,close_at=? WHERE id=?').bind(best,stamp,r.id));
   }
   if(statements.length)await env.DB.batch(statements);
   return {games:games.length,boards:boards.length,logged:picks.length,tracked:open.length};
+}
+// The best big-5 price on offer for a shadow pick's player, market, side and line.
+function bigFivePrice(event,r){
+  let best=null;
+  for(const book of event.bookmakers||[])if(OFFICIAL_BOOKS.has(book.key))for(const market of book.markets||[]){
+    if(recordLabels[market.key]!==r.market)continue;
+    for(const o of market.outcomes||[])if(String(o.description||'').trim()===r.player&&String(o.name).toLowerCase()===r.side.toLowerCase()&&BTGStats.number(o.point)===Number(r.line)){const odds=BTGStats.number(o.price);if(odds!==null&&(best===null||recordDecimal(odds)>recordDecimal(best)))best=odds}
+  }
+  return best;
+}
+// Near-miss shadow: NFL props that pass every official rule but the edge
+// (0.5% to just under 1%), logged the first time they're seen per player and
+// game, never posted. Players who qualify officially this run are left out.
+// Each run keeps the best big-5 price at the same line, so the last one before
+// kickoff is the closing price.
+async function recordNearShadow(env,boards,official=[],now=Date.now()){
+  if(!env.DB)return {logged:0};
+  const stamp=new Date(now).toISOString(),taken=new Set(official.map(p=>p.playerKey));
+  const picks=officialCandidates(boards,now,{},{min:.5,below:1}).filter(p=>!taken.has(p.playerKey));
+  const statements=picks.map(p=>env.DB.prepare('INSERT OR IGNORE INTO near_shadow (id,event_id,player,team,market,side,line,odds,book,edge,game_time,logged_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)').bind(`${p.gameId}|${normalizedName(p.player)}`,p.gameId,p.player,p.team||null,p.market,p.side,p.line,p.odds,p.book,+p.edge.toFixed(2),p.gameTime,stamp));
+  const open=(await env.DB.prepare('SELECT id,event_id,player,market,side,line FROM near_shadow WHERE game_time>?').bind(stamp).all()).results||[];
+  for(const r of open){
+    const event=boards.find(e=>(e.eventID||`NFL--${e.id}`)===r.event_id);if(!event)continue;
+    const best=bigFivePrice(event,r);
+    if(best!==null)statements.push(env.DB.prepare('UPDATE near_shadow SET close_odds=?,close_at=? WHERE id=?').bind(best,stamp,r.id));
+  }
+  if(statements.length)await env.DB.batch(statements);
+  return {logged:picks.length,tracked:open.length};
+}
+// Grade near-miss shadow picks once the game is final, like official picks.
+async function gradeNearShadow(env,now=Date.now()){
+  if(!env.DB||!env.BALLDONTLIE_API_KEY)return {graded:0};
+  const rows=(await env.DB.prepare('SELECT * FROM near_shadow WHERE result IS NULL AND game_time<? AND game_time>? ORDER BY game_time LIMIT 20').bind(new Date(now-4*3600000).toISOString(),new Date(now-14*86400000).toISOString()).all()).results||[];
+  const cache=new Map(),statements=[],stamp=new Date(now).toISOString();
+  for(const r of rows){
+    const record={sport:'NFL',player:r.player,team:r.team,gameTime:r.game_time,market:r.market,side:r.side,line:r.line};
+    const stat=await recordPlayerStats(record,env,undefined,cache).catch(()=>null);
+    if(!stat||stat.missingPlayerStats||!(stat.scoreboardFinal||nflGameState(stat.game||{})==='final'))continue;
+    const value=BTGStats.metric(record,stat).value,result=value===null?null:BTGStats.grade(r.side,r.line,value);
+    if(result)statements.push(env.DB.prepare('UPDATE near_shadow SET actual=?,result=?,graded_at=? WHERE id=?').bind(value,result,stamp,r.id));
+  }
+  if(statements.length)await env.DB.batch(statements);
+  return {graded:statements.length,checked:rows.length};
 }
 // Grade shadow picks once their game is final (needs BALLDONTLIE NBA stats).
 async function gradeNbaShadow(env,now=Date.now()){
@@ -373,6 +415,7 @@ async function publishOfficialPicks(request,env,ctx){
     if(Date.now()-snapshotPrunedAt>3600000){snapshotPrunedAt=Date.now();await env.DB.prepare('DELETE FROM movement_snapshots WHERE captured_at<?').bind(Math.floor(Date.now()-7*86400000)).run().catch(error=>console.warn('snapshot_prune_failed',error.message))}
     const trail=officialTrailStatements(boards,existing.results||[],env,Date.now());if(trail.length)await env.DB.batch(trail);
     await recordLineShadow(env,boards,Date.now()).catch(error=>console.warn('line_shadow_failed',error.message));
+    await recordNearShadow(env,boards,candidates,Date.now()).catch(error=>console.warn('near_shadow_failed',error.message));
 
   if(failedBoards)throw new Error('Some official boards were unavailable; retry required');
   return {state:"completed"};
