@@ -73,7 +73,7 @@ const J=v=>JSON.parse(JSON.stringify(v));
   // The summary joins results once picks are graded.
   db.prepare("UPDATE public_recommendations SET status='final',result='won'").run();
   const sum=J(await run('statsCheckSummary(env)'));
-  assert.deepEqual(sum.find(s=>s.kind==='official'),{kind:'official',verdict:'agree',picks:1,won:1,lost:0,push:0,pending:0});
+  assert.deepEqual(sum.find(s=>s.kind==='official'),{kind:'official',verdict:'agree',picks:1,won:1,lost:0,push:0,void:0,pending:0});
   // Player lookup: a common surname that crowds the player out falls back to the first name.
   const searches=[];context.bdlRequest=async path=>{const term=new URLSearchParams(path.split('?')[1]).get('search');searches.push(term);
     return {data:term==='Johnson'?Array.from({length:100},(_,i)=>({id:i,first_name:'Other'+i,last_name:'Johnson',team:{full_name:'Dallas Cowboys'}})):term==='Tez'?[{id:7,first_name:'Tez',last_name:'Johnson',team:{full_name:'Tampa Bay Buccaneers'}}]:[]}};

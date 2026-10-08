@@ -90,6 +90,13 @@ const run=code=>vm.runInContext(code,context);
   seen.length=0;graded=await run(`gradeLineShadow(env,${now+12*3600000})`);
   assert.equal(graded.graded,1,'older rows are graded too');assert.equal(seen[0].team,'Arizona Cardinals · @ New York Giants');
   assert.equal(db.prepare("SELECT team FROM line_shadow WHERE id='old'").get().team,'Arizona Cardinals · @ New York Giants');
+  // A player missing from a final box score: waits 36 hours, then void (didn't play).
+  db.prepare("INSERT INTO line_shadow (id,event_id,player,market_key,market,side,line,odds,book,alt,main_line,books,edge,fair,game_time,logged_at,model_json,team) VALUES ('dnp','NFL--evt9','Hurt Guy','player_receptions','Receptions','Over',3.5,-110,'DraftKings',0,3.5,5,2,.5,?,?,'{}','Arizona Cardinals · @ New York Giants')").run(new Date(now).toISOString(),new Date(now-86400000).toISOString());
+  run('recordPlayerStats=async r=>r.player==="Hurt Guy"?{missingPlayerStats:true,scoreboardFinal:true}:{scoreboardFinal:true,passing_yards:212}');
+  await run(`gradeLineShadow(env,${now+20*3600000})`);
+  assert.equal(db.prepare("SELECT result FROM line_shadow WHERE id='dnp'").get().result,null,'not before 36 hours');
+  await run(`gradeLineShadow(env,${now+40*3600000})`);
+  assert.equal(db.prepare("SELECT result FROM line_shadow WHERE id='dnp'").get().result,'void');
   // Official picks still lock only at the same line and a big-5 book.
   assert.equal(run(`officialCandidates([lineEvent],${now}).length`),0,'line value is not used for official picks yet');
 
