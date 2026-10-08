@@ -1,8 +1,8 @@
 const assert=require('node:assert/strict'),vm=require('node:vm'),{webcrypto}=require('node:crypto'),{DatabaseSync}=require('node:sqlite');
 const {read}=require('./helpers/client.cjs');
-const posts=[];let fail=false;
-const context=vm.createContext({URL,URLSearchParams,Request,Response,Headers,AbortSignal,Date,console,setTimeout,clearTimeout,crypto:webcrypto,TextEncoder,btoa,atob,
-  fetch:async(url,init={})=>{if(String(url)==='https://api.twitter.com/2/tweets'){if(fail)return new Response('{}',{status:503});posts.push({auth:init.headers.authorization,body:JSON.parse(init.body)});return Response.json({data:{id:String(posts.length)}})}return new Response(null,{status:404})}});
+const posts=[],uploads=[];let fail=false,uploadFail=false;
+const context=vm.createContext({URL,URLSearchParams,Request,Response,Headers,AbortSignal,Date,console,setTimeout,clearTimeout,crypto:webcrypto,TextEncoder,btoa,atob,FormData,Blob,
+  fetch:async(url,init={})=>{if(/media\/upload/.test(String(url))){uploads.push(String(url));return uploadFail?Response.json({title:'Forbidden'},{status:403}):Response.json({data:{id:'m'+uploads.length}})}if(String(url)==='https://api.twitter.com/2/tweets'){if(fail)return new Response('{}',{status:503});posts.push({auth:init.headers.authorization,body:JSON.parse(init.body)});return Response.json({data:{id:String(posts.length)}})}return new Response(null,{status:404})}});
 const template=read('worker/index.template.js');
 vm.runInContext(template.slice(template.indexOf('const API_BASE')).replace('__MOVEMENT_SERVER__',read('worker/movement.js')).replace('__LIVE_SERVER__',read('worker/live.js')).replace('__STATS_SHARED__',read('dist/stats.js')).replace('__RECORDS_SERVER__',read('worker/records.js')).replace('__ACCOUNTS_SERVER__',read('worker/accounts.js')).replace('export default {','this.worker={'),context);
 const db=new DatabaseSync(':memory:');
@@ -22,12 +22,16 @@ pick('official|2026-10-06|props|prop|a','Travis Kelce',105,null,new Date(now-20*
   context.env={DB:{prepare:sql=>wrap(sql)}};
   assert.equal((await run(`postPicksToX(env,${now})`)).disabled,true);
   context.env={...context.env,...context.vec};
+  // The graphic: an SVG with the pick, rendered and uploaded, then posted with the image.
+  run('renderCardPng=async svg=>{globalThis.__svg=svg;return new Uint8Array([137,80,78,71])}');
   let out=await run(`postPicksToX(env,${now})`);
   assert.equal(out.posted,1);assert.equal(posts.length,1);
   const text=posts[0].body.text;
-  assert.ok(text.startsWith('🔒 Official pick: Travis Kelce Over 4.5 receptions (+105, FanDuel)'),text);
-  assert.ok(text.includes('Kansas City Chiefs @ Buffalo Bills')&&text.includes('2.4% better than the fair price.'),text);
-  assert.ok(text.includes('Season: 4–2, ')&&text.includes('link in bio')&&!/https?:|\.com/.test(text)&&text.includes('21+'),text);
+  assert.deepEqual(posts[0].body.media,{media_ids:['m1']},'posted with the uploaded graphic');
+  assert.ok(text.startsWith('🔒 Official pick: Travis Kelce Over 4.5 receptions (+105, FanDuel)\nChiefs @ Bills · '),text);
+  assert.ok(text.includes('link in bio')&&!/https?:|\.com/.test(text)&&text.includes('21+'),text);
+  const svg=run('__svg');
+  for(const bit of ['Travis Kelce','Under 4.5 receptions'.replace('Under','Over'),'+105','at FanDuel · +2.4% vs fair','4–2 · +','Today’s full board, free','betthisguy.com','OFFICIAL PICK'])assert.ok(svg.includes(bit),bit);
   assert.ok(text.length<=280);assert.match(posts[0].auth,/^OAuth oauth_consumer_key="xvz1evFS4wEEPTGEFPHBog"/);
   // Once per pick, even across runs.
   out=await run(`postPicksToX(env,${now+600000})`);assert.equal(out.posted,0);assert.equal(posts.length,1);
@@ -35,6 +39,14 @@ pick('official|2026-10-06|props|prop|a','Travis Kelce',105,null,new Date(now-20*
   pick('official|2026-10-06|props|prop|b','Josh Allen',-110,null,new Date(now).toISOString(),'2026-10-09T00:15:00Z');
   fail=true;out=await run(`postPicksToX(env,${now+600000})`);assert.equal(out.posted,0);
   fail=false;out=await run(`postPicksToX(env,${now+1200000})`);assert.equal(out.posted,1);assert.ok(posts[1].body.text.includes('Josh Allen'));
+  // Upload keeps failing: after three runs the text version posts instead, once.
+  pick('official|2026-10-06|props|prop|c','Cole Kmet',110,null,new Date(now).toISOString(),'2026-10-09T00:15:00Z');
+  uploadFail=true;for(let i=0;i<2;i++)assert.equal((await run(`postPicksToX(env,${now+(3+i)*600000})`)).posted,0);
+  out=await run(`postPicksToX(env,${now+5*600000})`);assert.equal(out.posted,1);
+  assert.ok(!posts.at(-1).body.media&&posts.at(-1).body.text.includes('Cole Kmet')&&posts.at(-1).body.text.includes('Season: 4–2'),'text fallback');
+  // A pick already posted as text earlier is not posted as text again.
+  pick('official|2026-10-06|props|prop|d','Old Text',110,null,new Date(now).toISOString(),'2026-10-09T00:15:00Z');db.prepare("INSERT INTO app_settings(key,value) VALUES('x:official|2026-10-06|props|prop|d','x')").run();
+  const before=posts.length;for(let i=0;i<3;i++)await run(`postPicksToX(env,${now+(6+i)*600000})`);assert.equal(posts.length,before);uploadFail=false;
   // Tuesday results post, once.
   const tue=Date.parse('2026-10-06T15:10:00Z');
   out=await run(`postWeeklyToX(env,${tue})`);assert.equal(out.posted,1);
@@ -42,5 +54,5 @@ pick('official|2026-10-06|props|prop|a','Travis Kelce',105,null,new Date(now-20*
   assert.ok(weekly.startsWith('📊 Week 4 results: 4–2 on props, +')&&weekly.includes('link in bio')&&!/https?:|\.com/.test(weekly),weekly);
   assert.equal((await run(`postWeeklyToX(env,${tue+600000})`)).done,true);
   assert.equal((await run(`postWeeklyToX(env,Date.parse('2026-10-05T16:00:00Z'))`)).due,false,'not on Monday');
-  console.log('PASS: X posts sign correctly, post each new official pick once with its price, value and season record, retry failures, and post Tuesday results once');
+  console.log('PASS: X posts sign correctly, post each new official pick once with its graphic (text fallback after three failed uploads, never a duplicate), retry failures, and post Tuesday results once');
 })().catch(error=>{console.error(error);process.exit(1)});

@@ -31,6 +31,8 @@ const records = await readFile("worker/records.js", "utf8");
 // Home-screen and notification icons and the link-preview image, served by the Worker.
 const icons = Object.fromEntries(await Promise.all(["/icon-192.png", "/icon-512.png", "/apple-touch-icon.png", "/og-image-v4.jpg", "/logo.png", "/logo-dark.png"].map(async path => [path, (await readFile(`dist${path}`)).toString("base64")])));
 const accounts = await readFile("worker/accounts.js", "utf8");
+// Fonts for the X pick graphics (static, Latin-only instances).
+const xFonts = await Promise.all(["SpaceGrotesk-Bold", "Inter-ExtraBold", "Inter-SemiBold"].map(async name => (await readFile(`worker/fonts/${name}.ttf`)).toString("base64")));
 const movement = await readFile("dist/movement.js", "utf8");
 const movementServer = await readFile("worker/movement.js", "utf8");
 const versioned = {
@@ -71,7 +73,8 @@ const output = template
   .replaceAll("__NFL_PAYLOAD__", () => JSON.stringify(nfl))
   .replaceAll("__PERFORMANCE_PAYLOAD__", () => JSON.stringify(performance))
   .replaceAll("__LOGO_PAYLOAD__", () => JSON.stringify(logo.toString("base64")))
-  .replaceAll("__ICONS_PAYLOAD__", () => JSON.stringify(icons));
+  .replaceAll("__ICONS_PAYLOAD__", () => JSON.stringify(icons))
+  .replace("__XFONTS_PAYLOAD__", () => JSON.stringify(xFonts));
 
 await mkdir("dist/server", { recursive: true });
 await mkdir("dist/.openai", { recursive: true });

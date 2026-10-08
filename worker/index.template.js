@@ -1,3 +1,16 @@
+// Pick graphics for X: SVG drawn in records.js, turned into a PNG here.
+import { Resvg, initWasm } from "@resvg/resvg-wasm";
+import resvgWasm from "@resvg/resvg-wasm/index_bg.wasm";
+const XCARD_FONTS = __XFONTS_PAYLOAD__;
+let resvgReady = null;
+async function renderCardPng(svg) {
+  resvgReady ||= initWasm(resvgWasm);
+  await resvgReady;
+  const fontBuffers = XCARD_FONTS.map(b64 => Uint8Array.from(atob(b64), c => c.charCodeAt(0)));
+  const png = new Resvg(svg, { fitTo: { mode: "original" }, font: { fontBuffers, loadSystemFonts: false, defaultFontFamily: "BTG Inter SB" } }).render().asPng();
+  return png;
+}
+
 const STATIC = {
   "/": ["text/html; charset=utf-8", __HTML_PAYLOAD__],
   "/index.html": ["text/html; charset=utf-8", __HTML_PAYLOAD__],
@@ -456,6 +469,46 @@ async function playerStats(request, env, ctx) {
   }
 }
 
+function espnImageFrom(payload, name, league) {
+  const players = (payload?.results || []).find(group => group.type === "player")?.contents || [];
+  const exact = players.find(player => normalizedName(player.displayName) === normalizedName(name) && (player.description === league.toUpperCase() || player.defaultLeagueSlug === league));
+  return exact?.image?.default || exact?.image?.defaultDark || null;
+}
+// A player's ESPN headshot as raw bytes (for the X pick graphics), or null.
+async function playerHeadshot(name, sport = "NFL") {
+  try {
+    const league = sport === "NBA" ? "nba" : "nfl";
+    const response = await fetch(`https://site.web.api.espn.com/apis/search/v2?query=${encodeURIComponent(name)}&limit=8`, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(8000) });
+    if (!response.ok) return null;
+    const url = espnImageFrom(await response.json(), name, league);
+    if (!url) return null;
+    const image = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    const type = image.headers.get("content-type") || "";
+    if (!image.ok || !/png|jpe?g/.test(type)) return null;
+    return { bytes: new Uint8Array(await image.arrayBuffer()), type: type.includes("png") ? "image/png" : "image/jpeg" };
+  } catch { return null; }
+}
+// Which team a player is on (abbreviation + full name), from BALLDONTLIE.
+async function playerTeamOf(env, sport, name, gameTeams) {
+  try {
+    const last = String(name).replace(/\b(Jr\.?|Sr\.?|II|III|IV)\b/gi, "").trim().split(/\s+/).at(-1);
+    const payload = await sportRequest(sport, `/players?${new URLSearchParams({ search: last, per_page: "25" })}`, env.BALLDONTLIE_API_KEY);
+    const player = selectPlayer(Array.isArray(payload?.data) ? payload.data : [], name, gameTeams || "");
+    return player?.team ? { abbreviation: player.team.abbreviation, full: player.team.full_name || player.team.name } : null;
+  } catch { return null; }
+}
+
+// The X graphic for one official pick, rendered without posting (for checks).
+async function xCardPreview(request, env) {
+  const id = new URL(request.url).searchParams.get("id") || "";
+  if (!env.DB || !/^official\|[\w|.-]{8,200}$/.test(id)) return new Response("", { status: 404 });
+  const row = await env.DB.prepare("SELECT * FROM public_recommendations WHERE id = ? AND source = 'market-verified-v2'").bind(id).first();
+  if (!row) return new Response("", { status: 404 });
+  const seasonRows = (await env.DB.prepare("SELECT kind,line,odds,combined_odds,status,result,closing_line,closing_odds,closing_captured_at FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%'").all()).results || [];
+  const png = await renderCardPng(xCardSvg(await xCardData(env, row, weeklySummary(seasonRows))));
+  return new Response(png, { headers: { "content-type": "image/png", "cache-control": "public, max-age=600" } });
+}
+
 async function playerPhoto(request) {
   const params = new URL(request.url).searchParams;
   const name = params.get("name")?.trim() || "";
@@ -465,9 +518,7 @@ async function playerPhoto(request) {
     const response = await fetch(`https://site.web.api.espn.com/apis/search/v2?query=${encodeURIComponent(name)}&limit=8`, { headers: { accept: "application/json" } });
     if (!response.ok) throw new Error("Search unavailable");
     const payload = await response.json();
-    const players = (payload.results || []).find(group => group.type === "player")?.contents || [];
-    const exact = players.find(player => normalizedName(player.displayName) === normalizedName(name) && (player.description === league.toUpperCase() || player.defaultLeagueSlug === league));
-    const imageURL = exact?.image?.default || exact?.image?.defaultDark;
+    const imageURL = espnImageFrom(payload, name, league);
     if (!imageURL) throw new Error("No image");
     const image = await fetch(imageURL);
     if (!image.ok) throw new Error("Image unavailable");
@@ -1170,6 +1221,7 @@ async function routeRequest(request, env, ctx) {
     if (url.pathname === "/api/record") return publicRecord(request, env, ctx);
     if (url.pathname === "/api/engine") return engineStatus(env);
     if (url.pathname === "/api/x-status") return json(await xStatus(env), 200, { "cache-control": "no-store" });
+    if (url.pathname === "/api/x-card.png") return xCardPreview(request, env);
     if (url.pathname === "/api/hit") return usageHit(request, env, ctx);
     if (url.pathname === "/api/affiliate") return affiliateApi(request, env);
     if (url.pathname.startsWith("/api/alerts/")) return alertsApi(request, env);

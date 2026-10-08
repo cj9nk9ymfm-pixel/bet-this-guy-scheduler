@@ -851,9 +851,9 @@ async function xOAuthHeader(env,method,url,extra={},nonce=crypto.randomUUID().re
   return 'OAuth '+Object.entries({...oauth,oauth_signature:sig}).sort(([a],[b])=>a.localeCompare(b)).map(([k,v])=>`${xEnc(k)}="${xEnc(v)}"`).join(', ');
 }
 const xReady=env=>Boolean(env.X_API_KEY&&env.X_API_SECRET&&env.X_ACCESS_TOKEN&&env.X_ACCESS_SECRET);
-async function xPost(env,text){
+async function xPost(env,text,mediaId=null){
   const url='https://api.twitter.com/2/tweets';
-  const response=await fetch(url,{method:'POST',headers:{authorization:await xOAuthHeader(env,'POST',url),'content-type':'application/json'},body:JSON.stringify({text}),signal:AbortSignal.timeout(15000)});
+  const response=await fetch(url,{method:'POST',headers:{authorization:await xOAuthHeader(env,'POST',url),'content-type':'application/json'},body:JSON.stringify(mediaId?{text,media:{media_ids:[mediaId]}}:{text}),signal:AbortSignal.timeout(15000)});
   if(!response.ok){const data=await response.json().catch(()=>({}));const why=String(data?.detail||data?.title||data?.errors?.[0]?.message||'').slice(0,200);throw new Error(`X post failed (${response.status})${why?`: ${why}`:''}`)}
   return response.json().catch(()=>({}));
 }
@@ -866,21 +866,121 @@ function xPickText(r,season){
   // No link in the text: X charges far more for posts with a URL, so the link lives in the bio.
   return xShort(`${head}${value}${record}\n\nLocked before kickoff, graded in public. Full record: link in bio.\n21+ · Odds move.`);
 }
+// Short text that goes above the pick graphic (no link: link posts cost more).
+function xCardText(r){
+  const legs=recordLegs(r),first=legs[0]||{},when=weeklyDay(r.game_time||first.gameTime),matchup=xMatchup(first.team);
+  const head=r.kind==='parlay'?`🔒 Official ${legs.length}-leg parlay (${weeklyOdds(r.combined_odds)})`:`🔒 Official pick: ${r.player} ${weeklyLegText(r)} (${weeklyOdds(r.odds)}${first.book?`, ${first.book}`:''})\n${[matchup,when].filter(Boolean).join(' · ')}`;
+  return xShort(`${head}\n\nToday’s full board: link in bio · 21+`);
+}
+// Each new official pick is posted once with its graphic. If the graphic
+// can't be made or uploaded three runs in a row, the text version posts
+// instead (unless that text was already posted), so a pick is never lost.
 async function postPicksToX(env,now=Date.now()){
   if(!env.DB||!xReady(env))return {posted:0,disabled:true};
-  const since=new Date(now-12*3600000).toISOString(),start=new Date(now).toISOString();
-  const picks=(await env.DB.prepare("SELECT id,kind,player,market,side,line,odds,combined_odds,legs_json,game_time FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND posted_at>? AND game_time>? ORDER BY posted_at LIMIT 6").bind(since,start).all()).results||[];
+  const since=new Date(now-24*3600000).toISOString(),start=new Date(now).toISOString();
+  const picks=(await env.DB.prepare("SELECT id,kind,sport,player,market,side,line,odds,combined_odds,legs_json,game_time FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND posted_at>? AND game_time>? ORDER BY posted_at LIMIT 6").bind(since,start).all()).results||[];
   if(!picks.length)return {posted:0};
   const seasonRows=(await env.DB.prepare("SELECT kind,line,odds,combined_odds,status,result,closing_line,closing_odds,closing_captured_at FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%'").all()).results||[];
   const season=weeklySummary(seasonRows);let posted=0;
   for(const r of picks){
+    if(await appSetting(env,`xi:${r.id}`))continue;
+    // Count attempts before the heavy work, so a crash mid-render still counts.
+    const tries=Number(await appSetting(env,`xtry:${r.id}`)||0)+1;await setAppSetting(env,`xtry:${r.id}`,String(tries));
     // Claim first so two Worker instances can't post the same pick twice.
-    const claim=await env.DB.prepare('INSERT OR IGNORE INTO app_settings (key,value) VALUES (?,?)').bind(`x:${r.id}`,start).run();
+    const claim=await env.DB.prepare('INSERT OR IGNORE INTO app_settings (key,value) VALUES (?,?)').bind(`xi:${r.id}`,start).run();
     if(!Number(claim?.meta?.changes??claim?.changes))continue;
-    try{await xPost(env,xPickText(r,season));posted++;await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} ${r.id}`).catch(()=>{})}
-    catch(error){console.warn('x_post_failed',error.message);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(`x:${r.id}`).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});break}
+    let mediaId=null,imageError=null;
+    if(tries<=3)try{
+      if(typeof renderCardPng!=='function')throw new Error('graphics unavailable');
+      const png=await renderCardPng(xCardSvg(await xCardData(env,r,season)));
+      mediaId=await xUploadImage(env,png);
+    }catch(error){imageError=error.message}
+    try{
+      if(mediaId)await xPost(env,xCardText(r),mediaId);
+      else if(tries<3){throw new Error(imageError||'graphic failed')}
+      else if(!(await appSetting(env,`x:${r.id}`)))await xPost(env,xPickText(r,season));
+      posted++;await setAppSetting(env,'x-last-post',`${start} ${mediaId?'graphic':'text'} ${r.id}`).catch(()=>{});
+      if(imageError)await setAppSetting(env,'x-last-error',`${start} graphic: ${imageError}`).catch(()=>{});
+    }catch(error){
+      console.warn('x_post_failed',error.message);
+      await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(`xi:${r.id}`).run().catch(()=>{});
+      await setAppSetting(env,'x-last-error',`${start} ${error.message}`).catch(()=>{});break;
+    }
   }
   return {posted,picks:picks.length};
+}
+// X pick graphic (design D): headshot over team colors on the left, the
+// pick on the right, and a mint call-to-action bar. Pure SVG so it can be
+// tested; renderCardPng (index.template.js) turns it into a PNG.
+const XCARD_TEAMS={NFL:{ARI:['#97233F','#FFB612'],ATL:['#A71930','#101820'],BAL:['#241773','#9E7C0C'],BUF:['#00338D','#C60C30'],CAR:['#0085CA','#101820'],CHI:['#0B162A','#C83803'],CIN:['#FB4F14','#101820'],CLE:['#311D00','#FF3C00'],DAL:['#003594','#869397'],DEN:['#FB4F14','#002244'],DET:['#0076B6','#B0B7BC'],GB:['#203731','#FFB612'],HOU:['#03202F','#A71930'],IND:['#002C5F','#A2AAAD'],JAX:['#006778','#D7A22A'],JAC:['#006778','#D7A22A'],KC:['#E31837','#FFB81C'],LV:['#101820','#A5ACAF'],LAC:['#0080C6','#FFC20E'],LAR:['#003594','#FFA300'],LA:['#003594','#FFA300'],MIA:['#008E97','#FC4C02'],MIN:['#4F2683','#FFC62F'],NE:['#002244','#C60C30'],NO:['#101820','#D3BC8D'],NYG:['#0B2265','#A71930'],NYJ:['#125740','#101820'],PHI:['#004C54','#A5ACAF'],PIT:['#101820','#FFB612'],SF:['#AA0000','#B3995D'],SEA:['#002244','#69BE28'],TB:['#D50A0A','#34302B'],TEN:['#4B92DB','#0C2340'],WAS:['#5A1414','#FFB612'],WSH:['#5A1414','#FFB612']},
+ NBA:{ATL:['#E03A3E','#26282A'],BOS:['#007A33','#BA9653'],BKN:['#101010','#777D84'],CHA:['#1D1160','#00788C'],CHI:['#CE1141','#101010'],CLE:['#860038','#FDBB30'],DAL:['#00538C','#002B5E'],DEN:['#0E2240','#FEC524'],DET:['#C8102E','#1D42BA'],GSW:['#1D428A','#FFC72C'],HOU:['#CE1141','#101010'],IND:['#002D62','#FDBB30'],LAC:['#C8102E','#1D428A'],LAL:['#552583','#FDB927'],MEM:['#5D76A9','#12173F'],MIA:['#98002E','#101010'],MIL:['#00471B','#EEE1C6'],MIN:['#0C2340','#236192'],NOP:['#0C2340','#C8102E'],NYK:['#006BB6','#F58426'],OKC:['#007AC1','#EF3B24'],ORL:['#0077C0','#101010'],PHI:['#006BB6','#ED174C'],PHX:['#1D1160','#E56020'],POR:['#E03A3E','#101010'],SAC:['#5A2D81','#63727A'],SAS:['#101010','#C4CED4'],TOR:['#CE1141','#101010'],UTA:['#002B5C','#F9A01B'],WAS:['#002B5C','#E31837']}};
+const XCARD_B='M46 0V116H138V584H46V700H406Q470 700 517.5 678.5Q565 657 591.5 617.5Q618 578 618 523V513Q618 465 600.0 434.5Q582 404 557.5 387.5Q533 371 511 364V346Q533 340 559.0 323.5Q585 307 603.5 276.0Q622 245 622 195V185Q622 127 595.0 85.5Q568 44 520.5 22.0Q473 0 410 0ZM270 120H394Q437 120 463.5 141.0Q490 162 490 201V211Q490 250 464.0 271.0Q438 292 394 292H270ZM270 412H392Q433 412 459.5 433.0Q486 454 486 491V501Q486 539 460.0 559.5Q434 580 392 580H270Z';
+const xEsc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+// Rough text widths (em per character) shrink long names to fit.
+const xFit=(text,max,size,em=.6)=>Math.max(26,Math.min(size,Math.floor(max/Math.max(1,String(text).length*em))));
+const xNick=team=>String(team||'').trim().split(/\s+/).at(-1)||'';
+function xMatchup(team){const [away,home]=String(team||'').split(/\s*·\s*(?:@|vs)\s*/);return away&&home?`${xNick(away)} @ ${xNick(home)}`:''}
+function xBase64(bytes){let out='';for(let i=0;i<bytes.length;i+=0x8000)out+=String.fromCharCode(...bytes.subarray(i,i+0x8000));return btoa(out)}
+function xLogo(x,y,size){return `<g transform="translate(${x} ${y}) scale(${size/64})"><rect width="64" height="64" rx="15" fill="#0b1530" stroke="#ffffff" stroke-opacity=".18" stroke-width="2"/><path transform="translate(13.73 48) scale(0.046 -0.046)" d="${XCARD_B}" fill="#fff"/><circle cx="47" cy="47" r="10" fill="#2ee6a8" stroke="#0b1530" stroke-width="3"/><path d="M42.5 47.2l3 3 6-6.4" stroke="#0b1530" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>`}
+function xCardSvg(c){
+  const M='#2ee6a8',F={g:'BTG Grotesk',xb:'BTG Inter XB',sb:'BTG Inter SB'},X=526,W=1200-X-56;
+  const [c1,c2]=c.parlay?['#1d4ed8','#0b1530']:(c.team&&XCARD_TEAMS[c.sport||'NFL']?.[String(c.team.abbreviation||'').toUpperCase()])||['#1d4ed8','#0b1530'];
+  const initials=String(c.title||'').split(/\s+/).map(w=>w[0]||'').join('').slice(0,3).toUpperCase();
+  const left=c.parlay
+    ?`<text x="235" y="320" text-anchor="middle" font-family="${F.g}" font-size="170" fill="#ffffff" fill-opacity=".92">${c.legs.length}</text><text x="235" y="392" text-anchor="middle" font-family="${F.xb}" font-size="32" letter-spacing="6" fill="#ffffff" fill-opacity=".8">LEG PARLAY</text>`
+    :`${c.photo&&c.team?.abbreviation?`<text x="235" y="190" text-anchor="middle" font-family="${F.g}" font-size="170" fill="#ffffff" fill-opacity=".13">${xEsc(c.team.abbreviation)}</text>`:''}${c.photo?`<image href="data:${c.photo.type};base64,${c.photo.b64}" x="-70" y="200" width="610" height="446" preserveAspectRatio="xMidYMax meet"/>`:`<text x="235" y="410" text-anchor="middle" font-family="${F.g}" font-size="170" fill="#ffffff" fill-opacity=".24">${xEsc(c.team?.abbreviation||initials)}</text>`}`;
+  const oddsW=[...String(c.odds)].reduce((w,ch)=>w+(/[0-9]/.test(ch)?.56:.5),0)*86;
+  const legs=c.parlay?c.legs.slice(0,4):[];
+  const legsSvg=legs.map((l,i)=>`<text x="${X}" y="${226+i*46}" font-family="${F.sb}" font-size="${xFit(l.text,W-110,27,.55)}" fill="#cfe0f5">${xEsc(l.text)}</text><text x="${1200-56}" y="${226+i*46}" text-anchor="end" font-family="${F.xb}" font-size="25" fill="#9fb0cc">${xEsc(l.odds)}</text>`).join('');
+  const oddsY=c.parlay?226+legs.length*46+42:330;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675" viewBox="0 0 1200 675">
+<defs><linearGradient id="tm" x1="0" y1="0" x2="0.45" y2="1"><stop offset="0" stop-color="${c1}"/><stop offset="1" stop-color="${c2}"/></linearGradient>
+<linearGradient id="fade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#070d1f" stop-opacity="0"/><stop offset="1" stop-color="#070d1f" stop-opacity=".88"/></linearGradient>
+<clipPath id="lp"><rect width="470" height="675"/></clipPath></defs>
+<rect width="1200" height="675" fill="#0b1530"/>
+<g clip-path="url(#lp)"><rect width="470" height="675" fill="url(#tm)"/>${left}<rect y="510" width="470" height="165" fill="url(#fade)"/>
+<text x="28" y="643" font-family="${F.xb}" font-size="21" letter-spacing="2.5" fill="#ffffff" fill-opacity=".88">${xEsc(c.footLeft||'')}</text></g>
+<rect x="${X}" y="54" width="262" height="44" rx="22" fill="${M}"/>
+<g transform="translate(${X+20} 64)"><rect x="1" y="9" width="16" height="13" rx="2.5" fill="#06231a"/><path d="M4.5 9V6a4.5 4.5 0 0 1 9 0v3" fill="none" stroke="#06231a" stroke-width="2.6"/></g>
+<text x="${X+48}" y="84" font-family="${F.xb}" font-size="20" letter-spacing="2.6" fill="#06231a">OFFICIAL PICK</text>
+<text x="${X}" y="${c.parlay?168:168}" font-family="${F.g}" font-size="${xFit(c.title,W,c.parlay?62:72,.6)}" fill="#ffffff">${xEsc(c.title)}</text>
+${c.parlay?legsSvg:`<text x="${X}" y="228" font-family="${F.g}" font-size="${xFit(c.bet,W,42,.58)}" fill="#cfe0f5">${xEsc(c.bet)}</text>
+<text x="${X}" y="270" font-family="${F.sb}" font-size="24" fill="#9fb0cc">${xEsc(c.when||'')}</text>`}
+<text x="${X-4}" y="${oddsY+30}" font-family="${F.g}" font-size="86" fill="${M}">${xEsc(c.odds)}</text>
+<text x="${Math.round(X+oddsW+16)}" y="${oddsY+18}" font-family="${F.sb}" font-size="25" fill="#9fb0cc">${xEsc(c.oddsNote||'')}</text>
+${c.season?`<text x="${X}" y="545" font-family="${F.sb}" font-size="23" fill="#9fb0cc">Season <tspan font-family="${F.xb}" fill="#ffffff">${xEsc(c.season)}</tspan></text>`:''}
+${xLogo(1200-56-228,512,46)}<text x="${1200-56}" y="545" text-anchor="end" font-family="${F.g}" font-size="27" fill="#ffffff">Bet This Guy</text>
+<rect x="470" y="589" width="730" height="86" fill="${M}"/>
+<text x="${X}" y="643" font-family="${F.g}" font-size="29" fill="#06231a">Today’s full board, free</text>
+<text x="${1200-56-38}" y="644" text-anchor="end" font-family="${F.g}" font-size="31" fill="#06231a">betthisguy.com</text><path d="M1118 633h24m-9-9 9 9-9 9" fill="none" stroke="#06231a" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
+}
+// Everything the graphic needs for one official pick.
+async function xCardData(env,r,season){
+  const legs=recordLegs(r),first=legs[0]||{},sport=r.sport_label||r.sport||'NFL',time=r.game_time||first.gameTime,when=weeklyDay(time);
+  const edge=Number(first.edge),seasonText=season&&season.wins+season.losses>=5?`${season.wins}–${season.losses} · ${weeklyMoney(season.profit)}`:'';
+  const shortWhen=when.replace(/^(\w+), \w+ \d+, /,'$1 ').toUpperCase();
+  if(r.kind==='parlay')return {sport,parlay:true,title:`${legs.length}-leg parlay`,legs:legs.map(l=>({text:`${l.player} · ${weeklyLegText(l)}`,odds:weeklyOdds(l.odds)})),odds:weeklyOdds(r.combined_odds),oddsNote:`\u0024100 pays \u0024${Math.round(100*(weeklyDecimal(r.combined_odds)||1)).toLocaleString('en-US')}`,season:seasonText,footLeft:shortWhen};
+  const [team,shot]=await Promise.all([typeof playerTeamOf==='function'?playerTeamOf(env,sport,r.player,first.team):null,typeof playerHeadshot==='function'?playerHeadshot(r.player,sport):null]);
+  return {sport,team,photo:shot?{type:shot.type,b64:xBase64(shot.bytes)}:null,title:r.player,bet:weeklyLegText(r).replace(/^./,ch=>ch.toUpperCase()),when:[xMatchup(first.team),when].filter(Boolean).join(' · '),odds:weeklyOdds(r.odds),oddsNote:[first.book?`at ${first.book}`:'',Number.isFinite(edge)&&edge>0?`+${edge.toFixed(1)}% vs fair`:''].filter(Boolean).join(' · '),season:seasonText,footLeft:[team?.full?xNick(team.full).toUpperCase():'',shortWhen].filter(Boolean).join(' · ')};
+}
+// Upload a PNG to X and return its media id. Tries the v2 upload as a
+// multipart form, then as JSON, then the older v1.1 upload.
+async function xUploadImage(env,png){
+  const tries=[];
+  const attempt=async(url,body,headers={})=>{
+    const response=await fetch(url,{method:'POST',headers:{authorization:await xOAuthHeader(env,'POST',url),...headers},body,signal:AbortSignal.timeout(20000)});
+    const data=await response.json().catch(()=>({}));
+    const id=data?.data?.id||data?.data?.media_id_string||data?.media_id_string||data?.id;
+    if(response.ok&&id)return String(id);
+    tries.push(`${new URL(url).pathname} ${response.status} ${String(data?.detail||data?.title||data?.errors?.[0]?.message||'').slice(0,80)}`);return null;
+  };
+  const form=(extra=true)=>{const f=new FormData();f.append('media',new Blob([png],{type:'image/png'}),'pick.png');if(extra){f.append('media_category','tweet_image');f.append('media_type','image/png')}return f};
+  const id=await attempt('https://api.x.com/2/media/upload',form())
+    ||await attempt('https://api.x.com/2/media/upload',JSON.stringify({media:xBase64(png),media_category:'tweet_image',media_type:'image/png'}),{'content-type':'application/json'})
+    ||await attempt('https://upload.twitter.com/1.1/media/upload.json',form(false));
+  if(!id)throw new Error(`X image upload failed: ${tries.join(' | ')}`);
+  return id;
 }
 // What the X integration last did: keys present, last post, last error.
 // Never calls X itself (X API calls cost credits).
