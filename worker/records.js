@@ -339,6 +339,7 @@ async function gradeNearShadow(env,now=Date.now()){
   for(const r of rows){
     const record={sport:'NFL',player:r.player,team:r.team,gameTime:r.game_time,market:r.market,side:r.side,line:r.line};
     const stat=await recordPlayerStats(record,env,undefined,cache).catch(()=>null);
+    if(shadowVoid(stat,r.game_time,now)){statements.push(env.DB.prepare('UPDATE near_shadow SET actual=NULL,result=?,graded_at=? WHERE id=?').bind('void',stamp,r.id));continue}
     if(!stat||stat.missingPlayerStats||!(stat.scoreboardFinal||nflGameState(stat.game||{})==='final'))continue;
     const value=BTGStats.metric(record,stat).value,result=value===null?null:BTGStats.grade(r.side,r.line,value);
     if(result)statements.push(env.DB.prepare('UPDATE near_shadow SET actual=?,result=?,graded_at=? WHERE id=?').bind(value,result,stamp,r.id));
@@ -457,7 +458,7 @@ async function runStatsChecks(env,ctx,now=Date.now()){
 async function statsCheckSummary(env){
   const rows=(await env.DB.prepare("SELECT c.kind,c.verdict,COALESCE(p.result,n.result) AS result FROM stats_checks c LEFT JOIN public_recommendations p ON p.id=c.id AND p.status='final' LEFT JOIN near_shadow n ON 'near|'||n.id=c.id").all()).results||[];
   const out={};
-  for(const r of rows){const k=`${r.kind}|${r.verdict}`,s=out[k]||(out[k]={kind:r.kind,verdict:r.verdict,picks:0,won:0,lost:0,push:0,pending:0});s.picks++;if(['won','lost','push'].includes(r.result))s[r.result]++;else s.pending++}
+  for(const r of rows){const k=`${r.kind}|${r.verdict}`,s=out[k]||(out[k]={kind:r.kind,verdict:r.verdict,picks:0,won:0,lost:0,push:0,void:0,pending:0});s.picks++;if(['won','lost','push','void'].includes(r.result))s[r.result]++;else s.pending++}
   return Object.values(out);
 }
 // Grade shadow picks once their game is final (needs BALLDONTLIE NBA stats).
@@ -477,6 +478,10 @@ async function gradeNbaShadow(env,now=Date.now()){
   if(statements.length)await env.DB.batch(statements);
   return {graded:statements.length,checked:rows.length};
 }
+// Shadow picks only: a player missing from a final box score 36+ hours after
+// kickoff most likely didn't play, which sportsbooks void (no action). Marking
+// it void keeps it out of the win rate instead of waiting forever.
+const shadowVoid=(stat,gameTime,now)=>Boolean(stat?.missingPlayerStats&&stat.scoreboardFinal&&now-Date.parse(gameTime)>36*3600000);
 // Grade line-value shadow picks once their game is final, the same way
 // official picks are graded. Older rows logged before the team was stored
 // look it up from the saved odds snapshots.
@@ -496,6 +501,7 @@ async function gradeLineShadow(env,now=Date.now()){
     }
     const record={sport:'NFL',player:r.player,team,gameTime:r.game_time,market:r.market,side:r.side,line:r.line};
     const stat=await recordPlayerStats(record,env,undefined,cache).catch(()=>null);
+    if(shadowVoid(stat,r.game_time,now)){graded++;statements.push(env.DB.prepare('UPDATE line_shadow SET actual=NULL,result=?,graded_at=? WHERE id=?').bind('void',stamp,r.id));continue}
     if(!stat||stat.missingPlayerStats||!(stat.scoreboardFinal||nflGameState(stat.game||{})==='final'))continue;
     const value=BTGStats.metric(record,stat).value,result=value===null?null:BTGStats.grade(r.side,r.line,value);
     if(result){graded++;statements.push(env.DB.prepare('UPDATE line_shadow SET actual=?,result=?,graded_at=? WHERE id=?').bind(value,result,stamp,r.id))}
@@ -503,7 +509,10 @@ async function gradeLineShadow(env,now=Date.now()){
   if(statements.length)await env.DB.batch(statements);
   return {graded,checked:rows.length};
 }
-async function publishOfficialPicks(request,env,ctx){
+// Games starting within this window get fresher prices (a 4-minute cache) and
+// an extra check between the regular runs (opts.soonOnly: those games only).
+const SOON_WINDOW=4*3600000,SOON_MAX_AGE=240000;
+async function publishOfficialPicks(request,env,ctx,opts={}){
   if(Date.now()<OFFICIAL_START)return {state:"not_started"};
 
     const now=Date.now(),week=officialWeek(now),prefix=`official|${week}|`;
@@ -512,13 +521,16 @@ async function publishOfficialPicks(request,env,ctx){
     // Every game left this week is eligible until 5 minutes before kickoff,
     // unless the odds plan runs low (then only the next 24 hours).
     const horizon=oddsCreditsLeft!==null&&oddsCreditsLeft<LOW_ODDS_CREDITS?24*3600000:OFFICIAL_HORIZON;
-    const events=(body.data||[]).filter(e=>{const t=Date.parse(e.status?.startsAt);return t>now+5*60000&&t<=now+horizon&&officialWeek(t)===week}).slice(0,16);
+    const soon=e=>Date.parse(e.status?.startsAt)<=now+SOON_WINDOW;
+    let events=(body.data||[]).filter(e=>{const t=Date.parse(e.status?.startsAt);return t>now+5*60000&&t<=now+horizon&&officialWeek(t)===week}).slice(0,16);
+    if(opts.soonOnly){events=events.filter(soon).sort((a,b)=>Date.parse(a.status.startsAt)-Date.parse(b.status.startsAt)).slice(0,6);if(!events.length)return {state:'no_soon_games'}}
     const boards=[];let failedBoards=0;
-    for(let i=0;i<events.length;i+=4){const results=await Promise.allSettled(events.slice(i,i+4).map(async e=>{const url=new URL('/api/event',request.url);url.searchParams.set('eventID',e.eventID);const r=await eventProps(new Request(url),env,ctx);if(!r.ok||r.headers.get('x-feed-cache')==='stale')throw new Error('Official board unavailable');return (await r.json()).data||[]}));for(const r of results)if(r.status==='fulfilled')boards.push(...r.value);else failedBoards++}
+    for(let i=0;i<events.length;i+=4){const results=await Promise.allSettled(events.slice(i,i+4).map(async e=>{const url=new URL('/api/event',request.url);url.searchParams.set('eventID',e.eventID);const r=await eventProps(new Request(url),env,ctx,soon(e)?{maxAge:SOON_MAX_AGE}:{});if(!r.ok||r.headers.get('x-feed-cache')==='stale')throw new Error('Official board unavailable');return (await r.json()).data||[]}));for(const r of results)if(r.status==='fulfilled')boards.push(...r.value);else failedBoards++}
     const existing=await env.DB.prepare('SELECT * FROM public_recommendations WHERE id>=? AND id<?').bind(prefix,prefix+'\uffff').all();
     const stats={};const candidates=officialCandidates(boards,Date.now(),stats);const posted=await writeOfficialPlan(officialPlan(candidates,existing.results||[],week,Date.now()),week,env);
-    // One row per run: what the pick job saw and why it did or didn't post.
-    await env.DB.batch([
+    // One row per full run: what the pick job saw and why it did or didn't post
+    // (the quick soon-games runs aren't logged, so the engine status stays whole-board).
+    if(!opts.soonOnly)await env.DB.batch([
       env.DB.prepare('INSERT INTO pick_runs (at,games,boards,failed_boards,props,best_edge,near,qualified,capped,candidates,posted,credits_left) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)').bind(new Date(now).toISOString(),events.length,boards.length,failedBoards,stats.props||0,Number.isFinite(stats.best)?+stats.best.toFixed(2):null,stats.near||0,stats.qualified||0,stats.capped||0,candidates.length,Number(posted)||0,oddsCreditsLeft),
       env.DB.prepare('DELETE FROM pick_runs WHERE at<?').bind(new Date(now-30*86400000).toISOString())
     ]).catch(error=>console.warn('pick_runs_failed',error.message));

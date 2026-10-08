@@ -28,7 +28,7 @@ async function call(req){context.req=req;return run('worker.fetch(req,env,{waitU
  assert.equal(due('2026-10-06T14:05:00Z'),'["xpost"]');
  assert.equal(due('2026-10-06T18:00:00Z'),'["publish","grade"]','grading still runs every 6 hours in quiet periods');
  assert.equal(typeof run('worker.scheduled'),'function','the Worker exports a scheduled handler');
- const ran=[];context.publishOfficialPicks=async()=>{ran.push('publish')};context.settlePublicRecords=async()=>{ran.push('grade')};
+ const ran=[];context.publishOfficialPicks=async(req,env,ctx,opts={})=>{ran.push(opts.soonOnly?'publishSoon':'publish');return opts.soonOnly?context.soonResult:undefined};context.settlePublicRecords=async()=>{ran.push('grade')};
  run('publishOfficialPicks=globalThis.publishOfficialPicks;settlePublicRecords=globalThis.settlePublicRecords');
  await run(`worker.scheduled({scheduledTime:Date.parse('2026-10-04T17:00:00Z')},env,{waitUntil(){}})`);
  assert.deepEqual(ran,['publish','grade'],'the cron runs the jobs that are due');
@@ -37,10 +37,14 @@ async function call(req){context.req=req;return run('worker.fetch(req,env,{waitU
  run('postPicksToX=globalThis.postPicksToX;postWeeklyToX=globalThis.postWeeklyToX;postClosingToX=globalThis.postClosingToX;postResultsToX=globalThis.postResultsToX;gradeLineShadow=globalThis.gradeLineShadow;gradeNearShadow=globalThis.gradeNearShadow;sendWeeklyDigest=globalThis.sendWeeklyDigest;sendDueAlerts=globalThis.sendDueAlerts;runStatsChecks=globalThis.runStatsChecks');
  ran.length=0;await run(`worker.scheduled({scheduledTime:Date.parse('2026-10-04T16:45:00Z')},env,{waitUntil(){}})`);
  assert.equal(ran[0],'sendDueAlerts','pick alerts go first on the in-between run');
- assert.deepEqual(ran.sort(),['gradeLineShadow','postClosingToX','postPicksToX','postResultsToX','postWeeklyToX','sendDueAlerts','sendWeeklyDigest'],'the in-between run posts to X, sends the digest when due and grades line value');
+ assert.deepEqual(ran.sort(),['gradeLineShadow','postClosingToX','postPicksToX','postResultsToX','postWeeklyToX','publishSoon','sendDueAlerts','sendWeeklyDigest'],'the in-between run posts to X, sends the digest when due and grades line value');
  // Line-value and near-miss grading take turns on those runs.
  ran.length=0;await run(`worker.scheduled({scheduledTime:Date.parse('2026-10-04T16:55:00Z')},env,{waitUntil(){}})`);
  assert.ok(ran.includes('gradeNearShadow')&&!ran.includes('gradeLineShadow'),'minute 55 grades near-miss picks');
+ // Games kicking off soon: those slots check their prices instead of grading.
+ context.soonResult={state:'completed'};
+ for(const at of ['2026-10-04T16:45:00Z','2026-10-04T16:55:00Z']){ran.length=0;await run(`worker.scheduled({scheduledTime:Date.parse('${at}')},env,{waitUntil(){}})`);assert.ok(ran.includes('publishSoon')&&!ran.includes('gradeLineShadow')&&!ran.includes('gradeNearShadow'),at)}
+ context.soonResult={state:'no_soon_games'};
  ran.length=0;await run(`worker.scheduled({scheduledTime:Date.parse('2026-10-04T17:05:00Z')},env,{waitUntil(){}})`);
  assert.ok(ran.includes('runStatsChecks')&&!ran.includes('gradeLineShadow')&&!ran.includes('gradeNearShadow'),'minute 5 runs the stats check');
  const wf=read('.github/workflows/btg-maintenance.yml');

@@ -294,7 +294,10 @@ function tooManyRequests(saved) {
   return json({ success: false, error: "Too many new lookups right now. Try again in a minute." }, 429, { "retry-after": "60" });
 }
 
-async function eventProps(request, env, ctx) {
+// opts.maxAge (internal callers only, never from a URL): reuse cached pre-game
+// odds for at most this long. The pick job asks for fresher prices on games
+// that start soon.
+async function eventProps(request, env, ctx, opts = {}) {
   if (!env.THE_ODDS_API_KEY) return json({ success: false, error: "Live feed is not configured." }, 503);
   const eventID = new URL(request.url).searchParams.get("eventID") || "";
   const splitAt = eventID.indexOf("--");
@@ -307,7 +310,7 @@ async function eventProps(request, env, ctx) {
   const saved = await readFeedCache(request, `the-odds-api-event-expanded-v3-${movement ? "movement-" : inPlay ? "live-" : ""}${eventID}`);
   // Pre-game odds are reused for 9 minutes, so the pick job (every 10 minutes)
   // always pulls fresh prices instead of every other run hitting the cache.
-  if (saved.response && cacheAge(saved.response) < (inPlay || movement ? 60000 : 540000)) return cachedForClient(saved.response, "fresh");
+  if (saved.response && cacheAge(saved.response) < (inPlay || movement ? 60000 : Math.min(540000, opts.maxAge || 540000))) return cachedForClient(saved.response, "fresh");
   if (!await allowEventLookup(request, env, ctx, eventID)) return tooManyRequests(saved);
   try {
     const selectedSport = movement ? {...sport, markets:sport.movementMarkets,expandedMarkets:[]} : sport;
@@ -651,10 +654,7 @@ async function recordPlayerStats(record, env, signal, cache=new Map()) {
   const sport = String(record?.sport || "NFL").toUpperCase();
   const config = BDL_SPORTS[sport];
   if (!config?.stats || !record?.player || !record?.gameTime) return null;
-  const nameParts = String(record.player).replace(/\b(Jr\.?|Sr\.?|II|III|IV)\b/gi, "").trim().split(/\s+/).filter(Boolean);
-  const search = new URLSearchParams({ search: nameParts.at(-1) || record.player, per_page: "25" });
-  const playerPayload = await sportRequest(sport, `/players?${search}`, env.BALLDONTLIE_API_KEY, signal);
-  const player = selectPlayer(Array.isArray(playerPayload?.data) ? playerPayload.data : [], record.player, record.team || "");
+  const player = await findStatsPlayer(sport, record.player, record.team || "", env.BALLDONTLIE_API_KEY);
   if (!player) return gameRow===undefined?null:gameRow;
   if(gameRow?.missingPlayerStats)return {...gameRow,player,player_id:player.id};
   const query = new URLSearchParams({ per_page: "100" });
@@ -1172,7 +1172,15 @@ async function runCron(controller,env,ctx){
   const request=new Request(`${SITE_URL}/api/maintenance`),jobs={publish:()=>publishOfficialPicks(request,env,ctx),grade:()=>settlePublicRecords(env),nbaShadow:()=>recordNbaShadow(request,env,ctx),nbaGrade:()=>gradeNbaShadow(env),digest:()=>sendWeeklyDigest(env),alerts:()=>sendDueAlerts(env),xpost:()=>runXPosts(env),
     // Line-value grading, near-miss grading and the stats check take turns
     // (minutes 15/45, 25/55 and 5/35) so each run stays inside the request limit.
-    lineGrade:()=>({5:()=>runStatsChecks(env,ctx),15:gradeLineShadow,25:gradeNearShadow}[new Date(controller.scheduledTime).getUTCMinutes()%30]||gradeLineShadow)(env)};
+    // While games kick off within 4 hours, the 15/45 and 25/55 slots check
+    // those games' prices instead, so soon games get fresh prices about every
+    // 5 minutes; shadow grading catches up once the slate is done.
+    lineGrade:async()=>{
+      const slot=new Date(controller.scheduledTime).getUTCMinutes()%30;
+      if(slot===5)return runStatsChecks(env,ctx);
+      if(env.THE_ODDS_API_KEY){const fast=await publishOfficialPicks(request,env,ctx,{soonOnly:true});if(fast?.state==='completed')return fast}
+      return (slot===25?gradeNearShadow:gradeLineShadow)(env);
+    }};
   // NBA shadow runs after the NFL jobs and on its own: it can never hold up
   // or fail NFL publishing or grading.
   if(due.includes('publish'))due.push('nbaShadow');
