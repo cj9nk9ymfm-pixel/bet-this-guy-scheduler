@@ -1666,10 +1666,11 @@ if(typeof fetch==='function')window.btgCountVisit?.('view:home');
   };
 })();
 
-// Free-account gate. Signed-out visitors see every Good value card, the
-// first few other rated props, and three card breakdowns a day; a free
-// account unlocks the rest of the board and the line-movement charts. The
-// public record, parlays, last week's hits and the weekly pages stay open.
+// Free-account gate. The whole board and every card breakdown are open to
+// everyone; a free account unlocks the line-movement page and charts. In
+// 37 showings in a week, the old board wall got no sign-up clicks, so the
+// board now asks for the easier thing instead: turn on pick alerts (no
+// account), with the season record as the reason.
 (function(){
   const FREE_OTHERS=3,FREE_OPENS=3,FREE_MOVERS=3,OPENS_KEY='btg-free-opens';
   const hasAccount=()=>Boolean(window.BTGAuth?.hasAccount?.());
@@ -1684,11 +1685,27 @@ if(typeof fetch==='function')window.btgCountVisit?.('view:home');
   const buttons=`<div class="gate-actions"><button type="button" class="gate-primary" data-gate="signup">Create a free account</button><button type="button" class="gate-secondary" data-gate="login">Sign in</button></div>`;
   const plural=(n,word)=>`${n} ${word}${n===1?'':'s'}`;
   const movementPage=()=>state.view==='movement'||document.body.dataset.desktopPage==='movement';
+  // After the sixth card, one "turn on alerts" card for anyone without alerts
+  // (hidden by CSS once alerts are on). It clicks the page's alerts button,
+  // which does the permission and iPhone handling.
+  const NUDGE_AFTER=6;let nudgeCounted=false;
+  const seasonLine=()=>{const s=window.BTG_SEASON;if(!s||s.wins+s.losses<5)return 'Every official pick is locked before kickoff and graded in public, wins and losses.';const m=Math.round(Number(s.profit)||0);return `This season: ${s.wins}–${s.losses}, ${m<0?'−':'+'}$${Math.abs(m).toLocaleString('en-US')} at $100 a pick. Every pick graded in public, wins and losses.`};
+  function nudgeList(list){
+    list.querySelector('.board-nudge')?.remove();
+    if(selectedPlayer||state.view!=='board'||document.documentElement.classList.contains('alerts-on'))return;
+    const cards=[...list.querySelectorAll(':scope>.prop-card')];if(cards.length<=NUDGE_AFTER)return;
+    const card=document.createElement('div');card.className='board-nudge';
+    card.innerHTML=`<p class="gate-eyebrow">${icon('bell')} FREE PICK ALERTS</p><h3>Get the next pick the second it locks</h3><p>${htmlEscape(seasonLine())}</p><div class="gate-actions"><button type="button" class="gate-primary" data-nudge-alerts>Turn on alerts</button>${hasAccount()?'':'<button type="button" class="gate-link" data-gate="signup">or create a free account</button>'}</div>`;
+    cards[NUDGE_AFTER-1].after(card);bindGate(card);
+    card.querySelector('[data-nudge-alerts]').onclick=()=>{window.btgCount?.('nudge:alerts');(document.querySelector('[data-alerts-banner]')||document.querySelector('[data-alerts-toggle]'))?.click()};
+    if(!nudgeCounted){nudgeCounted=true;window.btgCount?.('nudge:shown')}
+  }
   function gateList(){
     const list=$('#propList');if(!list)return;
     list.querySelector('.board-gate')?.remove();
+    nudgeList(list);
     if(hasAccount()||selectedPlayer)return;
-    const moving=movementPage();if(!moving&&state.view!=='board')return;
+    const moving=movementPage();if(!moving)return;
     const cards=[...list.querySelectorAll(':scope>.prop-card')];let others=0;
     const locked=cards.filter(el=>{if(!moving&&el.classList.contains('compact-send'))return false;others++;return others>(moving?FREE_MOVERS:FREE_OTHERS)});
     if(!locked.length)return;
@@ -1711,7 +1728,7 @@ if(typeof fetch==='function')window.btgCountVisit?.('view:home');
       const key=savedPropKey(p),header=el.querySelector('.prop-player');
       const guard=handler=>handler&&function(event){
         if(event.target.closest?.('button,a,input,select,.mockup-pick,.card-more,[data-board-progress]')&&this===el)return handler.call(this,event);
-        if(hasAccount()||el.classList.contains('expanded')||allowOpen(key)){el.querySelector('.card-gate')?.remove();return handler.call(this,event)}
+        if(hasAccount()||!movementPage()||el.classList.contains('expanded')||allowOpen(key)){el.querySelector('.card-gate')?.remove();return handler.call(this,event)}
         event.stopPropagation();
         if(el.querySelector('.card-gate'))return el.querySelector('.card-gate').remove();
         const note=document.createElement('div');note.className='card-gate';
