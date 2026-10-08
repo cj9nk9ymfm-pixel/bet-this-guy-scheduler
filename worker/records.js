@@ -328,8 +328,9 @@ async function gradeLineShadow(env,now=Date.now()){
   for(const r of rows){
     let team=r.team;
     if(!team){
+      // Snapshots keep the NFL-- prefix; older ones may not, so try both.
       const provider=String(r.event_id).replace(/^NFL--/,'');
-      if(!teams.has(provider)){const snap=await env.DB.prepare("SELECT json_extract(payload_json,'$.away_team') away,json_extract(payload_json,'$.home_team') home FROM movement_snapshots WHERE event_id=? AND kind='observed' LIMIT 1").bind(provider).first().catch(()=>null);teams.set(provider,snap?.away&&snap?.home?`${snap.away} · @ ${snap.home}`:null)}
+      if(!teams.has(provider)){const snap=await env.DB.prepare("SELECT json_extract(payload_json,'$.away_team') away,json_extract(payload_json,'$.home_team') home FROM movement_snapshots WHERE event_id IN (?,?) AND kind='observed' LIMIT 1").bind(`NFL--${provider}`,provider).first().catch(()=>null);teams.set(provider,snap?.away&&snap?.home?`${snap.away} · @ ${snap.home}`:null)}
       team=teams.get(provider);
       if(!team)continue;
       statements.push(env.DB.prepare('UPDATE line_shadow SET team=? WHERE id=?').bind(team,r.id));
