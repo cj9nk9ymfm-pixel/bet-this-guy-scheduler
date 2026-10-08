@@ -1130,7 +1130,7 @@ async function scheduledMaintenance(request,env,ctx){
   if(!await maintenanceAuthorized(request,env))return json({success:false,error:'Unauthorized'},401);
   if(!env.DB||!env.THE_ODDS_API_KEY||!env.BALLDONTLIE_API_KEY)return json({success:false,error:'Maintenance configuration incomplete'},503);
   const job=new URL(request.url).searchParams.get('job');
-  const jobs={publish:()=>publishOfficialPicks(request,env,ctx),digest:()=>sendWeeklyDigest(env),alerts:()=>sendDueAlerts(env),xpost:()=>runXPosts(env),lineGrade:()=>gradeLineShadow(env),nearGrade:()=>gradeNearShadow(env),grade:()=>settlePublicRecords(env),closing:()=>captureClosingLines(env)};
+  const jobs={publish:()=>publishOfficialPicks(request,env,ctx),digest:()=>sendWeeklyDigest(env),alerts:()=>sendDueAlerts(env),xpost:()=>runXPosts(env),lineGrade:()=>gradeLineShadow(env),nearGrade:()=>gradeNearShadow(env),statsCheck:()=>runStatsChecks(env,ctx),grade:()=>settlePublicRecords(env),closing:()=>captureClosingLines(env)};
   if(!Object.hasOwn(jobs,job))return json({success:false,error:'Unknown maintenance job'},400);
   let work=scheduledJobs.get(job);
   if(!work){work=Promise.resolve().then(jobs[job]).finally(()=>scheduledJobs.delete(job));scheduledJobs.set(job,work)}
@@ -1161,9 +1161,9 @@ async function runCron(controller,env,ctx){
   if(!due.length||!env.DB||!env.BALLDONTLIE_API_KEY)return;
   if(!env.THE_ODDS_API_KEY)due.splice(0,due.length,...due.filter(job=>job==='xpost'||job==='lineGrade'));
   const request=new Request(`${SITE_URL}/api/maintenance`),jobs={publish:()=>publishOfficialPicks(request,env,ctx),grade:()=>settlePublicRecords(env),nbaShadow:()=>recordNbaShadow(request,env,ctx),nbaGrade:()=>gradeNbaShadow(env),digest:()=>sendWeeklyDigest(env),alerts:()=>sendDueAlerts(env),xpost:()=>runXPosts(env),
-    // Line-value and near-miss grading take turns (minutes 5/25/45 and
-    // 15/35/55) so each run stays inside the request limit.
-    lineGrade:()=>new Date(controller.scheduledTime).getUTCMinutes()%20<10?gradeLineShadow(env):gradeNearShadow(env)};
+    // Line-value grading, near-miss grading and the stats check take turns
+    // (minutes 15/45, 25/55 and 5/35) so each run stays inside the request limit.
+    lineGrade:()=>({5:()=>runStatsChecks(env,ctx),15:gradeLineShadow,25:gradeNearShadow}[new Date(controller.scheduledTime).getUTCMinutes()%30]||gradeLineShadow)(env)};
   // NBA shadow runs after the NFL jobs and on its own: it can never hold up
   // or fail NFL publishing or grading.
   if(due.includes('publish'))due.push('nbaShadow');

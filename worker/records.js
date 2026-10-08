@@ -343,6 +343,120 @@ async function gradeNearShadow(env,now=Date.now()){
   if(statements.length)await env.DB.batch(statements);
   return {graded:statements.length,checked:rows.length};
 }
+// Stats check (shadow): does the stat line agree with a pick? For each
+// official pick and near miss, project the stat from the player's recent
+// games (last 5, last 10, this season) and the opponent's defense against
+// that position, then record agree / neutral / disagree. Picks are never
+// changed; once enough are graded, the record shows whether agreement wins.
+const STATS_POS={WR:'WR',TE:'TE',RB:'RB',FB:'RB',HB:'RB',QB:'QB'};
+const STATS_POS_NAMES={'WIDE RECEIVER':'WR','TIGHT END':'TE','RUNNING BACK':'RB','FULLBACK':'RB','QUARTERBACK':'QB'};
+const statsPos=p=>{const v=String(p?.position_abbreviation||p?.position||'').toUpperCase().trim();return STATS_POS[v]||STATS_POS_NAMES[v]||null};
+const nflSeasonOf=t=>{const d=new Date(t);return d.getUTCMonth()<2?d.getUTCFullYear()-1:d.getUTCFullYear()};
+// Markets whose totals add up across a position group, so "allowed by the
+// defense" means something. Longest plays, scorer props and defense stats don't.
+const additiveMarket=m=>!/longest|first|last|quarter|half|anytime|touchdowns?$|tackle|sack|interception|field goal|extra point|kicking/i.test(String(m||''))||/passing touchdowns|receiving touchdowns|rushing touchdowns/i.test(String(m||''));
+const statsAvg=list=>list.length?list.reduce((s,v)=>s+v,0)/list.length:null;
+function statsSum(rows){
+  const out={};
+  for(const row of rows)for(const [key,value] of Object.entries(row||{}))if(typeof value==='number'&&Number.isFinite(value))out[key]=(out[key]||0)+value;
+  return out;
+}
+// What each defense allowed to each position, a few finished games per run.
+async function ingestDefenseGames(env,now=Date.now(),limit=4){
+  if(!env.DB||!env.BALLDONTLIE_API_KEY)return {ingested:0};
+  const season=nflSeasonOf(now),games=[];let cursor=null;
+  for(let page=0;page<3;page++){
+    const query=new URLSearchParams([['seasons[]',String(season)],['per_page','100']]);if(cursor)query.set('cursor',String(cursor));
+    const payload=await bdlRequest(`/nfl/v1/games?${query}`,env.BALLDONTLIE_API_KEY);
+    games.push(...(Array.isArray(payload?.data)?payload.data:[]));
+    cursor=payload?.meta?.next_cursor||null;if(!cursor)break;
+  }
+  const done=new Set(((await env.DB.prepare('SELECT DISTINCT game_id FROM defense_games').all()).results||[]).map(r=>String(r.game_id)));
+  const todo=games.filter(g=>{const d=new Date(g.date||g.datetime||'');return nflGameState(g)==='final'&&!g.postseason&&!done.has(String(g.id))&&Number.isFinite(d.getTime())&&d.getUTCMonth()!==7&&d.getTime()<now}).sort((a,b)=>Date.parse(a.date||a.datetime)-Date.parse(b.date||b.datetime)).slice(0,limit);
+  const statements=[];let ingested=0;
+  for(const g of todo){
+    const rows=[];let next=null;
+    for(let page=0;page<2;page++){
+      const query=new URLSearchParams([['game_ids[]',String(g.id)],['per_page','100']]);if(next)query.set('cursor',String(next));
+      const payload=await bdlRequest(`/nfl/v1/stats?${query}`,env.BALLDONTLIE_API_KEY);
+      rows.push(...(Array.isArray(payload?.data)?payload.data:[]));
+      next=payload?.meta?.next_cursor||null;if(!next)break;
+    }
+    const home=g.home_team?.full_name,away=g.visitor_team?.full_name,date=new Date(g.date||g.datetime).toISOString(),groups=new Map();
+    for(const row of rows){
+      const team=row.team?.full_name||row.player?.team?.full_name,pos=statsPos(row.player);
+      if(!team||!pos||!home||!away)continue;
+      const defense=normalizedName(team)===normalizedName(home)?away:home,key=`${normalizedName(defense)}|${pos}`;
+      groups.set(key,[...(groups.get(key)||[]),row]);
+    }
+    // No box score yet: try again next run, unless the game is days old.
+    if(!groups.size){if(now-Date.parse(date)>3*86400000)statements.push(env.DB.prepare('INSERT OR IGNORE INTO defense_games (game_id,defense,position,game_date,stats_json) VALUES (?,?,?,?,?)').bind(String(g.id),'-','-',date,'{}'));continue}
+    for(const [key,list] of groups){const [defense,pos]=key.split('|');statements.push(env.DB.prepare('INSERT OR REPLACE INTO defense_games (game_id,defense,position,game_date,stats_json) VALUES (?,?,?,?,?)').bind(String(g.id),defense,pos,date,JSON.stringify(statsSum(list))))}
+    ingested++;
+  }
+  if(statements.length)await env.DB.batch(statements);
+  return {ingested,pending:Math.max(0,games.filter(g=>nflGameState(g)==='final'&&!done.has(String(g.id))).length-ingested)};
+}
+// The opponent's allowed per game to this position in this market, against
+// the league-wide average. Needs 3+ opponent games and 20+ league games.
+async function defenseFactor(env,opponent,pos,market,now=Date.now()){
+  if(!opponent||!pos||!additiveMarket(market))return null;
+  const since=`${nflSeasonOf(now)}-08-01`;
+  const rows=(await env.DB.prepare('SELECT defense,stats_json FROM defense_games WHERE position=? AND game_date>=?').bind(pos,since).all()).results||[];
+  const values=rows.map(r=>{let stats={};try{stats=JSON.parse(r.stats_json)}catch{}return {defense:r.defense,value:BTGStats.metric({market,sport:'NFL'},stats).value}}).filter(r=>r.value!==null);
+  const theirs=values.filter(r=>r.defense===normalizedName(opponent)).map(r=>r.value),league=statsAvg(values.map(r=>r.value));
+  if(theirs.length<3||values.length<20||!league)return null;
+  return {factor:statsAvg(theirs)/league,games:theirs.length,allowed:+statsAvg(theirs).toFixed(2),league:+league.toFixed(2)};
+}
+// Project one pick from the player's game log and the defense.
+function statsVerdict(pick,logs,def,season){
+  const line=Number(pick.line),over=pick.side==='Over';
+  const values=logs.map(g=>g.value),l5=values.slice(0,5),l10=values.slice(0,10),seasonVals=logs.filter(g=>g.season===season).map(g=>g.value);
+  const out={games:logs.length,l5_avg:statsAvg(l5),l10_avg:statsAvg(l10),season_avg:statsAvg(seasonVals),l10_hits:l10.filter(v=>over?v>line:v<line).length,l10_n:l10.length};
+  if(l10.length<4)return {...out,projection:null,lean:null,verdict:'unknown'};
+  const base=.4*out.l5_avg+.35*out.l10_avg+.25*(seasonVals.length>=3?out.season_avg:out.l10_avg);
+  // Halfway toward the defense's rate, within ±15%: a few games are noisy.
+  const adj=def?Math.min(1.15,Math.max(.85,1+.5*(def.factor-1))):1,projection=base*adj;
+  // Low lines (1.5 and under) are mostly about how often it happens; higher
+  // lines compare the projection with the line.
+  const lean=line<=1.5?out.l10_hits/l10.length-.5:(over?1:-1)*(projection-line)/Math.max(Math.abs(line),1);
+  return {...out,projection,lean,verdict:lean>=.08?'agree':lean<=-.08?'disagree':'neutral'};
+}
+async function checkPickStats(env,ctx,pick,now=Date.now()){
+  const url=new URL('/api/player-stats',SITE_URL);url.searchParams.set('sport','NFL');url.searchParams.set('player',pick.player);url.searchParams.set('team',pick.team||'');
+  const payload=await (await playerStats(new Request(url),env,ctx||{waitUntil(){}})).json().catch(()=>({}));
+  const kickoff=Date.parse(pick.game_time),season=nflSeasonOf(kickoff);
+  const logs=(payload?.success?payload.stats||[]:[]).map(row=>({date:Date.parse(row?.game?.date||row?.game?.datetime||''),season:Number(row?.game?.season),value:BTGStats.metric({market:pick.market,sport:'NFL'},row).value})).filter(g=>g.value!==null&&Number.isFinite(g.date)&&g.date<kickoff-3600000).sort((a,b)=>b.date-a.date);
+  const mine=payload?.player?.team?.full_name||'',[away,home]=String(pick.team||'').split(/\s*·\s*(?:@|vs)\s*/);
+  const opponent=mine&&away&&home?(normalizedName(mine)===normalizedName(away)?home:normalizedName(mine)===normalizedName(home)?away:null):null;
+  const pos=statsPos(payload?.player),def=await defenseFactor(env,opponent,pos,pick.market,now).catch(()=>null);
+  return {...statsVerdict(pick,logs,def,season),opponent,position:pos,def,recent:logs.slice(0,10).map(g=>g.value)};
+}
+// One run: add defense games, then check up to two picks that haven't
+// started (official picks first, then near misses).
+async function runStatsChecks(env,ctx,now=Date.now()){
+  if(!env.DB||!env.BALLDONTLIE_API_KEY)return {checked:0};
+  const defense=await ingestDefenseGames(env,now).catch(error=>({error:error.message}));
+  const start=new Date(now).toISOString();
+  const official=((await env.DB.prepare("SELECT id,player,market,side,line,game_time,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND kind='prop' AND game_time>? AND id NOT IN (SELECT id FROM stats_checks) ORDER BY game_time LIMIT 2").bind(start).all()).results||[]).map(r=>({...r,kind:'official',team:recordLegs(r)[0]?.team||''}));
+  const near=official.length>=2?[]:((await env.DB.prepare("SELECT 'near|'||id AS id,player,team,market,side,line,game_time FROM near_shadow WHERE game_time>? AND 'near|'||id NOT IN (SELECT id FROM stats_checks) ORDER BY game_time LIMIT ?").bind(start,2-official.length).all()).results||[]).map(r=>({...r,kind:'near'}));
+  const statements=[];
+  for(const pick of [...official,...near]){
+    // A provider error leaves the pick unchecked, so the next run tries again.
+    const c=await checkPickStats(env,ctx,pick,now).catch(()=>null);if(!c)continue;
+    const r2=v=>v==null||!Number.isFinite(v)?null:+v.toFixed(3);
+    statements.push(env.DB.prepare('INSERT OR REPLACE INTO stats_checks (id,kind,player,market,side,line,game_time,opponent,position,games,l5_avg,l10_avg,season_avg,l10_hits,def_factor,def_games,projection,lean,verdict,detail_json,checked_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(pick.id,pick.kind,pick.player,pick.market,pick.side,pick.line,pick.game_time,c.opponent||null,c.position||null,c.games||0,r2(c.l5_avg),r2(c.l10_avg),r2(c.season_avg),c.l10_hits??null,r2(c.def?.factor),c.def?.games??null,r2(c.projection),r2(c.lean),c.verdict,JSON.stringify({recent:c.recent||[],def:c.def||null,l10_n:c.l10_n??null}),start));
+  }
+  if(statements.length)await env.DB.batch(statements);
+  return {defense,checked:statements.length};
+}
+// The test so far: picks by verdict, with results (official and near misses).
+async function statsCheckSummary(env){
+  const rows=(await env.DB.prepare("SELECT c.kind,c.verdict,COALESCE(p.result,n.result) AS result FROM stats_checks c LEFT JOIN public_recommendations p ON p.id=c.id AND p.status='final' LEFT JOIN near_shadow n ON 'near|'||n.id=c.id").all()).results||[];
+  const out={};
+  for(const r of rows){const k=`${r.kind}|${r.verdict}`,s=out[k]||(out[k]={kind:r.kind,verdict:r.verdict,picks:0,won:0,lost:0,push:0,pending:0});s.picks++;if(['won','lost','push'].includes(r.result))s[r.result]++;else s.pending++}
+  return Object.values(out);
+}
 // Grade shadow picks once their game is final (needs BALLDONTLIE NBA stats).
 async function gradeNbaShadow(env,now=Date.now()){
   if(!env.DB||!env.BALLDONTLIE_API_KEY)return {graded:0};
