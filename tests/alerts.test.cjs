@@ -46,6 +46,24 @@ const fromB64=s=>Uint8Array.from(Buffer.from(s.replace(/-/g,'+').replace(/_/g,'/
   await run(`sendPickAlerts(env,${now+16*60000})`);assert.equal(pushes.length,7,'after 15 minutes alerts go out again');
   for(let i=0;i<4;i++)await run(`sendPickAlerts(env,${now+(17+i)*16*60000})`);
   assert.equal(db.prepare("SELECT COUNT(*) n FROM push_subscriptions WHERE endpoint LIKE '%broken'").get().n,0,'a subscription failing five times is removed');
+  assert.match(db.prepare("SELECT value FROM app_settings WHERE key='push-last-error'").get().value,/fcm\.googleapis\.com 500/,'why a push failed is recorded, without the endpoint');
+  // Due alerts (the in-between cron run): each new pick once, a held-back
+  // batch on a later run, and one retry for phones whose push failed.
+  const t0=Date.parse('2026-10-08T16:50:00Z'),iso=t=>new Date(t).toISOString();
+  db.prepare("DELETE FROM app_settings WHERE key IN ('last-alert-at','push-alert-for','push-retry')").run();
+  await call('/api/alerts/subscribe',{endpoint:'https://fcm.googleapis.com/fcm/send/broken2',keys});
+  db.prepare("INSERT INTO public_recommendations(id,kind,player,market,side,line,odds,game_time,legs_json,posted_at,status,source) VALUES('official|2026-10-06|props|prop|t','prop','Tez Johnson','Receptions','Over',1.5,162,?,'[]',?,'pending','market-verified-v2')").run(iso(t0+8*3600000),iso(t0));
+  let n=pushes.length,due=JSON.parse(JSON.stringify(await run(`sendDueAlerts(env,${t0+5*60000})`)));
+  assert.ok(due.sent>=1&&due.failed.length===1,'a new pick is alerted');const firstBatch=pushes.length-n;
+  assert.equal(JSON.parse(db.prepare("SELECT value FROM app_settings WHERE key='push-retry'").get().value).length,1);
+  n=pushes.length;due=JSON.parse(JSON.stringify(await run(`sendDueAlerts(env,${t0+15*60000})`)));
+  assert.ok(due.retry&&pushes.length===n+1&&pushes.at(-1).url.endsWith('broken2'),'the failed phone gets one retry, nobody else is pushed twice');
+  n=pushes.length;await run(`sendDueAlerts(env,${t0+25*60000})`);assert.equal(pushes.length,n,'no more retries, no repeat alert');
+  // A second pick inside 15 minutes of the last alert waits, then goes out.
+  db.prepare("INSERT INTO public_recommendations(id,kind,player,market,side,line,odds,game_time,legs_json,posted_at,status,source) VALUES('official|2026-10-06|props|prop|u','prop','Other Guy','Receptions','Over',2.5,120,?,'[]',?,'pending','market-verified-v2')").run(iso(t0+8*3600000),iso(t0+10*60000));
+  assert.equal(JSON.parse(JSON.stringify(await run(`sendDueAlerts(env,${t0+15*60000})`))).throttled,true);
+  n=pushes.length;await run(`sendDueAlerts(env,${t0+21*60000})`);assert.equal(pushes.length,n+firstBatch,'the held-back pick is alerted once the 15 minutes pass');
+  assert.equal(firstBatch>0,true);
   assert.equal((await call('/api/alerts/unsubscribe',{endpoint:'https://fcm.googleapis.com/fcm/send/ok'})).status,200);
   assert.equal(db.prepare("SELECT COUNT(*) n FROM push_subscriptions WHERE endpoint LIKE '%/ok'").get().n,0,'turning alerts off deletes the subscription');
   // The service worker and manifest the browser needs.

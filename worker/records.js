@@ -405,7 +405,7 @@ async function publishOfficialPicks(request,env,ctx){
       env.DB.prepare('INSERT INTO pick_runs (at,games,boards,failed_boards,props,best_edge,near,qualified,capped,candidates,posted,credits_left) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)').bind(new Date(now).toISOString(),events.length,boards.length,failedBoards,stats.props||0,Number.isFinite(stats.best)?+stats.best.toFixed(2):null,stats.near||0,stats.qualified||0,stats.capped||0,candidates.length,Number(posted)||0,oddsCreditsLeft),
       env.DB.prepare('DELETE FROM pick_runs WHERE at<?').bind(new Date(now-30*86400000).toISOString())
     ]).catch(error=>console.warn('pick_runs_failed',error.message));
-    if(posted){const alerts=sendPickAlerts(env).catch(error=>console.warn('pick_alerts_failed',error.message));if(ctx?.waitUntil)ctx.waitUntil(alerts);else await alerts}
+    // Push alerts for new picks go out on the in-between cron run (sendDueAlerts).
     // Emails check every run: picks held back by the hourly limit go out on a later run.
     {const emails=sendEmailAlerts(env).catch(error=>console.warn('email_alerts_failed',error.message));if(ctx?.waitUntil)ctx.waitUntil(emails);else await emails}
     {const mine=sendBookAlerts(env,boards).catch(error=>console.warn('book_alerts_failed',error.message));if(ctx?.waitUntil)ctx.waitUntil(mine);else await mine}
@@ -740,27 +740,55 @@ async function latestAlert(env,now=Date.now(),endpoint=null){
   const line=r=>r.kind==='parlay'?`${recordLegs(r).length}-leg parlay (${weeklyOdds(r.combined_odds)}): ${recordLegs(r).map(l=>l.player).join(' + ')}`:`${r.player} ${weeklyLegText(r)} (${weeklyOdds(r.odds)})`;
   return {title:picks.length===1?'✅ New Bet This Guy pick':`✅ ${picks.length} new Bet This Guy picks`,body:picks.map(line).join('\n'),url:'/'};
 }
-async function sendPickAlerts(env,now=Date.now()){
+// only: resend to just these endpoints (a retry), without the 15-minute batching.
+async function sendPickAlerts(env,now=Date.now(),only=null){
   if(!env.DB)return {sent:0};
   // One alert per 15 minutes: a batch of picks becomes one notification.
-  const last=Date.parse(await appSetting(env,'last-alert-at')||'');
-  if(Number.isFinite(last)&&now-last<15*60000)return {sent:0,throttled:true};
-  await setAppSetting(env,'last-alert-at',new Date(now).toISOString());
-  const subs=(await env.DB.prepare('SELECT endpoint,failures FROM push_subscriptions LIMIT 2000').all()).results||[];
-  let sent=0;
+  if(!only){
+    const last=Date.parse(await appSetting(env,'last-alert-at')||'');
+    if(Number.isFinite(last)&&now-last<15*60000)return {sent:0,throttled:true};
+    await setAppSetting(env,'last-alert-at',new Date(now).toISOString());
+  }
+  let subs=(await env.DB.prepare('SELECT endpoint,failures FROM push_subscriptions LIMIT 2000').all()).results||[];
+  if(only)subs=subs.filter(sub=>only.includes(sub.endpoint));
+  let sent=0,lastError=null;const failed=[];
   for(let i=0;i<subs.length;i+=20){
     await Promise.all(subs.slice(i,i+20).map(async sub=>{
       try{
         const response=await fetch(sub.endpoint,{method:'POST',headers:{TTL:'21600',Urgency:'normal','Content-Length':'0',Authorization:await vapidAuthorization(env,sub.endpoint,now)},signal:AbortSignal.timeout(10000)});
         if(response.status===404||response.status===410)return env.DB.prepare('DELETE FROM push_subscriptions WHERE endpoint=?').bind(sub.endpoint).run();
         if(response.ok){sent++;return sub.failures?env.DB.prepare('UPDATE push_subscriptions SET failures=0 WHERE endpoint=?').bind(sub.endpoint).run():null}
-        throw new Error('push failed');
-      }catch{
+        throw new Error(`${response.status} ${(await response.text().catch(()=>'')).slice(0,80)}`.trim());
+      }catch(error){
+        failed.push(sub.endpoint);lastError=`${new URL(sub.endpoint).hostname} ${error.message}`;
         return sub.failures>=4?env.DB.prepare('DELETE FROM push_subscriptions WHERE endpoint=?').bind(sub.endpoint).run():env.DB.prepare('UPDATE push_subscriptions SET failures=failures+1 WHERE endpoint=?').bind(sub.endpoint).run();
       }
     }));
   }
-  return {sent,total:subs.length};
+  // Why the last push failed, for diagnosis (never the endpoint itself).
+  if(lastError)await setAppSetting(env,'push-last-error',`${new Date(now).toISOString()} ${lastError}`).catch(()=>{});
+  return {sent,total:subs.length,failed};
+}
+// Push alerts run on the in-between cron run, which has its own request
+// allowance: sent from the publish run, which loads every game's board, some
+// pushes failed. Each new pick is alerted once (a batch held back by the
+// 15-minute limit goes on a later run), and phones whose push failed get one
+// retry on the next run.
+async function sendDueAlerts(env,now=Date.now()){
+  if(!env.DB)return {sent:0};
+  const newest=(await env.DB.prepare("SELECT MAX(posted_at) AS at FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND game_time>?").bind(new Date(now).toISOString()).all()).results?.[0]?.at||null;
+  const done=await appSetting(env,'push-alert-for')||await appSetting(env,'last-alert-at');
+  if(newest&&(!done||newest>done)){
+    const out=await sendPickAlerts(env,now);
+    if(out.throttled)return out;
+    await setAppSetting(env,'push-alert-for',newest);
+    await setAppSetting(env,'push-retry',JSON.stringify(out.failed||[]));
+    return out;
+  }
+  let retry=[];try{retry=JSON.parse(await appSetting(env,'push-retry')||'[]')}catch{}
+  if(!retry.length)return {sent:0};
+  await setAppSetting(env,'push-retry','[]');
+  return {...await sendPickAlerts(env,now,retry),retry:true};
 }
 async function alertsApi(request,env){
   const url=new URL(request.url),headers={'content-type':'application/json; charset=utf-8','cache-control':'no-store'},reply=(body,status=200)=>new Response(JSON.stringify(body),{status,headers});
