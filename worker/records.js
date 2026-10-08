@@ -881,20 +881,11 @@ async function postPicksToX(env,now=Date.now()){
   }
   return {posted,picks:picks.length};
 }
-// Read-only check that the X keys work: which account would post. Cached
-// for 10 minutes so the endpoint can't be used to burn API calls.
-let xStatusCache={at:0,body:null};
-async function xStatus(env,now=Date.now()){
+// What the X integration last did: keys present, last post, last error.
+// Never calls X itself (X API calls cost credits).
+async function xStatus(env){
   if(!xReady(env))return {configured:false};
-  if(xStatusCache.body&&now-xStatusCache.at<600000)return xStatusCache.body;
-  const url='https://api.twitter.com/2/users/me';let body;
-  try{
-    const response=await fetch(url,{headers:{authorization:await xOAuthHeader(env,'GET',url)},signal:AbortSignal.timeout(10000)});
-    const data=await response.json().catch(()=>({}));
-    body=response.ok?{configured:true,ok:true,username:data?.data?.username||null}:{configured:true,ok:false,status:response.status,problem:String(data?.title||data?.detail||'').slice(0,120)};
-  }catch(error){body={configured:true,ok:false,problem:error.message}}
-  body={...body,lastPost:await appSetting(env,'x-last-post').catch(()=>null),lastError:await appSetting(env,'x-last-error').catch(()=>null)};
-  xStatusCache={at:now,body};return body;
+  return {configured:true,lastPost:await appSetting(env,'x-last-post').catch(()=>null),lastError:await appSetting(env,'x-last-error').catch(()=>null)};
 }
 // Tuesday results post, alongside the weekly email.
 async function postWeeklyToX(env,now=Date.now()){
