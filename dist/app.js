@@ -81,7 +81,7 @@ let firePropKeys=new Set();
 function calibrateFirePool(){const limit=Math.min(4,Math.max(1,Math.ceil(props.length/150))),sportCounts=new Map(),chosen=[];for(const p of [...props].filter(p=>p.edge>=4.5&&p.bookCount>=Math.max(3,preferences.minBookCoverage)&&!p.oneSided).sort((a,b)=>b.edge-a.edge||b.conf-a.conf)){const count=sportCounts.get(p.sport)||0;if(count>=2)continue;sportCounts.set(p.sport,count+1);chosen.push(propIdentity(p));if(chosen.length>=limit)break}firePropKeys=new Set(chosen)}
 const getTier=(edge,p)=>p&&firePropKeys.has(propIdentity(p))?{key:'inferno',icon:'▲',label:'Top edge',quip:'One of the strongest verified multi-book edges on the current board'}:edge>=3.5?{key:'hot',icon:'▲',label:'Strong edge',quip:'A strong price edge, just below the board’s top tier'}:edge>=2?{key:'warm',icon:'●',label:'Moderate edge',quip:'Worth a look, but shop for the best line'}:edge>=1?{key:'chilly',icon:'●',label:'Small edge',quip:'A smaller edge. Proceed carefully.'}:{key:'ice',icon:'○',label:'No edge',quip:'Pass for now. The price is not there.'};
 const parlaySections=[
- {name:'Long shot',history:'moonshot',subtitle:'+2500 to +15000 · highest payout, highest risk',tag:'LONG SHOT',minLegs:4,maxLegs:7,minEdge:3,minOdds:2501,maxOdds:15000,blurb:'A bold but more selective swing using solid-rated props and a manageable number of legs.'},
+ {name:'Long shot',history:'moonshot',subtitle:'+2501 to +15000 · highest payout, highest risk',tag:'LONG SHOT',minLegs:4,maxLegs:7,minEdge:3,minOdds:2501,maxOdds:15000,blurb:'A bold but more selective swing using solid-rated props and a manageable number of legs.'},
  {name:'Mid-range',history:'swing',subtitle:'+1000 to +2500 · moderate risk',tag:'MID-RANGE',minLegs:3,maxLegs:6,minEdge:3,minOdds:1000,maxOdds:2500,blurb:'A middle-ground payout with a limited number of legs.'},
  {name:'Conservative',history:'reasonable',subtitle:'+100 to +999 · lower risk',tag:'CONSERVATIVE',minLegs:2,maxLegs:4,minEdge:4,minOdds:100,maxOdds:999,blurb:'A shorter, more realistic combination using stronger-rated props.'}
 ];
@@ -1400,6 +1400,9 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     if(!s){hero.hidden=false;return}
     $('#heroEyebrow').textContent='OFFICIAL RECORD';
     $('#heroTitle').innerHTML=`${htmlEscape(s.label==='LAST WEEK'?'Last week':s.label==='THIS WEEK SO FAR'?'This week so far':(s.label.startsWith('WEEK OF ')?`Week of ${s.label.charAt(8)}${s.label.slice(9).toLowerCase()}`:s.label.charAt(0)+s.label.slice(1).toLowerCase()))} <b>${s.wins}–${s.losses}${s.pushes?`–${s.pushes}`:''}</b> <span class="hero-profit ${s.profit>=0?'up':'down'}">${htmlEscape(money(s.profit))}</span>`;
+    // Lead with the season once it has real volume; last week opens below.
+    const season=heroSeason&&heroSeason.wins+heroSeason.losses>=5?heroSeason:null,weekTitle=$('#heroTitle').innerHTML;
+    if(season){const net=season.profit*heroStake/100;$('#heroTitle').innerHTML=`Season <b>${season.wins}–${season.losses}${season.pushes?`–${season.pushes}`:''}</b> <span class="hero-profit ${net>=0?'up':'down'}">${htmlEscape(money(net))}</span>`}
     const stats=[[money(s.profit),`betting ${stakeText()} a pick`,s.profit>=0?'up':'down']];
     if(s.tracked)stats.push([`${s.beat} of ${s.tracked}`,'beat the closing line','']);
     if(s.parlayWins+s.parlayLosses)stats.push([`${s.parlayWins}–${s.parlayLosses}`,`parlays · ${money(s.parlayProfit)}`,s.parlayProfit>=0?'up':'down']);
@@ -1413,7 +1416,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
       let panel=$('#heroPicks');if(!panel){panel=document.createElement('div');panel.id='heroPicks';panel.className='hero-picks';hero.append(panel)}
       panel.hidden=true;
       const tag={won:['g','check','Hit'],lost:['r','over','Lost'],push:['n','fair','Push']};
-      panel.innerHTML=`<ul>${s.picks.map((r,i)=>{const n=pickName(r),odds=r.kind==='parlay'?r.combined_odds:r.odds,[cls,ic,txt]=tag[r.result]||tag.push,net=payout(r);return `<li><button type="button" data-hero-pick="${i}" aria-label="${htmlEscape(`${txt}: ${n.title}, ${n.detail}`)}"><span class="hp-tag ${cls}">${icon(ic)}${txt}</span><span class="hp-name"><strong>${htmlEscape(n.title)}</strong><small>${htmlEscape(n.detail)}</small></span><span class="hp-num"><b>${htmlEscape(formatOdds(odds))}</b><small class="${net>0?'up':net<0?'down':''}">${htmlEscape(money(net))}</small></span></button></li>`}).join('')}</ul><a class="hp-all" href="/trust#official">Every pick on Results →</a>`;
+      panel.innerHTML=`${season?`<p class="hp-week">${weekTitle}</p>`:''}<ul>${s.picks.map((r,i)=>{const n=pickName(r),odds=r.kind==='parlay'?r.combined_odds:r.odds,[cls,ic,txt]=tag[r.result]||tag.push,net=payout(r);return `<li><button type="button" data-hero-pick="${i}" aria-label="${htmlEscape(`${txt}: ${n.title}, ${n.detail}`)}"><span class="hp-tag ${cls}">${icon(ic)}${txt}</span><span class="hp-name"><strong>${htmlEscape(n.title)}</strong><small>${htmlEscape(n.detail)}</small></span><span class="hp-num"><b>${htmlEscape(formatOdds(odds))}</b><small class="${net>0?'up':net<0?'down':''}">${htmlEscape(money(net))}</small></span></button></li>`}).join('')}</ul><a class="hp-all" href="/trust#official">Every pick on Results →</a>`;
       panel.querySelectorAll('[data-hero-pick]').forEach(b=>b.onclick=()=>openHit(s.picks[+b.dataset.heroPick]));
       const toggle=$('#heroToggle');toggle.onclick=()=>{const open=panel.hidden;panel.hidden=!open;toggle.setAttribute('aria-expanded',String(open));hero.classList.toggle('open',open);if(open)window.btgCount?.('hero:picks')};
     }
@@ -1478,15 +1481,15 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     $$('#officialNowList [data-on-player]').forEach(row=>{const player=row.dataset.onPlayer;if(!player||typeof playerStatsFor!=='function')return;const r=list[+row.dataset.on];playerStatsFor({sport:r?.sport||'NFL',player,team:row.dataset.onTeam}).then(payload=>window.BTGPaintTeam?.(row,payload?.player?.team,r?.sport||'NFL')).catch(()=>{})});
     host.hidden=false;
   }
-  let heroRows=null;
+  let heroRows=null,heroSeason=null;
   async function loadHero(){
     // The home page HTML usually carries the rows already (window.BTG_HOME),
     // so the banner and hits draw with the page instead of popping in later.
-    if(Array.isArray(window.BTG_HOME)){heroRows=window.BTG_HOME;renderHero(summarise(heroRows,Date.now(),viewerStake()));renderOfficialNow(heroRows);return}
+    if(Array.isArray(window.BTG_HOME)){heroRows=window.BTG_HOME;heroSeason=window.BTG_SEASON||null;renderHero(summarise(heroRows,Date.now(),viewerStake()));renderOfficialNow(heroRows);return}
     try{
       const response=await fetch('/api/record?view=home',{signal:AbortSignal.timeout(10000)});
       if(!response.ok)throw new Error();
-      const body=await response.json();heroRows=body.success?body.recent||[]:null;renderHero(heroRows?summarise(heroRows,Date.now(),viewerStake()):null);renderOfficialNow(heroRows);
+      const body=await response.json();heroRows=body.success?body.recent||[]:null;heroSeason=body.season||null;renderHero(heroRows?summarise(heroRows,Date.now(),viewerStake()):null);renderOfficialNow(heroRows);
     }catch{renderHero(null)}
   }
   $('#heroCta')&&($('#heroCta').onclick=event=>{event.preventDefault();$('#propsSection')?.scrollIntoView({behavior:'smooth',block:'start'})});
@@ -2095,8 +2098,8 @@ function statsProp(l){
     seen=new IntersectionObserver(items=>items.forEach(item=>{if(!item.isIntersecting)return;seen.unobserve(item.target);go(item.target)}),{rootMargin:'200px 0px'});cards.forEach(el=>seen.observe(el))};
   // One plain line on each board card saying why it got its rating.
   const bookFrom=p=>(String(p.note||'').match(/^(?:Best (?:price |total )?at )?(.+?) (?:price )?vs\b/)||[])[1]||'';
-  const whyText=p=>{const v=typeof propVerdict==='function'?propVerdict(p):null,edge=Number(p.rawEdge),n=Number(p.pairedBooks)||0;if(!v||!Number.isFinite(edge))return '';const book=bookFrom(p);
-    if(v.key==='send')return `${book||'This book'} pays ${edge.toFixed(1)}% more than fair${n?` (${n} books)`:''}`;
+  const whyText=p=>{const v=typeof propVerdict==='function'?propVerdict(p):null,edge=Number(p.rawEdge),n=Number(p.pairedBooks)||0;if(!v||!Number.isFinite(edge))return '';const book=bookFrom(p)||(p.bestBook&&!/demo/i.test(p.bestBook)?p.bestBook:'');
+    if(v.key==='send')return `${book?`${book} pays`:'Pays'} ${edge.toFixed(1)}% more than fair${n?` (${n} books)`:''}`;
     if(v.key==='read')return `${Math.abs(edge).toFixed(1)}% worse than the fair price`;
     return n?`In line with the fair price across ${n} books`:''};
   const baseCard=card;

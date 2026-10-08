@@ -962,6 +962,17 @@ function recordOddsBucket(value) {
 // strip. Cached for a minute per Worker instance; the home page HTML carries
 // the same rows so the banner renders without waiting for a second request.
 let homeRowsCache = { at: 0, rows: null };
+// Season totals for the home banner (all official picks, $100 a pick).
+let homeSeasonCache = { at: 0, season: null };
+async function homeSeason(env, now = Date.now()) {
+  if (homeSeasonCache.season && now - homeSeasonCache.at < 60000) return homeSeasonCache.season;
+  const rows = (await env.DB.prepare("SELECT kind, line, odds, combined_odds, status, result, closing_line, closing_odds, closing_captured_at FROM public_recommendations WHERE source = 'market-verified-v2' AND id LIKE 'official|%' AND kind IN ('prop','parlay')").all()).results || [];
+  const s = weeklySummary(rows);
+  const season = { wins: s.wins, losses: s.losses, pushes: s.pushes, profit: Math.round(s.profit), parlayWins: s.parlayWins, parlayLosses: s.parlayLosses, parlayProfit: Math.round(s.parlayProfit), beat: s.beat, tracked: s.tracked };
+  homeSeasonCache = { at: now, season };
+  return season;
+}
+
 async function homeRecentRows(env, now = Date.now()) {
   if (homeRowsCache.rows && now - homeRowsCache.at < 60000) return homeRowsCache.rows;
   const since = new Date(now - 21 * 86400000).toISOString();
@@ -1003,7 +1014,7 @@ async function publicRecord(request, env, ctx) {
     // The home page banner needs only recent official picks, so it stays small
     // and edge-cacheable instead of pulling the whole record.
     try {
-      return json({ success: true, recent: await homeRecentRows(env), updatedAt: new Date().toISOString() }, 200, { "cache-control": "public, max-age=300" });
+      return json({ success: true, recent: await homeRecentRows(env), season: await homeSeason(env).catch(() => null), updatedAt: new Date().toISOString() }, 200, { "cache-control": "public, max-age=300" });
     } catch (error) {
       return json({ success: false, error: "The public record is temporarily unavailable." }, 503);
     }
@@ -1056,7 +1067,7 @@ async function scheduledMaintenance(request,env,ctx){
   if(!await maintenanceAuthorized(request,env))return json({success:false,error:'Unauthorized'},401);
   if(!env.DB||!env.THE_ODDS_API_KEY||!env.BALLDONTLIE_API_KEY)return json({success:false,error:'Maintenance configuration incomplete'},503);
   const job=new URL(request.url).searchParams.get('job');
-  const jobs={publish:()=>publishOfficialPicks(request,env,ctx),digest:()=>sendWeeklyDigest(env),grade:()=>settlePublicRecords(env),closing:()=>captureClosingLines(env)};
+  const jobs={publish:()=>publishOfficialPicks(request,env,ctx),digest:()=>sendWeeklyDigest(env),lineGrade:()=>gradeLineShadow(env),grade:()=>settlePublicRecords(env),closing:()=>captureClosingLines(env)};
   if(!Object.hasOwn(jobs,job))return json({success:false,error:'Unknown maintenance job'},400);
   let work=scheduledJobs.get(job);
   if(!work){work=Promise.resolve().then(jobs[job]).finally(()=>scheduledJobs.delete(job));scheduledJobs.set(job,work)}
@@ -1087,6 +1098,7 @@ async function runCron(controller,env,ctx){
   // or fail NFL publishing or grading.
   if(due.includes('publish'))due.push('nbaShadow');
   if(due.includes('grade'))due.push('nbaGrade');
+  if(due.includes('grade'))due.push('lineGrade');
   if(due.includes('publish'))due.push('digest');
   for(const job of due){
     let work=scheduledJobs.get(job);
@@ -1175,9 +1187,9 @@ async function routeRequest(request, env, ctx) {
     // The results page is built in the browser; a server-written summary of
     // the record gives search engines and link previews real content too.
     if (["/", "/app", "/index.html"].includes(url.pathname) && env.DB && typeof STATIC !== "undefined") {
-      const rows = await homeRecentRows(env).catch(() => null);
+      const rows = await homeRecentRows(env).catch(() => null), season = await homeSeason(env).catch(() => null);
       const layout = rows ? homeLayout(rows) : null, classes = layout ? ["home-data", ...(layout.stats ? ["home-stats"] : []), ...(layout.hits ? ["home-hits"] : [])] : [];
-      const data = rows ? `<script>window.BTG_HOME=${JSON.stringify(rows).replace(/</g, "\\u003c")};document.documentElement.classList.add(${classes.map(c => JSON.stringify(c)).join(",")})</script>` : "";
+      const data = rows ? `<script>window.BTG_HOME=${JSON.stringify(rows).replace(/</g, "\\u003c")};window.BTG_SEASON=${JSON.stringify(season)};document.documentElement.classList.add(${classes.map(c => JSON.stringify(c)).join(",")})</script>` : "";
       return new Response(STATIC[url.pathname][1].replace("<!--HOME_DATA-->", () => data), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache" } });
     }
     if ((url.pathname === "/trust" || url.pathname === "/about") && env.DB && typeof STATIC !== "undefined") {

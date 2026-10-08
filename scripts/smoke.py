@@ -89,11 +89,12 @@ elif MINUTES:
     print("\n== no game in progress right now; nothing to poll")
 
 # Player headshots (cards and the player screen use /api/player-photo).
+NBA_PHOTOS = {"Jayson Tatum", "Nikola Jokic", "Jalen Brunson", "Stephen Curry", "LeBron James"}
 print("\n== player photos")
 for name in (os.environ.get("PHOTOS") or "Josh Allen;CeeDee Lamb;Saquon Barkley;Jayson Tatum;Nikola Jokic").split(";"):
     started = time.time()
     try:
-        with urllib.request.urlopen(urllib.request.Request(f"{SITE}/api/player-photo?name={urllib.parse.quote(name)}", headers={"User-Agent": "BetThisGuy-Smoke/1.0"}), timeout=30) as r:
+        with urllib.request.urlopen(urllib.request.Request(f"{SITE}/api/player-photo?name={urllib.parse.quote(name)}{'&sport=NBA' if name in NBA_PHOTOS else ''}", headers={"User-Agent": "BetThisGuy-Smoke/1.0"}), timeout=30) as r:
             print(f"   {name}: HTTP {r.status} {r.headers.get('content-type')} {len(r.read())} bytes in {round(time.time()-started,2)}s")
     except urllib.error.HTTPError as e:
         print(f"   {name}: HTTP {e.code}")

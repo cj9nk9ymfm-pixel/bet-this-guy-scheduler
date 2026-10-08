@@ -7,7 +7,7 @@ const context=vm.createContext({URL,URLSearchParams,Request,Response,Headers,Abo
 const template=read('worker/index.template.js');
 vm.runInContext(template.slice(template.indexOf('const API_BASE')).replace('__MOVEMENT_SERVER__',read('worker/movement.js')).replace('__LIVE_SERVER__',read('worker/live.js')).replace('__STATS_SHARED__',read('dist/stats.js')).replace('__RECORDS_SERVER__',read('worker/records.js')).replace('__ACCOUNTS_SERVER__',read('worker/accounts.js')).replace('export default {','this.worker={'),context);
 const db=new DatabaseSync(':memory:');
-for(const f of ['0000_public_record.sql','0009_line_shadow.sql'])db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''));
+for(const f of ['0000_public_record.sql','0009_line_shadow.sql','0014_line_shadow_results.sql'])db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''));
 const wrap=(sql,args=[])=>({bind(...values){return wrap(sql,values)},async all(){return{results:db.prepare(sql).all(...args)}},async run(){const r=db.prepare(sql).run(...args);return{success:true,meta:{changes:Number(r.changes)}}}});
 const env={DB:{prepare:sql=>wrap(sql),async batch(list){for(const s of list)await s.run()}}};
 const run=code=>vm.runInContext(code,context);
@@ -72,6 +72,17 @@ const run=code=>vm.runInContext(code,context);
   // Started games are not updated again.
   await run(`recordLineShadow(env,[moved],${now+6*3600000})`);
   assert.equal(db.prepare('SELECT close_at FROM line_shadow').get().close_at,new Date(now+3600000).toISOString());
+  // Grading: the logged game is stored, and once the box score is final the pick gets its result.
+  assert.equal(db.prepare('SELECT team FROM line_shadow').get().team,'Cleveland Browns · @ Pittsburgh Steelers');
+  env.BALLDONTLIE_API_KEY='test';const seen=[];
+  run('recordPlayerStats=async r=>{globalThis.__seen.push(r);return {scoreboardFinal:true,passing_yards:212}}');context.__seen=seen;
+  let graded=await run(`gradeLineShadow(env,${now+2*3600000})`);
+  assert.equal(graded.graded,0,'not graded before the game ends');
+  graded=await run(`gradeLineShadow(env,${now+10*3600000})`);
+  assert.equal(graded.graded,1);assert.equal(seen[0].team,'Cleveland Browns · @ Pittsburgh Steelers');
+  row=db.prepare('SELECT actual,result FROM line_shadow').get();
+  assert.deepEqual([row.actual,row.result],[212,'won'],'Over 205.5 with 212 yards wins');
+  assert.equal((await run(`gradeLineShadow(env,${now+11*3600000})`)).checked,0,'graded picks are not re-checked');
   // Official picks still lock only at the same line and a big-5 book.
   assert.equal(run(`officialCandidates([lineEvent],${now}).length`),0,'line value is not used for official picks yet');
 
