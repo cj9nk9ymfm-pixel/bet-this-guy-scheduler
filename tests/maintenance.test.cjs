@@ -33,14 +33,16 @@ async function call(req){context.req=req;return run('worker.fetch(req,env,{waitU
  await run(`worker.scheduled({scheduledTime:Date.parse('2026-10-04T17:00:00Z')},env,{waitUntil(){}})`);
  assert.deepEqual(ran,['publish','grade'],'the cron runs the jobs that are due');
  // Every job the cron schedules exists (a missing one used to be skipped silently).
- for(const name of ['postPicksToX','postWeeklyToX','postClosingToX','postResultsToX','gradeLineShadow','gradeNearShadow','sendWeeklyDigest','sendDueAlerts'])context[name]=async()=>{ran.push(name);return {posted:0}};
- run('postPicksToX=globalThis.postPicksToX;postWeeklyToX=globalThis.postWeeklyToX;postClosingToX=globalThis.postClosingToX;postResultsToX=globalThis.postResultsToX;gradeLineShadow=globalThis.gradeLineShadow;gradeNearShadow=globalThis.gradeNearShadow;sendWeeklyDigest=globalThis.sendWeeklyDigest;sendDueAlerts=globalThis.sendDueAlerts');
+ for(const name of ['postPicksToX','postWeeklyToX','postClosingToX','postResultsToX','gradeLineShadow','gradeNearShadow','sendWeeklyDigest','sendDueAlerts','runStatsChecks'])context[name]=async()=>{ran.push(name);return {posted:0}};
+ run('postPicksToX=globalThis.postPicksToX;postWeeklyToX=globalThis.postWeeklyToX;postClosingToX=globalThis.postClosingToX;postResultsToX=globalThis.postResultsToX;gradeLineShadow=globalThis.gradeLineShadow;gradeNearShadow=globalThis.gradeNearShadow;sendWeeklyDigest=globalThis.sendWeeklyDigest;sendDueAlerts=globalThis.sendDueAlerts;runStatsChecks=globalThis.runStatsChecks');
  ran.length=0;await run(`worker.scheduled({scheduledTime:Date.parse('2026-10-04T16:45:00Z')},env,{waitUntil(){}})`);
  assert.equal(ran[0],'sendDueAlerts','pick alerts go first on the in-between run');
  assert.deepEqual(ran.sort(),['gradeLineShadow','postClosingToX','postPicksToX','postResultsToX','postWeeklyToX','sendDueAlerts','sendWeeklyDigest'],'the in-between run posts to X, sends the digest when due and grades line value');
  // Line-value and near-miss grading take turns on those runs.
  ran.length=0;await run(`worker.scheduled({scheduledTime:Date.parse('2026-10-04T16:55:00Z')},env,{waitUntil(){}})`);
  assert.ok(ran.includes('gradeNearShadow')&&!ran.includes('gradeLineShadow'),'minute 55 grades near-miss picks');
+ ran.length=0;await run(`worker.scheduled({scheduledTime:Date.parse('2026-10-04T17:05:00Z')},env,{waitUntil(){}})`);
+ assert.ok(ran.includes('runStatsChecks')&&!ran.includes('gradeLineShadow')&&!ran.includes('gradeNearShadow'),'minute 5 runs the stats check');
  const wf=read('.github/workflows/btg-maintenance.yml');
  assert.ok(!/elif active_window/.test(wf),'GitHub no longer publishes on its own schedule');
  assert.match(read('wrangler.jsonc'),/"crons": \["\*\/5 \* \* \* \*"\]/,'the site Worker has a 5-minute cron trigger');
