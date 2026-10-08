@@ -796,7 +796,7 @@ async function trustSnapshot(env,now=Date.now()){
 
 // Anonymous usage counts: daily totals per metric. No cookies, IP addresses or
 // per-person identifiers are stored; unknown metric names are ignored.
-const USAGE_METRICS=new Set(['view:home','view:trust','view:picks','view:week','visit:new','visit:return','card:open','slip:add','parlay:add','share','hit:open','profile:open','affiliate:click','alerts:on','alerts:off','gate:shown','gate:signup','gate:login','nudge:shown','nudge:alerts','alerts:email','view:post','post:copy','post:open','post:image','src:reddit','src:x','src:google','src:social','src:other','src:direct']);
+const USAGE_METRICS=new Set(['view:home','view:trust','view:picks','view:week','visit:new','visit:return','card:open','slip:add','parlay:add','share','hit:open','profile:open','affiliate:click','alerts:on','alerts:off','gate:shown','gate:signup','gate:login','nudge:shown','nudge:alerts','nudge:signup','alerts:email','view:post','post:copy','post:open','post:image','src:reddit','src:x','src:google','src:social','src:other','src:direct']);
 const USAGE_BOTS=/bot|crawl|spider|slurp|preview|facebookexternalhit|curl|wget|python|headless|lighthouse/i;
 async function countUsage(env,metrics,request){
   // The owner's own devices (opted out with /?me=1) are never counted.

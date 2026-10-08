@@ -1696,7 +1696,9 @@ if(typeof fetch==='function')window.btgCountVisit?.('view:home');
     const cards=[...list.querySelectorAll(':scope>.prop-card')];if(cards.length<=NUDGE_AFTER)return;
     const card=document.createElement('div');card.className='board-nudge';
     card.innerHTML=`<p class="gate-eyebrow">${icon('bell')} FREE PICK ALERTS</p><h3>Get the next pick the second it locks</h3><p>${htmlEscape(seasonLine())}</p><div class="gate-actions"><button type="button" class="gate-primary" data-nudge-alerts>Turn on alerts</button>${hasAccount()?'':'<button type="button" class="gate-link" data-gate="signup">or create a free account</button>'}</div>`;
-    cards[NUDGE_AFTER-1].after(card);bindGate(card);
+    cards[NUDGE_AFTER-1].after(card);
+    // Its own counter, so next week's numbers compare it with the old wall.
+    card.querySelector('[data-gate]')?.addEventListener('click',event=>{event.preventDefault();window.btgCount?.('nudge:signup');window.BTGAuth?.open?.('signup')});
     card.querySelector('[data-nudge-alerts]').onclick=()=>{window.btgCount?.('nudge:alerts');(document.querySelector('[data-alerts-banner]')||document.querySelector('[data-alerts-toggle]'))?.click()};
     if(!nudgeCounted){nudgeCounted=true;window.btgCount?.('nudge:shown')}
   }
