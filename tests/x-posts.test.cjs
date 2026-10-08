@@ -66,8 +66,9 @@ pick('official|2026-10-06|props|prop|a','Travis Kelce',105,null,new Date(now-20*
   let n=posts.length;out=await run(`postClosingToX(env,${kick-10*60000})`);assert.equal(out.posted,1);assert.equal(posts.length,n+1);
   const close=posts.at(-1).body;
   assert.deepEqual(close.reply,{in_reply_to_tweet_id:'1'});
-  assert.ok(close.text.includes('We locked Travis Kelce Over 4.5 receptions at +105 on Thursday.')&&close.text.includes('the same bet was -120'),close.text);
+  assert.ok(close.text.includes('We locked Travis Kelce Over 4.5 receptions at +105 earlier today.')&&close.text.includes('the same bet was -120'),close.text);
   assert.equal((await run(`postClosingToX(env,${kick})`)).posted,0,'once');
+  assert.ok(run(`xCloseText({player:'A B',side:'Over',line:4.5,market:'Receptions',odds:110,posted_at:'2026-10-11T14:00:00Z',game_time:'2026-10-11T17:00:00Z'},{kind:'price',close:'-110'})`).includes('at +110 earlier today.'),'same-day lock');
   // A line that moved past ours counts too; a line that moved against us doesn't.
   assert.equal(run(`xBeatClose({kind:'prop',side:'Over',line:4.5,closing_line:5.5,odds:110,closing_odds:-110,closing_captured_at:'x'})`).kind,'line');
   assert.equal(run(`xBeatClose({kind:'prop',side:'Under',line:4.5,closing_line:5.5,odds:110,closing_odds:-110,closing_captured_at:'x'})`),null);
