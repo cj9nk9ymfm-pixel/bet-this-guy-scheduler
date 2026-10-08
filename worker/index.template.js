@@ -391,6 +391,20 @@ const nbaTipoff = game => { const t = Date.parse(game?.datetime || (/^\d{4}-\d{2
 // NBA seasons are named for the year they start (2026-27 is 2026).
 const nbaSeason = (date = new Date()) => date.getUTCMonth() >= 8 ? date.getUTCFullYear() : date.getUTCFullYear() - 1;
 
+// BALLDONTLIE's `search` matches the first-name or last-name field, so a full
+// display name can return nothing. Search the surname first; a common one
+// (Johnson, Williams) can crowd the player out of the results, so try the
+// first name next. selectPlayer() then matches the full name and team.
+async function findStatsPlayer(sportLabel, name, team, apiKey) {
+  const parts = String(name).replace(/\b(Jr\.?|Sr\.?|II|III|IV)\b/gi, "").trim().split(/\s+/).filter(Boolean);
+  for (const term of [...new Set([parts.at(-1) || name, parts.length > 1 ? parts[0] : null].filter(Boolean))]) {
+    const payload = await sportRequest(sportLabel, `/players?${new URLSearchParams({ search: term, per_page: "100" })}`, apiKey);
+    const player = selectPlayer(Array.isArray(payload?.data) ? payload.data : [], name, team);
+    if (player) return player;
+  }
+  return null;
+}
+
 async function playerStats(request, env, ctx) {
   if (!env.BALLDONTLIE_API_KEY) return json({ success: false, error: "Player stats are not connected." }, 503);
   const url = new URL(request.url);
@@ -407,10 +421,7 @@ async function playerStats(request, env, ctx) {
     // BALLDONTLIE's `search` filter matches within either the first-name or
     // last-name field, so a full display name can legitimately return no rows.
     // Search on the surname and use selectPlayer() to resolve the full name.
-    const nameParts = name.replace(/\b(Jr\.?|Sr\.?|II|III|IV)\b/gi, "").trim().split(/\s+/).filter(Boolean);
-    const search = new URLSearchParams({ search: nameParts.at(-1) || name, per_page: "25" });
-    const playerPayload = await sportRequest(sportLabel, `/players?${search}`, env.BALLDONTLIE_API_KEY);
-    const player = selectPlayer(Array.isArray(playerPayload?.data) ? playerPayload.data : [], name, team);
+    const player = await findStatsPlayer(sportLabel, name, team, env.BALLDONTLIE_API_KEY);
     if (!player) return json({ success: false, error: "This player could not be matched to the stats feed yet." }, 404);
     let statPayload;
     if (config.stats) {
@@ -491,9 +502,7 @@ async function playerHeadshot(name, sport = "NFL") {
 // Which team a player is on (abbreviation + full name), from BALLDONTLIE.
 async function playerTeamOf(env, sport, name, gameTeams) {
   try {
-    const last = String(name).replace(/\b(Jr\.?|Sr\.?|II|III|IV)\b/gi, "").trim().split(/\s+/).at(-1);
-    const payload = await sportRequest(sport, `/players?${new URLSearchParams({ search: last, per_page: "25" })}`, env.BALLDONTLIE_API_KEY);
-    const player = selectPlayer(Array.isArray(payload?.data) ? payload.data : [], name, gameTeams || "");
+    const player = await findStatsPlayer(sport, name, gameTeams || "", env.BALLDONTLIE_API_KEY);
     return player?.team ? { abbreviation: player.team.abbreviation, full: player.team.full_name || player.team.name } : null;
   } catch { return null; }
 }
