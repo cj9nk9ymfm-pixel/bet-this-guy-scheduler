@@ -74,5 +74,12 @@ const J=v=>JSON.parse(JSON.stringify(v));
   db.prepare("UPDATE public_recommendations SET status='final',result='won'").run();
   const sum=J(await run('statsCheckSummary(env)'));
   assert.deepEqual(sum.find(s=>s.kind==='official'),{kind:'official',verdict:'agree',picks:1,won:1,lost:0,push:0,pending:0});
+  // Player lookup: a common surname that crowds the player out falls back to the first name.
+  const searches=[];context.bdlRequest=async path=>{const term=new URLSearchParams(path.split('?')[1]).get('search');searches.push(term);
+    return {data:term==='Johnson'?Array.from({length:100},(_,i)=>({id:i,first_name:'Other'+i,last_name:'Johnson',team:{full_name:'Dallas Cowboys'}})):term==='Tez'?[{id:7,first_name:'Tez',last_name:'Johnson',team:{full_name:'Tampa Bay Buccaneers'}}]:[]}};
+  run('bdlRequest=globalThis.bdlRequest');
+  const found=J(await run("findStatsPlayer('NFL','Tez Johnson','Tampa Bay Buccaneers · @ Atlanta Falcons','k')"));
+  assert.equal(found.id,7);assert.deepEqual(searches,['Johnson','Tez']);
+  searches.length=0;await run("findStatsPlayer('NFL','Kelce','','k')");assert.deepEqual(searches,['Kelce'],'one-word names search once');
   console.log('PASS: stats check builds defense-vs-position from box scores, projects each pick from L5/L10/season and the defense, records agree/neutral/disagree before kickoff, once, and summarizes results');
 })().catch(error=>{console.error(error);process.exit(1)});
