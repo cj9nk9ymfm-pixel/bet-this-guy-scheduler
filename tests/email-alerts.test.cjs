@@ -2,11 +2,12 @@ const assert=require('node:assert/strict'),vm=require('node:vm'),{webcrypto}=req
 const {read}=require('./helpers/client.cjs');
 
 const user={id:'22222222-2222-2222-2222-222222222222',email:'fan@example.com',user_metadata:{full_name:'Football Fan',email_alerts:true}};
-const sent=[];
+const sent=[];let resendFail=false;
 const context=vm.createContext({URL,URLSearchParams,Request,Response,Headers,AbortSignal,Date,console,setTimeout,clearTimeout,crypto:webcrypto,TextEncoder,btoa,atob,
   fetch:async(url,init={})=>{
     if(String(url).endsWith('/auth/v1/user'))return init.headers?.authorization==='Bearer valid-token'?Response.json(user):Response.json({},{status:401});
     if(String(url)==='https://api.resend.com/emails/batch'){sent.push({init,body:JSON.parse(init.body)});return Response.json({data:[]})}
+    if(String(url)==='https://api.resend.com/emails'){if(resendFail)return Response.json({name:'validation_error',message:'The betthisguy.com domain is not verified.'},{status:403});sent.push({init,body:JSON.parse(init.body),single:true});return Response.json({id:'e1'})}
     return new Response(null,{status:404});
   }});
 const template=read('worker/index.template.js');
@@ -75,5 +76,17 @@ const pick=(id,player,gameTime,postedAt,extra={})=>db.prepare("INSERT INTO publi
   assert.equal(done.status,200);assert.equal(db.prepare('SELECT enabled FROM email_alerts').get().enabled,0);
   pick('e','After Unsub',iso(now+50*60000),iso(now+45*60000));
   assert.equal(plain(await run(`sendEmailAlerts(env,${now+46*60000})`)).total,0,'unsubscribed people get nothing');
+  // "Send me a test email": own address only, once an hour, and the provider's reason on failure.
+  const savedKey=env.RESEND_API_KEY;delete env.RESEND_API_KEY;
+  let t=await request('/api/me/test-email',authed('POST'));assert.equal(t.status,503);assert.match((await t.json()).error,/RESEND_API_KEY/);
+  env.RESEND_API_KEY=savedKey||'re_test';
+  assert.equal((await request('/api/me/test-email',{method:'POST'})).status,401,'signed in only');
+  const before=sent.length;t=await request('/api/me/test-email',authed('POST'));assert.equal(t.status,200);assert.equal((await t.json()).sentTo,'fan@example.com');
+  const mail=sent.at(-1);assert.ok(mail.single&&sent.length===before+1);assert.deepEqual(mail.body.to,['fan@example.com']);assert.equal(mail.body.subject,'✅ Bet This Guy email test');assert.ok(mail.body.html.includes('Your pick emails are working'));
+  assert.equal((await request('/api/me/test-email',authed('POST'))).status,429,'once an hour');
+  db.prepare("DELETE FROM app_settings WHERE key LIKE 'test-email:%'").run();resendFail=true;
+  t=await request('/api/me/test-email',authed('POST'));assert.equal(t.status,502);assert.match((await t.json()).error,/403\): The betthisguy.com domain is not verified/);
+  assert.match(db.prepare("SELECT value FROM app_settings WHERE key='email-test-last'").get().value,/failed 403/);
+  resendFail=false;assert.equal((await request('/api/me/test-email',authed('POST'))).status,200,'a failed send can be retried right away');
   console.log('PASS: email alerts: sign-up opt-in, sticky opt-out, one email per batch of new picks, started games skipped, hourly limit with a kickoff exception, one send per batch across instances, one-click unsubscribe (real SQLite)');
 })().catch(e=>{console.error(e);process.exitCode=1});

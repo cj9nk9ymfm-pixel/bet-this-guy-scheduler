@@ -1461,3 +1461,7 @@ html.alerts-on .board-nudge{display:none}
 body.light .board-nudge{background:#fff;border-color:#bfdbfe}
 body.light .board-nudge h3{color:#10213d}body.light .board-nudge>p:not(.gate-eyebrow){color:#40597a}
 body.light .board-nudge .gate-eyebrow{color:#1d4ed8!important}body.light .gate-actions .gate-link{color:#1d4ed8}
+/* Account panel: check that email works without waiting for a pick. */
+.auth-test-email{display:block;margin:8px 0 0;padding:8px 0;min-height:36px;border:0;background:none;color:#6aa8ff;font:600 13.5px 'DM Sans',sans-serif;text-decoration:underline;cursor:pointer}
+.auth-test-email:disabled{opacity:.6;cursor:wait}
+html body.light .auth-test-email{color:#1d4ed8}
