@@ -317,7 +317,10 @@ function bigFivePrice(event,r){
 async function recordNearShadow(env,boards,official=[],now=Date.now()){
   if(!env.DB)return {logged:0};
   const stamp=new Date(now).toISOString(),taken=new Set(official.map(p=>p.playerKey));
-  const picks=officialCandidates(boards,now,{},{min:.5,below:1}).filter(p=>!taken.has(p.playerKey));
+  // Also skip players who already have an official pick in that game: their
+  // price can drift below the bar after it locks, and they'd be counted twice.
+  const locked=new Set(((await env.DB.prepare("SELECT game_id,player FROM public_recommendations WHERE id LIKE 'official|%' AND kind='prop' AND game_time>?").bind(stamp).all()).results||[]).map(r=>`${r.game_id}|${normalizedName(r.player)}`));
+  const picks=officialCandidates(boards,now,{},{min:.5,below:1}).filter(p=>!taken.has(p.playerKey)&&!locked.has(`${p.gameId}|${normalizedName(p.player)}`));
   const statements=picks.map(p=>env.DB.prepare('INSERT OR IGNORE INTO near_shadow (id,event_id,player,team,market,side,line,odds,book,edge,game_time,logged_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)').bind(`${p.gameId}|${normalizedName(p.player)}`,p.gameId,p.player,p.team||null,p.market,p.side,p.line,p.odds,p.book,+p.edge.toFixed(2),p.gameTime,stamp));
   const open=(await env.DB.prepare('SELECT id,event_id,player,market,side,line FROM near_shadow WHERE game_time>?').bind(stamp).all()).results||[];
   for(const r of open){
