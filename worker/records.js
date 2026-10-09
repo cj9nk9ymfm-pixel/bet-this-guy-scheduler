@@ -1115,6 +1115,11 @@ async function xClaim(env,key,now){
   return Boolean(Number(claim?.meta?.changes??claim?.changes));
 }
 const xDone=(env,key,now)=>setAppSetting(env,key,new Date(now).toISOString()).catch(()=>{});
+// Each pick's posts form one chain: the newest post in its thread (xtail:<id>,
+// else the pick itself) is what the next reply answers, so it reads pick →
+// beat the close → result instead of several replies to the pick.
+const xThreadTail=async(env,id)=>(await appSetting(env,`xtail:${id}`))||(await appSetting(env,`xid:${id}`));
+const xSetTail=(env,id,sent)=>sent?.data?.id?setAppSetting(env,`xtail:${id}`,String(sent.data.id)).catch(()=>{}):null;
 // Each new official pick is posted once with its graphic. If the graphic
 // can't be made or uploaded three runs in a row, the text version posts
 // instead (unless that text was already posted), so a pick is never lost.
@@ -1302,9 +1307,8 @@ async function postResultsToX(env,now=Date.now(),limit=1){
     try{if(tries<=3&&typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(xCardSvg(await xResultData(env,r,season))))}
     catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} result graphic: ${error.message}`).catch(()=>{})}
     try{
-      const replyTo=await appSetting(env,`xid:${r.id}`);
-      const sent=await xPost(env,xResultText(r,season),mediaId,replyTo);
-      await xDone(env,`xr:${r.id}`,now);
+      const sent=await xPost(env,xResultText(r,season),mediaId,await xThreadTail(env,r.id));
+      await xDone(env,`xr:${r.id}`,now);await xSetTail(env,r.id,sent);
       posted++;await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} result ${mediaId?'graphic':'text'} ${sent?.data?.id||''} ${r.id}`).catch(()=>{});
     }catch(error){
       console.warn('x_result_failed',error.message);
@@ -1341,7 +1345,7 @@ async function postClosingToX(env,now=Date.now(),limit=2){
     if(posted>=limit)break;
     const move=xBeatClose(r);
     if(!move||!(await appSetting(env,`xi:${r.id}`))||!(await xClaim(env,`xc:${r.id}`,now)))continue;
-    try{const sent=await xPost(env,xCloseText(r,move),null,await appSetting(env,`xid:${r.id}`));await xDone(env,`xc:${r.id}`,now);posted++;await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} close ${sent?.data?.id||''} ${r.id}`).catch(()=>{})}
+    try{const sent=await xPost(env,xCloseText(r,move),null,await xThreadTail(env,r.id));await xDone(env,`xc:${r.id}`,now);await xSetTail(env,r.id,sent);posted++;await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} close ${sent?.data?.id||''} ${r.id}`).catch(()=>{})}
     catch(error){console.warn('x_close_failed',error.message);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(`xc:${r.id}`).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});break}
   }
   return {posted};
