@@ -26,7 +26,8 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
 
   const asked=[],ages=[];
   context.playerStats=async(req,env,ctx,opts)=>{const u=new URL(req.url),name=u.searchParams.get('player');asked.push(name);ages.push(opts?.maxAge);
-    if(name==='Nick Chubb')return Response.json({success:false,error:'busy'},{status:429});
+    if(name==='Nick Chubb')return Response.json({success:false,error:'not matched'},{status:404});
+    if(name==='Busy Player')return Response.json({success:false,error:'busy'},{status:429});
     const stats=[3,9,6,4,7,5,8,2,6,5,4,7].map((x,i)=>({game:{date:new Date(now-(i+1)*7*86400000).toISOString(),home_team:{id:5,abbreviation:'PIT'},visitor_team:{id:i%2?9:7,abbreviation:i%2?'BAL':'CIN'}},receptions:x,receiving_yards:x*12}));
     stats.unshift({game:{date:'2026-10-11T17:00:00Z'},receptions:99,receiving_yards:999});
     return Response.json({success:true,player:{team:{id:5,full_name:'Pittsburgh Steelers'}},stats})};
@@ -62,5 +63,19 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
   const body=await res.json();
   assert.equal(body.success,true);assert.ok(body.players.jerryjeudy.m.Receptions.length===10);
   assert.ok(!('nickchubb' in body.players),'players without games are left out');
-  console.log('PASS: player form lists board players, fills a few per run, refreshes once per slate and serves one cached board-wide response');
+  // A busy stats feed (429) stops the run without counting as a failure.
+  db.prepare("INSERT INTO player_form (id,sport,player,teams,markets,wanted_until) VALUES ('NFL|busyplayer','NFL','Busy Player','','[\"Receptions\"]','2026-10-10T17:00:00.000Z')").run();
+  asked.length=0;await run(`fillPlayerForm(env,{waitUntil(){}},${Date.parse('2026-10-09T14:00:00Z')})`);
+  assert.equal(asked[0],'Busy Player');assert.equal(asked.length,1,'stops at the busy reply');
+  assert.equal(db.prepare("SELECT failures FROM player_form WHERE id='NFL|busyplayer'").get().failures,0);
+  db.prepare("DELETE FROM player_form WHERE id='NFL|busyplayer'").run();
+  // Bursts: parallel parts through the SELF binding, one slice of the waiting players each.
+  for(let i=0;i<12;i++)db.prepare("INSERT INTO player_form (id,sport,player,teams,markets,wanted_until) VALUES (?,?,?,?,?,?)").run(`NFL|p${String(i).padStart(2,'0')}`,'NFL',`Player ${i}`,'','["Receptions"]','2026-10-25T17:00:00.000Z');
+  const parts=[];context.env.SELF={fetch:async req=>{const q=new URL(req.url).searchParams;parts.push([q.get('job'),q.get('part'),q.get('size')]);return new Response('{}')}};context.env.MAINTENANCE_TOKEN='t'.repeat(40);
+  out=J(await run(`fillFormBurst(env,{waitUntil(){}},${Date.parse('2026-10-20T13:00:00Z')})`));
+  assert.deepEqual(out,{waiting:12,parts:3,ok:3});assert.deepEqual(parts,[['form','0','5'],['form','1','5'],['form','2','5']]);
+  asked.length=0;await run(`fillPlayerForm(env,{waitUntil(){}},${Date.parse('2026-10-20T13:00:00Z')},5,5)`);
+  assert.deepEqual(asked,['Player 5','Player 6','Player 7','Player 8','Player 9'],'each part takes its own slice');
+  delete context.env.SELF;
+  console.log('PASS: player form lists board players, fills in parallel parts, waits out a busy feed, refreshes once per slate and serves one cached board-wide response');
 })().catch(error=>{console.error(error);process.exit(1)});

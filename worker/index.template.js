@@ -1141,10 +1141,12 @@ async function scheduledMaintenance(request,env,ctx){
   if(!await maintenanceAuthorized(request,env))return json({success:false,error:'Unauthorized'},401);
   if(!env.DB||!env.THE_ODDS_API_KEY||!env.BALLDONTLIE_API_KEY)return json({success:false,error:'Maintenance configuration incomplete'},503);
   const job=new URL(request.url).searchParams.get('job');
-  const jobs={publish:()=>publishOfficialPicks(request,env,ctx),digest:()=>sendWeeklyDigest(env),alerts:()=>sendDueAlerts(env),xpost:()=>runXPosts(env),form:()=>fillPlayerForm(env,ctx),lineGrade:()=>gradeLineShadow(env),nearGrade:()=>gradeNearShadow(env),statsCheck:()=>runStatsChecks(env,ctx),grade:()=>settlePublicRecords(env),closing:()=>captureClosingLines(env)};
+  const jobs={publish:()=>publishOfficialPicks(request,env,ctx),digest:()=>sendWeeklyDigest(env),alerts:()=>sendDueAlerts(env),xpost:()=>runXPosts(env),form:()=>{const q=new URL(request.url).searchParams,size=Math.min(8,Math.max(1,Number(q.get('size'))||5)),part=Math.min(7,Math.max(0,Number(q.get('part'))||0));return fillPlayerForm(env,ctx,Date.now(),size,part*size)},lineGrade:()=>gradeLineShadow(env),nearGrade:()=>gradeNearShadow(env),statsCheck:()=>runStatsChecks(env,ctx),grade:()=>settlePublicRecords(env),closing:()=>captureClosingLines(env)};
   if(!Object.hasOwn(jobs,job))return json({success:false,error:'Unknown maintenance job'},400);
-  let work=scheduledJobs.get(job);
-  if(!work){work=Promise.resolve().then(jobs[job]).finally(()=>scheduledJobs.delete(job));scheduledJobs.set(job,work)}
+  // Form fills run in parts at once; each part is its own job.
+  const key=job==='form'?`form:${new URL(request.url).searchParams.get('part')||0}`:job;
+  let work=scheduledJobs.get(key);
+  if(!work){work=Promise.resolve().then(jobs[job]).finally(()=>scheduledJobs.delete(key));scheduledJobs.set(key,work)}
   try{await work;console.log('scheduled_maintenance_completed',job);return json({success:true,job,completedAt:new Date().toISOString()})}
   catch(error){console.error('scheduled_maintenance_failed',job);return json({success:false,job,error:'Maintenance failed; retry required'},503)}
 }
@@ -1162,18 +1164,18 @@ function cronJobs(date){
   const minute=date.getUTCMinutes();
   // The in-between run (minute 5 of each 10) posts to X and grades
   // line-value picks on its own, so it has its own request allowance.
-  // Outside NFL windows, runs without shadow grading fill player form
-  // (each board player's last 10 games) a few players at a time.
-  if(minute%10>=5){const grade=nflActiveWindow(date)||(date.getUTCHours()%6===0&&minute<10);return ['xpost',...(grade?['lineGrade']:['form'])]}
+  // Every in-between run, and publish runs outside NFL windows, also fill
+  // player form (each board player's last 10 games, in parallel parts).
+  if(minute%10>=5){const grade=nflActiveWindow(date)||(date.getUTCHours()%6===0&&minute<10);return ['xpost',...(grade?['lineGrade']:[]),'form']}
   const publish=['publish'];
   if(nflActiveWindow(date))return [...publish,'grade'];
-  return [...publish,...(date.getUTCHours()%6===0&&minute<5?['grade']:[])];
+  return [...publish,...(date.getUTCHours()%6===0&&minute<5?['grade']:[]),'form'];
 }
 async function runCron(controller,env,ctx){
   const due=cronJobs(new Date(controller.scheduledTime));
   if(!due.length||!env.DB||!env.BALLDONTLIE_API_KEY)return;
   if(!env.THE_ODDS_API_KEY)due.splice(0,due.length,...due.filter(job=>['xpost','lineGrade','form'].includes(job)));
-  const request=new Request(`${SITE_URL}/api/maintenance`),jobs={publish:()=>publishOfficialPicks(request,env,ctx),grade:()=>settlePublicRecords(env),nbaShadow:()=>recordNbaShadow(request,env,ctx),nbaGrade:()=>gradeNbaShadow(env),digest:()=>sendWeeklyDigest(env),alerts:()=>sendDueAlerts(env),xpost:()=>runXPosts(env),form:()=>fillPlayerForm(env,ctx),
+  const request=new Request(`${SITE_URL}/api/maintenance`),jobs={publish:()=>publishOfficialPicks(request,env,ctx),grade:()=>settlePublicRecords(env),nbaShadow:()=>recordNbaShadow(request,env,ctx),nbaGrade:()=>gradeNbaShadow(env),digest:()=>sendWeeklyDigest(env),alerts:()=>sendDueAlerts(env),xpost:()=>runXPosts(env),form:()=>fillFormBurst(env,ctx),
     // Line-value grading, near-miss grading and the stats check take turns
     // (minutes 15/45, 25/55 and 5/35) so each run stays inside the request limit.
     // While games kick off within 4 hours, the 15/45 and 25/55 slots check
@@ -1181,8 +1183,7 @@ async function runCron(controller,env,ctx){
     // 5 minutes; shadow grading catches up once the slate is done.
     lineGrade:async()=>{
       const slot=new Date(controller.scheduledTime).getUTCMinutes()%30;
-      // Stats checks, then a few players' form for the board.
-      if(slot===5){const checks=await runStatsChecks(env,ctx);const form=await fillPlayerForm(env,ctx,Date.now(),3).catch(error=>({error:error.message}));return {...checks,form}}
+      if(slot===5)return runStatsChecks(env,ctx);
       if(env.THE_ODDS_API_KEY){const fast=await publishOfficialPicks(request,env,ctx,{soonOnly:true});if(fast?.state==='completed')return fast}
       if(slot===25){
         // Near misses, then game leans (graded, and backfilled from snapshots).
