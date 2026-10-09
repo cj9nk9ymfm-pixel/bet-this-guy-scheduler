@@ -65,7 +65,7 @@ pick('official|2026-10-06|props|prop|a','Travis Kelce',105,null,new Date(now-20*
   db.prepare("UPDATE public_recommendations SET closing_line=4.5,closing_odds=-105,closing_captured_at=? WHERE id=?").run(new Date(kick-15*60000).toISOString(),'official|2026-10-06|props|prop|b');
   let n=posts.length;out=await run(`postClosingToX(env,${kick-10*60000})`);assert.equal(out.posted,1);assert.equal(posts.length,n+1);
   const close=posts.at(-1).body;
-  assert.deepEqual(close.reply,{in_reply_to_tweet_id:'1'});
+  assert.deepEqual(close.reply,{in_reply_to_tweet_id:'1'});const closeId=String(posts.length);
   assert.ok(close.text.includes('We locked Travis Kelce Over 4.5 receptions at +105 earlier today.')&&close.text.includes('the same bet was -120'),close.text);
   assert.equal((await run(`postClosingToX(env,${kick})`)).posted,0,'once');
   assert.ok(run(`xCloseText({player:'A B',side:'Over',line:4.5,market:'Receptions',odds:110,posted_at:'2026-10-11T14:00:00Z',game_time:'2026-10-11T17:00:00Z'},{kind:'price',close:'-110'})`).includes('at +110 earlier today.'),'same-day lock');
@@ -79,10 +79,11 @@ pick('official|2026-10-06|props|prop|a','Travis Kelce',105,null,new Date(now-20*
   n=posts.length;out=await run(`runXPosts(env,${kick+5*3600000})`);assert.equal(out.results.posted,1);
   const won=posts.at(-1).body;
   assert.ok(won.text.startsWith('✅ Cashed: Travis Kelce Over 4.5 receptions (+105)\nFinal: had 7 receptions.')&&won.text.includes('Season: 5–3'),won.text);
-  assert.deepEqual(won.reply,{in_reply_to_tweet_id:'1'});assert.ok(won.media);
+  assert.deepEqual(won.reply,{in_reply_to_tweet_id:closeId},'the result continues the thread under the closing-line post');assert.ok(won.media);
   for(const bit of ['WINNER','Had 7 receptions · +\u0024105','See every pick graded'])assert.ok(run('__svg').includes(bit),bit);
   // Losses post the same way, on the next run.
   out=await run(`runXPosts(env,${kick+5*3600000+600000})`);assert.equal(out.results.posted,1);
+  assert.deepEqual(posts.at(-1).body.reply,{in_reply_to_tweet_id:db.prepare("SELECT value FROM app_settings WHERE key='xid:official|2026-10-06|props|prop|b'").get().value},'no closing post: the result answers the pick');
   const lost=posts.at(-1).body.text;assert.ok(lost.startsWith('❌ Lost: Josh Allen')&&lost.includes('We post every loss too.'),lost);
   assert.ok(run('__svg').includes('LOSS'));
   out=await run(`runXPosts(env,${kick+5*3600000+1200000})`);assert.equal(out.results.posted,0,'each result once');
