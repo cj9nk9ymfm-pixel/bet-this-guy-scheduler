@@ -417,6 +417,86 @@ async function gradeLeanShadow(env,now=Date.now()){
   if(statements.length)await env.DB.batch(statements);
   return {graded:statements.length,checked:rows.length};
 }
+// Player form: each board player's last 10 games, so prop cards show how
+// often the bet would have hit (one D1 read per visitor, no stats calls).
+// Publish runs list who's on the board; quiet cron runs fetch a few players
+// at a time. A player is refetched once per slate: after Tuesday and Friday
+// 12:00 UTC, when Sunday/Monday and Thursday games are in the stats feed.
+function formStaleBefore(now){
+  const d=new Date(now);
+  for(let i=0;i<8;i++){const t=Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()-i,12);if(t<=now&&[2,5].includes(new Date(t).getUTCDay()))return t}
+  return now-7*86400000;
+}
+async function recordFormWanted(env,boards,now=Date.now()){
+  if(!env.DB||!boards?.length)return {added:0,updated:0};
+  const want=new Map();
+  for(const board of boards){
+    const kick=Date.parse(board.commence_time);if(!(kick>now))continue;
+    const until=new Date(kick).toISOString(),teams=`${board.away_team} @ ${board.home_team}`;
+    for(const book of board.bookmakers||[])for(const market of book.markets||[]){
+      const label=recordLabels[String(market.key||'').replace(/_alternate$/,'')];
+      if(!label||!BTGStats.supports({market:label,sport:'NFL'}))continue;
+      for(const o of market.outcomes||[]){
+        const name=String(o.description||'').trim();if(!name||/\b(d\/st|defense|no scorer)\b/i.test(name))continue;
+        const id=`NFL|${normalizedName(name)}`,w=want.get(id)||{player:name,teams,until,markets:new Set()};
+        if(until<w.until){w.until=until;w.teams=teams}
+        w.markets.add(label);want.set(id,w);
+      }
+    }
+  }
+  const have=new Map((((await env.DB.prepare('SELECT id,markets,wanted_until FROM player_form WHERE wanted_until>?').bind(new Date(now-14*86400000).toISOString()).all()).results)||[]).map(r=>[r.id,r]));
+  const statements=[];let added=0,updated=0;
+  for(const [id,w] of want){
+    const markets=JSON.stringify([...w.markets].sort()),old=have.get(id);
+    if(!old){statements.push(env.DB.prepare('INSERT OR IGNORE INTO player_form (id,sport,player,teams,markets,wanted_until) VALUES (?,?,?,?,?,?)').bind(id,'NFL',w.player,w.teams,markets,w.until));added++;continue}
+    let oldMarkets=[];try{oldMarkets=JSON.parse(old.markets||'[]')}catch{}
+    const union=JSON.stringify([...new Set([...oldMarkets,...w.markets])].sort()),grew=union!==JSON.stringify([...oldMarkets].sort());
+    // A new market needs its values worked out, so the row is fetched again
+    // (the stats lookup itself is usually still cached).
+    if(grew)statements.push(env.DB.prepare('UPDATE player_form SET markets=?,fetched_at=NULL WHERE id=?').bind(union,id));
+    if(old.wanted_until!==w.until&&Date.parse(old.wanted_until)<=now)statements.push(env.DB.prepare('UPDATE player_form SET wanted_until=?,teams=?,failures=0 WHERE id=?').bind(w.until,w.teams,id));
+    if(grew||old.wanted_until!==w.until)updated++;
+  }
+  if(statements.length)await env.DB.batch(statements);
+  return {added,updated};
+}
+// Last 10 games, newest first, as columns: dates, opponents and one value
+// list per market (null where the stat wasn't recorded).
+function formGames(payload,markets,now){
+  const teamId=payload?.player?.team?.id,ab=t=>t?.abbreviation||t?.name||'';
+  const games=(payload?.stats||[]).map(row=>({row,t:Date.parse(row?.game?.date||row?.game?.datetime||'')})).filter(g=>Number.isFinite(g.t)&&g.t<now).sort((a,b)=>b.t-a.t)
+    .map(g=>({...g,v:markets.map(m=>BTGStats.metric({market:m,sport:'NFL'},g.row).value)})).filter(g=>g.v.some(x=>x!==null)).slice(0,10);
+  const m={};markets.forEach((label,i)=>{const values=games.map(g=>g.v[i]);if(values.some(x=>x!==null))m[label]=values});
+  return {d:games.map(g=>new Date(g.t).toISOString().slice(0,10)),o:games.map(({row})=>{const game=row.game||{},home=game.home_team,away=game.visitor_team;return teamId&&home?.id===teamId?`vs ${ab(away)}`:teamId&&away?.id===teamId?`@ ${ab(home)}`:''}),m};
+}
+async function fillPlayerForm(env,ctx,now=Date.now(),limit=5){
+  if(!env.DB||!env.BALLDONTLIE_API_KEY)return {filled:0};
+  const stale=formStaleBefore(now);
+  const rows=(await env.DB.prepare("SELECT id,player,teams,markets FROM player_form WHERE sport='NFL' AND wanted_until>? AND failures<3 AND (fetched_at IS NULL OR fetched_at<?) ORDER BY wanted_until LIMIT ?").bind(new Date(now).toISOString(),stale,limit).all()).results||[];
+  const statements=[env.DB.prepare('DELETE FROM player_form WHERE wanted_until<?').bind(new Date(now-14*86400000).toISOString())];let filled=0;
+  for(const r of rows){
+    const url=new URL('/api/player-stats',SITE_URL);url.searchParams.set('sport','NFL');url.searchParams.set('player',r.player);url.searchParams.set('team',r.teams||'');
+    let payload=null;
+    try{payload=await (await playerStats(new Request(url),env,ctx||{waitUntil(){}},{maxAge:Math.max(60000,now-stale)})).json()}catch{}
+    if(!payload?.success){statements.push(env.DB.prepare('UPDATE player_form SET failures=failures+1 WHERE id=?').bind(r.id));continue}
+    let markets=[];try{markets=JSON.parse(r.markets||'[]')}catch{}
+    statements.push(env.DB.prepare('UPDATE player_form SET games_json=?,fetched_at=?,failures=0 WHERE id=?').bind(JSON.stringify(formGames(payload,markets,now)),now,r.id));filled++;
+  }
+  await env.DB.batch(statements);
+  return {filled,tried:rows.length};
+}
+// GET /api/form: every board player's last 10 games (cached 10 minutes).
+async function playerFormResponse(request,env,ctx,now=Date.now()){
+  if(!env.DB)return json({success:true,players:{}});
+  const saved=await readFeedCache(request,'player-form-v1-NFL');
+  if(saved.response&&cacheAge(saved.response)<600000)return cachedForClient(saved.response,'fresh');
+  const rows=(await env.DB.prepare("SELECT player,games_json FROM player_form WHERE sport='NFL' AND wanted_until>? AND games_json IS NOT NULL").bind(new Date(now-4*3600000).toISOString()).all()).results||[];
+  const players={};for(const r of rows){try{const g=JSON.parse(r.games_json);if(g?.d?.length)players[normalizedName(r.player)]=g}catch{}}
+  const stored=storedResponse(JSON.stringify({success:true,players,updatedAt:new Date().toISOString()}),600);
+  if(saved.cache&&saved.key)ctx?.waitUntil?.(saved.cache.put(saved.key,stored.clone()));
+  return cachedForClient(stored,'miss');
+}
+
 // Stats check (shadow): does the stat line agree with a pick? For each
 // official pick and near miss, project the stat from the player's recent
 // games (last 5, last 10, this season) and the opponent's defense against
@@ -616,6 +696,7 @@ async function publishOfficialPicks(request,env,ctx,opts={}){
     await recordLineShadow(env,boards,Date.now()).catch(error=>console.warn('line_shadow_failed',error.message));
     await recordNearShadow(env,boards,candidates,Date.now()).catch(error=>console.warn('near_shadow_failed',error.message));
     await recordLeans(env,boards,Date.now()).catch(error=>console.warn('lean_shadow_failed',error.message));
+    await recordFormWanted(env,boards,Date.now()).catch(error=>console.warn('player_form_failed',error.message));
 
   if(failedBoards)throw new Error('Some official boards were unavailable; retry required');
   return {state:"completed"};

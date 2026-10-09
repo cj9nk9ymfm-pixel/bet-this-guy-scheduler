@@ -408,7 +408,9 @@ async function findStatsPlayer(sportLabel, name, team, apiKey) {
   return null;
 }
 
-async function playerStats(request, env, ctx) {
+// opts.maxAge: the oldest cached copy to accept (the player-form fill asks
+// for one newer than the last slate, so it never reuses pre-game stats).
+async function playerStats(request, env, ctx, opts = {}) {
   if (!env.BALLDONTLIE_API_KEY) return json({ success: false, error: "Player stats are not connected." }, 503);
   const url = new URL(request.url);
   const sportLabel = String(url.searchParams.get("sport") || "").toUpperCase();
@@ -418,7 +420,7 @@ async function playerStats(request, env, ctx) {
   if (!config || !/^[\p{L}\p{M}][\p{L}\p{M} .'’-]{1,89}$/u.test(name) || team.length > 60) return json({ success: false, error: "Choose a valid player." }, 400);
   if (/\b(d\/st|defense|defensive unit|no scorer)\b/i.test(name)) return json({ success: false, error: "Team and no-scorer markets do not have player game logs." }, 404);
   const saved = await readFeedCache(request, `player-stats-v4-completed-${sportLabel}-${normalizedName(name)}-${normalizedName(team)}`);
-  if (saved.response && cacheAge(saved.response) < 24 * 60 * 60 * 1000) return cachedForClient(saved.response, "fresh");
+  if (saved.response && cacheAge(saved.response) < Math.min(24 * 60 * 60 * 1000, opts.maxAge ?? Infinity)) return cachedForClient(saved.response, "fresh");
   if (!await allowProviderCall(request, env.PLAYER_STATS_LIMITER)) return tooManyRequests(saved);
   try {
     // BALLDONTLIE's `search` filter matches within either the first-name or
@@ -1139,7 +1141,7 @@ async function scheduledMaintenance(request,env,ctx){
   if(!await maintenanceAuthorized(request,env))return json({success:false,error:'Unauthorized'},401);
   if(!env.DB||!env.THE_ODDS_API_KEY||!env.BALLDONTLIE_API_KEY)return json({success:false,error:'Maintenance configuration incomplete'},503);
   const job=new URL(request.url).searchParams.get('job');
-  const jobs={publish:()=>publishOfficialPicks(request,env,ctx),digest:()=>sendWeeklyDigest(env),alerts:()=>sendDueAlerts(env),xpost:()=>runXPosts(env),lineGrade:()=>gradeLineShadow(env),nearGrade:()=>gradeNearShadow(env),statsCheck:()=>runStatsChecks(env,ctx),grade:()=>settlePublicRecords(env),closing:()=>captureClosingLines(env)};
+  const jobs={publish:()=>publishOfficialPicks(request,env,ctx),digest:()=>sendWeeklyDigest(env),alerts:()=>sendDueAlerts(env),xpost:()=>runXPosts(env),form:()=>fillPlayerForm(env,ctx),lineGrade:()=>gradeLineShadow(env),nearGrade:()=>gradeNearShadow(env),statsCheck:()=>runStatsChecks(env,ctx),grade:()=>settlePublicRecords(env),closing:()=>captureClosingLines(env)};
   if(!Object.hasOwn(jobs,job))return json({success:false,error:'Unknown maintenance job'},400);
   let work=scheduledJobs.get(job);
   if(!work){work=Promise.resolve().then(jobs[job]).finally(()=>scheduledJobs.delete(job));scheduledJobs.set(job,work)}
@@ -1160,7 +1162,9 @@ function cronJobs(date){
   const minute=date.getUTCMinutes();
   // The in-between run (minute 5 of each 10) posts to X and grades
   // line-value picks on its own, so it has its own request allowance.
-  if(minute%10>=5)return ['xpost',...(nflActiveWindow(date)||(date.getUTCHours()%6===0&&minute<10)?['lineGrade']:[])];
+  // Outside NFL windows, runs without shadow grading fill player form
+  // (each board player's last 10 games) a few players at a time.
+  if(minute%10>=5){const grade=nflActiveWindow(date)||(date.getUTCHours()%6===0&&minute<10);return ['xpost',...(grade?['lineGrade']:['form'])]}
   const publish=['publish'];
   if(nflActiveWindow(date))return [...publish,'grade'];
   return [...publish,...(date.getUTCHours()%6===0&&minute<5?['grade']:[])];
@@ -1168,8 +1172,8 @@ function cronJobs(date){
 async function runCron(controller,env,ctx){
   const due=cronJobs(new Date(controller.scheduledTime));
   if(!due.length||!env.DB||!env.BALLDONTLIE_API_KEY)return;
-  if(!env.THE_ODDS_API_KEY)due.splice(0,due.length,...due.filter(job=>job==='xpost'||job==='lineGrade'));
-  const request=new Request(`${SITE_URL}/api/maintenance`),jobs={publish:()=>publishOfficialPicks(request,env,ctx),grade:()=>settlePublicRecords(env),nbaShadow:()=>recordNbaShadow(request,env,ctx),nbaGrade:()=>gradeNbaShadow(env),digest:()=>sendWeeklyDigest(env),alerts:()=>sendDueAlerts(env),xpost:()=>runXPosts(env),
+  if(!env.THE_ODDS_API_KEY)due.splice(0,due.length,...due.filter(job=>['xpost','lineGrade','form'].includes(job)));
+  const request=new Request(`${SITE_URL}/api/maintenance`),jobs={publish:()=>publishOfficialPicks(request,env,ctx),grade:()=>settlePublicRecords(env),nbaShadow:()=>recordNbaShadow(request,env,ctx),nbaGrade:()=>gradeNbaShadow(env),digest:()=>sendWeeklyDigest(env),alerts:()=>sendDueAlerts(env),xpost:()=>runXPosts(env),form:()=>fillPlayerForm(env,ctx),
     // Line-value grading, near-miss grading and the stats check take turns
     // (minutes 15/45, 25/55 and 5/35) so each run stays inside the request limit.
     // While games kick off within 4 hours, the 15/45 and 25/55 slots check
@@ -1177,7 +1181,8 @@ async function runCron(controller,env,ctx){
     // 5 minutes; shadow grading catches up once the slate is done.
     lineGrade:async()=>{
       const slot=new Date(controller.scheduledTime).getUTCMinutes()%30;
-      if(slot===5)return runStatsChecks(env,ctx);
+      // Stats checks, then a few players' form for the board.
+      if(slot===5){const checks=await runStatsChecks(env,ctx);const form=await fillPlayerForm(env,ctx,Date.now(),3).catch(error=>({error:error.message}));return {...checks,form}}
       if(env.THE_ODDS_API_KEY){const fast=await publishOfficialPicks(request,env,ctx,{soonOnly:true});if(fast?.state==='completed')return fast}
       if(slot===25){
         // Near misses, then game leans (graded, and backfilled from snapshots).
@@ -1257,6 +1262,7 @@ async function routeRequest(request, env, ctx) {
     if (url.pathname === "/api/schedule") return futureSchedule(request, env, ctx);
     if (url.pathname === "/api/event") return eventProps(request, env, ctx);
     if (url.pathname === "/api/player-stats") return playerStats(request, env, ctx);
+    if (url.pathname === "/api/form") return playerFormResponse(request, env, ctx);
     if (url.pathname === "/api/live-games") return liveGames(request, env, ctx);
     if (url.pathname === "/api/live-player") return livePlayer(request, env, ctx);
     if (url.pathname === "/api/live-game-stats") return liveGameStats(request, env, ctx);
