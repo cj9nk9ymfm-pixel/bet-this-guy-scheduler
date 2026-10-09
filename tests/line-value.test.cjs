@@ -100,7 +100,10 @@ const run=code=>vm.runInContext(code,context);
   // Official picks still lock only at the same line and a big-5 book.
   assert.equal(run(`officialCandidates([lineEvent],${now}).length`),0,'line value is not used for official picks yet');
 
-  // My-book alerts: Caesars users hear about the better line, with a note.
+  // My-book alerts: paused for line value (it was losing in shadow), so no one gets a better-line alert.
+  assert.equal(run(`bookValueCandidates([lineEvent],${now})`).filter(c=>c.lineNote).length,0,'line-value alerts are paused');
+  // Switched back on, Caesars users hear about the better line, with a note.
+  run('LINE_ALERTS_ON=true');
   const alerts=run(`bookValueCandidates([lineEvent],${now})`).filter(c=>c.lineNote);
   assert.equal(alerts.length,1);assert.equal(alerts[0].book,'Caesars');assert.equal(alerts[0].lineNote,'10 yds better line than most books');
   context.alertPick=alerts[0];

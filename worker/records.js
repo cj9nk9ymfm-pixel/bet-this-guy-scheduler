@@ -347,6 +347,76 @@ async function gradeNearShadow(env,now=Date.now()){
   if(statements.length)await env.DB.batch(statements);
   return {graded:statements.length,checked:rows.length};
 }
+// Game leans (shadow): one per game, the best-rated prop at the big-5 books
+// priced -150 to +150, to test whether a pick for every game can hold up.
+// Locked once, about 90 minutes before kickoff; never posted, never official.
+const LEAN_WINDOW=90*60000,LEAN_MIN_ODDS=-150,LEAN_MAX_ODDS=150;
+function leanFor(board,now){
+  const picks=officialCandidates([board],now,{},{min:-Infinity}).filter(p=>p.odds>=LEAN_MIN_ODDS&&p.odds<=LEAN_MAX_ODDS);
+  return picks.sort((a,b)=>b.edge-a.edge)[0]||null;
+}
+const leanRow=(env,p,gameId,stamp,source)=>env.DB.prepare('INSERT OR IGNORE INTO lean_shadow (id,event_id,player,team,market,side,line,odds,book,edge,game_time,logged_at,source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(gameId,gameId,p.player,p.team||null,p.market,p.side,p.line,p.odds,p.book,+p.edge.toFixed(2),p.gameTime,stamp,source);
+async function recordLeans(env,boards,now=Date.now()){
+  if(!env.DB)return {logged:0};
+  const stamp=new Date(now).toISOString(),statements=[];let logged=0;
+  const open=(await env.DB.prepare('SELECT id,event_id,player,market,side,line FROM lean_shadow WHERE game_time>?').bind(stamp).all()).results||[],have=new Set(open.map(r=>r.id));
+  for(const board of boards){
+    const gameId=board.eventID||`NFL--${board.id}`,kickoff=Date.parse(board.commence_time);
+    if(have.has(gameId)||!(kickoff-now<=LEAN_WINDOW))continue;
+    const p=leanFor(board,now);if(p){statements.push(leanRow(env,p,gameId,stamp,'live'));logged++}
+  }
+  // Closing price: the best big-5 price still on offer at the lean's line.
+  for(const r of open){const board=boards.find(e=>(e.eventID||`NFL--${e.id}`)===r.event_id);const best=board?bigFivePrice(board,r):null;if(best!==null)statements.push(env.DB.prepare('UPDATE lean_shadow SET close_odds=?,close_at=? WHERE id=?').bind(best,stamp,r.id))}
+  if(statements.length)await env.DB.batch(statements);
+  return {logged};
+}
+// Backtest from the saved odds snapshots (kept a week): for each finished
+// game without a lean, the board an hour before kickoff picks the lean and
+// the last board before kickoff gives its closing price. A few games a run.
+async function backfillLeans(env,now=Date.now(),limit=4){
+  if(!env.DB)return {added:0};
+  // Games still being snapshotted (upcoming) are skipped without reading them.
+  const games=(await env.DB.prepare("SELECT event_id,MAX(captured_at) last FROM movement_snapshots WHERE kind='observed' AND event_id LIKE 'NFL--%' GROUP BY event_id HAVING MAX(captured_at)<?").bind(now-30*60000).all()).results||[];
+  const have=new Set(((await env.DB.prepare('SELECT id FROM lean_shadow').all()).results||[]).map(r=>r.id));
+  const statements=[];let added=0;
+  for(const g of games){
+    if(added>=limit)break;
+    if(have.has(g.event_id))continue;
+    const latest=await env.DB.prepare("SELECT payload_json FROM movement_snapshots WHERE event_id=? AND kind='observed' ORDER BY captured_at DESC LIMIT 1").bind(g.event_id).first();
+    let board=null;try{board=JSON.parse(latest?.payload_json||'null')}catch{}
+    const kickoff=Date.parse(board?.commence_time||'');
+    // Only games that have started: upcoming ones get a live lean.
+    if(!Number.isFinite(kickoff)||kickoff>now)continue;
+    const lock=await env.DB.prepare("SELECT captured_at,payload_json FROM movement_snapshots WHERE event_id=? AND kind='observed' AND captured_at<=? ORDER BY captured_at DESC LIMIT 1").bind(g.event_id,kickoff-3600000).first()
+      ||await env.DB.prepare("SELECT captured_at,payload_json FROM movement_snapshots WHERE event_id=? AND kind='observed' AND captured_at<? ORDER BY captured_at ASC LIMIT 1").bind(g.event_id,kickoff).first();
+    const last=await env.DB.prepare("SELECT captured_at,payload_json FROM movement_snapshots WHERE event_id=? AND kind='observed' AND captured_at<? ORDER BY captured_at DESC LIMIT 1").bind(g.event_id,kickoff).first();
+    let lockBoard=null,lastBoard=null;try{lockBoard=JSON.parse(lock?.payload_json||'null');lastBoard=JSON.parse(last?.payload_json||'null')}catch{}
+    const p=lockBoard?leanFor({...lockBoard,eventID:g.event_id},Number(lock.captured_at)):null;
+    // No board to pick from: a placeholder row so the game isn't retried.
+    if(!p){statements.push(env.DB.prepare("INSERT OR IGNORE INTO lean_shadow (id,event_id,player,market,side,line,odds,book,edge,game_time,logged_at,source,result) VALUES (?,?,'-','-','-',0,0,'-',0,?,?,'backtest','none')").bind(g.event_id,g.event_id,new Date(kickoff).toISOString(),new Date(now).toISOString()));have.add(g.event_id);continue}
+    statements.push(leanRow(env,p,g.event_id,new Date(Number(lock.captured_at)).toISOString(),'backtest'));
+    const close=lastBoard?bigFivePrice(lastBoard,p):null;
+    if(close!==null)statements.push(env.DB.prepare('UPDATE lean_shadow SET close_odds=?,close_at=? WHERE id=?').bind(close,new Date(Number(last.captured_at)).toISOString(),g.event_id));
+    have.add(g.event_id);added++;
+  }
+  if(statements.length)await env.DB.batch(statements);
+  return {added};
+}
+async function gradeLeanShadow(env,now=Date.now()){
+  if(!env.DB||!env.BALLDONTLIE_API_KEY)return {graded:0};
+  const rows=(await env.DB.prepare("SELECT * FROM lean_shadow WHERE result IS NULL AND game_time<? AND game_time>? ORDER BY game_time LIMIT 10").bind(new Date(now-4*3600000).toISOString(),new Date(now-14*86400000).toISOString()).all()).results||[];
+  const cache=new Map(),statements=[],stamp=new Date(now).toISOString();
+  for(const r of rows){
+    const record={sport:'NFL',player:r.player,team:r.team,gameTime:r.game_time,market:r.market,side:r.side,line:r.line};
+    const stat=await recordPlayerStats(record,env,undefined,cache).catch(()=>null);
+    if(shadowVoid(stat,r.game_time,now)){statements.push(env.DB.prepare('UPDATE lean_shadow SET actual=NULL,result=?,graded_at=? WHERE id=?').bind('void',stamp,r.id));continue}
+    if(!stat||stat.missingPlayerStats||!(stat.scoreboardFinal||nflGameState(stat.game||{})==='final'))continue;
+    const value=BTGStats.metric(record,stat).value,result=value===null?null:BTGStats.grade(r.side,r.line,value);
+    if(result)statements.push(env.DB.prepare('UPDATE lean_shadow SET actual=?,result=?,graded_at=? WHERE id=?').bind(value,result,stamp,r.id));
+  }
+  if(statements.length)await env.DB.batch(statements);
+  return {graded:statements.length,checked:rows.length};
+}
 // Stats check (shadow): does the stat line agree with a pick? For each
 // official pick and near miss, project the stat from the player's recent
 // games (last 5, last 10, this season) and the opponent's defense against
@@ -545,6 +615,7 @@ async function publishOfficialPicks(request,env,ctx,opts={}){
     const trail=officialTrailStatements(boards,existing.results||[],env,Date.now());if(trail.length)await env.DB.batch(trail);
     await recordLineShadow(env,boards,Date.now()).catch(error=>console.warn('line_shadow_failed',error.message));
     await recordNearShadow(env,boards,candidates,Date.now()).catch(error=>console.warn('near_shadow_failed',error.message));
+    await recordLeans(env,boards,Date.now()).catch(error=>console.warn('lean_shadow_failed',error.message));
 
   if(failedBoards)throw new Error('Some official boards were unavailable; retry required');
   return {state:"completed"};
@@ -1456,6 +1527,7 @@ const bookKey=value=>{const key=String(value||'').toLowerCase().replace(/[^a-z0-
 function cleanFollows(list){return Array.isArray(list)?[...new Set(list.map(f=>String((f&&typeof f==='object'?f.name:f)||'').trim().slice(0,60)).filter(n=>/^[A-Za-z][A-Za-z .'-]{1,59}$/.test(n)))].slice(0,40):[]}
 const followKey=name=>String(name||'').toLowerCase().replace(/[^a-z]/g,'');
 function cleanBooks(list){return Array.isArray(list)?[...new Set(list.map(b=>String(b||'').slice(0,40)).filter(b=>/^[A-Za-z0-9 .&'+-]{2,40}$/.test(b)))].slice(0,20):[]}
+let LINE_ALERTS_ON=false;
 const LINE_ALERT_MIN=2;
 function bookValueCandidates(events,now=Date.now()){
   const out=[];
@@ -1486,8 +1558,10 @@ function bookValueCandidates(events,now=Date.now()){
     }
     // Line value: a book's standard line that beats the usual line (Over
     // 209.5 where most books have 215.5), rated on the fair-price curve.
-    // Held to a higher bar than same-line prices while it runs in shadow.
-    for(const g of BTGLine.rate(event,now)){
+    // Paused for alerts (LINE_ALERTS_ON): the line-value shadow test was
+    // 34-52, -$1,846 at $100 by Oct 9, so it isn't sent to anyone until it
+    // proves itself. The shadow test keeps logging and grading.
+    if(LINE_ALERTS_ON)for(const g of BTGLine.rate(event,now)){
       const market=recordLabels[g.marketKey];if(!market)continue;
       for(const o of g.offers){
         const gain=BTGLine.lineGain(o.side,o.line,g.main);
