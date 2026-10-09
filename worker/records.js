@@ -698,6 +698,9 @@ async function publishOfficialPicks(request,env,ctx,opts={}){
     await recordLeans(env,boards,Date.now()).catch(error=>console.warn('lean_shadow_failed',error.message));
     await recordFormWanted(env,boards,Date.now()).catch(error=>console.warn('player_form_failed',error.message));
 
+    // New picks go out right away (X post and phone alerts) instead of on the
+    // next in-between cron run, which stays as the backup.
+    if(Number(posted)>0)await announceNow(env).catch(error=>console.warn('announce_now_failed',error.message));
   if(failedBoards)throw new Error('Some official boards were unavailable; retry required');
   return {state:"completed"};
 }
@@ -1586,6 +1589,15 @@ async function postSummaryToX(env,now=Date.now()){
 }
 // Everything the X cron run posts, in order, within the run's request limit:
 // new picks first, then the Tuesday recap, closing-line posts, then results.
+// Runs the X post and push-alert jobs in separate invocations of this Worker
+// (the SELF service binding), each with its own request allowance: the pick
+// run has already used most of its own loading every game's odds.
+async function announceNow(env){
+  if(!env.SELF?.fetch||!env.MAINTENANCE_TOKEN)return {skipped:true};
+  const call=job=>env.SELF.fetch(new Request(`${SITE_URL}/api/maintenance?job=${job}`,{method:'POST',headers:{authorization:`Bearer ${env.MAINTENANCE_TOKEN}`},signal:AbortSignal.timeout(60000)})).then(r=>r.status);
+  const [alerts,xpost]=await Promise.allSettled([call('alerts'),xReady(env)?call('xpost'):Promise.resolve('off')]);
+  return {alerts:alerts.value??alerts.reason?.message,xpost:xpost.value??xpost.reason?.message};
+}
 async function runXPosts(env,now=Date.now()){
   const picks=await postPicksToX(env,now);
   const weekly=await postWeeklyToX(env,now);
