@@ -1435,9 +1435,13 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
   }
   // This week's official picks, first thing on the home page: every pick in the
   // current official week, locked with its posted price, then graded.
+  const officialDone=r=>['won','lost','push','void'].includes(r.result);
   function officialNow(rows,now=Date.now()){
     const current=currentWeek(now);
-    return rows.filter(r=>weekOf(r)===current&&(r.kind==='prop'||r.kind==='parlay')).sort((a,b)=>String(a.game_time||'').localeCompare(String(b.game_time||''))||String(a.posted_at||'').localeCompare(String(b.posted_at||'')));
+    // In play first, then upcoming by kickoff; graded picks go last (newest
+    // first) under a "Final" label, still in the list and in the record.
+    const group=r=>officialDone(r)?2:Date.parse(r.game_time||'')<=now?0:1,t=r=>String(r.game_time||'');
+    return rows.filter(r=>weekOf(r)===current&&(r.kind==='prop'||r.kind==='parlay')).sort((a,b)=>group(a)-group(b)||(group(a)===2?t(b).localeCompare(t(a)):t(a).localeCompare(t(b)))||String(a.posted_at||'').localeCompare(String(b.posted_at||'')));
   }
   const kickoff=iso=>{const d=new Date(iso);return Number.isFinite(d.getTime())?d.toLocaleString([],{weekday:'short',hour:'numeric',minute:'2-digit'}):''};
   function officialRow(r,i){
@@ -1480,7 +1484,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     const host=$('#officialNow');if(!host||!Array.isArray(rows))return;
     const list=officialNow(rows);
     $('#officialNowCount').textContent=list.length?String(list.length):'';
-    $('#officialNowList').innerHTML=list.length?list.map(officialRow).join(''):'<div class="on-empty"><strong>No picks yet this week.</strong><span>They post the moment a price qualifies, any day before kickoff.</span></div>';
+    $('#officialNowList').innerHTML=list.length?list.map((r,i)=>(officialDone(r)&&i>0&&!officialDone(list[i-1])?'<p class="on-divider">Final</p>':'')+officialRow(r,i)).join(''):'<div class="on-empty"><strong>No picks yet this week.</strong><span>They post the moment a price qualifies, any day before kickoff.</span></div>';
     $$('#officialNowList button[data-on]').forEach(b=>b.onclick=()=>openPick(list[+b.dataset.on]));
     officialLiveList=list;updateOfficialLive();window.btgOfficialForm?.(list);
     $$('#officialNowList [data-on-player]').forEach(row=>{const player=row.dataset.onPlayer;if(!player||typeof playerStatsFor!=='function')return;const r=list[+row.dataset.on];playerStatsFor({sport:r?.sport||'NFL',player,team:row.dataset.onTeam}).then(payload=>window.BTGPaintTeam?.(row,payload?.player?.team,r?.sport||'NFL')).catch(()=>{})});
@@ -2308,8 +2312,10 @@ function statsProp(l){
     if(!html.includes('<p class="card-money">'))return html;
     html=html.replace(/<p class="card-why card-why-flip">[\s\S]*?<\/p>/,'');
     const f=formFor(p);if(!f)return html;
-    const td=p.binary||/anytime|first|last|scorer/i.test(p.market||''),label=td?(p.side==='Under'?'no TD, last '+f.n:'scored, last '+f.n):`${p.side.toLowerCase()}, last ${f.n} · avg ${fmt(+f.avg.toFixed(1))}`;
-    return html.replace('<p class="card-money">',()=>`<div class="card-form" title="${htmlEscape(formText(p,f))}">${bars(p,f)}<span><b>${f.hits}/${f.n}</b> ${htmlEscape(label)}</span></div><p class="card-money">`);
+    // One quiet line: L10, ten dots (green = hit, oldest to newest), "7/10 over".
+    const td=p.binary||/anytime|first|last|scorer/i.test(p.market||''),word=td?(p.side==='Under'?'no TD':'scored'):p.side.toLowerCase(),rate=f.hits/f.n;
+    const dots=[...f.games].reverse().map(g=>`<i class="${g.hit===true?'hit':g.hit===false?'miss':'push'}"></i>`).join('');
+    return html.replace('<p class="card-money">',()=>`<div class="card-form" title="${htmlEscape(formText(p,f))}"><span class="cf-label">L${f.n}</span><span class="cf-dots" aria-hidden="true">${dots}</span><span class="cf-rate${rate>=.7?' good':rate<=.3?' bad':''}"><b>${f.hits}/${f.n}</b> ${htmlEscape(word)}</span></div><p class="card-money">`);
   };
 
   // The prop sheet: last 10 games as bars, and every book's price.
