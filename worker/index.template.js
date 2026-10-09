@@ -1179,7 +1179,14 @@ async function runCron(controller,env,ctx){
       const slot=new Date(controller.scheduledTime).getUTCMinutes()%30;
       if(slot===5)return runStatsChecks(env,ctx);
       if(env.THE_ODDS_API_KEY){const fast=await publishOfficialPicks(request,env,ctx,{soonOnly:true});if(fast?.state==='completed')return fast}
-      return (slot===25?gradeNearShadow:gradeLineShadow)(env);
+      if(slot===25){
+        // Near misses, then game leans (graded, and backfilled from snapshots).
+        const near=await gradeNearShadow(env);
+        const leans=await gradeLeanShadow(env).catch(error=>({error:error.message}));
+        const backfill=await backfillLeans(env).catch(error=>({error:error.message}));
+        return {near,leans,backfill};
+      }
+      return gradeLineShadow(env);
     }};
   // NBA shadow runs after the NFL jobs and on its own: it can never hold up
   // or fail NFL publishing or grading.
