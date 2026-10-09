@@ -91,5 +91,21 @@ pick('official|2026-10-06|props|prop|a','Travis Kelce',105,null,new Date(now-20*
   db.prepare("UPDATE public_recommendations SET settled_at=? WHERE id='official|2026-10-06|props|prop|e'").run(new Date(kick+4*3600000).toISOString());
   assert.equal((await run(`postResultsToX(env,${kick+6*3600000})`)).posted,0);
   for(const t of posts)assert.ok(t.body.text.length<=280&&!/https?:|\.com/.test(t.body.text),t.body.text);
+  // Pinned season summary: goes out once, on the first run with nothing heavier to post.
+  const pins=posts.filter(t=>t.body.text.startsWith('📌'));assert.equal(pins.length,1,'posted once by the X runs');
+  const pin=pins[0].body;assert.ok(pin.media,'with the season graphic');assert.ok(pin.text.length<=280&&!/https?:|\.com/.test(pin.text)&&pin.text.includes('graded in public'),pin.text);
+  run(`__svg=xSummarySvg(xSummaryData([{kind:'prop',odds:110,result:'won',status:'final',posted_at:'2026-09-24T05:00:00Z'}]))`);
+  for(const bit of ['SEASON RECORD','Beat the closing price','Total at $100 a pick','Free picks as they lock','SINCE SEP 24'])assert.ok(run('__svg').includes(bit),bit);
+  assert.equal((await run(`postSummaryToX(env,${kick+8*3600000})`)).posted,0,'once');
+  db.prepare("INSERT INTO app_settings(key,value) VALUES('x-summary-request','v2')").run();
+  assert.equal((await run(`postSummaryToX(env,${kick+9*3600000})`)).posted,1,'a new version posts again');
+  // A run cut off mid-post leaves a pending claim: retried after 30 minutes, never twice at once.
+  const cut='official|2026-10-06|props|prop|a';
+  db.prepare("UPDATE app_settings SET value=? WHERE key=?").run('pending '+new Date(kick+9*3600000).toISOString(),'xr:'+cut);
+  assert.equal(await run(`xClaimable(env,'xr:${cut}',${kick+9*3600000+10*60000})`),false,'in flight');
+  assert.equal(await run(`xClaimable(env,'xr:${cut}',${kick+9*3600000+31*60000})`),true,'stale, retried');
+  assert.equal(await run(`xClaim(env,'xr:${cut}',${kick+9*3600000+31*60000})`),true);
+  assert.equal(await run(`xClaim(env,'xr:${cut}',${kick+9*3600000+32*60000})`),false,'the retry holds the claim');
+  assert.equal(await run(`xClaimable(env,'xi:${cut}',${kick+9*3600000})`),false,'a confirmed post is never redone');
   console.log('PASS: X posts sign correctly, post each new official pick once with its graphic (text fallback after three failed uploads, never a duplicate), retry failures, post Tuesday results once with a graphic, reply with beat-the-close posts and with every result, wins and losses');
 })().catch(error=>{console.error(error);process.exit(1)});

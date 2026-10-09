@@ -1102,6 +1102,19 @@ function xCardText(r){
   const head=r.kind==='parlay'?`🔒 Official ${legs.length}-leg parlay (${weeklyOdds(r.combined_odds)})`:`🔒 Official pick: ${r.player} ${weeklyLegText(r)} (${weeklyOdds(r.odds)}${first.book?`, ${first.book}`:''})\n${[matchup,when].filter(Boolean).join(' · ')}`;
   return xShort(`${head}\n\nToday’s full board: link in bio · 21+`);
 }
+// X post claims read "pending <time>" while a post is in flight and the post
+// time once it's confirmed. A run cut off mid-post (Tez Johnson's result,
+// Oct 8) used to leave its claim forever, so that post never went out; now a
+// pending claim older than 30 minutes is retried.
+const X_STALE=30*60000;
+async function xClaimable(env,key,now){const cur=await appSetting(env,key);return !cur||(String(cur).startsWith('pending ')&&!(now-Date.parse(String(cur).slice(8))<X_STALE))}
+async function xClaim(env,key,now){
+  const cur=await appSetting(env,key);
+  if(cur){if(!(await xClaimable(env,key,now)))return false;await env.DB.prepare('DELETE FROM app_settings WHERE key=? AND value=?').bind(key,cur).run()}
+  const claim=await env.DB.prepare('INSERT OR IGNORE INTO app_settings (key,value) VALUES (?,?)').bind(key,`pending ${new Date(now).toISOString()}`).run();
+  return Boolean(Number(claim?.meta?.changes??claim?.changes));
+}
+const xDone=(env,key,now)=>setAppSetting(env,key,new Date(now).toISOString()).catch(()=>{});
 // Each new official pick is posted once with its graphic. If the graphic
 // can't be made or uploaded three runs in a row, the text version posts
 // instead (unless that text was already posted), so a pick is never lost.
@@ -1113,14 +1126,13 @@ async function postPicksToX(env,now=Date.now()){
   const seasonRows=(await env.DB.prepare("SELECT kind,line,odds,combined_odds,status,result,closing_line,closing_odds,closing_captured_at FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%'").all()).results||[];
   const season=weeklySummary(seasonRows);let posted=0,attempts=0;
   for(const r of picks){
-    if(await appSetting(env,`xi:${r.id}`))continue;
+    if(!(await xClaimable(env,`xi:${r.id}`,now)))continue;
     // At most two picks per run: each uses about a dozen requests.
     if(++attempts>2)break;
     // Count attempts before the heavy work, so a crash mid-render still counts.
     const tries=Number(await appSetting(env,`xtry:${r.id}`)||0)+1;await setAppSetting(env,`xtry:${r.id}`,String(tries));
     // Claim first so two Worker instances can't post the same pick twice.
-    const claim=await env.DB.prepare('INSERT OR IGNORE INTO app_settings (key,value) VALUES (?,?)').bind(`xi:${r.id}`,start).run();
-    if(!Number(claim?.meta?.changes??claim?.changes))continue;
+    if(!(await xClaim(env,`xi:${r.id}`,now)))continue;
     let mediaId=null,imageError=null;
     if(tries<=3)try{
       if(typeof renderCardPng!=='function')throw new Error('graphics unavailable');
@@ -1134,6 +1146,7 @@ async function postPicksToX(env,now=Date.now()){
       else if(!(await appSetting(env,`x:${r.id}`)))sent=await xPost(env,xPickText(r,season));
       // The post id lets the closing-line and result posts reply under the pick.
       if(sent?.data?.id)await setAppSetting(env,`xid:${r.id}`,String(sent.data.id)).catch(()=>{});
+      await xDone(env,`xi:${r.id}`,now);
       posted++;await setAppSetting(env,'x-last-post',`${start} ${mediaId?'graphic':'text'} ${r.id}`).catch(()=>{});
       if(imageError)await setAppSetting(env,'x-last-error',`${start} graphic: ${imageError}`).catch(()=>{});
     }catch(error){
@@ -1233,8 +1246,7 @@ async function postWeeklyToX(env,now=Date.now()){
   if(!env.DB||!xReady(env))return {posted:0,disabled:true};
   const day=new Date(now);if(day.getUTCDay()!==2||day.getUTCHours()<15)return {posted:0,due:false};
   const week=new Date(Date.parse(`${officialWeek(now)}T00:00:00Z`)-7*86400000).toISOString().slice(0,10);
-  const claim=await env.DB.prepare('INSERT OR IGNORE INTO app_settings (key,value) VALUES (?,?)').bind(`x-week:${week}`,new Date(now).toISOString()).run();
-  if(!Number(claim?.meta?.changes??claim?.changes))return {posted:0,done:true};
+  if(!(await xClaim(env,`x-week:${week}`,now)))return {posted:0,done:true};
   const rows=await weeklyRows(env,week);if(!rows.length)return {posted:0,empty:true};
   const s=weeklySummary(rows),info=nflWeekOf(week),name=info?`Week ${info.week}`:'Last week';
   const all=(await env.DB.prepare("SELECT kind,line,odds,combined_odds,status,result,closing_line,closing_odds,closing_captured_at FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND id<?").bind(`official|${week}|￿`).all()).results||[];
@@ -1243,7 +1255,7 @@ async function postWeeklyToX(env,now=Date.now()){
   let mediaId=null;
   try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(xWeekSvg(xWeekData(rows,s,season,name,weeklyRange(week)))))}
   catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} weekly graphic: ${error.message}`).catch(()=>{})}
-  try{await xPost(env,text,mediaId);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} weekly ${week}`).catch(()=>{});return {posted:1,week,graphic:Boolean(mediaId)}}
+  try{await xPost(env,text,mediaId);await xDone(env,`x-week:${week}`,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} weekly ${week}`).catch(()=>{});return {posted:1,week,graphic:Boolean(mediaId)}}
   catch(error){console.warn('x_weekly_failed',error.message);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(`x-week:${week}`).run().catch(()=>{});return {posted:0,error:error.message}}
 }
 // What the player actually did, for result posts: "had 3 receptions".
@@ -1282,17 +1294,18 @@ async function postResultsToX(env,now=Date.now(),limit=1){
   for(const r of rows){
     if(posted>=limit)break;
     // Only picks that went out on X get a result post.
-    if(!(await appSetting(env,`xi:${r.id}`))||await appSetting(env,`xr:${r.id}`))continue;
-    const claim=await env.DB.prepare('INSERT OR IGNORE INTO app_settings (key,value) VALUES (?,?)').bind(`xr:${r.id}`,new Date(now).toISOString()).run();
-    if(!Number(claim?.meta?.changes??claim?.changes))continue;
+    if(!(await appSetting(env,`xi:${r.id}`))||!(await xClaim(env,`xr:${r.id}`,now)))continue;
+    // Count tries before the heavy work: after three cut-off tries the result posts as text.
+    const tries=Number(await appSetting(env,`xrtry:${r.id}`)||0)+1;await setAppSetting(env,`xrtry:${r.id}`,String(tries));
     if(!season)season=weeklySummary((await env.DB.prepare("SELECT kind,line,odds,combined_odds,status,result,closing_line,closing_odds,closing_captured_at FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%'").all()).results||[]);
     let mediaId=null;
-    try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(xCardSvg(await xResultData(env,r,season))))}
+    try{if(tries<=3&&typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(xCardSvg(await xResultData(env,r,season))))}
     catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} result graphic: ${error.message}`).catch(()=>{})}
     try{
       const replyTo=await appSetting(env,`xid:${r.id}`);
-      await xPost(env,xResultText(r,season),mediaId,replyTo);
-      posted++;await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} result ${r.id}`).catch(()=>{});
+      const sent=await xPost(env,xResultText(r,season),mediaId,replyTo);
+      await xDone(env,`xr:${r.id}`,now);
+      posted++;await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} result ${mediaId?'graphic':'text'} ${sent?.data?.id||''} ${r.id}`).catch(()=>{});
     }catch(error){
       console.warn('x_result_failed',error.message);
       await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(`xr:${r.id}`).run().catch(()=>{});
@@ -1327,10 +1340,8 @@ async function postClosingToX(env,now=Date.now(),limit=2){
   for(const r of rows){
     if(posted>=limit)break;
     const move=xBeatClose(r);
-    if(!move||!(await appSetting(env,`xi:${r.id}`))||await appSetting(env,`xc:${r.id}`))continue;
-    const claim=await env.DB.prepare('INSERT OR IGNORE INTO app_settings (key,value) VALUES (?,?)').bind(`xc:${r.id}`,new Date(now).toISOString()).run();
-    if(!Number(claim?.meta?.changes??claim?.changes))continue;
-    try{await xPost(env,xCloseText(r,move),null,await appSetting(env,`xid:${r.id}`));posted++}
+    if(!move||!(await appSetting(env,`xi:${r.id}`))||!(await xClaim(env,`xc:${r.id}`,now)))continue;
+    try{const sent=await xPost(env,xCloseText(r,move),null,await appSetting(env,`xid:${r.id}`));await xDone(env,`xc:${r.id}`,now);posted++;await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} close ${sent?.data?.id||''} ${r.id}`).catch(()=>{})}
     catch(error){console.warn('x_close_failed',error.message);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(`xc:${r.id}`).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});break}
   }
   return {posted};
@@ -1368,6 +1379,55 @@ function xWeekData(rows,s,season,name,range){
     picks:graded.map(r=>r.kind==='parlay'?{res:r.result,text:`${recordLegs(r).length}-leg parlay`,odds:weeklyOdds(r.combined_odds)}:{res:r.result,text:`${r.player} · ${weeklyLegText(r)}`,odds:weeklyOdds(r.odds)}),
     season:season&&season.wins+season.losses>=5?`${season.wins}–${season.losses} · ${weeklyMoney(season.profit)}`:''};
 }
+// Pinned season summary: one post with a graphic of the whole record, meant
+// to be pinned on the profile. It posts once per version; setting the
+// app_settings value x-summary-request to a new value posts a fresh one.
+function xSummarySvg(d){
+  const M='#2ee6a8',F={g:'BTG Grotesk',xb:'BTG Inter XB',sb:'BTG Inter SB'},X=526,R=1200-56;
+  const tone=v=>v>=0?M:'#f87171';
+  const tile=(x,y,big,label,color)=>`<rect x="${x}" y="${y}" width="290" height="150" rx="18" fill="#16203a" stroke="#ffffff" stroke-opacity=".08"/><text x="${x+24}" y="${y+72}" font-family="${F.g}" font-size="${xFit(big,250,54,.6)}" fill="${color||'#ffffff'}">${xEsc(big)}</text><text x="${x+24}" y="${y+112}" font-family="${F.sb}" font-size="21" fill="#9fb0cc">${xEsc(label)}</text>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675" viewBox="0 0 1200 675">
+<defs><linearGradient id="tm" x1="0" y1="0" x2="0.45" y2="1"><stop offset="0" stop-color="#1d4ed8"/><stop offset="1" stop-color="#0b1530"/></linearGradient></defs>
+<rect width="1200" height="675" fill="#0b1530"/><rect width="470" height="675" fill="url(#tm)"/>
+<text x="56" y="112" font-family="${F.xb}" font-size="22" letter-spacing="4" fill="#ffffff" fill-opacity=".8">${xEsc(d.title)}</text>
+<text x="50" y="250" font-family="${F.g}" font-size="${xFit(d.record,380,128,.62)}" fill="#ffffff">${xEsc(d.record)}</text>
+<text x="56" y="306" font-family="${F.g}" font-size="44" fill="${tone(d.profit)}">${xEsc(weeklyMoney(d.profit))}</text>
+<text x="56" y="346" font-family="${F.sb}" font-size="24" fill="#ffffff" fill-opacity=".75">on props at $100 a pick</text>
+${xLogo(56,520,56)}<text x="128" y="558" font-family="${F.g}" font-size="30" fill="#ffffff">Bet This Guy</text>
+<text x="56" y="643" font-family="${F.xb}" font-size="20" letter-spacing="2.5" fill="#ffffff" fill-opacity=".85">${xEsc(d.since)} · 21+</text>
+<text x="${X}" y="104" font-family="${F.xb}" font-size="22" letter-spacing="3" fill="#cfe0f5">EVERY PICK, GRADED IN PUBLIC</text>
+${tile(X,140,d.parlays,`Parlays · ${weeklyMoney(d.parlayProfit)}`)}
+${tile(X+328,140,d.clv,d.clvLabel,M)}
+${tile(X,318,weeklyMoney(d.total),'Total at $100 a pick',tone(d.total))}
+${tile(X+328,318,String(d.picks),'Picks, all graded')}
+<text x="${X}" y="530" font-family="${F.sb}" font-size="21" fill="#9fb0cc">Locked before kickoff at the best price we found.</text>
+<text x="${X}" y="558" font-family="${F.sb}" font-size="21" fill="#9fb0cc">Wins and losses, every one on the site.</text>
+<rect x="470" y="589" width="730" height="86" fill="${M}"/>
+<text x="${X}" y="643" font-family="${F.g}" font-size="29" fill="#06231a">Free picks as they lock</text>
+<text x="${R-38}" y="644" text-anchor="end" font-family="${F.g}" font-size="31" fill="#06231a">betthisguy.com</text><path d="M1118 633h24m-9-9 9 9-9 9" fill="none" stroke="#06231a" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
+}
+function xSummaryData(rows,now=Date.now()){
+  const s=weeklySummary(rows),graded=rows.filter(weeklyGraded),first=rows.map(r=>r.posted_at).filter(Boolean).sort()[0];
+  const year=new Date(now).getUTCFullYear(),pct=s.tracked?Math.round(100*s.beat/s.tracked):null;
+  return {title:`${year} SEASON RECORD`,record:`${s.wins}–${s.losses}${s.pushes?`–${s.pushes}`:''}`,profit:s.profit,parlays:`${s.parlayWins}–${s.parlayLosses}`,parlayProfit:s.parlayProfit,total:s.profit+s.parlayProfit,
+    clv:pct==null?'—':`${pct}%`,clvLabel:'Beat the closing price',picks:graded.length,since:first?`SINCE ${new Date(first).toLocaleDateString('en-US',{month:'short',day:'numeric',timeZone:'America/New_York'}).toUpperCase()}`:'',s,pct};
+}
+function xSummaryText(d){
+  const s=d.s;
+  return xShort(`📌 Every pick locked before kickoff and graded in public.\n\n${new Date().getUTCFullYear()}: ${s.wins}–${s.losses} on props (${weeklyMoney(s.profit)}), parlays ${s.parlayWins}–${s.parlayLosses} (${weeklyMoney(s.parlayProfit)}) at $100 a pick.${d.pct!=null?`\nOur price beat the close on ${d.pct}% of picks.`:''}\n\nTurn on 🔔 to get picks the moment they lock. Free board: link in bio. 21+`);
+}
+async function postSummaryToX(env,now=Date.now()){
+  if(!env.DB||!xReady(env))return {posted:0,disabled:true};
+  const version=(await appSetting(env,'x-summary-request'))||'v1',key=`x-summary:${version}`;
+  if(!(await xClaim(env,key,now)))return {posted:0,done:true};
+  const rows=(await env.DB.prepare("SELECT kind,line,odds,combined_odds,status,result,closing_line,closing_odds,closing_captured_at,posted_at FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%'").all()).results||[];
+  const d=xSummaryData(rows,now);let mediaId=null;
+  try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(xSummarySvg(d)))}
+  catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} summary graphic: ${error.message}`).catch(()=>{})}
+  try{const sent=await xPost(env,xSummaryText(d),mediaId);await xDone(env,key,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} summary ${version} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,graphic:Boolean(mediaId)}}
+  catch(error){console.warn('x_summary_failed',error.message);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
+}
 // Everything the X cron run posts, in order, within the run's request limit:
 // new picks first, then the Tuesday recap, closing-line posts, then results.
 async function runXPosts(env,now=Date.now()){
@@ -1377,7 +1437,9 @@ async function runXPosts(env,now=Date.now()){
   // A result graphic needs about as many requests as a pick, so it waits
   // for a run that didn't already post a pick or the weekly graphic.
   const results=picks.posted||weekly.posted?{posted:0,waiting:true}:await postResultsToX(env,now);
-  return {picks,weekly,closing,results};
+  // The pinned summary waits for a run with nothing else heavy.
+  const summary=picks.posted||weekly.posted||results.posted?{posted:0,waiting:true}:await postSummaryToX(env,now);
+  return {picks,weekly,closing,results,summary};
 }
 // "My book" alerts: a good-value price at one of someone's own sportsbooks.
 // The fair price always comes from every book (3+ pricing both sides, the same
