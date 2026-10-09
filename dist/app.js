@@ -2312,9 +2312,9 @@ function statsProp(l){
     if(!html.includes('<p class="card-money">'))return html;
     html=html.replace(/<p class="card-why card-why-flip">[\s\S]*?<\/p>/,'');
     const f=formFor(p);if(!f)return html;
-    // One plain line: "Over in 7 of last 10 · avg 78.3 yds" (the count green
-    // at 7+, red at 3 or fewer). The game-by-game chart is in the prop sheet.
-    const td=p.binary||/anytime|first|last|scorer/i.test(p.market||''),rate=f.hits/f.n,cls=rate>=.7?' good':rate<=.3?' bad':'';
+    // One plain line: "Over in 7 of last 10 · avg 78.3 yds", no colour coding.
+    // The game-by-game chart is in the prop sheet.
+    const td=p.binary||/anytime|first|last|scorer/i.test(p.market||''),cls='';
     const m=String(p.market||'').toLowerCase(),unit=/yards/.test(m)?' yds':/reception/.test(m)?' rec':/completion/.test(m)?' comp':/attempt/.test(m)?' att':/touchdown/.test(m)?' TD':'';
     const lead=td?(p.side==='Under'?'No TD in':'Scored in'):`${p.side} in`,count=`<b class="cf-count${cls}">${f.hits} of last ${f.n}</b>`;
     return html.replace('<p class="card-money">',()=>`<div class="card-form cf-text" title="${htmlEscape(formText(p,f))}"><span>${htmlEscape(lead)} ${count}${td?'':` · avg ${htmlEscape(fmt(+f.avg.toFixed(1)))}${unit}`}</span></div><p class="card-money">`);
@@ -2328,7 +2328,7 @@ function statsProp(l){
     const f=formFor(p),rows=host.querySelector('.bs-rows');
     if(f){const cell=host.querySelector('[data-bs-row="2"]');cell?.closest('div')?.remove();
       const block=document.createElement('div');block.className='bs-form';
-      block.innerHTML=`<div class="bs-form-head"><span>Last ${f.n} games</span><b class="${f.hits/f.n>=.6?'pos':f.hits/f.n<=.3?'neg':''}">${htmlEscape(formText(p,f))}</b></div>${bars(p,f,true)}<div class="bs-form-dates">${[...f.games].reverse().map(g=>`<span>${htmlEscape(g.o.replace(/^(vs|@) /,'')||'')}</span>`).join('')}</div>${p.binary?'':`<small>Dashed line: ${htmlEscape(String(p.line))}</small>`}`;
+      block.innerHTML=`<div class="bs-form-head"><span>Last ${f.n} games</span><b>${htmlEscape(formText(p,f))}</b></div>${bars(p,f,true)}<div class="bs-form-dates">${[...f.games].reverse().map(g=>`<span>${htmlEscape(g.o.replace(/^(vs|@) /,'')||'')}</span>`).join('')}</div>${p.binary?'':`<small>Dashed line: ${htmlEscape(String(p.line))}</small>`}`;
       (rows||host.querySelector('.bs-money'))?.after(block)}
     const offers=p.books?.[p.side]||[];
     if(offers.length>1){
