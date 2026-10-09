@@ -1452,7 +1452,8 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     const books=[...new Set(legs.map(l=>l.book).filter(Boolean))],edges=legs.map(l=>Number(l.edge)).filter(Number.isFinite);
     const kicker=`<span class="on-kicker">${icon('star')} Official${books.length===1?` · ${htmlEscape(books[0])}`:''}</span>`;
     const why=edges.length?(isParlay?`Every leg beats fair`:`${Math.max(...edges).toFixed(1)}% better than fair`):'';
-    return `<button type="button" class="on-row on-${status[0]}-row" data-on="${i}" data-on-player="${htmlEscape(isParlay?'':r.player||'')}" data-on-team="${htmlEscape(isParlay?'':legs[0]?.team||'')}" aria-label="Details for ${htmlEscape(title)}">${avatar}<span class="on-who">${kicker}<b>${htmlEscape(title)}</b><span>${htmlEscape(sub)}</span><small>${htmlEscape(kickoff(r.game_time))}</small>${why?`<i class="on-why">${htmlEscape(why)}</i>`:''}<em class="on-live" data-on-live="${i}" hidden></em></span><span class="on-end"><b class="on-price">${htmlEscape(formatOdds(odds))}</b><span class="on-tag on-${status[0]}">${tag}</span></span></button>`;
+    const game=String(legs[0]?.team||'').replace(' · @ ',' @ ').replace(' · vs ',' vs '),matchup=isParlay?'':game&&typeof compactGameName==='function'?compactGameName(game):game;
+    return `<button type="button" class="on-row on-${status[0]}-row" data-on="${i}" data-on-player="${htmlEscape(isParlay?'':r.player||'')}" data-on-team="${htmlEscape(isParlay?'':legs[0]?.team||'')}" aria-label="Details for ${htmlEscape(title)}">${avatar}<span class="on-who">${kicker}<b>${htmlEscape(title)}</b><span>${htmlEscape(sub)}</span><small>${htmlEscape([matchup,kickoff(r.game_time)].filter(Boolean).join(' · '))}</small>${why?`<i class="on-why">${htmlEscape(why)}</i>`:''}<i class="on-form" data-on-form="${i}" hidden></i><em class="on-live" data-on-live="${i}" hidden></em></span><span class="on-end"><b class="on-price">${htmlEscape(formatOdds(odds))}</b><span class="on-tag on-${status[0]}">${tag}</span></span></button>`;
   }
   // Live progress for locked picks, refreshed with the live board (every 5s in games).
   let officialLiveList=[];
@@ -1481,7 +1482,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     $('#officialNowCount').textContent=list.length?String(list.length):'';
     $('#officialNowList').innerHTML=list.length?list.map(officialRow).join(''):'<div class="on-empty"><strong>No picks yet this week.</strong><span>They post the moment a price qualifies, any day before kickoff.</span></div>';
     $$('#officialNowList button[data-on]').forEach(b=>b.onclick=()=>openPick(list[+b.dataset.on]));
-    officialLiveList=list;updateOfficialLive();
+    officialLiveList=list;updateOfficialLive();window.btgOfficialForm?.(list);
     $$('#officialNowList [data-on-player]').forEach(row=>{const player=row.dataset.onPlayer;if(!player||typeof playerStatsFor!=='function')return;const r=list[+row.dataset.on];playerStatsFor({sport:r?.sport||'NFL',player,team:row.dataset.onTeam}).then(payload=>window.BTGPaintTeam?.(row,payload?.player?.team,r?.sport||'NFL')).catch(()=>{})});
     host.hidden=false;
   }
@@ -2236,4 +2237,154 @@ function statsProp(l){
   place();wide?.addEventListener?.('change',place);drawPanel();
   addEventListener('storage',e=>{if(e.key===KEY)refresh()});
   const baseBind=bindCards;bindCards=function(){baseBind();drawPanel()};
+})();
+
+// Board form and prices: each card shows how often the bet hit in the
+// player's last 10 games (from /api/form, one cached request for the whole
+// board), the prop sheet lists every book's price, and a "Good value" chip
+// filters the board to the props that beat the fair price.
+(()=>{
+  if(typeof document.getElementById!=='function'||!document.getElementById('propList'))return;
+  const normName=s=>String(s||'').toLowerCase().replace(/\b(jr|sr|ii|iii|iv)\b/g,'').replace(/[^a-z0-9]/g,'');
+  const marketKey=s=>String(s||'').toLowerCase().replace(/^alternate\s+/,'').replace(/^field goals$/,'field goals made');
+  let form={};
+  function formFor(p){
+    const f=form[normName(p.player)];if(!f||!f.m)return null;
+    const want=marketKey(p.market),label=Object.keys(f.m).find(k=>marketKey(k)===want);if(!label)return null;
+    const games=f.m[label].map((v,i)=>({v,d:f.d[i],o:f.o?.[i]||''})).filter(g=>g.v!==null&&g.v!==undefined);
+    if(games.length<3)return null;
+    const line=p.binary?.5:Number(p.line),marks=games.map(g=>({...g,hit:hitAgainstLine(p,g.v)}));
+    const hits=marks.filter(g=>g.hit===true).length,avg=games.reduce((s,g)=>s+g.v,0)/games.length;
+    return {games:marks,hits,n:games.length,avg,line};
+  }
+  window.BTGForm={get:formFor};
+  // Official picks: "Over in 7 of last 10" under the pick, once form loads.
+  let officialList=[];
+  function officialForm(list){
+    if(list)officialList=list;
+    document.querySelectorAll('#officialNowList [data-on-form]').forEach(el=>{const r=officialList[+el.dataset.onForm];if(!r||r.kind!=='prop')return;
+      const p={player:r.player,market:r.market,side:r.side,line:Number(r.line),binary:/anytime|first|last/i.test(r.market||'')},f=formFor(p);
+      el.hidden=!f;if(f)el.textContent=formText(p,f)});
+  }
+  window.btgOfficialForm=officialForm;
+  const fmt=v=>Number.isInteger(v)?String(v):v.toFixed(1);
+  function formText(p,f){
+    const td=/anytime|first|last|scorer/i.test(p.market||'');
+    if(p.binary||td)return p.side==='Under'?`No TD in ${f.hits} of last ${f.n}`:`Scored in ${f.hits} of last ${f.n}`;
+    return `${p.side} in ${f.hits} of last ${f.n} · avg ${fmt(+f.avg.toFixed(1))}`;
+  }
+  // Ten small bars, oldest to newest: height is the stat, green when the bet hit.
+  function bars(p,f,big=false){
+    const list=[...f.games].reverse(),top=Math.max(f.line*1.6,...list.map(g=>g.v),1),H=big?64:18;
+    const y=Math.max(1,Math.min(H,H*f.line/top));
+    return `<span class="cf-bars${big?' cf-big':''}" style="--h:${H}px" aria-hidden="true">${p.binary?'':`<em style="bottom:${y.toFixed(1)}px"></em>`}${list.map(g=>`<i class="${g.hit===true?'hit':g.hit===false?'miss':'push'}" style="height:${Math.max(2,H*g.v/top).toFixed(1)}px" title="${htmlEscape(`${g.d||''} ${g.o} · ${fmt(g.v)}`.trim())}">${big?`<b>${htmlEscape(fmt(g.v))}</b>`:''}</i>`).join('')}</span>`;
+  }
+  // Book prices for each prop, kept from the odds feed (and the saved board).
+  const baseNormalize=normalizeLiveProps;
+  normalizeLiveProps=function(payload){
+    const list=baseNormalize(payload),index=new Map();
+    for(const event of Array.isArray(payload?.data)?payload.data:[])for(const book of event.bookmakers||[])for(const market of book.markets||[]){
+      const label=marketLabels[String(market.key||'').replace(/_alternate$/,'')];if(!label)continue;
+      for(const o of market.outcomes||[]){
+        const name=String(o.name||'').toLowerCase(),side=name==='over'||name==='yes'?'Over':name==='under'||name==='no'?'Under':null,price=Number(o.price);
+        if(!side||!o.description||!Number.isFinite(price))continue;
+        const key=`${event.eventID||event.id}|${String(o.description).trim()}|${label}`,lines=index.get(key)||new Map();index.set(key,lines);
+        const lineKey=Number.isFinite(Number(o.point))?Number(o.point):'b',at=lines.get(lineKey)||{Over:new Map(),Under:new Map()};lines.set(lineKey,at);
+        const title=book.title||book.key,prev=at[side].get(title);if(prev===undefined||price>prev)at[side].set(title,price);
+      }
+    }
+    return list.map(p=>{const lines=index.get(`${p.eventID}|${p.player}|${p.market}`);if(!lines)return p;const at=lines.get(p.binary?'b':Number(p.line))||(p.binary?lines.get(.5):null);if(!at)return p;
+      const pack=m=>[...m].sort((a,b)=>b[1]-a[1]).map(([b,o])=>({b,o}));return {...p,books:{Over:pack(at.Over),Under:pack(at.Under)}}});
+  };
+  async function loadForm(){
+    try{const r=await fetch('/api/form');const body=await r.json();if(!r.ok||!body?.players)return;form=body.players;if(Object.keys(form).length){render();officialForm()}}catch{}
+  }
+  if(typeof fetch==='function'){loadForm();setInterval(loadForm,30*60000)}
+
+  // Cards: the form strip replaces the "in line with the fair price" line.
+  const baseCard=card;
+  card=function(p,rank=-1,featured=false){
+    let html=baseCard(p,rank,featured);
+    if(!html.includes('<p class="card-money">'))return html;
+    html=html.replace(/<p class="card-why card-why-flip">[\s\S]*?<\/p>/,'');
+    const f=formFor(p);if(!f)return html;
+    const td=p.binary||/anytime|first|last|scorer/i.test(p.market||''),label=td?(p.side==='Under'?'no TD, last '+f.n:'scored, last '+f.n):`${p.side.toLowerCase()}, last ${f.n} · avg ${fmt(+f.avg.toFixed(1))}`;
+    return html.replace('<p class="card-money">',()=>`<div class="card-form" title="${htmlEscape(formText(p,f))}">${bars(p,f)}<span><b>${f.hits}/${f.n}</b> ${htmlEscape(label)}</span></div><p class="card-money">`);
+  };
+
+  // The prop sheet: last 10 games as bars, and every book's price.
+  const baseProp=window.BTGSheet?.prop;
+  if(baseProp)window.BTGSheet.prop=p=>{
+    baseProp(p);
+    const host=document.getElementById('hitDialogBody');if(!host)return;
+    const f=formFor(p),rows=host.querySelector('.bs-rows');
+    if(f){const cell=host.querySelector('[data-bs-row="2"]');cell?.closest('div')?.remove();
+      const block=document.createElement('div');block.className='bs-form';
+      block.innerHTML=`<div class="bs-form-head"><span>Last ${f.n} games</span><b class="${f.hits/f.n>=.6?'pos':f.hits/f.n<=.3?'neg':''}">${htmlEscape(formText(p,f))}</b></div>${bars(p,f,true)}<div class="bs-form-dates">${[...f.games].reverse().map(g=>`<span>${htmlEscape(g.o.replace(/^(vs|@) /,'')||'')}</span>`).join('')}</div>${p.binary?'':`<small>Dashed line: ${htmlEscape(String(p.line))}</small>`}`;
+      (rows||host.querySelector('.bs-money'))?.after(block)}
+    const offers=p.books?.[p.side]||[];
+    if(offers.length>1){
+      const mine=b=>typeof bookAllowed==='function'&&Array.isArray(preferences?.books)&&preferences.books.length&&bookAllowed(b);
+      const table=document.createElement('div');table.className='bs-books';
+      table.innerHTML=`<div class="bs-books-head"><span>${htmlEscape(p.binary?(p.side==='Over'?(p.overLabel||'Yes'):(p.underLabel||'No')):`${p.side} ${p.line}`)} at every book</span><small>${offers.length} books</small></div>${offers.map((x,i)=>`<div class="${i===0?'best':''}${mine(x.b)?' mine':''}"><span>${htmlEscape(x.b)}${mine(x.b)?' <em>your book</em>':''}</span><b>${htmlEscape(formatOdds(x.o))}${i===0?' <i>best</i>':''}</b></div>`).join('')}`;
+      const after=host.querySelector('.bs-form')||rows||host.querySelector('.bs-money');after?.after(table);
+      host.querySelector('[data-bs-row="0"]')?.closest('div')?.remove();
+    }
+    // "I bet this" (tracked and graded in My Picks) and Follow, under the main action.
+    const start=Date.parse(p.startsAt||'');if(!(start>Date.now())||p.teamMarket)return;
+    const key=`${savedPropKey(p)}|${p.side}|${p.line}`,BKEY='btg-bet-props',ids=()=>{try{return new Set(JSON.parse(localStorage.getItem(BKEY)||'[]'))}catch{return new Set()}};
+    const odds=Number(recommendedOdds(p)),book=String(p.bestBook||p.books?.[p.side]?.[0]?.b||'').replace(/demo/i,'')||null;
+    const extra=document.createElement('div');extra.className='bs-extra';
+    const last=shortPlayerName(p.player),following=()=>window.BTGFollow?.has('players',p.player);
+    extra.innerHTML=`<button type="button" class="bs-btn bs-bet">${ids().has(key)?'✓ In My Picks':'I bet this'}</button>${window.BTGFollow?`<button type="button" class="bs-btn bs-follow" aria-pressed="${following()}">${following()?'✓ Following':`Follow ${htmlEscape(last)}`}</button>`:''}<small>Track it and we grade it for you. Follow to get alerts when a top book has good value on ${htmlEscape(last)}.</small>`;
+    (host.querySelector('.bs-acts')||host.querySelector('.bsheet'))?.after(extra);
+    const betBtn=extra.querySelector('.bs-bet');
+    betBtn.onclick=async()=>{
+      if(ids().has(key)){document.getElementById('hitDialog')?.close?.();window.BTGAuth?.open?.('record');return}
+      if(!window.BTGAuth?.trackParlay||!Number.isFinite(odds))return;
+      betBtn.disabled=true;betBtn.textContent='Saving…';
+      try{const out=await window.BTGAuth.trackParlay({legs:[{player:p.player,market:p.market,side:p.side,line:p.line,odds,gameStart:p.startsAt,team:p.team,eventID:p.eventID}],wager:wagerStake(),sportsbook:book,source:'board'});
+        if(out){const s=ids();s.add(key);try{localStorage.setItem(BKEY,JSON.stringify([...s].slice(-300)))}catch{}betBtn.textContent='✓ In My Picks';window.btgCount?.('prop:bet');window.BTGAuth.refreshBets?.();window.BTGMyRecord?.()}
+        else{betBtn.textContent='I bet this'}}
+      catch(error){betBtn.textContent=error?.message||'Couldn’t save. Try again.'}
+      betBtn.disabled=false;
+    };
+    const fol=extra.querySelector('.bs-follow');
+    if(fol)fol.onclick=()=>{const on=window.BTGFollow.toggle('players',{name:p.player,sport:p.sport||'NFL'});fol.setAttribute('aria-pressed',String(on));fol.textContent=on?'✓ Following':`Follow ${last}`};
+  };
+
+  // "Good value" chip beside Popular: only the props that beat the fair price.
+  let valueOnly=false;
+  const isValue=p=>p.sport===LEAGUE&&propVerdict(p)?.key==='send'&&recommendationEligible(p);
+  const goodValue=()=>props.filter(p=>isValue(p)&&(state.boardGame==='All'||gameName(p)===state.boardGame)).sort((a,b)=>(b.rawEdge||0)-(a.rawEdge||0));
+  const baseVisible=visibleProps;
+  visibleProps=function(){
+    if(valueOnly&&state.view==='board'&&!['parlays','generator'].includes(document.body.dataset.mobilePage)){const list=goodValue();if(list.length){visiblePropTotal=list.length;return list}valueOnly=false}
+    const list=baseVisible();
+    // Popular: good value first, then fair, overpriced last (order kept within each).
+    if(state.view!=='board'||state.boardMarket!=='All')return list;
+    const rank=p=>({send:0,flip:1,read:2})[propVerdict(p)?.key]??1;
+    return list.map((p,i)=>[p,i]).sort((a,b)=>rank(a[0])-rank(b[0])||a[1]-b[1]).map(x=>x[0]);
+  };
+  // After renderSportTabs, which moves the featured prop types up behind Popular.
+  const baseTabs=renderSportTabs;
+  renderSportTabs=function(){
+    baseTabs();
+    if(['parlays','generator'].includes(document.body.dataset.mobilePage))return;
+    const bar=$('#propTypeTabs'),popular=bar?.querySelector('[data-board-market="All"]');if(!popular)return;
+    const n=props.filter(isValue).length;
+    if(!n){valueOnly=false;return}
+    const chip=document.createElement('button');chip.type='button';chip.className=`sub-tab value-tab${valueOnly?' active':''}`;chip.innerHTML=`${icon('check')} Good value<b>${n}</b>`;
+    if(valueOnly){bar.querySelectorAll('.sub-tab.active').forEach(b=>b!==chip&&b.classList.remove('active'))}
+    popular.after(chip);
+    chip.onclick=()=>{valueOnly=!valueOnly;if(valueOnly)state.boardMarket='All';propRenderLimit=24;window.btgCount?.('board:value');render()};
+    bar.querySelectorAll('[data-board-market]').forEach(b=>b.addEventListener('click',()=>{valueOnly=false},{capture:true}));
+  };
+  const baseRender=render;
+  render=function(){
+    baseRender();
+    const title=$('#viewTitle');if(!title)return;
+    if(valueOnly&&state.view==='board')title.textContent='Good value right now';
+    else if(title.textContent==='Today’s closest calls'){const soon=props.some(p=>{const t=Date.parse(p.startsAt||'');return Number.isFinite(t)&&t>Date.now()&&new Date(t).toDateString()===new Date().toDateString()});title.textContent=soon?'Today’s closest calls':'This week’s closest calls'}
+  };
 })();

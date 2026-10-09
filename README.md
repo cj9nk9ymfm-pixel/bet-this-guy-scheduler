@@ -145,3 +145,7 @@ On each publish run, `sendBookAlerts` (in `worker/records.js`) also tells people
 ## Post kit
 
 `/post` (not linked or indexed) builds ready-to-paste posts from the official record: today's upcoming picks, this week's results so far, or last week's results. It shows editable text for X (kept under 280 characters, trimmed with a "+N more" count), Threads and Reddit (a table, with losses listed too). It also draws a 1080×1350 share image that can be shared from a phone or saved. The numbers come from the same functions as the weekly pages, at $100 a pick. Usage counts: `view:post`, `post:copy`, `post:open`, `post:image`.
+
+## Player form (last 10 games)
+
+Board cards show how often each bet hit in the player's last 10 games, and the prop sheet charts those games and lists every book's price. Publish runs record who is on the board and which markets they have (`player_form`, migration `0018`). Cron runs outside NFL windows, plus the stats-check slot inside them, fetch a few players at a time from BALLDONTLIE. Each player is fetched again once per slate, after Tuesday and Friday 12:00 UTC. Visitors read everything from one cached `/api/form` request, so the board makes no per-card stats calls.
