@@ -2312,10 +2312,12 @@ function statsProp(l){
     if(!html.includes('<p class="card-money">'))return html;
     html=html.replace(/<p class="card-why card-why-flip">[\s\S]*?<\/p>/,'');
     const f=formFor(p);if(!f)return html;
-    // One quiet line: L10, ten dots (green = hit, oldest to newest), "7/10 over".
-    const td=p.binary||/anytime|first|last|scorer/i.test(p.market||''),word=td?(p.side==='Under'?'no TD':'scored'):p.side.toLowerCase(),rate=f.hits/f.n;
-    const dots=[...f.games].reverse().map(g=>`<i class="${g.hit===true?'hit':g.hit===false?'miss':'push'}"></i>`).join('');
-    return html.replace('<p class="card-money">',()=>`<div class="card-form" title="${htmlEscape(formText(p,f))}"><span class="cf-label">L${f.n}</span><span class="cf-dots" aria-hidden="true">${dots}</span><span class="cf-rate${rate>=.7?' good':rate<=.3?' bad':''}"><b>${f.hits}/${f.n}</b> ${htmlEscape(word)}</span></div><p class="card-money">`);
+    // One plain line: "Over in 7 of last 10 · avg 78.3 yds" (the count green
+    // at 7+, red at 3 or fewer). The game-by-game chart is in the prop sheet.
+    const td=p.binary||/anytime|first|last|scorer/i.test(p.market||''),rate=f.hits/f.n,cls=rate>=.7?' good':rate<=.3?' bad':'';
+    const m=String(p.market||'').toLowerCase(),unit=/yards/.test(m)?' yds':/reception/.test(m)?' rec':/completion/.test(m)?' comp':/attempt/.test(m)?' att':/touchdown/.test(m)?' TD':'';
+    const lead=td?(p.side==='Under'?'No TD in':'Scored in'):`${p.side} in`,count=`<b class="cf-count${cls}">${f.hits} of last ${f.n}</b>`;
+    return html.replace('<p class="card-money">',()=>`<div class="card-form cf-text" title="${htmlEscape(formText(p,f))}"><span>${htmlEscape(lead)} ${count}${td?'':` · avg ${htmlEscape(fmt(+f.avg.toFixed(1)))}${unit}`}</span></div><p class="card-money">`);
   };
 
   // The prop sheet: last 10 games as bars, and every book's price.

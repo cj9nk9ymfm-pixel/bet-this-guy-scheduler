@@ -1553,16 +1553,11 @@ html body #moreSheet .more-mini>*,html body #moreSheet .more-mini span{font-size
 .bs-extra{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}.bs-extra .bs-btn{flex:1;height:42px;font-size:14px}
 .bs-extra .bs-follow[aria-pressed="true"],.bs-extra .bs-bet:disabled{opacity:.85}
 .bs-extra small{flex-basis:100%;font-size:12px;line-height:1.35;color:var(--muted)}
-/* Last-10 line on cards: label, ten dots, hit count */
-html body #propList .prop-card.compact-card>.card-form{align-items:center;gap:8px}
-.card-form .cf-label{font:700 11px/1 'Space Grotesk',sans-serif;letter-spacing:.04em;color:var(--muted)}
-.cf-dots{display:inline-flex;gap:3px}
-.cf-dots i{width:7px;height:7px;border-radius:2px;background:rgba(148,163,184,.28)}
-.cf-dots i.hit{background:#22c55e}
-body.light .cf-dots i{background:#d6dde7}body.light .cf-dots i.hit{background:#16a34a}
-.card-form .cf-rate{font-size:12.5px;color:var(--muted)}
-.card-form .cf-rate.good b{color:#22c55e}.card-form .cf-rate.bad b{color:#f08080}
-body.light .card-form .cf-rate.good b{color:#15803d}body.light .card-form .cf-rate.bad b{color:#b42318}
+/* Last-10 line on cards: one plain sentence */
+html body #propList .prop-card.compact-card>.card-form.cf-text{display:block!important;font-size:13px;line-height:1.3;color:var(--muted)}
+.card-form .cf-count{color:var(--text);font-weight:700}
+.card-form .cf-count.good{color:#22c55e}.card-form .cf-count.bad{color:#f08080}
+body.light .card-form .cf-count.good{color:#15803d}body.light .card-form .cf-count.bad{color:#b42318}
 /* Official picks: graded ones sit under a "Final" label */
 .on-divider{grid-column:1/-1;margin:6px 2px 0;font:700 11px/1 'Space Grotesk',sans-serif;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 html body .on-row.on-won-row,html body .on-row.on-lost-row,html body .on-row.on-push-row{opacity:.92}
