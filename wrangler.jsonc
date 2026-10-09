@@ -8,6 +8,9 @@
   "observability": { "enabled": true },
   // Publishing and grading (see runCron in worker/index.template.js).
   "triggers": { "crons": ["*/5 * * * *"] },
+  // This Worker, bound to itself: new picks are posted to X and alerted in a
+  // separate invocation with its own request allowance (see announceNow).
+  "services": [{ "binding": "SELF", "service": "bet-this-guy" }],
   "d1_databases": [
     {
       "binding": "DB",
