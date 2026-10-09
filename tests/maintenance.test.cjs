@@ -23,10 +23,10 @@ async function call(req){context.req=req;return run('worker.fetch(req,env,{waitU
  // 10 minutes in NFL windows and every 6 hours otherwise. GitHub only checks uptime.
  const due=iso=>JSON.stringify(run(`cronJobs(new Date('${iso}'))`));
  assert.equal(due('2026-10-04T16:40:00Z'),'["publish","grade"]','Sunday checks every 10 minutes');
- assert.equal(due('2026-10-04T16:45:00Z'),'["xpost","lineGrade"]','the in-between run posts to X and grades line value');
- assert.equal(due('2026-10-06T14:00:00Z'),'["publish"]','picks are checked on a quiet Tuesday too');
- assert.equal(due('2026-10-06T14:05:00Z'),'["xpost","form"]','quiet in-between runs fill player form');
- assert.equal(due('2026-10-06T18:00:00Z'),'["publish","grade"]','grading still runs every 6 hours in quiet periods');
+ assert.equal(due('2026-10-04T16:45:00Z'),'["xpost","lineGrade","form"]','the in-between run posts to X and grades line value');
+ assert.equal(due('2026-10-06T14:00:00Z'),'["publish","form"]','picks are checked on a quiet Tuesday too');
+ assert.equal(due('2026-10-06T14:05:00Z'),'["xpost","form"]','in-between runs fill player form');
+ assert.equal(due('2026-10-06T18:00:00Z'),'["publish","grade","form"]','grading still runs every 6 hours in quiet periods');
  assert.equal(typeof run('worker.scheduled'),'function','the Worker exports a scheduled handler');
  const ran=[];context.publishOfficialPicks=async(req,env,ctx,opts={})=>{ran.push(opts.soonOnly?'publishSoon':'publish');return opts.soonOnly?context.soonResult:undefined};context.settlePublicRecords=async()=>{ran.push('grade')};
  run('publishOfficialPicks=globalThis.publishOfficialPicks;settlePublicRecords=globalThis.settlePublicRecords');

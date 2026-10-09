@@ -469,21 +469,36 @@ function formGames(payload,markets,now){
   const m={};markets.forEach((label,i)=>{const values=games.map(g=>g.v[i]);if(values.some(x=>x!==null))m[label]=values});
   return {d:games.map(g=>new Date(g.t).toISOString().slice(0,10)),o:games.map(({row})=>{const game=row.game||{},home=game.home_team,away=game.visitor_team;return teamId&&home?.id===teamId?`vs ${ab(away)}`:teamId&&away?.id===teamId?`@ ${ab(home)}`:''}),m};
 }
-async function fillPlayerForm(env,ctx,now=Date.now(),limit=5){
+async function fillPlayerForm(env,ctx,now=Date.now(),limit=5,offset=0){
   if(!env.DB||!env.BALLDONTLIE_API_KEY)return {filled:0};
   const stale=formStaleBefore(now);
-  const rows=(await env.DB.prepare("SELECT id,player,teams,markets FROM player_form WHERE sport='NFL' AND wanted_until>? AND failures<3 AND (fetched_at IS NULL OR fetched_at<?) ORDER BY wanted_until LIMIT ?").bind(new Date(now).toISOString(),stale,limit).all()).results||[];
+  const rows=(await env.DB.prepare("SELECT id,player,teams,markets FROM player_form WHERE sport='NFL' AND wanted_until>? AND failures<3 AND (fetched_at IS NULL OR fetched_at<?) ORDER BY wanted_until,id LIMIT ? OFFSET ?").bind(new Date(now).toISOString(),stale,limit,offset).all()).results||[];
   const statements=[env.DB.prepare('DELETE FROM player_form WHERE wanted_until<?').bind(new Date(now-14*86400000).toISOString())];let filled=0;
   for(const r of rows){
     const url=new URL('/api/player-stats',SITE_URL);url.searchParams.set('sport','NFL');url.searchParams.set('player',r.player);url.searchParams.set('team',r.teams||'');
-    let payload=null;
-    try{payload=await (await playerStats(new Request(url),env,ctx||{waitUntil(){}},{maxAge:Math.max(60000,now-stale)})).json()}catch{}
+    let payload=null,status=0;
+    try{const res=await playerStats(new Request(url),env,ctx||{waitUntil(){}},{maxAge:Math.max(60000,now-stale)});status=res.status;payload=await res.json()}catch{}
+    // The stats feed is busy: stop here and try again next run (not a failure).
+    if(status===429)break;
     if(!payload?.success){statements.push(env.DB.prepare('UPDATE player_form SET failures=failures+1 WHERE id=?').bind(r.id));continue}
     let markets=[];try{markets=JSON.parse(r.markets||'[]')}catch{}
     statements.push(env.DB.prepare('UPDATE player_form SET games_json=?,fetched_at=?,failures=0 WHERE id=?').bind(JSON.stringify(formGames(payload,markets,now)),now,r.id));filled++;
   }
   await env.DB.batch(statements);
   return {filled,tried:rows.length};
+}
+// Several fills at once: each part runs in its own invocation of this Worker
+// (the SELF binding), with its own request allowance, on its own slice of the
+// players still waiting. Without the binding, one fill runs here.
+const FORM_PARTS=6,FORM_SIZE=5;
+async function fillFormBurst(env,ctx,now=Date.now()){
+  if(!env.DB||!env.BALLDONTLIE_API_KEY)return {filled:0};
+  if(!env.SELF?.fetch||!env.MAINTENANCE_TOKEN)return fillPlayerForm(env,ctx,now);
+  const waiting=Number((await env.DB.prepare("SELECT COUNT(*) AS n FROM player_form WHERE sport='NFL' AND wanted_until>? AND failures<3 AND (fetched_at IS NULL OR fetched_at<?)").bind(new Date(now).toISOString(),formStaleBefore(now)).first())?.n)||0;
+  const parts=Math.min(FORM_PARTS,Math.ceil(waiting/FORM_SIZE));if(!parts)return {waiting:0};
+  const call=part=>env.SELF.fetch(new Request(`${SITE_URL}/api/maintenance?job=form&part=${part}&size=${FORM_SIZE}`,{method:'POST',headers:{authorization:`Bearer ${env.MAINTENANCE_TOKEN}`},signal:AbortSignal.timeout(60000)})).then(r=>r.status);
+  const results=await Promise.allSettled(Array.from({length:parts},(_,i)=>call(i)));
+  return {waiting,parts,ok:results.filter(r=>r.value===200).length};
 }
 // GET /api/form: every board player's last 10 games (cached 10 minutes).
 async function playerFormResponse(request,env,ctx,now=Date.now()){
