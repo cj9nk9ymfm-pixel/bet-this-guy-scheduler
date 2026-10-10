@@ -22,8 +22,8 @@ async function call(req){context.req=req;return run('worker.fetch(req,env,{waitU
  // Cloudflare cron: picks are checked every 10 minutes all week; grading every
  // 10 minutes in NFL windows and every 6 hours otherwise. GitHub only checks uptime.
  const due=iso=>JSON.stringify(run(`cronJobs(new Date('${iso}'))`));
- assert.equal(due('2026-10-04T16:40:00Z'),'["publish","grade"]','Sunday checks every 10 minutes');
- assert.equal(due('2026-10-04T16:45:00Z'),'["xpost","lineGrade","form","leans"]','the in-between run posts to X and grades line value');
+ assert.equal(due('2026-10-04T16:40:00Z'),'["publish","grade","live"]','Sunday checks every 10 minutes');
+ assert.equal(due('2026-10-04T16:45:00Z'),'["xpost","lineGrade","form","leans","live"]','the in-between run posts to X and grades line value');
  assert.equal(due('2026-10-06T14:00:00Z'),'["publish","form"]','picks are checked on a quiet Tuesday too');
  assert.equal(due('2026-10-06T14:05:00Z'),'["xpost","form","leans"]','in-between runs fill player form');
  assert.equal(due('2026-10-06T18:00:00Z'),'["publish","grade","form"]','grading still runs every 6 hours in quiet periods');

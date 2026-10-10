@@ -621,7 +621,7 @@ async function gradeTdShadow(env,now=Date.now(),limit=40){
 async function gradeTdShadowNow(env){
   if(!env.SELF?.fetch||!env.MAINTENANCE_TOKEN)return gradeTdShadow(env,Date.now(),10);
   const cut=new Date(Date.now()-4*3600000).toISOString();
-  const waiting=((await env.DB.prepare('SELECT COUNT(*) AS n FROM td_shadow WHERE result IS NULL AND game_time<?').bind(cut).first())?.n||0)+((await env.DB.prepare('SELECT COUNT(*) AS n FROM bump_shadow WHERE result IS NULL AND game_time<?').bind(cut).first().catch(()=>null))?.n||0);
+  let waiting=0;for(const t of ['td_shadow','bump_shadow','live_shadow'])waiting+=((await env.DB.prepare(`SELECT COUNT(*) AS n FROM ${t} WHERE result IS NULL AND game_time<?`).bind(cut).first().catch(()=>null))?.n||0);
   if(!waiting)return {waiting:0};
   const r=await env.SELF.fetch(new Request(`${SITE_URL}/api/maintenance?job=tdGrade`,{method:'POST',headers:{authorization:`Bearer ${env.MAINTENANCE_TOKEN}`},signal:AbortSignal.timeout(60000)}));
   return {waiting,status:r.status};
@@ -742,6 +742,84 @@ async function gradeBumpShadow(env,now=Date.now(),limit=20){
     if(!stat||stat.missingPlayerStats||!(stat.scoreboardFinal||nflGameState(stat.game||{})==='final'))continue;
     const value=BTGStats.metric(record,stat).value,result=value===null?null:BTGStats.grade(r.side,r.line,value);
     if(result)statements.push(env.DB.prepare('UPDATE bump_shadow SET actual=?,result=?,graded_at=? WHERE id=?').bind(value,result,stamp,r.id));
+  }
+  if(statements.length)await env.DB.batch(statements);
+  return {graded:statements.length,checked:rows.length};
+}
+
+// Live props (shadow). Checkpoints: early in the 2nd quarter (the 1st quarter
+// is done) and halftime / early 3rd quarter. Slow starters (under 60% of the
+// pregame line's pace) are logged Over the live line; hot starters (over 150%)
+// Under it. Only main lines, at the best big-5 live price, -200 to +200.
+const LIVE_MARKETS=['player_receptions','player_reception_yds','player_rush_yds','player_pass_yds'];
+const LIVE_MIN_LINE={player_receptions:2.5,player_reception_yds:19.5,player_rush_yds:19.5,player_pass_yds:150};
+function liveCheckpoint(g){
+  const [m,s]=String(g.clock||'').split(':').map(Number),left=Number.isFinite(m)?m+(s||0)/60:null;
+  if(g.halftime)return {cp:'HALF',f:.5};
+  if(left===null||!g.period)return null;
+  const f=((g.period-1)*15+(15-left))/60;
+  if(g.period===2&&left>=7)return {cp:'Q1',f};
+  if(g.period===3&&left>=10)return {cp:'HALF',f};
+  return null;
+}
+async function recordLiveShadow(env,ctx,now=Date.now()){
+  if(!env.DB||!env.THE_ODDS_API_KEY||!env.BALLDONTLIE_API_KEY)return {logged:0};
+  const live=await (await liveGames(new Request(`${SITE_URL}/api/live`),env,ctx||{waitUntil(){}})).json().catch(()=>({}));
+  const playing=(live.games||[]).filter(g=>g.state==='in_progress').map(g=>({...g,check:liveCheckpoint(g)})).filter(g=>g.check);
+  if(!playing.length)return {checkpoints:0};
+  const schedule=await (await futureSchedule(new Request(new URL('/api/schedule',SITE_URL)),env,ctx||{waitUntil(){}})).json().catch(()=>({}));
+  const done=new Set(((await env.DB.prepare("SELECT DISTINCT event_id||'|'||checkpoint AS k FROM live_shadow WHERE game_time>?").bind(new Date(now-10*3600000).toISOString()).all()).results||[]).map(r=>r.k));
+  const statements=[],stamp=new Date(now).toISOString();let logged=0,checked=0;
+  for(const g of playing){
+    const ev=(schedule.data||[]).find(e=>normalizedName(e.teams?.home?.names?.medium)===normalizedName(g.home?.full_name)&&normalizedName(e.teams?.away?.names?.medium)===normalizedName(g.away?.full_name));
+    if(!ev||done.has(`${ev.eventID}|${g.check.cp}`))continue;
+    checked++;
+    const kickoff=Date.parse(ev.status?.startsAt||g.startsAt||'');
+    const pre=await env.DB.prepare("SELECT payload_json FROM movement_snapshots WHERE event_id=? AND kind='observed' AND captured_at<? ORDER BY captured_at DESC LIMIT 1").bind(ev.eventID,Number.isFinite(kickoff)?kickoff:now).first();
+    let preBoard=null;try{preBoard=JSON.parse(pre?.payload_json||'null')}catch{}
+    const board=await fetchEventOdds({...SPORTS[0],markets:LIVE_MARKETS,expandedMarkets:[]},ev.eventID.split('--')[1],env.THE_ODDS_API_KEY,false).catch(()=>null);
+    const box=await fetchLiveBoxScore(new Request(`${SITE_URL}/api/live/game`),String(g.id),env,ctx||{waitUntil(){}}).catch(()=>null);
+    // A row per checkpoint marks it done even when nothing qualifies; a
+    // failed fetch is retried on the next run instead.
+    if(!preBoard||(board&&box?.stats?.length))statements.push(env.DB.prepare("INSERT OR IGNORE INTO live_shadow (id,event_id,player,market,checkpoint,elapsed,stat_at,pregame_line,live_line,side,odds,book,expected_final,gap,pace,game_time,logged_at,result) VALUES (?,?,'-','-',?,?,0,0,0,'-',0,'-',0,0,'-',?,?,'none')").bind(`${ev.eventID}|${g.check.cp}|none`,ev.eventID,g.check.cp,g.check.f,new Date(Number.isFinite(kickoff)?kickoff:now).toISOString(),stamp));
+    if(!board||!preBoard||!box?.stats?.length)continue;
+    // Live prices only while the book is still updating them.
+    board.bookmakers=(board.bookmakers||[]).map(b=>({...b,markets:(b.markets||[]).filter(m=>{const t=Date.parse(m.last_update||b.last_update||'');return Number.isFinite(t)&&now-t<180000})})).filter(b=>b.markets.length);
+    const rows=new Map(box.stats.map(r=>[normalizedName(playerLabel(r.player)),r]));
+    const score=`${g.awayScore??'-'}-${g.homeScore??'-'}`;
+    const names=new Set();for(const b of board.bookmakers)for(const m of b.markets)for(const o of m.outcomes||[])if(o.description)names.add(String(o.description).trim());
+    for(const name of names){
+      const row=rows.get(normalizedName(name));if(!row)continue;
+      for(const key of LIVE_MARKETS){
+        const label=recordLabels[key],preLine=mainOver(preBoard,name,key)?.line;
+        if(!Number.isFinite(preLine)||preLine<LIVE_MIN_LINE[key])continue;
+        const stat=BTGStats.metric({market:label,sport:'NFL'},row).value;if(stat===null)continue;
+        const f=g.check.f,paceShare=stat/Math.max(.1,f*preLine);
+        const pace=paceShare<.6?'slow':paceShare>1.5?'hot':null;if(!pace)continue;
+        const side=pace==='slow'?'Over':'Under';
+        const liveMain=mainOver(board,name,key);if(!liveMain)continue;
+        let best=null;
+        for(const b of board.bookmakers)if(OFFICIAL_BOOKS.has(b.key))for(const m of b.markets)if(m.key===key)for(const o of m.outcomes||[])if(String(o.description||'').trim()===name&&String(o.name).toLowerCase()===side.toLowerCase()&&BTGStats.number(o.point)===liveMain.line){const p=BTGStats.number(o.price);if(p!==null&&(!best||p>best.odds))best={odds:p,book:b.title||b.key}}
+        if(!best||best.odds<-200||best.odds>200)continue;
+        const expected=stat+(1-f)*preLine,gap=side==='Over'?expected-liveMain.line:liveMain.line-expected;
+        const targets=BTGStats.read(row,['receiving_targets','targets']);
+        statements.push(env.DB.prepare('INSERT OR IGNORE INTO live_shadow (id,event_id,player,market,checkpoint,elapsed,stat_at,targets,pregame_line,live_line,side,odds,book,expected_final,gap,pace,score,team,game_time,logged_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(`${ev.eventID}|${g.check.cp}|${normalizedName(name)}|${key}`,ev.eventID,name,label,g.check.cp,+f.toFixed(3),stat,targets,preLine,liveMain.line,side,best.odds,best.book,+expected.toFixed(2),+gap.toFixed(2),pace,score,`${g.away?.full_name||''} · @ ${g.home?.full_name||''}`,new Date(Number.isFinite(kickoff)?kickoff:now).toISOString(),stamp));logged++;
+      }
+    }
+  }
+  if(statements.length)await env.DB.batch(statements);
+  return {checked,logged};
+}
+async function gradeLiveShadow(env,now=Date.now(),limit=30){
+  if(!env.DB||!env.BALLDONTLIE_API_KEY)return {graded:0};
+  const rows=(await env.DB.prepare('SELECT * FROM live_shadow WHERE result IS NULL AND game_time<? AND game_time>? ORDER BY game_time LIMIT ?').bind(new Date(now-4*3600000).toISOString(),new Date(now-14*86400000).toISOString(),limit).all()).results||[];
+  const cache=new Map(),statements=[],stamp=new Date(now).toISOString();
+  for(const r of rows){
+    const record={sport:'NFL',player:r.player,team:r.team,gameTime:r.game_time,market:r.market,side:r.side,line:r.live_line};
+    const stat=await recordPlayerStats(record,env,undefined,cache).catch(()=>null);
+    if(!stat||stat.missingPlayerStats||!(stat.scoreboardFinal||nflGameState(stat.game||{})==='final'))continue;
+    const value=BTGStats.metric(record,stat).value,result=value===null?null:BTGStats.grade(r.side,r.live_line,value);
+    if(result)statements.push(env.DB.prepare('UPDATE live_shadow SET actual=?,result=?,graded_at=? WHERE id=?').bind(value,result,stamp,r.id));
   }
   if(statements.length)await env.DB.batch(statements);
   return {graded:statements.length,checked:rows.length};
