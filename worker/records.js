@@ -521,6 +521,111 @@ async function playerFormResponse(request,env,ctx,now=Date.now()){
   return cachedForClient(stored,'miss');
 }
 
+// Touchdown props (shadow). Books only offer "Yes", so a prop is rated
+// against the consensus of every book pricing it (4+): gap is how much less
+// likely the best big-5 price says it is than the average book does. Anytime
+// TDs at +100 to +400 and first TDs at +300 to +1500 are logged, whatever
+// their gap, so the record shows which gaps (if any) win.
+const TD_MARKETS={player_anytime_td:{label:'Anytime Touchdown',min:100,max:400},player_1st_td:{label:'First Touchdown',min:300,max:1500}};
+const tdImplied=o=>o>0?100/(o+100):-o/(-o+100);
+const tdAmerican=p=>p>=.5?Math.round(-100*p/(1-p)):Math.round(100*(1-p)/p);
+function tdProps(board){
+  const out=new Map();
+  for(const book of board.bookmakers||[])for(const market of book.markets||[]){
+    const cfg=TD_MARKETS[market.key];if(!cfg)continue;
+    for(const o of market.outcomes||[]){
+      const player=String(o.description||'').trim(),price=BTGStats.number(o.price);
+      if(!player||!/^yes$/i.test(String(o.name||''))||price===null||/\b(d\/st|defense|no scorer)\b/i.test(player))continue;
+      const key=`${market.key}|${player}`,p=out.get(key)||{player,market:cfg.label,cfg,prices:new Map()};
+      const prev=p.prices.get(book.key);if(prev===undefined||price>prev)p.prices.set(book.key,price);out.set(key,p);
+    }
+  }
+  const rows=[];
+  for(const p of out.values()){
+    if(p.prices.size<4)continue;
+    const best=[...p.prices].filter(([k])=>OFFICIAL_BOOKS.has(k)).sort((a,b)=>b[1]-a[1])[0];if(!best)continue;
+    const [book,odds]=best;if(odds<p.cfg.min||odds>p.cfg.max)continue;
+    const avg=[...p.prices.values()].reduce((s,o)=>s+tdImplied(o),0)/p.prices.size;
+    rows.push({player:p.player,market:p.market,book,odds,books:p.prices.size,avgOdds:tdAmerican(avg),gap:+((avg-tdImplied(odds))/avg*100).toFixed(2)});
+  }
+  return rows;
+}
+const tdRow=(env,board,gameId,r,stamp,source)=>env.DB.prepare('INSERT OR IGNORE INTO td_shadow (id,event_id,player,team,market,odds,book,books,avg_odds,gap,game_time,logged_at,source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(`${gameId}|${r.market}|${normalizedName(r.player)}`,gameId,r.player,`${board.away_team} · @ ${board.home_team}`,r.market,r.odds,r.book,r.books,r.avgOdds,r.gap,new Date(Date.parse(board.commence_time)).toISOString(),stamp,source);
+// Live: every TD prop in range, once per game about 90 minutes before
+// kickoff; the best big-5 price is tracked until kickoff as the close.
+async function recordTdShadow(env,boards,now=Date.now()){
+  if(!env.DB)return {logged:0};
+  const stamp=new Date(now).toISOString(),statements=[];let logged=0;
+  const open=(await env.DB.prepare('SELECT id,event_id,player,market FROM td_shadow WHERE game_time>?').bind(stamp).all()).results||[],games=new Set(open.map(r=>r.event_id));
+  for(const board of boards){
+    const gameId=board.eventID||`NFL--${board.id}`,kickoff=Date.parse(board.commence_time);
+    if(!(kickoff>now)||kickoff-now>LEAN_WINDOW)continue;
+    const props=tdProps(board);
+    if(!games.has(gameId))for(const r of props){statements.push(tdRow(env,board,gameId,r,stamp,'live'));logged++}
+    for(const r of open.filter(o=>o.event_id===gameId)){const p=props.find(x=>x.player===r.player&&x.market===r.market);if(p)statements.push(env.DB.prepare('UPDATE td_shadow SET close_odds=?,close_at=? WHERE id=?').bind(p.odds,stamp,r.id))}
+  }
+  if(statements.length)await env.DB.batch(statements);
+  return {logged};
+}
+// Backtest: finished games from the saved odds an hour before kickoff (the
+// close is the last board before kickoff). Anytime TDs only: first-TD odds
+// aren't in the saved snapshots.
+async function backfillTdShadow(env,now=Date.now(),limit=4){
+  if(!env.DB)return {added:0};
+  const games=(await env.DB.prepare("SELECT event_id FROM movement_snapshots WHERE kind='observed' AND event_id LIKE 'NFL--%' GROUP BY event_id HAVING MAX(captured_at)<?").bind(now-30*60000).all()).results||[];
+  const have=new Set(((await env.DB.prepare('SELECT DISTINCT event_id FROM td_shadow').all()).results||[]).map(r=>r.event_id));
+  const statements=[];let added=0;
+  for(const g of games){
+    if(added>=limit)break;if(have.has(g.event_id))continue;
+    const latest=await env.DB.prepare("SELECT payload_json FROM movement_snapshots WHERE event_id=? AND kind='observed' ORDER BY captured_at DESC LIMIT 1").bind(g.event_id).first();
+    let board=null;try{board=JSON.parse(latest?.payload_json||'null')}catch{}
+    const kickoff=Date.parse(board?.commence_time||'');if(!Number.isFinite(kickoff)||kickoff>now)continue;
+    const lock=await env.DB.prepare("SELECT captured_at,payload_json FROM movement_snapshots WHERE event_id=? AND kind='observed' AND captured_at<=? ORDER BY captured_at DESC LIMIT 1").bind(g.event_id,kickoff-3600000).first();
+    const last=await env.DB.prepare("SELECT payload_json FROM movement_snapshots WHERE event_id=? AND kind='observed' AND captured_at<? ORDER BY captured_at DESC LIMIT 1").bind(g.event_id,kickoff).first();
+    let lockBoard=null,lastBoard=null;try{lockBoard=JSON.parse(lock?.payload_json||'null');lastBoard=JSON.parse(last?.payload_json||'null')}catch{}
+    const props=lockBoard?tdProps(lockBoard):[],closes=lastBoard?tdProps(lastBoard):[];
+    // A placeholder keeps a game with nothing in range from being re-read.
+    if(!props.length)statements.push(env.DB.prepare("INSERT OR IGNORE INTO td_shadow (id,event_id,player,market,odds,book,books,avg_odds,gap,game_time,logged_at,source,result) VALUES (?,?,'-','-',0,'-',0,0,0,?,?,'backtest','none')").bind(`${g.event_id}|none`,g.event_id,new Date(kickoff).toISOString(),new Date(now).toISOString()));
+    for(const r of props){
+      statements.push(tdRow(env,lockBoard,g.event_id,r,new Date(Number(lock.captured_at)).toISOString(),'backtest'));
+      const c=closes.find(x=>x.player===r.player&&x.market===r.market);
+      if(c)statements.push(env.DB.prepare('UPDATE td_shadow SET close_odds=? WHERE id=?').bind(c.odds,`${g.event_id}|${r.market}|${normalizedName(r.player)}`));
+    }
+    have.add(g.event_id);added++;
+  }
+  if(statements.length)await env.DB.batch(statements);
+  return {added};
+}
+// Grade from the play-by-play (who scored), like official TD picks; a player
+// missing from a final box score is void after 36 hours.
+async function gradeTdShadow(env,now=Date.now(),limit=40){
+  if(!env.DB||!env.BALLDONTLIE_API_KEY)return {graded:0};
+  const rows=(await env.DB.prepare('SELECT * FROM td_shadow WHERE result IS NULL AND game_time<? AND game_time>? ORDER BY game_time,event_id LIMIT ?').bind(new Date(now-4*3600000).toISOString(),new Date(now-14*86400000).toISOString(),limit).all()).results||[];
+  const cache=new Map(),statements=[],stamp=new Date(now).toISOString();
+  for(const r of rows){
+    const record={sport:'NFL',player:r.player,team:r.team,gameTime:r.game_time,market:r.market,side:'Over',line:.5};
+    const stat=await recordPlayerStats(record,env,undefined,cache).catch(()=>null);
+    if(shadowVoid(stat,r.game_time,now)){statements.push(env.DB.prepare('UPDATE td_shadow SET result=?,graded_at=? WHERE id=?').bind('void',stamp,r.id));continue}
+    if(!stat||stat.missingPlayerStats||!(stat.scoreboardFinal||nflGameState(stat.game||{})==='final'))continue;
+    let value=await touchdownMarketValue(record,stat,env,undefined,cache).catch(()=>null);
+    if(value===null&&r.market==='Anytime Touchdown'){const parts=['rushing_touchdowns','receiving_touchdowns'].map(k=>BTGStats.number(stat[k])).filter(v=>v!==null);if(parts.length===2)value=parts[0]+parts[1]}
+    if(value===null)continue;
+    statements.push(env.DB.prepare('UPDATE td_shadow SET actual=?,result=?,graded_at=? WHERE id=?').bind(value,value>=1?'won':'lost',stamp,r.id));
+  }
+  if(statements.length)await env.DB.batch(statements);
+  return {graded:statements.length,checked:rows.length};
+}
+
+// TD grading reads box scores and play-by-play for each game, so it runs in
+// its own invocation (SELF binding) with its own request allowance.
+async function gradeTdShadowNow(env){
+  if(!env.SELF?.fetch||!env.MAINTENANCE_TOKEN)return gradeTdShadow(env,Date.now(),10);
+  const waiting=(await env.DB.prepare('SELECT COUNT(*) AS n FROM td_shadow WHERE result IS NULL AND game_time<?').bind(new Date(Date.now()-4*3600000).toISOString()).first())?.n||0;
+  if(!waiting)return {waiting:0};
+  const r=await env.SELF.fetch(new Request(`${SITE_URL}/api/maintenance?job=tdGrade`,{method:'POST',headers:{authorization:`Bearer ${env.MAINTENANCE_TOKEN}`},signal:AbortSignal.timeout(60000)}));
+  return {waiting,status:r.status};
+}
+
 // Stats check (shadow): does the stat line agree with a pick? For each
 // official pick and near miss, project the stat from the player's recent
 // games (last 5, last 10, this season) and the opponent's defense against
@@ -721,6 +826,7 @@ async function publishOfficialPicks(request,env,ctx,opts={}){
     if(!opts.soonOnly)jobStep('publish','line shadow');await recordLineShadow(env,boards,Date.now()).catch(error=>console.warn('line_shadow_failed',error.message));
     if(!opts.soonOnly)jobStep('publish','near shadow');await recordNearShadow(env,boards,candidates,Date.now()).catch(error=>console.warn('near_shadow_failed',error.message));
     if(!opts.soonOnly)jobStep('publish','leans');await recordLeans(env,boards,Date.now()).catch(error=>console.warn('lean_shadow_failed',error.message));
+    if(!opts.soonOnly)jobStep('publish','td shadow');await recordTdShadow(env,boards,Date.now()).catch(error=>console.warn('td_shadow_failed',error.message));
     if(!opts.soonOnly)jobStep('publish','form wanted');await recordFormWanted(env,boards,Date.now()).catch(error=>console.warn('player_form_failed',error.message));
 
     // New picks go out right away (X post and phone alerts) instead of on the
