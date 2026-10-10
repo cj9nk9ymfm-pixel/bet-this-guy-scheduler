@@ -391,6 +391,11 @@ async function backfillLeans(env,now=Date.now(),limit=4){
       ||await env.DB.prepare("SELECT captured_at,payload_json FROM movement_snapshots WHERE event_id=? AND kind='observed' AND captured_at<? ORDER BY captured_at ASC LIMIT 1").bind(g.event_id,kickoff).first();
     const last=await env.DB.prepare("SELECT captured_at,payload_json FROM movement_snapshots WHERE event_id=? AND kind='observed' AND captured_at<? ORDER BY captured_at DESC LIMIT 1").bind(g.event_id,kickoff).first();
     let lockBoard=null,lastBoard=null;try{lockBoard=JSON.parse(lock?.payload_json||'null');lastBoard=JSON.parse(last?.payload_json||'null')}catch{}
+    // A snapshot is the board as it stood when it was taken, so its prices
+    // count as fresh at that moment (the pick rules skip markets whose
+    // last_update is over 15 minutes old).
+    const asOf=(b,t)=>b&&{...b,bookmakers:(b.bookmakers||[]).map(book=>({...book,last_update:new Date(t).toISOString(),markets:(book.markets||[]).map(m=>({...m,last_update:new Date(t).toISOString()}))}))};
+    if(lockBoard)lockBoard=asOf(lockBoard,Number(lock.captured_at));
     const p=lockBoard?leanFor({...lockBoard,eventID:g.event_id},Number(lock.captured_at)):null;
     // No board to pick from: a placeholder row so the game isn't retried.
     if(!p){statements.push(env.DB.prepare("INSERT OR IGNORE INTO lean_shadow (id,event_id,player,market,side,line,odds,book,edge,game_time,logged_at,source,result) VALUES (?,?,'-','-','-',0,0,'-',0,?,?,'backtest','none')").bind(g.event_id,g.event_id,new Date(kickoff).toISOString(),new Date(now).toISOString()));have.add(g.event_id);continue}

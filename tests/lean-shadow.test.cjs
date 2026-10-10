@@ -28,8 +28,8 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
   at=kickoff-20*60000;context.boards=[board('g1',at,{...soft,'Nick Chubb':['player_rush_yds',62.5,-102,-118]})];
   await run(`recordLeans(env,boards,${at})`);
   row=db.prepare('SELECT * FROM lean_shadow').get();assert.equal(row.odds,104,'locked once');assert.equal(row.close_odds,-102,'closing price tracked');
-  // Backtest: an hour-before snapshot picks the lean, the last one gives the close; upcoming games wait.
-  const snap=(id,t,b)=>db.prepare("INSERT INTO movement_snapshots (id,event_id,captured_at,kind,payload_json) VALUES (?,?,?,?,?)").run(`NFL--${id}|observed|${t}`,'NFL--'+id,t,'observed',JSON.stringify(b));
+  // Backtest (snapshot prices count as fresh when taken, whatever their last_update): an hour-before snapshot picks the lean, the last one gives the close; upcoming games wait.
+  const snap=(id,t,b)=>db.prepare("INSERT INTO movement_snapshots (id,event_id,captured_at,kind,payload_json) VALUES (?,?,?,?,?)").run(`NFL--${id}|observed|${t}`,'NFL--'+id,t,'observed',JSON.stringify(b).replace(/"last_update":"[^"]+"/g,'"last_update":"2026-10-01T00:00:00.000Z"'));
   for(const t of [kickoff-5*3600000,kickoff-65*60000,kickoff-15*60000])snap('g2',t,board('g2',t,t===kickoff-15*60000?{...soft,'Nick Chubb':['player_rush_yds',62.5,-115,-105]}:soft));
   snap('g3',kickoff-65*60000,board('g3',kickoff-65*60000,soft));
   let out=J(await run(`backfillLeans(env,${kickoff-30*60000})`));assert.equal(out.added,0,'only games that have started');
