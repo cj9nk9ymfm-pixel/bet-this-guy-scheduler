@@ -1166,7 +1166,7 @@ function cronJobs(date){
   // line-value picks on its own, so it has its own request allowance.
   // Every in-between run, and publish runs outside NFL windows, also fill
   // player form (each board player's last 10 games, in parallel parts).
-  if(minute%10>=5){const grade=nflActiveWindow(date)||(date.getUTCHours()%6===0&&minute<10);return ['xpost',...(grade?['lineGrade']:[]),'form']}
+  if(minute%10>=5){const grade=nflActiveWindow(date)||(date.getUTCHours()%6===0&&minute<10);return ['xpost',...(grade?['lineGrade']:[]),'form','leans']}
   const publish=['publish'];
   if(nflActiveWindow(date))return [...publish,'grade'];
   return [...publish,...(date.getUTCHours()%6===0&&minute<5?['grade']:[]),'form'];
@@ -1174,8 +1174,8 @@ function cronJobs(date){
 async function runCron(controller,env,ctx){
   const due=cronJobs(new Date(controller.scheduledTime));
   if(!due.length||!env.DB||!env.BALLDONTLIE_API_KEY)return;
-  if(!env.THE_ODDS_API_KEY)due.splice(0,due.length,...due.filter(job=>['xpost','lineGrade','form'].includes(job)));
-  const request=new Request(`${SITE_URL}/api/maintenance`),jobs={publish:()=>publishOfficialPicks(request,env,ctx),grade:()=>settlePublicRecords(env),nbaShadow:()=>recordNbaShadow(request,env,ctx),nbaGrade:()=>gradeNbaShadow(env),digest:()=>sendWeeklyDigest(env),alerts:()=>sendDueAlerts(env),xpost:()=>runXPosts(env),form:()=>fillFormBurst(env,ctx),
+  if(!env.THE_ODDS_API_KEY)due.splice(0,due.length,...due.filter(job=>['xpost','lineGrade','form','leans'].includes(job)));
+  const request=new Request(`${SITE_URL}/api/maintenance`),jobs={publish:()=>publishOfficialPicks(request,env,ctx),grade:()=>settlePublicRecords(env),nbaShadow:()=>recordNbaShadow(request,env,ctx),nbaGrade:()=>gradeNbaShadow(env),digest:()=>sendWeeklyDigest(env),alerts:()=>sendDueAlerts(env),xpost:()=>runXPosts(env),form:()=>fillFormBurst(env,ctx),leans:()=>backfillLeans(env),
     // Line-value grading, near-miss grading and the stats check take turns
     // (minutes 15/45, 25/55 and 5/35) so each run stays inside the request limit.
     // While games kick off within 4 hours, the 15/45 and 25/55 slots check
@@ -1200,12 +1200,19 @@ async function runCron(controller,env,ctx){
   if(due.includes('grade'))due.push('nbaGrade');
   // Pick alerts go first on the in-between run: they're the most time-sensitive.
   if(due.includes('xpost')){due.unshift('alerts');due.push('digest')}
+  // Run log (cron_runs): written at the start and the end of every run, so a
+  // run that was cut off shows up as started but never finished.
+  const runAt=new Date(controller.scheduledTime).toISOString(),results={};
+  const runLog=async f=>{try{await f()}catch{}};
+  await runLog(()=>env.DB.prepare('INSERT OR REPLACE INTO cron_runs (at,jobs) VALUES (?,?)').bind(runAt,due.join(',')).run());
   for(const job of due){
     if(!jobs[job]){console.error('cron_failed',job,'unknown job');continue}
     let work=scheduledJobs.get(job);
     if(!work){work=Promise.resolve().then(jobs[job]).finally(()=>scheduledJobs.delete(job));scheduledJobs.set(job,work)}
-    try{await work;console.log('cron_completed',job)}catch(error){console.error('cron_failed',job,error.message)}
+    const started=Date.now();
+    try{await work;console.log('cron_completed',job);results[job]={ms:Date.now()-started}}catch(error){console.error('cron_failed',job,error.message);results[job]={ms:Date.now()-started,error:String(error?.message||error).slice(0,300)}}
   }
+  await runLog(()=>env.DB.batch([env.DB.prepare('UPDATE cron_runs SET ended_at=?,results_json=? WHERE at=?').bind(new Date().toISOString(),JSON.stringify(results),runAt),env.DB.prepare('DELETE FROM cron_runs WHERE at<?').bind(new Date(controller.scheduledTime-3*86400000).toISOString())]));
 }
 
 // Filled in by scripts/build-worker.mjs with each asset's content fingerprint.
