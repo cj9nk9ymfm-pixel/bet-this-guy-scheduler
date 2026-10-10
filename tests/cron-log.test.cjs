@@ -20,10 +20,16 @@ db.exec(read('drizzle/0019_cron_runs.sql'));
   assert.ok(row.ended_at,'finished runs record when they ended');
   const results=JSON.parse(row.results_json);
   assert.ok(!results.publish.error&&results.form.error==='stats feed down','each job outcome, errors included');
-  // A run that never finishes keeps a row without ended_at.
-  run('publishOfficialPicks=()=>new Promise(()=>{})');
-  run(`runCron({scheduledTime:${at+600000}},env,{waitUntil(){}})`);await new Promise(r=>setTimeout(r,20));
-  assert.equal(db.prepare('SELECT ended_at FROM cron_runs WHERE at=?').get(new Date(at+600000).toISOString()).ended_at,null);
-  console.log('PASS: every cron run is logged at start and end with each job outcome');
+  // A job that never settles times out with the step it was on, and the
+  // next run starts its own job instead of waiting on the stuck one.
+  run('JOB_TIMEOUT.publish=50;publishOfficialPicks=()=>{jobStep("publish","plan");return new Promise(()=>{})}');
+  await run(`runCron({scheduledTime:${at+600000}},env,{waitUntil(){}})`);
+  let r=JSON.parse(db.prepare('SELECT results_json FROM cron_runs WHERE at=?').get(new Date(at+600000).toISOString()).results_json);
+  assert.equal(r.publish.error,'timed out at plan');assert.ok(!r.nbaShadow.error,'the rest of the run still goes');
+  run('publishOfficialPicks=async()=>({state:"completed"})');
+  await run(`runCron({scheduledTime:${at+1200000}},env,{waitUntil(){}})`);
+  r=JSON.parse(db.prepare('SELECT results_json FROM cron_runs WHERE at=?').get(new Date(at+1200000).toISOString()).results_json);
+  assert.ok(!r.publish.error,'a later run is not stuck behind the earlier one');
+  console.log('PASS: every cron run is logged with each job outcome; a stuck job times out and never blocks later runs');
   process.exit(0);
 })().catch(error=>{console.error(error);process.exit(1)});
