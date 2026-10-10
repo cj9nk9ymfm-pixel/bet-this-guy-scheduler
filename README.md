@@ -150,6 +150,19 @@ On each publish run, `sendBookAlerts` (in `worker/records.js`) also tells people
 
 Board cards show how often each bet hit in the player's last 10 games, and the prop sheet charts those games and lists every book's price. Publish runs record who is on the board and which markets they have (`player_form`, migration `0018`). Every in-between cron run, and publish runs outside NFL windows, fetch players from BALLDONTLIE in up to six parallel parts of five players, each part a separate invocation through the `SELF` binding with its own request allowance. A busy reply (429) pauses the fill until the next run. Each player is fetched again once per slate, after Tuesday and Friday 12:00 UTC. Visitors read everything from one cached `/api/form` request, so the board makes no per-card stats calls.
 
+## Live props (shadow)
+
+During NFL windows every cron run checks games in progress. At two checkpoints
+per game (the 1st quarter is done: early 2nd quarter; and halftime / early 3rd
+quarter) it reads the live box score and the live odds for receptions,
+receiving, rushing and passing yards (one Odds API call, 4 credits, per game
+per checkpoint). A player under 60% of his pregame line's pace is logged Over
+his live line; one over 150% is logged Under it, at the best big-5 live price
+(-200 to +200, prices updated in the last 3 minutes). Each row keeps the
+pregame line, live line, stat so far, `expected_final` (stat so far plus the
+rest of the game at the pregame rate) and `gap`. Rows are graded at the final
+against the live line in `live_shadow`; nothing is posted.
+
 ## Injuries
 
 ESPN's league-wide NFL injury report is fetched on the in-between cron run (every 25 minutes, every 10 in game windows) into `injuries` (migration `0021`). Board cards tag Questionable (Q), Doubtful (D) and Out players, and the prop sheet shows the status and injury. The pick job takes Out and Doubtful players off its boards before choosing official picks, near misses, leans or test picks. `bump_shadow` is a usage-bump test: when a receiver or running back with a real role (3+ catches or 8+ carries a game lately) is out, his teammates at the same position are logged Over their main line at the best big-5 price about 90 minutes before kickoff, then graded. Never posted.
