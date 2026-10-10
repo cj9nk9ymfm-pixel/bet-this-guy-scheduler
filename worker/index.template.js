@@ -1220,7 +1220,7 @@ async function runCron(controller,env,ctx){
     jobSteps.delete(job);
     const work=withTimeout(job,Promise.resolve().then(jobs[job]));
     const started=Date.now();
-    try{await work;console.log('cron_completed',job);results[job]={ms:Date.now()-started}}catch(error){console.error('cron_failed',job,error.message);results[job]={ms:Date.now()-started,error:String(error?.message||error).slice(0,300)}}
+    try{const out=await work;console.log('cron_completed',job);results[job]={ms:Date.now()-started};try{const text=JSON.stringify(out);if(text&&text.length<=400)results[job].out=JSON.parse(text)}catch{}}catch(error){console.error('cron_failed',job,error.message);results[job]={ms:Date.now()-started,error:String(error?.message||error).slice(0,300)}}
   }
   await runLog(()=>env.DB.batch([env.DB.prepare('UPDATE cron_runs SET ended_at=?,results_json=? WHERE at=?').bind(new Date().toISOString(),JSON.stringify(results),runAt),env.DB.prepare('DELETE FROM cron_runs WHERE at<?').bind(new Date(controller.scheduledTime-3*86400000).toISOString())]));
 }
