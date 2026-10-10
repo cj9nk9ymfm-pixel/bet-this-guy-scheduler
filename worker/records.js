@@ -491,7 +491,7 @@ async function fillPlayerForm(env,ctx,now=Date.now(),limit=5,offset=0){
     if(status===429)break;
     if(!payload?.success){statements.push(env.DB.prepare('UPDATE player_form SET failures=failures+1 WHERE id=?').bind(r.id));continue}
     let markets=[];try{markets=JSON.parse(r.markets||'[]')}catch{}
-    statements.push(env.DB.prepare('UPDATE player_form SET games_json=?,fetched_at=?,failures=0 WHERE id=?').bind(JSON.stringify(formGames(payload,markets,now)),now,r.id));filled++;
+    statements.push(env.DB.prepare('UPDATE player_form SET games_json=?,fetched_at=?,failures=0,team=?,position=? WHERE id=?').bind(JSON.stringify(formGames(payload,markets,now)),now,payload?.player?.team?.full_name||null,statsPos(payload?.player),r.id));filled++;
   }
   await env.DB.batch(statements);
   return {filled,tried:rows.length};
@@ -620,10 +620,131 @@ async function gradeTdShadow(env,now=Date.now(),limit=40){
 // its own invocation (SELF binding) with its own request allowance.
 async function gradeTdShadowNow(env){
   if(!env.SELF?.fetch||!env.MAINTENANCE_TOKEN)return gradeTdShadow(env,Date.now(),10);
-  const waiting=(await env.DB.prepare('SELECT COUNT(*) AS n FROM td_shadow WHERE result IS NULL AND game_time<?').bind(new Date(Date.now()-4*3600000).toISOString()).first())?.n||0;
+  const cut=new Date(Date.now()-4*3600000).toISOString();
+  const waiting=((await env.DB.prepare('SELECT COUNT(*) AS n FROM td_shadow WHERE result IS NULL AND game_time<?').bind(cut).first())?.n||0)+((await env.DB.prepare('SELECT COUNT(*) AS n FROM bump_shadow WHERE result IS NULL AND game_time<?').bind(cut).first().catch(()=>null))?.n||0);
   if(!waiting)return {waiting:0};
   const r=await env.SELF.fetch(new Request(`${SITE_URL}/api/maintenance?job=tdGrade`,{method:'POST',headers:{authorization:`Bearer ${env.MAINTENANCE_TOKEN}`},signal:AbortSignal.timeout(60000)}));
   return {waiting,status:r.status};
+}
+
+// Injuries: ESPN's league-wide NFL injury report, one request, refreshed
+// every 25 minutes (every 10 in Thursday, Sunday and Monday game windows).
+const INJURY_URL='https://site.api.espn.com/apis/site/v2/sports/football/nfl/injuries';
+const injuryClass=status=>{const s=String(status||'').toLowerCase();return /\bout\b|injured reserve|\bir\b|suspen|physically unable|\bpup\b|non-football|reserve/.test(s)?'out':/doubtful/.test(s)?'doubtful':/questionable|day-to-day|game-time/.test(s)?'questionable':null};
+function parseInjuries(payload){
+  const out=[];
+  for(const team of Array.isArray(payload?.injuries)?payload.injuries:[]){
+    const teamName=team.displayName||team.team?.displayName||'';
+    for(const i of Array.isArray(team.injuries)?team.injuries:[]){
+      const a=i.athlete||{},name=String(a.displayName||a.fullName||'').trim(),status=String(i.status||i.type?.description||'').trim();
+      if(!name||!status)continue;
+      const detail=[i.details?.side,i.details?.type,i.details?.detail].filter(x=>x&&!/not specified/i.test(x)).join(' ')||String(i.shortComment||'').slice(0,80);
+      out.push({player:name,team:a.team?.displayName||teamName,position:String(a.position?.abbreviation||'').toUpperCase(),status,detail,date:i.date||''});
+    }
+  }
+  return out;
+}
+function injuryFast(now){const d=new Date(now),day=d.getUTCDay(),h=d.getUTCHours();return (day===0&&h>=15)||(day===1&&(h<5||h>=22))||(day===2&&h<5)||(day===4&&h>=22)||(day===5&&h<5)}
+async function refreshInjuries(env,now=Date.now()){
+  if(!env.DB)return {};
+  const last=Number(await appSetting(env,'injuries-at')||0);
+  if(now-last<(injuryFast(now)?9:25)*60000)return {skipped:true};
+  await setAppSetting(env,'injuries-at',String(now));
+  const r=await fetch(INJURY_URL,{headers:{accept:'application/json'},signal:AbortSignal.timeout(15000)});
+  if(!r.ok)throw new Error(`injury report ${r.status}`);
+  const payload=await r.json(),rows=parseInjuries(payload);
+  // What the feed looked like, for checking its shape.
+  await setAppSetting(env,'injuries-sample',JSON.stringify({teams:Array.isArray(payload?.injuries)?payload.injuries.length:0,rows:rows.length,first:payload?.injuries?.[0]?.injuries?.[0]||null}).slice(0,3000));
+  if(!rows.length)return {rows:0};
+  const statements=[env.DB.prepare('DELETE FROM injuries')];
+  for(const x of rows)statements.push(env.DB.prepare('INSERT OR REPLACE INTO injuries (id,player,team,position,status,detail,reported_at,fetched_at) VALUES (?,?,?,?,?,?,?,?)').bind(`NFL|${normalizedName(x.player)}`,x.player,x.team||null,x.position||null,x.status,String(x.detail||'').slice(0,120)||null,x.date||null,now));
+  await env.DB.batch(statements);
+  return {rows:rows.length};
+}
+async function injuryMap(env){
+  const rows=(await env.DB.prepare('SELECT player,team,position,status,detail,reported_at FROM injuries').all().catch(()=>({results:[]}))).results||[];
+  return new Map(rows.map(r=>[normalizedName(r.player),r]));
+}
+// Boards without the props of players listed Out or Doubtful, so no pick,
+// lean or test lands on someone who isn't expected to play.
+function withoutInjured(boards,injuries){
+  if(!injuries?.size)return boards;
+  const skip=name=>['out','doubtful'].includes(injuryClass(injuries.get(normalizedName(name))?.status));
+  return boards.map(b=>({...b,bookmakers:(b.bookmakers||[]).map(book=>({...book,markets:(book.markets||[]).map(m=>({...m,outcomes:(m.outcomes||[]).filter(o=>!skip(o.description))}))}))}));
+}
+// GET /api/injuries: status for every listed player (cached 10 minutes).
+async function injuriesResponse(request,env,ctx){
+  if(!env.DB)return json({success:true,players:{}});
+  const saved=await readFeedCache(request,'injuries-v1-NFL');
+  if(saved.response&&cacheAge(saved.response)<600000)return cachedForClient(saved.response,'fresh');
+  const players={};for(const [k,r] of await injuryMap(env)){const c=injuryClass(r.status);if(c)players[k]={s:r.status,c,d:r.detail||'',t:r.team||'',p:r.position||'',at:r.reported_at||''}}
+  const stored=storedResponse(JSON.stringify({success:true,players,updatedAt:new Date().toISOString()}),600);
+  if(saved.cache&&saved.key)ctx?.waitUntil?.(saved.cache.put(saved.key,stored.clone()));
+  return cachedForClient(stored,'miss');
+}
+// Usage-bump test: a receiver or back with a real role is out, so teammates
+// at the same position should see more volume. Their Overs at the main line,
+// best big-5 price, logged once per game about 90 minutes before kickoff.
+const BUMP_MARKETS={WR:['player_receptions','player_reception_yds'],TE:['player_receptions','player_reception_yds'],RB:['player_rush_yds','player_rush_attempts']};
+const BUMP_ROLE={WR:['Receptions',3],TE:['Receptions',3],RB:['Rush Attempts',8]};
+function mainOver(board,player,marketKey){
+  const lines=new Map();
+  for(const book of board.bookmakers||[])for(const m of book.markets||[]){
+    if(m.key!==marketKey)continue;
+    for(const o of m.outcomes||[]){
+      if(String(o.description||'').trim()!==player||String(o.name).toLowerCase()!=='over')continue;
+      const pt=BTGStats.number(o.point),price=BTGStats.number(o.price);if(pt===null||price===null)continue;
+      const l=lines.get(pt)||{books:0,best:null};l.books++;
+      if(OFFICIAL_BOOKS.has(book.key)&&(!l.best||price>l.best.price))l.best={price,book:book.title||book.key};
+      lines.set(pt,l);
+    }
+  }
+  const top=[...lines].sort((a,b)=>b[1].books-a[1].books)[0];if(!top||!top[1].best)return null;
+  return {line:top[0],odds:top[1].best.price,book:top[1].best.book};
+}
+async function recordBumpShadow(env,boards,injuries,now=Date.now()){
+  if(!env.DB||!injuries?.size)return {logged:0};
+  const stamp=new Date(now).toISOString(),statements=[];let logged=0;
+  const done=new Set(((await env.DB.prepare('SELECT DISTINCT event_id FROM bump_shadow WHERE game_time>?').bind(stamp).all()).results||[]).map(r=>r.event_id));
+  const form=new Map(((await env.DB.prepare('SELECT player,team,position,games_json FROM player_form WHERE team IS NOT NULL').all()).results||[]).map(r=>[normalizedName(r.player),r]));
+  // A real role: 3+ catches (receivers) or 8+ carries (backs) a game lately.
+  const role=(r,pos)=>{try{const [label,min]=BUMP_ROLE[pos];const v=(JSON.parse(r.games_json||'{}').m?.[label]||[]).filter(x=>x!==null).slice(0,6);return v.length>=3&&v.reduce((a,b)=>a+b,0)/v.length>=min}catch{return false}};
+  for(const board of boards){
+    const gameId=board.eventID||`NFL--${board.id}`,kickoff=Date.parse(board.commence_time);
+    if(done.has(gameId)||!(kickoff>now)||kickoff-now>LEAN_WINDOW)continue;
+    const teams=[board.home_team,board.away_team].map(normalizedName);
+    const triggers=[...injuries.values()].filter(i=>injuryClass(i.status)==='out'&&teams.includes(normalizedName(i.team))&&BUMP_MARKETS[i.position]).filter(i=>{const f=form.get(normalizedName(i.player));return f&&role(f,i.position)});
+    const players=new Set();for(const b of board.bookmakers||[])for(const m of b.markets||[])for(const o of m.outcomes||[])if(o.description)players.add(String(o.description).trim());
+    for(const t of triggers){
+      const group=t.position==='RB'?['RB']:['WR','TE'];
+      for(const name of players){
+        const f=form.get(normalizedName(name));if(!f||normalizedName(f.team)!==normalizedName(t.team)||!group.includes(f.position))continue;
+        for(const key of BUMP_MARKETS[t.position]){
+          const o=mainOver(board,name,key);if(!o||o.odds<-200||o.odds>200)continue;
+          statements.push(env.DB.prepare('INSERT OR IGNORE INTO bump_shadow (id,event_id,player,team,market,side,line,odds,book,trigger_player,trigger_status,game_time,logged_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(`${gameId}|${normalizedName(name)}|${key}`,gameId,name,`${board.away_team} · @ ${board.home_team}`,recordLabels[key],'Over',o.line,o.odds,o.book,t.player,t.status,new Date(kickoff).toISOString(),stamp));logged++;
+        }
+      }
+    }
+    // A placeholder so each game is checked once.
+    statements.push(env.DB.prepare("INSERT OR IGNORE INTO bump_shadow (id,event_id,player,market,side,line,odds,book,trigger_player,trigger_status,game_time,logged_at,result) VALUES (?,?,'-','-','-',0,0,'-','-','-',?,?,'none')").bind(`${gameId}|none`,gameId,new Date(kickoff).toISOString(),stamp));
+  }
+  if(statements.length)await env.DB.batch(statements);
+  return {logged};
+}
+async function gradeBumpShadow(env,now=Date.now(),limit=20){
+  if(!env.DB||!env.BALLDONTLIE_API_KEY)return {graded:0};
+  const rows=(await env.DB.prepare('SELECT * FROM bump_shadow WHERE result IS NULL AND game_time<? AND game_time>? ORDER BY game_time LIMIT ?').bind(new Date(now-4*3600000).toISOString(),new Date(now-14*86400000).toISOString(),limit).all()).results||[];
+  const cache=new Map(),statements=[],stamp=new Date(now).toISOString();
+  for(const r of rows){
+    const record={sport:'NFL',player:r.player,team:r.team,gameTime:r.game_time,market:r.market,side:r.side,line:r.line};
+    const stat=await recordPlayerStats(record,env,undefined,cache).catch(()=>null);
+    if(shadowVoid(stat,r.game_time,now)){statements.push(env.DB.prepare('UPDATE bump_shadow SET result=?,graded_at=? WHERE id=?').bind('void',stamp,r.id));continue}
+    if(!stat||stat.missingPlayerStats||!(stat.scoreboardFinal||nflGameState(stat.game||{})==='final'))continue;
+    const value=BTGStats.metric(record,stat).value,result=value===null?null:BTGStats.grade(r.side,r.line,value);
+    if(result)statements.push(env.DB.prepare('UPDATE bump_shadow SET actual=?,result=?,graded_at=? WHERE id=?').bind(value,result,stamp,r.id));
+  }
+  if(statements.length)await env.DB.batch(statements);
+  return {graded:statements.length,checked:rows.length};
 }
 
 // Stats check (shadow): does the stat line agree with a pick? For each
@@ -806,6 +927,8 @@ async function publishOfficialPicks(request,env,ctx,opts={}){
     if(opts.soonOnly){events=events.filter(soon).sort((a,b)=>Date.parse(a.status.startsAt)-Date.parse(b.status.startsAt)).slice(0,6);if(!events.length)return {state:'no_soon_games'}}
     const boards=[];let failedBoards=0;
     for(let i=0;i<events.length;i+=4){const results=await Promise.allSettled(events.slice(i,i+4).map(async e=>{const url=new URL('/api/event',request.url);url.searchParams.set('eventID',e.eventID);const r=await eventProps(new Request(url),env,ctx,soon(e)?{maxAge:SOON_MAX_AGE}:{});if(!r.ok||r.headers.get('x-feed-cache')==='stale')throw new Error('Official board unavailable');return (await r.json()).data||[]}));for(const r of results)if(r.status==='fulfilled')boards.push(...r.value);else failedBoards++}
+    // Players listed Out or Doubtful are taken off the boards first.
+    const injuries=await injuryMap(env).catch(()=>new Map());boards.splice(0,boards.length,...withoutInjured(boards,injuries));
     if(!opts.soonOnly)jobStep('publish','plan');const existing=await env.DB.prepare('SELECT * FROM public_recommendations WHERE id>=? AND id<?').bind(prefix,prefix+'\uffff').all();
     const stats={};const candidates=officialCandidates(boards,Date.now(),stats);const posted=await writeOfficialPlan(officialPlan(candidates,existing.results||[],week,Date.now()),week,env);
     // One row per full run: what the pick job saw and why it did or didn't post
@@ -826,6 +949,7 @@ async function publishOfficialPicks(request,env,ctx,opts={}){
     if(!opts.soonOnly)jobStep('publish','line shadow');await recordLineShadow(env,boards,Date.now()).catch(error=>console.warn('line_shadow_failed',error.message));
     if(!opts.soonOnly)jobStep('publish','near shadow');await recordNearShadow(env,boards,candidates,Date.now()).catch(error=>console.warn('near_shadow_failed',error.message));
     if(!opts.soonOnly)jobStep('publish','leans');await recordLeans(env,boards,Date.now()).catch(error=>console.warn('lean_shadow_failed',error.message));
+    if(!opts.soonOnly)jobStep('publish','bump shadow');await recordBumpShadow(env,boards,injuries,Date.now()).catch(error=>console.warn('bump_shadow_failed',error.message));
     if(!opts.soonOnly)jobStep('publish','td shadow');await recordTdShadow(env,boards,Date.now()).catch(error=>console.warn('td_shadow_failed',error.message));
     if(!opts.soonOnly)jobStep('publish','form wanted');await recordFormWanted(env,boards,Date.now()).catch(error=>console.warn('player_form_failed',error.message));
 

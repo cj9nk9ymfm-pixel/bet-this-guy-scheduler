@@ -2300,6 +2300,14 @@ function statsProp(l){
     return list.map(p=>{const lines=index.get(`${p.eventID}|${p.player}|${p.market}`);if(!lines)return p;const at=lines.get(p.binary?'b':Number(p.line))||(p.binary?lines.get(.5):null);if(!at)return p;
       const pack=m=>[...m].sort((a,b)=>b[1]-a[1]).map(([b,o])=>({b,o}));return {...p,books:{Over:pack(at.Over),Under:pack(at.Under)}}});
   };
+  // Injury report: a small tag on the card (Q, D, OUT) and a line in the sheet.
+  let injuries={};
+  const injuryFor=p=>injuries[normName(p.player)]||null;
+  const injuryTag=i=>i?`<em class="inj inj-${i.c}" title="${htmlEscape(`${i.s}${i.d?` · ${i.d}`:''}`)}">${i.c==='out'?'OUT':i.c==='doubtful'?'D':'Q'}</em>`:'';
+  async function loadInjuries(){
+    try{const r=await fetch('/api/injuries');const body=await r.json();if(!r.ok||!body?.players)return;injuries=body.players;if(Object.keys(injuries).length)render()}catch{}
+  }
+  if(typeof fetch==='function'){loadInjuries();setInterval(loadInjuries,10*60000)}
   async function loadForm(){
     try{const r=await fetch('/api/form');const body=await r.json();if(!r.ok||!body?.players)return;form=body.players;if(Object.keys(form).length){render();officialForm()}}catch{}
   }
@@ -2311,6 +2319,7 @@ function statsProp(l){
     let html=baseCard(p,rank,featured);
     if(!html.includes('<p class="card-money">'))return html;
     html=html.replace(/<p class="card-why card-why-flip">[\s\S]*?<\/p>/,'');
+    const inj=injuryFor(p);if(inj)html=html.replace(/(<header class="player prop-player"[\s\S]*?<strong>[^<]*)(<\/strong>)/,(m,a,b)=>`${a}${injuryTag(inj)}${b}`);
     const f=formFor(p);if(!f)return html;
     // One plain line: "Over in 7 of last 10 · avg 78.3 yds", no colour coding.
     // The game-by-game chart is in the prop sheet.
@@ -2325,6 +2334,8 @@ function statsProp(l){
   if(baseProp)window.BTGSheet.prop=p=>{
     baseProp(p);
     const host=document.getElementById('hitDialogBody');if(!host)return;
+    const inj=injuryFor(p);
+    if(inj){const line=document.createElement('p');line.className=`bs-injury inj-${inj.c}`;line.textContent=`${inj.s}${inj.d?` · ${inj.d}`:''}${inj.at&&Number.isFinite(Date.parse(inj.at))?` · updated ${new Date(inj.at).toLocaleDateString([],{weekday:'short'})}`:''}`;host.querySelector('.bs-game')?.after(line)}
     const f=formFor(p),rows=host.querySelector('.bs-rows');
     if(f){const cell=host.querySelector('[data-bs-row="2"]');cell?.closest('div')?.remove();
       const block=document.createElement('div');block.className='bs-form';
