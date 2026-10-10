@@ -380,7 +380,7 @@ async function recordLeans(env,boards,now=Date.now()){
 async function backfillLeans(env,now=Date.now(),limit=4){
   if(!env.DB)return {added:0};
   // Games still being snapshotted (upcoming) are skipped without reading them.
-  const games=(await env.DB.prepare("SELECT event_id,MAX(captured_at) last FROM movement_snapshots WHERE kind='observed' AND event_id LIKE 'NFL--%' GROUP BY event_id HAVING MAX(captured_at)<?").bind(now-30*60000).all()).results||[];
+  const games=(await env.DB.prepare("SELECT event_id,MAX(captured_at) last FROM movement_snapshots WHERE kind='observed' AND event_id LIKE 'NFL--%' GROUP BY event_id HAVING MAX(captured_at)<? AND MAX(json_extract(payload_json,'$.commence_time'))<?").bind(now-30*60000,new Date(now).toISOString()).all()).results||[];
   const have=new Set(((await env.DB.prepare('SELECT id FROM lean_shadow').all()).results||[]).map(r=>r.id));
   const statements=[];let added=0;
   for(const g of games){
@@ -572,7 +572,7 @@ async function recordTdShadow(env,boards,now=Date.now()){
 // aren't in the saved snapshots.
 async function backfillTdShadow(env,now=Date.now(),limit=4){
   if(!env.DB)return {added:0};
-  const games=(await env.DB.prepare("SELECT event_id FROM movement_snapshots WHERE kind='observed' AND event_id LIKE 'NFL--%' GROUP BY event_id HAVING MAX(captured_at)<?").bind(now-30*60000).all()).results||[];
+  const games=(await env.DB.prepare("SELECT event_id FROM movement_snapshots WHERE kind='observed' AND event_id LIKE 'NFL--%' GROUP BY event_id HAVING MAX(captured_at)<? AND MAX(json_extract(payload_json,'$.commence_time'))<?").bind(now-30*60000,new Date(now).toISOString()).all()).results||[];
   const have=new Set(((await env.DB.prepare('SELECT DISTINCT event_id FROM td_shadow').all()).results||[]).map(r=>r.event_id));
   const statements=[];let added=0;
   for(const g of games){
