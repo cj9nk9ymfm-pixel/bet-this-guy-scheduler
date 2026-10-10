@@ -1561,3 +1561,12 @@ body.light .card-form .cf-count.good{color:#15803d}body.light .card-form .cf-cou
 /* Official picks: graded ones sit under a "Final" label */
 .on-divider{grid-column:1/-1;margin:6px 2px 0;font:700 11px/1 'Space Grotesk',sans-serif;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 html body .on-row.on-won-row,html body .on-row.on-lost-row,html body .on-row.on-push-row{opacity:.92}
+/* Injury tags */
+.inj{display:inline-block;margin-left:6px;padding:1px 5px;border-radius:5px;font:700 10.5px/1.4 'Space Grotesk',sans-serif;font-style:normal;vertical-align:2px;letter-spacing:.02em}
+.inj-questionable{color:#fbbf24;background:rgba(251,191,36,.14)}.inj-doubtful{color:#fb923c;background:rgba(251,146,60,.16)}.inj-out{color:#f87171;background:rgba(248,113,113,.16)}
+body.light .inj-questionable{color:#92400e;background:#fef3c7}body.light .inj-doubtful{color:#9a3412;background:#ffedd5}body.light .inj-out{color:#b91c1c;background:#fee2e2}
+.bs-injury{margin:4px 0 0;font-size:13px;font-weight:600}.bs-injury.inj-questionable{color:#fbbf24}.bs-injury.inj-doubtful{color:#fb923c}.bs-injury.inj-out{color:#f87171}
+body.light .bs-injury.inj-questionable{color:#92400e}body.light .bs-injury.inj-doubtful{color:#9a3412}body.light .bs-injury.inj-out{color:#b91c1c}
+html body .prop-card .prop-player em.inj-questionable{color:#fbbf24!important}html body .prop-card .prop-player em.inj-doubtful{color:#fb923c!important}html body .prop-card .prop-player em.inj-out{color:#f87171!important}
+html body.light .prop-card .prop-player em.inj-questionable{color:#92400e!important}html body.light .prop-card .prop-player em.inj-doubtful{color:#9a3412!important}html body.light .prop-card .prop-player em.inj-out{color:#b91c1c!important}
+html body .bsheet .bs-injury{background:none!important;padding:0!important}

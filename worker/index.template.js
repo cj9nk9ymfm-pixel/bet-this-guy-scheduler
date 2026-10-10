@@ -1145,7 +1145,7 @@ async function scheduledMaintenance(request,env,ctx){
   if(!await maintenanceAuthorized(request,env))return json({success:false,error:'Unauthorized'},401);
   if(!env.DB||!env.THE_ODDS_API_KEY||!env.BALLDONTLIE_API_KEY)return json({success:false,error:'Maintenance configuration incomplete'},503);
   const job=new URL(request.url).searchParams.get('job');
-  const jobs={publish:()=>publishOfficialPicks(request,env,ctx),digest:()=>sendWeeklyDigest(env),alerts:()=>sendDueAlerts(env),xpost:()=>runXPosts(env),tdGrade:()=>gradeTdShadow(env),form:()=>{const q=new URL(request.url).searchParams,size=Math.min(8,Math.max(1,Number(q.get('size'))||5)),part=Math.min(7,Math.max(0,Number(q.get('part'))||0));return fillPlayerForm(env,ctx,Date.now(),size,part*size)},lineGrade:()=>gradeLineShadow(env),nearGrade:()=>gradeNearShadow(env),statsCheck:()=>runStatsChecks(env,ctx),grade:()=>settlePublicRecords(env),closing:()=>captureClosingLines(env)};
+  const jobs={publish:()=>publishOfficialPicks(request,env,ctx),digest:()=>sendWeeklyDigest(env),alerts:()=>sendDueAlerts(env),xpost:()=>runXPosts(env),tdGrade:async()=>({td:await gradeTdShadow(env),bump:await gradeBumpShadow(env).catch(error=>({error:error.message}))}),form:()=>{const q=new URL(request.url).searchParams,size=Math.min(8,Math.max(1,Number(q.get('size'))||5)),part=Math.min(7,Math.max(0,Number(q.get('part'))||0));return fillPlayerForm(env,ctx,Date.now(),size,part*size)},lineGrade:()=>gradeLineShadow(env),nearGrade:()=>gradeNearShadow(env),statsCheck:()=>runStatsChecks(env,ctx),grade:()=>settlePublicRecords(env),closing:()=>captureClosingLines(env)};
   if(!Object.hasOwn(jobs,job))return json({success:false,error:'Unknown maintenance job'},400);
   // Form fills run in parts at once; each part is its own job.
   const key=job==='form'?`form:${new URL(request.url).searchParams.get('part')||0}`:job;
@@ -1182,7 +1182,7 @@ async function runCron(controller,env,ctx){
   const due=cronJobs(new Date(controller.scheduledTime));
   if(!due.length||!env.DB||!env.BALLDONTLIE_API_KEY)return;
   if(!env.THE_ODDS_API_KEY)due.splice(0,due.length,...due.filter(job=>['xpost','lineGrade','form','leans'].includes(job)));
-  const request=new Request(`${SITE_URL}/api/maintenance`),jobs={publish:()=>publishOfficialPicks(request,env,ctx),grade:()=>settlePublicRecords(env),nbaShadow:()=>recordNbaShadow(request,env,ctx),nbaGrade:()=>gradeNbaShadow(env),digest:()=>sendWeeklyDigest(env),alerts:()=>sendDueAlerts(env),xpost:()=>runXPosts(env),form:()=>fillFormBurst(env,ctx),leans:async()=>({leans:await backfillLeans(env),td:await backfillTdShadow(env).catch(error=>({error:error.message})),tdGrade:await gradeTdShadowNow(env).catch(error=>({error:error.message}))}),
+  const request=new Request(`${SITE_URL}/api/maintenance`),jobs={publish:()=>publishOfficialPicks(request,env,ctx),grade:()=>settlePublicRecords(env),nbaShadow:()=>recordNbaShadow(request,env,ctx),nbaGrade:()=>gradeNbaShadow(env),digest:()=>sendWeeklyDigest(env),alerts:()=>sendDueAlerts(env),xpost:()=>runXPosts(env),form:()=>fillFormBurst(env,ctx),leans:async()=>({injuries:await refreshInjuries(env).catch(error=>({error:error.message})),leans:await backfillLeans(env),td:await backfillTdShadow(env).catch(error=>({error:error.message})),tdGrade:await gradeTdShadowNow(env).catch(error=>({error:error.message}))}),
     // Line-value grading, near-miss grading and the stats check take turns
     // (minutes 15/45, 25/55 and 5/35) so each run stays inside the request limit.
     // While games kick off within 4 hours, the 15/45 and 25/55 slots check
@@ -1281,6 +1281,7 @@ async function routeRequest(request, env, ctx) {
     if (url.pathname === "/api/event") return eventProps(request, env, ctx);
     if (url.pathname === "/api/player-stats") return playerStats(request, env, ctx);
     if (url.pathname === "/api/form") return playerFormResponse(request, env, ctx);
+    if (url.pathname === "/api/injuries") return injuriesResponse(request, env, ctx);
     if (url.pathname === "/api/live-games") return liveGames(request, env, ctx);
     if (url.pathname === "/api/live-player") return livePlayer(request, env, ctx);
     if (url.pathname === "/api/live-game-stats") return liveGameStats(request, env, ctx);

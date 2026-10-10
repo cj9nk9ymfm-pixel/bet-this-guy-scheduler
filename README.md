@@ -149,3 +149,7 @@ On each publish run, `sendBookAlerts` (in `worker/records.js`) also tells people
 ## Player form (last 10 games)
 
 Board cards show how often each bet hit in the player's last 10 games, and the prop sheet charts those games and lists every book's price. Publish runs record who is on the board and which markets they have (`player_form`, migration `0018`). Every in-between cron run, and publish runs outside NFL windows, fetch players from BALLDONTLIE in up to six parallel parts of five players, each part a separate invocation through the `SELF` binding with its own request allowance. A busy reply (429) pauses the fill until the next run. Each player is fetched again once per slate, after Tuesday and Friday 12:00 UTC. Visitors read everything from one cached `/api/form` request, so the board makes no per-card stats calls.
+
+## Injuries
+
+ESPN's league-wide NFL injury report is fetched on the in-between cron run (every 25 minutes, every 10 in game windows) into `injuries` (migration `0021`). Board cards tag Questionable (Q), Doubtful (D) and Out players, and the prop sheet shows the status and injury. The pick job takes Out and Doubtful players off its boards before choosing official picks, near misses, leans or test picks. `bump_shadow` is a usage-bump test: when a receiver or running back with a real role (3+ catches or 8+ carries a game lately) is out, his teammates at the same position are logged Over their main line at the best big-5 price about 90 minutes before kickoff, then graded. Never posted.
