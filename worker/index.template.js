@@ -1130,6 +1130,10 @@ __MOVEMENT_SERVER__
 
 // External scheduler entrypoint. No client-supplied picks or grades are accepted.
 const scheduledJobs=new Map();
+// A job that hasn't settled in time is reported and left behind: the run
+// carries on and logs it, instead of waiting until the platform kills it.
+const JOB_TIMEOUT={publish:150000,grade:120000};
+const withTimeout=(job,work)=>{let timer;return Promise.race([work,new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error(`timed out at ${jobSteps.get(job)||'start'}`)),JOB_TIMEOUT[job]||90000)})]).finally(()=>clearTimeout(timer))};
 async function maintenanceAuthorized(request,env){
   const expected=env.MAINTENANCE_TOKEN,header=request.headers.get('authorization')||'';
   if(!expected||expected.length<32||header.length>512||!header.startsWith('Bearer '))return false;
@@ -1145,8 +1149,11 @@ async function scheduledMaintenance(request,env,ctx){
   if(!Object.hasOwn(jobs,job))return json({success:false,error:'Unknown maintenance job'},400);
   // Form fills run in parts at once; each part is its own job.
   const key=job==='form'?`form:${new URL(request.url).searchParams.get('part')||0}`:job;
-  let work=scheduledJobs.get(key);
-  if(!work){work=Promise.resolve().then(jobs[job]).finally(()=>scheduledJobs.delete(key));scheduledJobs.set(key,work)}
+  // Overlapping requests share one run, but never one older than 3 minutes:
+  // a promise left by a request that was cut off never settles.
+  let entry=scheduledJobs.get(key);
+  if(!entry||Date.now()-entry.at>180000){const work=Promise.resolve().then(jobs[job]).finally(()=>{if(scheduledJobs.get(key)?.work===work)scheduledJobs.delete(key)});entry={work,at:Date.now()};scheduledJobs.set(key,entry)}
+  const work=entry.work;
   try{await work;console.log('scheduled_maintenance_completed',job);return json({success:true,job,completedAt:new Date().toISOString()})}
   catch(error){console.error('scheduled_maintenance_failed',job);return json({success:false,job,error:'Maintenance failed; retry required'},503)}
 }
@@ -1207,8 +1214,11 @@ async function runCron(controller,env,ctx){
   await runLog(()=>env.DB.prepare('INSERT OR REPLACE INTO cron_runs (at,jobs) VALUES (?,?)').bind(runAt,due.join(',')).run());
   for(const job of due){
     if(!jobs[job]){console.error('cron_failed',job,'unknown job');continue}
-    let work=scheduledJobs.get(job);
-    if(!work){work=Promise.resolve().then(jobs[job]).finally(()=>scheduledJobs.delete(job));scheduledJobs.set(job,work)}
+    // Each run starts its own jobs. Cron runs used to share a job still in
+    // flight from an earlier run; when that run was cut off, its promise never
+    // settled and every later run in the same isolate hung on it for hours.
+    jobSteps.delete(job);
+    const work=withTimeout(job,Promise.resolve().then(jobs[job]));
     const started=Date.now();
     try{await work;console.log('cron_completed',job);results[job]={ms:Date.now()-started}}catch(error){console.error('cron_failed',job,error.message);results[job]={ms:Date.now()-started,error:String(error?.message||error).slice(0,300)}}
   }

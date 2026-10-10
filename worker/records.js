@@ -1,6 +1,10 @@
 // Public callers may request a snapshot, but never supply authoritative record
 // fields. Only an exact, current provider offer can become a verified snapshot.
 const VERIFIED_RECORD_SOURCE = 'market-verified-v2';
+// Where each running cron job has got to (jobStep(job,label)), so a job that
+// times out is logged with the step it was stuck on.
+const jobSteps=new Map();
+const jobStep=(job,label)=>{jobSteps.set(job,label)};
 const recordLabels = {
   player_pass_yds:'Passing Yards', player_pass_yds_q1:'First Quarter Passing Yards',
   player_pass_tds:'Passing Touchdowns', player_pass_completions:'Pass Completions',
@@ -684,10 +688,11 @@ async function gradeLineShadow(env,now=Date.now()){
 const SOON_WINDOW=4*3600000,SOON_MAX_AGE=240000;
 async function publishOfficialPicks(request,env,ctx,opts={}){
   if(Date.now()<OFFICIAL_START)return {state:"not_started"};
+  if(!opts.soonOnly)jobStep('publish','schedule');
 
     const now=Date.now(),week=officialWeek(now),prefix=`official|${week}|`;
     const schedule=await futureSchedule(new Request(new URL('/api/schedule',request.url)),env,ctx);if(!schedule.ok)throw new Error('Official schedule unavailable');
-    const body=await schedule.json();
+    const body=await schedule.json();if(!opts.soonOnly)jobStep('publish','boards');
     // Every game left this week is eligible until 5 minutes before kickoff,
     // unless the odds plan runs low (then only the next 24 hours).
     const horizon=oddsCreditsLeft!==null&&oddsCreditsLeft<LOW_ODDS_CREDITS?24*3600000:OFFICIAL_HORIZON;
@@ -696,7 +701,7 @@ async function publishOfficialPicks(request,env,ctx,opts={}){
     if(opts.soonOnly){events=events.filter(soon).sort((a,b)=>Date.parse(a.status.startsAt)-Date.parse(b.status.startsAt)).slice(0,6);if(!events.length)return {state:'no_soon_games'}}
     const boards=[];let failedBoards=0;
     for(let i=0;i<events.length;i+=4){const results=await Promise.allSettled(events.slice(i,i+4).map(async e=>{const url=new URL('/api/event',request.url);url.searchParams.set('eventID',e.eventID);const r=await eventProps(new Request(url),env,ctx,soon(e)?{maxAge:SOON_MAX_AGE}:{});if(!r.ok||r.headers.get('x-feed-cache')==='stale')throw new Error('Official board unavailable');return (await r.json()).data||[]}));for(const r of results)if(r.status==='fulfilled')boards.push(...r.value);else failedBoards++}
-    const existing=await env.DB.prepare('SELECT * FROM public_recommendations WHERE id>=? AND id<?').bind(prefix,prefix+'\uffff').all();
+    if(!opts.soonOnly)jobStep('publish','plan');const existing=await env.DB.prepare('SELECT * FROM public_recommendations WHERE id>=? AND id<?').bind(prefix,prefix+'\uffff').all();
     const stats={};const candidates=officialCandidates(boards,Date.now(),stats);const posted=await writeOfficialPlan(officialPlan(candidates,existing.results||[],week,Date.now()),week,env);
     // One row per full run: what the pick job saw and why it did or didn't post
     // (the quick soon-games runs aren't logged, so the engine status stays whole-board).
@@ -706,21 +711,21 @@ async function publishOfficialPicks(request,env,ctx,opts={}){
     ]).catch(error=>console.warn('pick_runs_failed',error.message));
     // Push alerts for new picks go out on the in-between cron run (sendDueAlerts).
     // Emails check every run: picks held back by the hourly limit go out on a later run.
-    {const emails=sendEmailAlerts(env).catch(error=>console.warn('email_alerts_failed',error.message));if(ctx?.waitUntil)ctx.waitUntil(emails);else await emails}
+    if(!opts.soonOnly)jobStep('publish','alerts');{const emails=sendEmailAlerts(env).catch(error=>console.warn('email_alerts_failed',error.message));if(ctx?.waitUntil)ctx.waitUntil(emails);else await emails}
     {const mine=sendBookAlerts(env,boards).catch(error=>console.warn('book_alerts_failed',error.message));if(ctx?.waitUntil)ctx.waitUntil(mine);else await mine}
     // Odds snapshots older than a week are no longer read; clear them hourly so
     // the database stays small (the history endpoint's own cleanup rarely runs).
     // Awaited: a deferred delete did not run after the maintenance response.
-    if(Date.now()-snapshotPrunedAt>3600000){snapshotPrunedAt=Date.now();await env.DB.prepare('DELETE FROM movement_snapshots WHERE captured_at<?').bind(Math.floor(Date.now()-7*86400000)).run().catch(error=>console.warn('snapshot_prune_failed',error.message))}
-    const trail=officialTrailStatements(boards,existing.results||[],env,Date.now());if(trail.length)await env.DB.batch(trail);
-    await recordLineShadow(env,boards,Date.now()).catch(error=>console.warn('line_shadow_failed',error.message));
-    await recordNearShadow(env,boards,candidates,Date.now()).catch(error=>console.warn('near_shadow_failed',error.message));
-    await recordLeans(env,boards,Date.now()).catch(error=>console.warn('lean_shadow_failed',error.message));
-    await recordFormWanted(env,boards,Date.now()).catch(error=>console.warn('player_form_failed',error.message));
+    if(!opts.soonOnly)jobStep('publish','prune');if(Date.now()-snapshotPrunedAt>3600000){snapshotPrunedAt=Date.now();await env.DB.prepare('DELETE FROM movement_snapshots WHERE captured_at<?').bind(Math.floor(Date.now()-7*86400000)).run().catch(error=>console.warn('snapshot_prune_failed',error.message))}
+    if(!opts.soonOnly)jobStep('publish','trail');const trail=officialTrailStatements(boards,existing.results||[],env,Date.now());if(trail.length)await env.DB.batch(trail);
+    if(!opts.soonOnly)jobStep('publish','line shadow');await recordLineShadow(env,boards,Date.now()).catch(error=>console.warn('line_shadow_failed',error.message));
+    if(!opts.soonOnly)jobStep('publish','near shadow');await recordNearShadow(env,boards,candidates,Date.now()).catch(error=>console.warn('near_shadow_failed',error.message));
+    if(!opts.soonOnly)jobStep('publish','leans');await recordLeans(env,boards,Date.now()).catch(error=>console.warn('lean_shadow_failed',error.message));
+    if(!opts.soonOnly)jobStep('publish','form wanted');await recordFormWanted(env,boards,Date.now()).catch(error=>console.warn('player_form_failed',error.message));
 
     // New picks go out right away (X post and phone alerts) instead of on the
     // next in-between cron run, which stays as the backup.
-    if(Number(posted)>0)await announceNow(env).catch(error=>console.warn('announce_now_failed',error.message));
+    if(!opts.soonOnly)jobStep('publish','announce');if(Number(posted)>0)await announceNow(env).catch(error=>console.warn('announce_now_failed',error.message));
   if(failedBoards)throw new Error('Some official boards were unavailable; retry required');
   return {state:"completed"};
 }
