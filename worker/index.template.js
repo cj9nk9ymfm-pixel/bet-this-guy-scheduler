@@ -1283,6 +1283,7 @@ async function routeRequest(request, env, ctx) {
     if (url.pathname === "/api/player-stats") return playerStats(request, env, ctx);
     if (url.pathname === "/api/form") return playerFormResponse(request, env, ctx);
     if (url.pathname === "/api/injuries") return injuriesResponse(request, env, ctx);
+    if (url.pathname === "/api/leans") return leansResponse(request, env, ctx);
     if (url.pathname === "/api/live-games") return liveGames(request, env, ctx);
     if (url.pathname === "/api/live-player") return livePlayer(request, env, ctx);
     if (url.pathname === "/api/live-game-stats") return liveGameStats(request, env, ctx);

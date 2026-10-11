@@ -2407,3 +2407,29 @@ function statsProp(l){
     else if(title.textContent==='Today’s closest calls'){const soon=props.some(p=>{const t=Date.parse(p.startsAt||'');return Number.isFinite(t)&&t>Date.now()&&new Date(t).toDateString()===new Date().toDateString()});title.textContent=soon?'Today’s closest calls':'This week’s closest calls'}
   };
 })();
+
+// "Worth a look" (leans): props close to the official bar, and qualifying ones held back by the
+// two-a-game limit. Shown under the picks, never counted in the record.
+(()=>{
+  if(typeof document.getElementById!=='function'||!document.getElementById('leansNow')||typeof fetch!=='function')return;
+  const when=iso=>{const d=new Date(iso);return Number.isFinite(d.getTime())?d.toLocaleString([],{weekday:'short',hour:'numeric',minute:'2-digit'}):''};
+  let leans=[];
+  function row(l,i){
+    const initials=String(l.player||'').split(' ').map(x=>x[0]||'').join('').slice(0,3);
+    const bet=`${l.side} ${l.line} ${String(l.market||'').toLowerCase()}`;
+    const game=String(l.team||'').replace(' · @ ',' @ ').replace(' · vs ',' vs '),matchup=game&&typeof compactGameName==='function'?compactGameName(game):game;
+    const p={player:l.player,market:l.market,side:l.side,line:Number(l.line)},f=window.BTGForm?.get?.(p);
+    const form=f?`${l.side} in ${f.hits} of last ${f.n}`:'';
+    return `<div class="on-row lean-row"><span class="on-avatar"><span>${htmlEscape(initials)}</span><img loading="lazy" decoding="async" src="/api/player-photo?name=${encodeURIComponent(l.player||'')}" alt="" onerror="this.remove()"></span><span class="on-who">${l.book?`<span class="on-kicker lean-kicker">${htmlEscape(l.book)}</span>`:''}<b>${htmlEscape(l.player)}</b><span>${htmlEscape(bet.charAt(0).toUpperCase()+bet.slice(1))}</span><small>${htmlEscape([matchup,when(l.gameTime)].filter(Boolean).join(' · '))}</small>${form?`<i class="on-form" data-lean-form="${i}">${htmlEscape(form)}</i>`:''}</span><span class="on-end"><span class="on-price">${htmlEscape(formatOdds(l.odds))}</span></span></div>`;
+  }
+  function render(){
+    const host=document.getElementById('leansNow'),now=Date.now(),list=leans.filter(l=>Date.parse(l.gameTime)>now);
+    host.hidden=!list.length;if(!list.length)return;
+    document.getElementById('leansCount').textContent=String(list.length);
+    document.getElementById('leansList').innerHTML=list.map(row).join('');
+  }
+  async function load(){try{const r=await fetch('/api/leans');const body=await r.json();if(!r.ok||!Array.isArray(body?.leans))return;leans=body.leans;render()}catch{}}
+  load();setInterval(load,5*60000);
+  // Form loads separately; repaint once it's in.
+  let tries=0;const wait=setInterval(()=>{if(++tries>20||!leans.length){if(tries>20)clearInterval(wait);return}if(window.BTGForm?.get?.({player:leans[0].player,market:leans[0].market,side:leans[0].side,line:Number(leans[0].line)})){render();clearInterval(wait)}},1500);
+})();
