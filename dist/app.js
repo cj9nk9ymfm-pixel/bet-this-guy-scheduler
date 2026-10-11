@@ -1278,7 +1278,9 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
 (function(){
   const oddsDecimal=o=>{o=Number(o);return o>=100?1+o/100:o<=-100?1+100/Math.abs(o):null};
   const money=v=>`${v<0?'−':'+'}$${Math.abs(Math.round(v)).toLocaleString('en-US')}`;
-  const graded=r=>r.status!=='provisional'&&['won','lost','push'].includes(r.result);
+  // A bet the live box score has already decided (decidedEarly on a leg) shows
+  // as won or lost right away, not "Provisional".
+  const graded=r=>['won','lost','push'].includes(r.result)&&(r.status!=='provisional'||recordLegs(r).some(l=>l.decidedEarly));
   const weekOf=r=>(String(r.id||'').match(/^official\|(\d{4}-\d{2}-\d{2})\|/)||[])[1]||null;
   // Mirrors the server: official weeks run Tuesday noon UTC to Tuesday noon UTC.
   const currentWeek=(now=Date.now())=>{const d=new Date(now-12*3600000);d.setUTCHours(0,0,0,0);d.setUTCDate(d.getUTCDate()-(d.getUTCDay()+5)%7);return d.toISOString().slice(0,10)};
@@ -1382,11 +1384,11 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     const legs=recordLegs(r),isParlay=r.kind==='parlay',odds=isParlay?r.combined_odds:r.odds,done=graded(r),d=oddsDecimal(odds),first=legs[0]||{};
     const chip=done?{won:{cls:'g',icon:'check',text:'Hit'},lost:{cls:'r',icon:'over',text:'Lost'},push:{cls:'n',icon:'fair',text:'Push'}}[r.result]:r.status==='provisional'?{cls:'n',icon:'fair',text:'Provisional'}:{cls:'n',icon:'lock',text:'Official pick · Locked'};
     const bet=isParlay?legs.map(l=>l.player).join(' + '):(t=>t.charAt(0).toUpperCase()+t.slice(1))(legText({side:r.side,line:r.line,market:String(r.market||'').toLowerCase()}));
-    const team=String(first.team||'').replace(' · ',' '),game=[isParlay?`${new Set(legs.map(l=>l.gameId||l.team)).size} game${new Set(legs.map(l=>l.gameId||l.team)).size===1?'':'s'}`:team,when(r.game_time||first.gameTime),done?'Final':''].filter(Boolean).join(' · ');
+    const team=String(first.team||'').replace(' · ',' '),game=[isParlay?`${new Set(legs.map(l=>l.gameId||l.team)).size} game${new Set(legs.map(l=>l.gameId||l.team)).size===1?'':'s'}`:team,when(r.game_time||first.gameTime),done?(r.status==='provisional'?'Decided in game':'Final'):''].filter(Boolean).join(' · ');
     const posted=[first.book&&!isParlay?first.book:'',when(r.posted_at)].filter(Boolean).join(' · ');
     const rows=[];
     if(!isParlay){
-      if(done){const v=first.actualValue!=null?`${first.minimumOnly?'At least ':''}${first.actualValue} ${String(r.market||'').toLowerCase()}`:'—';rows.push(['Result',v,r.result==='won'?'pos':r.result==='lost'?'neg':'']);rows.push(['Posted at',posted,'']);
+      if(done){const unit=String(r.market||'').toLowerCase(),v=first.actualValue!=null?`${first.minimumOnly?'At least ':''}${first.actualValue} ${Number(first.actualValue)===1?unit.replace(/s$/,''):unit}`:'—';rows.push(['Result',v,r.result==='won'?'pos':r.result==='lost'?'neg':'']);rows.push(['Posted at',posted,'']);
         const move=moveOf(r.line,r.closing_line,r.side);
         if(move)rows.push(['Closing line',`${move.line} · ${move.ourWay?'moved our way':'moved against us'}`,move.ourWay?'pos':'']);
         else if(r.closing_odds!=null){const a=oddsDecimal(r.odds),c=oddsDecimal(r.closing_odds),e=a&&c?(a/c-1)*100:0;rows.push(['Closing price',`${formatOdds(r.closing_odds)} · ${e>.05?'we beat the close':e<-.05?'close was better':'same as the close'}`,e>.05?'pos':''])}
@@ -1407,6 +1409,13 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
   const hitDetails=r=>window.BTGSheet.render(recordModel(r)),pickDetails=hitDetails;
   function openPick(r){if(!r)return;window.btgCount?.('hit:open');window.BTGSheet.open(recordModel(r))}
   const openHit=openPick;
+  // Swipe down to close a bottom sheet (when its content is scrolled to the top).
+  const swipeClose=dialog=>{if(!dialog||dialog.dataset.swipe)return;dialog.dataset.swipe='1';let y0=null,dy=0;
+    dialog.addEventListener('touchstart',e=>{if(dialog.scrollTop>0||e.touches.length!==1){y0=null;return}y0=e.touches[0].clientY;dy=0;dialog.style.transition='none'},{passive:true});
+    dialog.addEventListener('touchmove',e=>{if(y0===null)return;dy=e.touches[0].clientY-y0;if(dy>0)dialog.style.transform=`translateY(${dy}px)`},{passive:true});
+    const end=()=>{if(y0===null)return;y0=null;dialog.style.transition='transform .2s ease';if(dy>90){dialog.style.transform='translateY(100%)';setTimeout(()=>{dialog.close?.();dialog.style.transform='';dialog.style.transition=''},190)}else dialog.style.transform=''};
+    dialog.addEventListener('touchend',end);dialog.addEventListener('touchcancel',end)};
+  ['#hitDialog','#parlayDetailDialog'].forEach(sel=>swipeClose($(sel)));
   if($('#hitDialog')){const dialog=$('#hitDialog');$('#hitDialogClose').onclick=()=>dialog.close?.();dialog.addEventListener('click',event=>{if(event.target===dialog)dialog.close?.()})}
   function renderHero(s){
     const hero=$('#heroBanner'),strip=$('#hitsStrip');if(!hero)return;
@@ -1455,8 +1464,8 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
   const kickoff=iso=>{const d=new Date(iso);return Number.isFinite(d.getTime())?d.toLocaleString([],{weekday:'short',hour:'numeric',minute:'2-digit'}):''};
   function officialRow(r,i){
     const legs=recordLegs(r),isParlay=r.kind==='parlay',odds=isParlay?r.combined_odds:r.odds;
-    const graded=r.status!=='provisional'&&['won','lost','push'].includes(r.result);
-    const status=graded?{won:['won','Won'],lost:['lost','Lost'],push:['push','Push']}[r.result]:['locked','Locked'];
+    const done=graded(r);
+    const status=done?{won:['won','Won'],lost:['lost','Lost'],push:['push','Push']}[r.result]:['locked','Locked'];
     const title=isParlay?`${legs.length}-leg parlay`:r.player;
     const sub0=isParlay?legs.map(l=>l.player).join(' + '):legText({side:r.side,line:r.line,market:String(r.market||'').toLowerCase()}),sub=sub0.charAt(0).toUpperCase()+sub0.slice(1);
     const initials=String(r.player||'').split(' ').map(x=>x[0]||'').join('').slice(0,3);
@@ -1473,7 +1482,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
   const liveLeg=(r,l)=>statsProp({...l,player:l.player||r.player,market:l.market||r.market,line:l.line??r.line,side:l.side||r.side,gameTime:l.gameTime||r.game_time});
   const liveUnit=p=>/touchdown|scorer/i.test(p.market||'')?'TD':String(p.market||'').toLowerCase();
   function liveLine(r){
-    if(!window.BTGLive?.legStatus||(r.status!=='provisional'&&['won','lost','push'].includes(r.result)))return null;
+    if(!window.BTGLive?.legStatus||graded(r))return null;
     const legs=recordLegs(r);if(!legs.length)return null;
     if(r.kind==='parlay'){
       const st=legs.map(l=>({l,s:window.BTGLive.legStatus(liveLeg(r,l))}));const live=st.filter(x=>x.s);if(!live.length)return null;
@@ -1481,7 +1490,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
       return {cls:live.some(x=>x.s.key==='miss')?'miss':live.every(x=>x.s.key==='hit')?'hit':'',html:`<b>${htmlEscape(live[0].s.clock)}</b> · ${live.map(x=>`<span class="${x.s.key}">${htmlEscape(fmt(x))}</span>`).join(' · ')}`};
     }
     const p=liveLeg(r,legs[0]),s=window.BTGLive.legStatus(p);if(!s)return null;
-    const val=s.value===null?(s.loaded?'not tracked live':'loading stats…'):`${s.value} ${liveUnit(p)}`;
+    const val=s.value===null?(s.loaded?'not tracked live':'loading stats…'):`${s.value} ${Number(s.value)===1?liveUnit(p).replace(/s$/,''):liveUnit(p)}`;
     return {cls:s.key,html:`<b>${htmlEscape(s.clock)}</b> · <strong>${htmlEscape(val)}</strong>${s.value!==null?` · ${htmlEscape(s.detail)}`:''}`};
   }
   function updateOfficialLive(){
