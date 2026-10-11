@@ -28,6 +28,8 @@ async function call(req){context.req=req;return run('worker.fetch(req,env,{waitU
  assert.equal(due('2026-10-06T14:05:00Z'),'["xpost","form","leans"]','in-between runs fill player form');
  assert.equal(due('2026-10-06T18:00:00Z'),'["publish","grade","form"]','grading still runs every 6 hours in quiet periods');
  assert.equal(typeof run('worker.scheduled'),'function','the Worker exports a scheduled handler');
+ // Any job the schedule names but the cron can't find fails the test.
+ const cronErrors=[],realConsole=context.console;context.console={...realConsole,log(){},warn(){},error:(...a)=>cronErrors.push(a.map(String).join(' '))};
  const ran=[];context.publishOfficialPicks=async(req,env,ctx,opts={})=>{ran.push(opts.soonOnly?'publishSoon':'publish');return opts.soonOnly?context.soonResult:undefined};context.settlePublicRecords=async()=>{ran.push('grade')};
  run('publishOfficialPicks=globalThis.publishOfficialPicks;settlePublicRecords=globalThis.settlePublicRecords');
  await run(`worker.scheduled({scheduledTime:Date.parse('2026-10-04T17:00:00Z')},env,{waitUntil(){}})`);
@@ -47,6 +49,8 @@ async function call(req){context.req=req;return run('worker.fetch(req,env,{waitU
  context.soonResult={state:'no_soon_games'};
  ran.length=0;await run(`worker.scheduled({scheduledTime:Date.parse('2026-10-04T17:05:00Z')},env,{waitUntil(){}})`);
  assert.ok(ran.includes('runStatsChecks')&&!ran.includes('gradeLineShadow')&&!ran.includes('gradeNearShadow'),'minute 5 runs the stats check');
+ assert.deepEqual(cronErrors.filter(e=>/unknown job/.test(e)),[],'every scheduled job exists in the cron job list');
+ context.console=realConsole;
  const wf=read('.github/workflows/btg-maintenance.yml');
  assert.ok(!/elif active_window/.test(wf),'GitHub no longer publishes on its own schedule');
  assert.match(read('wrangler.jsonc'),/"crons": \["\*\/5 \* \* \* \*"\]/,'the site Worker has a 5-minute cron trigger');
