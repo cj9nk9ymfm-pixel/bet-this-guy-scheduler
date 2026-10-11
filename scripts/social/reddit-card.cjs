@@ -7,7 +7,7 @@ const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
 const fmt=o=>o==null?'—':o>0?`+${o}`:`${o}`;
 const dec=o=>o>0?1+o/100:1+100/-o;
 const nick=t=>{const ab={'Houston Texans':'HOU','Tennessee Titans':'TEN','Las Vegas Raiders':'LV','New England Patriots':'NE','Cincinnati Bengals':'CIN','Miami Dolphins':'MIA','Cleveland Browns':'CLE','New York Jets':'NYJ','Indianapolis Colts':'IND','Pittsburgh Steelers':'PIT','Denver Broncos':'DEN','Los Angeles Chargers':'LAC'};const [a,h]=String(t).split(/\s*·\s*@\s*/);return `${ab[a]||a} @ ${ab[h]||h}`};
-const short=m=>({Receptions:'rec','Receiving Yards':'rec yds','Rushing Yards':'rush yds','Passing Yards':'pass yds','Interceptions Thrown':'INT'}[m]||m.toLowerCase());
+const short=m=>({Receptions:'rec','Receiving Yards':'rec yds','Rushing Yards':'rush yds','Passing Yards':'pass yds','Interceptions Thrown':'INT','Passing Touchdowns':'pass TDs'}[m]||m.toLowerCase());
 const picks=D.picks,top=470,rh=106,H=top+picks.length*rh+250;
 const moved=picks.filter(p=>p.now!=null&&dec(p.now)<dec(p.odds)).length;
 const rows=picks.map((p,i)=>{const y=top+i*rh,over=p.side==='Over',c=over?M:'#7cc4ff';
