@@ -2386,8 +2386,9 @@ function xSlateSvg(d){
 <rect width="1200" height="675" fill="#0b1530"/><rect width="470" height="675" fill="url(#tm)"/>
 <text x="56" y="120" font-family="${F.xb}" font-size="22" letter-spacing="4" fill="#ffffff" fill-opacity=".8">OFFICIAL PICKS</text>
 <text x="50" y="260" font-family="${F.g}" font-size="${xFit(d.day,380,120,.62)}" fill="#ffffff">${xEsc(d.day)}</text>
-<text x="56" y="318" font-family="${F.sb}" font-size="26" fill="#ffffff" fill-opacity=".75">${xEsc(d.date)} · ${d.picks.length} pick${d.picks.length===1?'':'s'}</text>
-${d.season?`<text x="56" y="400" font-family="${F.sb}" font-size="24" fill="#ffffff" fill-opacity=".75">Season <tspan font-family="${F.xb}" fill="#ffffff" fill-opacity="1">${xEsc(d.season)}</tspan></text>`:''}
+<text x="56" y="318" font-family="${F.sb}" font-size="26" fill="#ffffff" fill-opacity=".75">${xEsc(d.date)} · ${d.picks.length} pick${d.picks.length===1?'':'s'} so far</text>
+<text x="56" y="352" font-family="${F.sb}" font-size="22" fill="#ffffff" fill-opacity=".6">More can drop up to kickoff</text>
+${d.season?`<text x="56" y="430" font-family="${F.sb}" font-size="24" fill="#ffffff" fill-opacity=".75">Season <tspan font-family="${F.xb}" fill="#ffffff" fill-opacity="1">${xEsc(d.season)}</tspan></text>`:''}
 ${xLogo(56,520,56)}<text x="128" y="558" font-family="${F.g}" font-size="30" fill="#ffffff">Bet This Guy</text>
 <text x="56" y="643" font-family="${F.xb}" font-size="20" letter-spacing="2.5" fill="#ffffff" fill-opacity=".85">LOCKED BEFORE KICKOFF · 21+</text>
 ${rows}${more>0?`<text x="${X+30}" y="${150+picks.length*gap}" font-family="${F.sb}" font-size="22" fill="#9fb0cc">+ ${more} more</text>`:''}
@@ -2414,7 +2415,7 @@ async function postSlateToX(env,now=Date.now()){
   const season=weeklySummary(all);
   const picks=rows.map(r=>{const legs=recordLegs(r),f=legs[0]||{};return r.kind==='parlay'?{text:`${legs.length}-leg parlay`,odds:weeklyOdds(r.combined_odds),sub:legs.map(l=>l.player).join(' + '),line:`• ${legs.length}-leg parlay (${weeklyOdds(r.combined_odds)})`}:{text:`${r.player} · ${weeklyLegText(r)}`,odds:weeklyOdds(r.odds),sub:[xMatchup(f.team),f.book].filter(Boolean).join(' · '),line:`• ${r.player} ${weeklyLegText(r)} (${weeklyOdds(r.odds)})`}});
   const dayName=etDate(first,{weekday:'long'});
-  const text=xShort(`🔒 ${dayName}’s official picks\n${picks.map(p=>p.line).join('\n')}\n\nLocked before kickoff, graded in public. Link in bio · 21+`);
+  const text=xShort(`🔒 ${dayName}’s official picks so far\n${picks.map(p=>p.line).join('\n')}\n\nMore can drop up to kickoff: turn on alerts, link in bio. 21+`);
   let mediaId=null;
   try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(xSlateSvg({day:dayName,date:etDate(first,{month:'short',day:'numeric'}),picks,season:season.wins+season.losses>=5?`${season.wins}–${season.losses} · ${weeklyMoney(season.profit)}`:''})))}
   catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} slate graphic: ${error.message}`).catch(()=>{})}

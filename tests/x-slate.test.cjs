@@ -20,7 +20,7 @@ pick('d','Brock Purdy',110,'2026-10-13T00:15:00.000Z');pick('e','Old Pick',150,'
   const out=await run(`postSlateToX(env,${Date.parse('2026-10-11T02:00:00Z')})`);
   assert.equal(out.posted,1);assert.equal(out.picks,3,'Sunday (Eastern) picks, incl. the night game; not Monday\'s');
   const text=posts[0].text;
-  assert.ok(text.startsWith('🔒 Sunday’s official picks'),text);assert.ok(text.includes('• Carnell Tate Under 4.5 receptions (+128)')&&!text.includes('Purdy')&&!text.includes('Old Pick'));
+  assert.ok(text.startsWith('🔒 Sunday’s official picks so far')&&text.includes('More can drop up to kickoff'),text);assert.ok(text.includes('• Carnell Tate Under 4.5 receptions (+128)')&&!text.includes('Purdy')&&!text.includes('Old Pick'));
   assert.deepEqual(posts[0].media,{media_ids:['m1']});assert.ok(!/https?:\/\//.test(text),'no link in the text');
   const svg=run('globalThis.__svg');assert.ok(svg.includes('Sunday')&&svg.includes('Carnell Tate')&&svg.includes('Texans @ Titans · FanDuel'));
   assert.equal((await run(`postSlateToX(env,${Date.parse('2026-10-11T02:05:00Z')})`)).done,true,'once per game day');assert.equal(posts.length,1);
