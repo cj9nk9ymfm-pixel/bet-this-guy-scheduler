@@ -66,6 +66,43 @@ jobs:
                   print("alert: " + type(exc).__name__)
           raise SystemExit("betthisguy.com is down: " + problem)
 
+      - name: Check that the pick engine is running
+        shell: python
+        env:
+          ALERT_NTFY_TOPIC: ${{ secrets.ALERT_NTFY_TOPIC }}
+          BTG_SITE_URL: https://betthisguy.com
+        run: |
+          import datetime, json, os, urllib.parse, urllib.request
+
+          # The Worker's cron checks for picks every 10 minutes and logs each
+          # run. If the last one is over 30 minutes old, the engine has stopped
+          # (Saturday Oct 10 it went 8 hours mostly dead without anyone knowing).
+          # Alerts go out once at 30 minutes and once more at 2 hours, so a long
+          # outage doesn't push every five minutes.
+          site = os.environ["BTG_SITE_URL"].rstrip("/")
+          try:
+              with urllib.request.urlopen(urllib.request.Request(site + "/api/engine", headers={"User-Agent": "BetThisGuy-HealthCheck/1.0", "Accept": "application/json"}), timeout=20) as r:
+                  last = (json.load(r).get("last") or {}).get("at")
+          except Exception as exc:
+              print("engine: status unavailable (" + type(exc).__name__ + ")")
+              raise SystemExit(0)
+          if not last:
+              raise SystemExit(0)
+          age = (datetime.datetime.now(datetime.timezone.utc) - datetime.datetime.fromisoformat(last.replace("Z", "+00:00"))).total_seconds() / 60
+          print("engine: last pick check %.0f minutes ago" % age)
+          if not (30 <= age < 35 or 120 <= age < 125):
+              raise SystemExit(0)
+          topic = os.environ.get("ALERT_NTFY_TOPIC", "")
+          if topic:
+              try:
+                  urllib.request.urlopen(urllib.request.Request(
+                      "https://ntfy.sh/" + urllib.parse.quote(topic, safe=""),
+                      data=("No pick check has finished in %d minutes (last: %s UTC). Check the bet-this-guy Worker in Cloudflare." % (age, last[:16].replace("T", " "))).encode(),
+                      headers={"Title": "Bet This Guy: pick engine stopped", "Priority": "high", "Tags": "warning"},
+                      method="POST"), timeout=10)
+              except Exception as exc:
+                  print("alert: " + type(exc).__name__)
+
       - name: Run publishing, grading and closing-price capture
         shell: python
         run: |
