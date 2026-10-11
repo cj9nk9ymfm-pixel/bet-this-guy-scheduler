@@ -1570,3 +1570,14 @@ body.light .bs-injury.inj-questionable{color:#92400e}body.light .bs-injury.inj-d
 html body .prop-card .prop-player em.inj-questionable{color:#fbbf24!important}html body .prop-card .prop-player em.inj-doubtful{color:#fb923c!important}html body .prop-card .prop-player em.inj-out{color:#f87171!important}
 html body.light .prop-card .prop-player em.inj-questionable{color:#92400e!important}html body.light .prop-card .prop-player em.inj-doubtful{color:#9a3412!important}html body.light .prop-card .prop-player em.inj-out{color:#b91c1c!important}
 html body .bsheet .bs-injury{background:none!important;padding:0!important}
+
+/* Leans: a plain list, quieter than official picks */
+.leans-now{margin-top:18px}
+.leans-now .on-head h2{font-size:19px}
+.leans-now .on-list{border:1px solid var(--line);border-radius:16px;overflow:hidden;background:var(--panel)}
+html body .leans-now .on-row.lean-row{gap:10px;padding:10px 14px;border:0;border-top:1px solid var(--line);border-radius:0;background:transparent;box-shadow:none}
+html body .leans-now .on-row.lean-row:first-child{border-top:0}
+html body .leans-now .lean-row .on-avatar{width:38px;height:38px;font-size:12px}
+html body .leans-now .lean-row .on-who b{font-size:15px}
+html body .leans-now .lean-row .on-who .lean-kicker{color:var(--muted)}
+html body .leans-now .lean-row .on-price{font-size:15px;background:transparent;border:1px solid var(--line)}

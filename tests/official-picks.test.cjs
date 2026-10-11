@@ -30,7 +30,7 @@ const events=Array.from({length:16},(_,g)=>({id:'game'+g,eventID:'NFL--game'+g,c
  run("var candidates=officialCandidates(events),early=officialPlan(candidates,[],'2026-09-22')");
  assert.equal(run('early.filter(p=>p.tier!=="props").length'),0,'no parlays until the first leg is two hours from kickoff');
  run("var plan=officialPlan(candidates,[],'2026-09-22',Date.parse('2026-09-27T15:30:00Z'))");
- assert.equal(run('plan.filter(p=>p.tier==="props").length'),100);
+ assert.equal(run('plan.filter(p=>p.tier==="props").length'),32,'two props a game across 16 games');
  for(const [tier,cap] of [['reasonable',15],['swing',10],['moonshot',5]])assert.equal(run(`plan.filter(p=>p.tier==='${tier}').length`),cap);
  // Last Saturday: four picks in four games. Pairs posted as each pick arrived
  // used every combination, so no 3- or 4-leg parlay could ever form.
@@ -39,11 +39,11 @@ const events=Array.from({length:16},(_,g)=>({id:'game'+g,eventID:'NFL--game'+g,c
  assert.ok(run('satTiers.includes("swing")&&satTiers.includes("moonshot")'),'a full slate now reaches both bigger tiers');
  assert.ok(run('satTiers.includes("reasonable")'),'2-leg parlays still post alongside them');
  assert.ok(run('sat.filter(p=>p.tier!=="props").every((a,i,all)=>all.every((b,j)=>i===j||a.legs.filter(x=>b.legs.some(y=>y.playerKey===x.playerKey)).length<=1))'),'no two parlays share more than one leg');
- assert.equal(await run("writeOfficialPlan(plan,'2026-09-22',env)"),130,'the writer reports how many picks it posted (this is what triggers pick alerts)');
- assert.equal(db.prepare('SELECT COUNT(*) n FROM public_recommendations').get().n,130);
+ assert.equal(await run("writeOfficialPlan(plan,'2026-09-22',env)"),62,'the writer reports how many picks it posted (this is what triggers pick alerts)');
+ assert.equal(db.prepare('SELECT COUNT(*) n FROM public_recommendations').get().n,62);
  const before=db.prepare('SELECT id,odds,combined_odds,posted_at,legs_json FROM public_recommendations ORDER BY id').all();
  assert.equal(await run("writeOfficialPlan(plan,'2026-09-22',env)"),0,'a repeat run posts nothing, so no alert');assert.deepEqual(db.prepare('SELECT id,odds,combined_odds,posted_at,legs_json FROM public_recommendations ORDER BY id').all(),before,'repeat/concurrent-plan publication cannot replace or multiply picks');
- assert.ok(db.prepare("SELECT COUNT(*) n FROM public_recommendations WHERE kind='prop' GROUP BY game_id").all().every(r=>r.n<=8));
+ assert.ok(db.prepare("SELECT COUNT(*) n FROM public_recommendations WHERE kind='prop' GROUP BY game_id").all().every(r=>r.n<=2),'at most two official props a game');
  const parlays=db.prepare("SELECT legs_json FROM public_recommendations WHERE kind='parlay'").all().map(r=>JSON.parse(r.legs_json));
  const exposure=new Map();for(const legs of parlays){assert.equal(new Set(legs.map(p=>p.gameId)).size,legs.length);for(const leg of legs)exposure.set(leg.playerKey,(exposure.get(leg.playerKey)||0)+1)}assert.ok([...exposure.values()].every(n=>n<=3));
  for(let i=0;i<parlays.length;i++)for(let j=i+1;j<parlays.length;j++)assert.ok(parlays[i].filter(a=>parlays[j].some(b=>a.playerKey===b.playerKey)).length<=1);
@@ -63,7 +63,7 @@ const events=Array.from({length:16},(_,g)=>({id:'game'+g,eventID:'NFL--game'+g,c
  await assert.rejects(run('verifiedRecordStatements([{kind:"prop",...candidates[0]}],new Request("https://test.invalid/api/record"),env,{waitUntil(){}})'),/server only/,'clients cannot nominate official picks');
  context.existing=db.prepare('SELECT * FROM public_recommendations').all();assert.equal(run("officialPlan(candidates,existing,'2026-09-22').length"),0);
  run('futureSchedule=async()=>Response.json({data:events.map(e=>({eventID:e.eventID,status:{startsAt:e.commence_time}}))});var jobs=[];queueOfficialPicks(new Request("https://test.invalid/api/props"),env,{waitUntil:p=>jobs.push(p)})');await Promise.all(run('jobs'));
- assert.equal(db.prepare('SELECT COUNT(*) n FROM public_recommendations').get().n,130,'production trigger uses schedule and persisted state');
+ assert.equal(db.prepare('SELECT COUNT(*) n FROM public_recommendations').get().n,62,'production trigger uses schedule and persisted state');
  // Games starting within 4 hours get fresher prices, and a quick run that checks only them.
  run('var asked=[];eventProps=async(request,env,ctx,opts)=>{asked.push([new URL(request.url).searchParams.get("eventID"),(opts&&opts.maxAge)||0]);return Response.json({data:[]})}');
  run('futureSchedule=async()=>Response.json({data:events.map((e,i)=>({eventID:e.eventID,status:{startsAt:i<3?"2026-09-27T12:00:00Z":e.commence_time}}))})');
@@ -74,6 +74,6 @@ const events=Array.from({length:16},(_,g)=>({id:'game'+g,eventID:'NFL--game'+g,c
  assert.equal(run('asked.length'),16);assert.equal(run('asked.filter(a=>a[1]===240000).length'),3,'full runs also ask fresher prices for soon games only');
  run('futureSchedule=async()=>Response.json({data:events.map(e=>({eventID:e.eventID,status:{startsAt:e.commence_time}}))})');
  assert.equal(JSON.parse(JSON.stringify(await run('publishOfficialPicks(new Request("https://test.invalid/api/props"),env,{waitUntil(){}},{soonOnly:true})'))).state,'no_soon_games');
- const c=client();vm.runInContext(read('dist/trust.html').match(/<script>([\s\S]*?)<\/script>/)[1],c.ctx);c.ctx.rows=[...context.existing,{id:'legacy',source:'market-verified-v2',kind:'prop',status:'final',result:'lost'}];c.nodes.get('#recordScope').value='2026-09-22';c.eval('paint(rows)');assert.equal(c.eval('resultRows.length'),130);c.nodes.get('#recordScope').value='legacy';c.eval('paint(rows)');assert.equal(c.eval('resultRows.length'),1);
+ const c=client();vm.runInContext(read('dist/trust.html').match(/<script>([\s\S]*?)<\/script>/)[1],c.ctx);c.ctx.rows=[...context.existing,{id:'legacy',source:'market-verified-v2',kind:'prop',status:'final',result:'lost'}];c.nodes.get('#recordScope').value='2026-09-22';c.eval('paint(rows)');assert.equal(c.eval('resultRows.length'),62);c.nodes.get('#recordScope').value='legacy';c.eval('paint(rows)');assert.equal(c.eval('resultRows.length'),1);
  console.log('PASS: official weekly caps, quality gates, overlap limits, immutable odds, repeat publication, client rejection, weekly rollover and history filters (real SQLite; no production writes)');
 })().catch(e=>{console.error(e);process.exitCode=1});

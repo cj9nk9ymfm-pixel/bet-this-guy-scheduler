@@ -93,6 +93,9 @@ async function verifiedRecordStatements(records,request,env,ctx) {
 // Tuesday noon UTC keeps Monday-night NFL games in the preceding slate.
 const OFFICIAL_START=Date.parse('2026-09-22T12:00:00Z');
 const OFFICIAL_CAPS={props:100,reasonable:15,swing:10,moonshot:5};
+// At most two official props per game: picks in one game win or lose
+// together, so a third goes to the leans list instead.
+const OFFICIAL_PER_GAME=2;
 // Picks can lock any time before kickoff in the official week.
 const OFFICIAL_HORIZON=8*86400000,LOW_ODDS_CREDITS=250000;
 function officialWeek(time){const d=new Date(Number(time)-12*3600000);d.setUTCHours(0,0,0,0);d.setUTCDate(d.getUTCDate()-(d.getUTCDay()+5)%7);return d.toISOString().slice(0,10)}
@@ -144,7 +147,7 @@ function officialPlan(candidates,existing,week,now=Date.now()){
   const saved=existing.map(r=>({...r,legs:recordLegs(r)})),counts=Object.fromEntries(Object.keys(OFFICIAL_CAPS).map(t=>[t,saved.filter(r=>r.id.startsWith(`official|${week}|${t}|`)).length]));
   const plan=[],singles=saved.filter(r=>r.kind==='prop'),games=new Map(),used=new Set(singles.flatMap(r=>r.legs.map(officialPlayer)));
   singles.forEach(r=>games.set(r.game_id,(games.get(r.game_id)||0)+1));
-  for(const p of candidates){if(counts.props>=100)break;if(used.has(p.playerKey)||(games.get(p.gameId)||0)>=8)continue;plan.push({tier:'props',legs:[p]});counts.props++;used.add(p.playerKey);games.set(p.gameId,(games.get(p.gameId)||0)+1)}
+  for(const p of candidates){if(counts.props>=100)break;if(used.has(p.playerKey)||(games.get(p.gameId)||0)>=OFFICIAL_PER_GAME)continue;plan.push({tier:'props',legs:[p]});counts.props++;used.add(p.playerKey);games.set(p.gameId,(games.get(p.gameId)||0)+1)}
   const prior=saved.filter(r=>r.kind==='parlay').map(r=>r.legs.map(officialPlayer)),exposure=new Map();prior.flat().forEach(k=>exposure.set(k,(exposure.get(k)||0)+1));
   // Hardest tiers first: they need the most unshared legs.
   const tiers=[['moonshot',4,7,2501,15000],['swing',3,6,1000,2500],['reasonable',2,4,100,999]];
@@ -182,7 +185,7 @@ async function writeOfficialPlan(plan,week,env){
       (id,kind,sport,player,market,side,line,odds,combined_odds,game_id,game_time,legs_json,posted_at,status,source,verification_note)
       SELECT ?,?,'NFL',?,?,?,?,?,?,?,?,?,?,'pending',?,?
       WHERE (SELECT COUNT(*) FROM public_recommendations WHERE id>=? AND id<?)< ?
-      AND (?='parlay' OR ((SELECT COUNT(*) FROM public_recommendations WHERE id>=? AND id<? AND game_id=?)<8
+      AND (?='parlay' OR ((SELECT COUNT(*) FROM public_recommendations WHERE id>=? AND id<? AND game_id=?)<${OFFICIAL_PER_GAME}
         AND NOT EXISTS(SELECT 1 FROM public_recommendations r,json_each(r.legs_json) l WHERE r.id>=? AND r.id<? AND json_extract(l.value,'$.playerKey')=?)))
       AND (?='prop' OR (NOT EXISTS(SELECT 1 FROM public_recommendations r WHERE r.id>=? AND r.id<? AND r.kind='parlay'
         AND (SELECT COUNT(*) FROM json_each(r.legs_json) l WHERE json_extract(l.value,'$.playerKey') IN (SELECT json_extract(value,'$.playerKey') FROM json_each(?)))>1)
@@ -318,13 +321,30 @@ function bigFivePrice(event,r){
 // game, never posted. Players who qualify officially this run are left out.
 // Each run keeps the best big-5 price at the same line, so the last one before
 // kickoff is the closing price.
+// GET /api/leans: this week's leans (near misses and props held back by the
+// per-game limit) for upcoming games, at most two a game, cached 5 minutes.
+// Not official picks and not on the record.
+async function leansResponse(request,env,ctx,now=Date.now()){
+  if(!env.DB)return json({success:true,leans:[]});
+  const saved=await readFeedCache(request,'leans-v1-NFL');
+  if(saved.response&&cacheAge(saved.response)<300000)return cachedForClient(saved.response,'fresh');
+  const rows=(await env.DB.prepare('SELECT event_id,player,team,market,side,line,odds,book,edge,close_odds,game_time FROM near_shadow WHERE game_time>? AND game_time<? ORDER BY edge DESC').bind(new Date(now+5*60000).toISOString(),new Date(now+8*86400000).toISOString()).all().catch(()=>({results:[]}))).results||[];
+  const games=new Map(),leans=[];
+  for(const r of rows){const n=games.get(r.event_id)||0;if(n>=2||leans.length>=10)continue;games.set(r.event_id,n+1);leans.push({player:r.player,team:r.team||'',market:r.market,side:r.side,line:r.line,odds:r.close_odds??r.odds,flagged:r.odds,book:r.book,edge:+Number(r.edge).toFixed(1),gameTime:r.game_time})}
+  leans.sort((a,b)=>a.gameTime.localeCompare(b.gameTime)||b.edge-a.edge);
+  const stored=storedResponse(JSON.stringify({success:true,leans,updatedAt:new Date(now).toISOString()}),300);
+  if(saved.cache&&saved.key)ctx?.waitUntil?.(saved.cache.put(saved.key,stored.clone()));
+  return cachedForClient(stored,'miss');
+}
 async function recordNearShadow(env,boards,official=[],now=Date.now()){
   if(!env.DB)return {logged:0};
   const stamp=new Date(now).toISOString(),taken=new Set(official.map(p=>p.playerKey));
   // Also skip players who already have an official pick in that game: their
   // price can drift below the bar after it locks, and they'd be counted twice.
   const locked=new Set(((await env.DB.prepare("SELECT game_id,player FROM public_recommendations WHERE id LIKE 'official|%' AND kind='prop' AND game_time>?").bind(stamp).all()).results||[]).map(r=>`${r.game_id}|${normalizedName(r.player)}`));
-  const picks=officialCandidates(boards,now,{},{min:.5,below:1}).filter(p=>!taken.has(p.playerKey)&&!locked.has(`${p.gameId}|${normalizedName(p.player)}`));
+  // 0.5% to just under the bar, plus qualifying props held back by the
+  // per-game limit; both are shown as leans.
+  const picks=officialCandidates(boards,now,{},{min:.5}).filter(p=>!taken.has(p.playerKey)&&!locked.has(`${p.gameId}|${normalizedName(p.player)}`));
   const statements=picks.map(p=>env.DB.prepare('INSERT OR IGNORE INTO near_shadow (id,event_id,player,team,market,side,line,odds,book,edge,game_time,logged_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)').bind(`${p.gameId}|${normalizedName(p.player)}`,p.gameId,p.player,p.team||null,p.market,p.side,p.line,p.odds,p.book,+p.edge.toFixed(2),p.gameTime,stamp));
   const open=(await env.DB.prepare('SELECT id,event_id,player,market,side,line FROM near_shadow WHERE game_time>?').bind(stamp).all()).results||[];
   for(const r of open){
@@ -1008,7 +1028,7 @@ async function publishOfficialPicks(request,env,ctx,opts={}){
     // Players listed Out or Doubtful are taken off the boards first.
     const injuries=await injuryMap(env).catch(()=>new Map());boards.splice(0,boards.length,...withoutInjured(boards,injuries));
     if(!opts.soonOnly)jobStep('publish','plan');const existing=await env.DB.prepare('SELECT * FROM public_recommendations WHERE id>=? AND id<?').bind(prefix,prefix+'\uffff').all();
-    const stats={};const candidates=officialCandidates(boards,Date.now(),stats);const posted=await writeOfficialPlan(officialPlan(candidates,existing.results||[],week,Date.now()),week,env);
+    const stats={};const candidates=officialCandidates(boards,Date.now(),stats);const plan=officialPlan(candidates,existing.results||[],week,Date.now()),posted=await writeOfficialPlan(plan,week,env);
     // One row per full run: what the pick job saw and why it did or didn't post
     // (the quick soon-games runs aren't logged, so the engine status stays whole-board).
     if(!opts.soonOnly)await env.DB.batch([
@@ -1025,7 +1045,7 @@ async function publishOfficialPicks(request,env,ctx,opts={}){
     if(!opts.soonOnly)jobStep('publish','prune');if(Date.now()-snapshotPrunedAt>3600000){snapshotPrunedAt=Date.now();await env.DB.prepare('DELETE FROM movement_snapshots WHERE captured_at<?').bind(Math.floor(Date.now()-7*86400000)).run().catch(error=>console.warn('snapshot_prune_failed',error.message))}
     if(!opts.soonOnly)jobStep('publish','trail');const trail=officialTrailStatements(boards,existing.results||[],env,Date.now());if(trail.length)await env.DB.batch(trail);
     if(!opts.soonOnly)jobStep('publish','line shadow');await recordLineShadow(env,boards,Date.now()).catch(error=>console.warn('line_shadow_failed',error.message));
-    if(!opts.soonOnly)jobStep('publish','near shadow');await recordNearShadow(env,boards,candidates,Date.now()).catch(error=>console.warn('near_shadow_failed',error.message));
+    if(!opts.soonOnly)jobStep('publish','near shadow');await recordNearShadow(env,boards,plan.filter(p=>p.tier==='props').flatMap(p=>p.legs),Date.now()).catch(error=>console.warn('near_shadow_failed',error.message));
     if(!opts.soonOnly)jobStep('publish','leans');await recordLeans(env,boards,Date.now()).catch(error=>console.warn('lean_shadow_failed',error.message));
     if(!opts.soonOnly)jobStep('publish','bump shadow');await recordBumpShadow(env,boards,injuries,Date.now()).catch(error=>console.warn('bump_shadow_failed',error.message));
     if(!opts.soonOnly)jobStep('publish','td shadow');await recordTdShadow(env,boards,Date.now()).catch(error=>console.warn('td_shadow_failed',error.message));
