@@ -150,6 +150,21 @@ On each publish run, `sendBookAlerts` (in `worker/records.js`) also tells people
 
 Board cards show how often each bet hit in the player's last 10 games, and the prop sheet charts those games and lists every book's price. Publish runs record who is on the board and which markets they have (`player_form`, migration `0018`). Every in-between cron run, and publish runs outside NFL windows, fetch players from BALLDONTLIE in up to six parallel parts of five players, each part a separate invocation through the `SELF` binding with its own request allowance. A busy reply (429) pauses the fill until the next run. Each player is fetched again once per slate, after Tuesday and Friday 12:00 UTC. Visitors read everything from one cached `/api/form` request, so the board makes no per-card stats calls.
 
+## Props the 3-book rule skips (shadow)
+
+Official picks need 3+ books pricing both sides. Two shadow tests in
+`book_shadow` (logged on publish runs, graded with the other shadow tests,
+never posted) check what that skips:
+
+- `two_book`: the same fair-price test when exactly two books price both
+  sides, 1%+ edge at a big-5 book.
+- `defense`: sacks, solo tackles, tackles + assists and assists (usually one
+  book). The chance of the Over is the player's last-10 record against the
+  line blended with the book's own no-vig price (6 games' weight); logged at
+  4%+ edge, -200 to +250, within 48 hours of kickoff.
+
+Players with an official pick in the game are left out.
+
 ## NBA preseason (plumbing test)
 
 Hourly, on publish runs, `recordNbaPreseason` reads The Odds API's

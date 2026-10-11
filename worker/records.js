@@ -125,7 +125,7 @@ function officialCandidates(events,now=Date.now(),stats={},opts={}){
       // Market coverage for the run log: lines seen, and how many had the 3+
       // two-sided books a fair price needs.
       const cov=(stats.markets||={})[group.market]||={lines:0,priced:0,books:0};cov.lines++;cov.books=Math.max(cov.books,group.books.size);if(pairs.length>=3)cov.priced++;
-      if(pairs.length<3)continue;
+      if(opts.exactBooks?pairs.length!==opts.exactBooks:pairs.length<3)continue;
       const fair=pairs.reduce((sum,p)=>{const o=1/recordDecimal(p.over.odds),u=1/recordDecimal(p.under.odds);return sum+o/(o+u)},0)/pairs.length;
       // The fair price uses every licensed book; the pick itself must be
       // available at one of the five biggest (OFFICIAL_BOOKS).
@@ -698,7 +698,7 @@ async function gradeTdShadow(env,now=Date.now(),limit=40){
 async function gradeTdShadowNow(env){
   if(!env.SELF?.fetch||!env.MAINTENANCE_TOKEN)return gradeTdShadow(env,Date.now(),10);
   const cut=new Date(Date.now()-4*3600000).toISOString();
-  let waiting=0;for(const t of ['td_shadow','bump_shadow','live_shadow','game_shadow'])waiting+=((await env.DB.prepare(`SELECT COUNT(*) AS n FROM ${t} WHERE result IS NULL AND game_time<?`).bind(cut).first().catch(()=>null))?.n||0);
+  let waiting=0;for(const t of ['td_shadow','bump_shadow','live_shadow','game_shadow','book_shadow'])waiting+=((await env.DB.prepare(`SELECT COUNT(*) AS n FROM ${t} WHERE result IS NULL AND game_time<?`).bind(cut).first().catch(()=>null))?.n||0);
   if(!waiting)return {waiting:0};
   const r=await env.SELF.fetch(new Request(`${SITE_URL}/api/maintenance?job=tdGrade`,{method:'POST',headers:{authorization:`Bearer ${env.MAINTENANCE_TOKEN}`},signal:AbortSignal.timeout(60000)}));
   return {waiting,status:r.status};
@@ -1050,6 +1050,75 @@ async function weatherResponse(request,env,ctx,now=Date.now()){
   return cachedForClient(stored,'miss');
 }
 
+// Props the 3-book rule skips (shadow). Two-book: the same fair-price test
+// with exactly two books pricing both sides. Defense: sacks and tackles,
+// usually at one book, priced against the player's last 10 games blended
+// with that book's no-vig price (6 games' weight), so a short sample can't
+// swing it far. Only players without an official pick in the game.
+const DEFENSE_MARKETS=['Sacks','Solo Tackles','Tackles + Assists','Assists'];
+const DEFENSE_PRIOR=6,DEFENSE_MIN_EDGE=4;
+function defenseCandidates(boards,form,now=Date.now()){
+  const best=new Map();
+  for(const board of boards){
+    const kickoff=Date.parse(board.commence_time);if(!(kickoff>now+5*60000)||kickoff-now>48*3600000)continue;
+    const gameId=board.eventID||`NFL--${board.id}`;
+    for(const book of board.bookmakers||[]){if(!OFFICIAL_BOOKS.has(book.key))continue;
+      for(const market of book.markets||[]){
+        if(/_alternate$/.test(market.key))continue;
+        const label=recordLabels[market.key];if(!DEFENSE_MARKETS.includes(label))continue;
+        const updated=Date.parse(market.last_update||book.last_update||'');if(!Number.isFinite(updated)||now-updated>15*60000)continue;
+        const pairs=new Map();
+        for(const o of market.outcomes||[]){const side=String(o.name).toLowerCase(),player=String(o.description||'').trim(),line=BTGStats.number(o.point),odds=BTGStats.number(o.price);if(!player||line===null||odds===null||!['over','under'].includes(side))continue;const k=`${player}|${line}`,p=pairs.get(k)||{player,line};p[side]=odds;pairs.set(k,p)}
+        for(const p of pairs.values()){
+          if(p.over==null||p.under==null)continue;
+          const f=form.get(normalizedName(p.player));let values=[];try{values=(JSON.parse(f?.games_json||'{}').m?.[label]||[]).filter(v=>v!==null&&v!==undefined)}catch{}
+          if(values.length<6)continue;
+          const over=values.filter(v=>v>p.line).length,under=values.filter(v=>v<p.line).length,n=over+under;if(!n)continue;
+          const io=1/recordDecimal(p.over),iu=1/recordDecimal(p.under),bookOver=io/(io+iu);
+          const pOver=(over+DEFENSE_PRIOR*bookOver)/(n+DEFENSE_PRIOR);
+          for(const [side,prob,odds] of [['Over',pOver,p.over],['Under',1-pOver,p.under]]){
+            if(odds<-200||odds>250)continue;
+            const edge=100*(prob-1/recordDecimal(odds));if(edge<DEFENSE_MIN_EDGE)continue;
+            const avg=values.reduce((a,b)=>a+b,0)/values.length;
+            const row={kind:'defense',gameId,player:p.player,team:`${board.away_team} · @ ${board.home_team}`,market:label,side,line:p.line,odds,book:book.title||book.key,edge,gameTime:new Date(kickoff).toISOString(),detail:`${side==='Over'?over:under} of ${values.length} ${side.toLowerCase()} · avg ${+avg.toFixed(1)}`};
+            const k=`${gameId}|${normalizedName(p.player)}`;if(!best.has(k)||best.get(k).edge<edge)best.set(k,row);
+          }
+        }
+      }
+    }
+  }
+  return [...best.values()];
+}
+async function recordBookShadow(env,boards,now=Date.now()){
+  if(!env.DB)return {};
+  const stamp=new Date(now).toISOString();
+  const locked=new Set(((await env.DB.prepare("SELECT game_id,player FROM public_recommendations WHERE id LIKE 'official|%' AND kind='prop' AND game_time>?").bind(stamp).all()).results||[]).map(r=>`${r.game_id}|${normalizedName(r.player)}`));
+  const two=officialCandidates(boards,now,{},{min:1,exactBooks:2}).map(p=>({...p,kind:'two_book',detail:'2 books'}));
+  const form=new Map(((await env.DB.prepare('SELECT player,games_json FROM player_form WHERE games_json IS NOT NULL').all()).results||[]).map(r=>[normalizedName(r.player),r]));
+  const defense=defenseCandidates(boards,form,now);
+  const rows=[...two,...defense].filter(p=>!locked.has(`${p.gameId}|${normalizedName(p.player)}`));
+  const statements=rows.map(p=>env.DB.prepare('INSERT OR IGNORE INTO book_shadow (id,kind,event_id,player,team,market,side,line,odds,book,edge,detail,game_time,logged_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(`${p.kind}|${p.gameId}|${normalizedName(p.player)}`,p.kind,p.gameId,p.player,p.team||null,p.market,p.side,p.line,p.odds,p.book,+p.edge.toFixed(2),p.detail||null,p.gameTime,stamp));
+  const open=(await env.DB.prepare('SELECT id,event_id,player,market,side,line FROM book_shadow WHERE game_time>?').bind(stamp).all()).results||[];
+  for(const r of open){const board=boards.find(e=>(e.eventID||`NFL--${e.id}`)===r.event_id);const p=board?bigFivePrice(board,r):null;if(p!==null)statements.push(env.DB.prepare('UPDATE book_shadow SET close_odds=?,close_at=? WHERE id=?').bind(p,stamp,r.id))}
+  if(statements.length)await env.DB.batch(statements);
+  return {twoBook:two.length,defense:defense.length,tracked:open.length};
+}
+async function gradeBookShadow(env,now=Date.now(),limit=30){
+  if(!env.DB||!env.BALLDONTLIE_API_KEY)return {graded:0};
+  const rows=(await env.DB.prepare('SELECT * FROM book_shadow WHERE result IS NULL AND game_time<? AND game_time>? ORDER BY game_time LIMIT ?').bind(new Date(now-4*3600000).toISOString(),new Date(now-14*86400000).toISOString(),limit).all()).results||[];
+  const cache=new Map(),statements=[],stamp=new Date(now).toISOString();
+  for(const r of rows){
+    const record={sport:'NFL',player:r.player,team:r.team,gameTime:r.game_time,market:r.market,side:r.side,line:r.line};
+    const stat=await recordPlayerStats(record,env,undefined,cache).catch(()=>null);
+    if(shadowVoid(stat,r.game_time,now)){statements.push(env.DB.prepare('UPDATE book_shadow SET result=?,graded_at=? WHERE id=?').bind('void',stamp,r.id));continue}
+    if(!stat||stat.missingPlayerStats||!(stat.scoreboardFinal||nflGameState(stat.game||{})==='final'))continue;
+    const value=BTGStats.metric(record,stat).value,result=value===null?null:BTGStats.grade(r.side,r.line,value);
+    if(result)statements.push(env.DB.prepare('UPDATE book_shadow SET actual=?,result=?,graded_at=? WHERE id=?').bind(value,result,stamp,r.id));
+  }
+  if(statements.length)await env.DB.batch(statements);
+  return {graded:statements.length,checked:rows.length};
+}
+
 // Stats check (shadow): does the stat line agree with a pick? For each
 // official pick and near miss, project the stat from the player's recent
 // games (last 5, last 10, this season) and the opponent's defense against
@@ -1257,6 +1326,7 @@ async function publishOfficialPicks(request,env,ctx,opts={}){
     if(!opts.soonOnly)jobStep('publish','near shadow');await recordNearShadow(env,boards,plan.filter(p=>p.tier==='props').flatMap(p=>p.legs),Date.now()).catch(error=>console.warn('near_shadow_failed',error.message));
     if(!opts.soonOnly)jobStep('publish','leans');await recordLeans(env,boards,Date.now()).catch(error=>console.warn('lean_shadow_failed',error.message));
     if(!opts.soonOnly)jobStep('publish','bump shadow');await recordBumpShadow(env,boards,injuries,Date.now()).catch(error=>console.warn('bump_shadow_failed',error.message));
+    if(!opts.soonOnly)jobStep('publish','book shadow');await recordBookShadow(env,boards,Date.now()).catch(error=>console.warn('book_shadow_failed',error.message));
     if(!opts.soonOnly)jobStep('publish','td shadow');await recordTdShadow(env,boards,Date.now()).catch(error=>console.warn('td_shadow_failed',error.message));
     if(!opts.soonOnly)jobStep('publish','form wanted');await recordFormWanted(env,boards,Date.now()).catch(error=>console.warn('player_form_failed',error.message));
 
