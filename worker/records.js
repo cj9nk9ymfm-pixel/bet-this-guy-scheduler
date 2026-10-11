@@ -698,7 +698,7 @@ async function gradeTdShadow(env,now=Date.now(),limit=40){
 async function gradeTdShadowNow(env){
   if(!env.SELF?.fetch||!env.MAINTENANCE_TOKEN)return gradeTdShadow(env,Date.now(),10);
   const cut=new Date(Date.now()-4*3600000).toISOString();
-  let waiting=0;for(const t of ['td_shadow','bump_shadow','live_shadow','game_shadow','book_shadow'])waiting+=((await env.DB.prepare(`SELECT COUNT(*) AS n FROM ${t} WHERE result IS NULL AND game_time<?`).bind(cut).first().catch(()=>null))?.n||0);
+  let waiting=0;for(const t of ['td_shadow','bump_shadow','live_shadow','game_shadow','book_shadow','exchange_shadow'])waiting+=((await env.DB.prepare(`SELECT COUNT(*) AS n FROM ${t} WHERE result IS NULL AND game_time<?`).bind(cut).first().catch(()=>null))?.n||0);
   if(!waiting)return {waiting:0};
   const r=await env.SELF.fetch(new Request(`${SITE_URL}/api/maintenance?job=tdGrade`,{method:'POST',headers:{authorization:`Bearer ${env.MAINTENANCE_TOKEN}`},signal:AbortSignal.timeout(60000)}));
   return {waiting,status:r.status};
@@ -908,7 +908,7 @@ async function gradeLiveShadow(env,now=Date.now(),limit=30){
 // game and market, logged the first time it qualifies; graded from the final.
 const GAME_MARKETS={h2h:'Moneyline',spreads:'Spread',totals:'Total'};
 async function fetchGameLines(apiKey){
-  const q=new URLSearchParams({apiKey,regions:'us',markets:Object.keys(GAME_MARKETS).join(','),oddsFormat:'american',dateFormat:'iso'});
+  const q=new URLSearchParams({apiKey,regions:'us,us_ex',markets:Object.keys(GAME_MARKETS).join(','),oddsFormat:'american',dateFormat:'iso'});
   const r=await fetch(`${API_BASE}/sports/${SPORTS[0].key}/odds?${q}`,{headers:{accept:'application/json'}});
   const body=await r.text();if(!r.ok)throw new Error(providerMessage(body,'Game lines are unavailable.'));
   const data=JSON.parse(body);return Array.isArray(data)?data:[];
@@ -921,19 +921,24 @@ function gamePair(event,market){
   if(market.key==='spreads')return a.point!=null&&Number(a.point)===-Number(c.point)?{a,c,key:Number(a.point)}:null;
   return {a,c,key:'ml'};
 }
+// Both sides of each game market at each book, grouped by line.
+function gameGroups(e,key,now){
+  const groups=new Map();
+  for(const b of e.bookmakers||[]){
+    const m=(b.markets||[]).find(m=>m.key===key);if(!m)continue;
+    const updated=Date.parse(m.last_update||b.last_update||'');if(!Number.isFinite(updated)||now-updated>15*60000)continue;
+    const pair=gamePair(e,m);if(!pair)continue;
+    const a=BTGStats.number(pair.a.price),c=BTGStats.number(pair.c.price);if(a===null||c===null)continue;
+    const list=groups.get(pair.key)||[];list.push({key:b.key,title:b.title||b.key,a,c});groups.set(pair.key,list);
+  }
+  return groups;
+}
 function gameLineCandidates(events,now=Date.now()){
   const best=new Map();
   for(const e of events){
     const kick=Date.parse(e.commence_time);if(!(kick>now+5*60000))continue;
     for(const [key,label] of Object.entries(GAME_MARKETS)){
-      const groups=new Map();
-      for(const b of e.bookmakers||[]){
-        const m=(b.markets||[]).find(m=>m.key===key);if(!m)continue;
-        const updated=Date.parse(m.last_update||b.last_update||'');if(!Number.isFinite(updated)||now-updated>15*60000)continue;
-        const pair=gamePair(e,m);if(!pair)continue;
-        const a=BTGStats.number(pair.a.price),c=BTGStats.number(pair.c.price);if(a===null||c===null)continue;
-        const list=groups.get(pair.key)||[];list.push({key:b.key,title:b.title||b.key,a,c});groups.set(pair.key,list);
-      }
+      const groups=new Map([...gameGroups(e,key,now)].map(([line,list])=>[line,list.filter(p=>!EXCHANGES[p.key])]));
       for(const [line,list] of groups){
         if(list.length<3)continue;
         const fair=list.reduce((s,p)=>{const x=1/recordDecimal(p.a),y=1/recordDecimal(p.c);return s+x/(x+y)},0)/list.length;
@@ -967,12 +972,13 @@ async function recordGameShadow(env,now=Date.now()){
   await setAppSetting(env,'game-lines-at',String(now));
   const events=(await fetchGameLines(env.THE_ODDS_API_KEY)).map(e=>({...e,eventID:`NFL--${e.id}`}));
   const stamp=new Date(now).toISOString(),statements=[];
-  const picks=gameLineCandidates(events,now);
+  const picks=gameLineCandidates(events,now),exchangePicks=exchangeGameCandidates(events,now);
+  for(const p of exchangePicks)statements.push(exchangeInsert(env,p,stamp));
   for(const p of picks)statements.push(env.DB.prepare('INSERT OR IGNORE INTO game_shadow (id,event_id,home,away,market,side,line,odds,book,edge,game_time,logged_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)').bind(`${p.eventId}|${p.market}`,p.eventId,p.home,p.away,p.market,p.side,p.line,p.odds,p.book,+p.edge.toFixed(2),p.gameTime,stamp));
   const open=(await env.DB.prepare('SELECT id,event_id,market,side,line FROM game_shadow WHERE game_time>?').bind(stamp).all()).results||[];
   for(const r of open){const e=events.find(e=>e.eventID===r.event_id);const p=e?gameLinePrice(e,r):null;if(p!==null)statements.push(env.DB.prepare('UPDATE game_shadow SET close_odds=?,close_at=? WHERE id=?').bind(p,stamp,r.id))}
   if(statements.length)await env.DB.batch(statements);
-  return {games:events.length,qualified:picks.length,tracked:open.length};
+  return {games:events.length,qualified:picks.length,tracked:open.length,exchange:exchangePicks.length};
 }
 function gameLineResult(r,hs,as){
   const diff=(v)=>v>0?'won':v<0?'lost':'push';
@@ -980,14 +986,18 @@ function gameLineResult(r,hs,as){
   const mine=r.side===r.home?hs:as,theirs=r.side===r.home?as:hs;
   return diff(mine+(r.market==='Spread'?Number(r.line):0)-theirs);
 }
+// BALLDONTLIE games on the dates of these rows' kickoffs (UTC and US evening).
+async function finalGames(rows,env){
+  const q=new URLSearchParams({per_page:'100'}),dates=new Set();
+  for(const r of rows){const t=Date.parse(r.game_time);dates.add(new Date(t-6*3600000).toISOString().slice(0,10));dates.add(new Date(t).toISOString().slice(0,10))}
+  for(const d of dates)q.append('dates[]',d);
+  return (await bdlRequest(`/nfl/v1/games?${q}`,env.BALLDONTLIE_API_KEY))?.data||[];
+}
 async function gradeGameShadow(env,now=Date.now(),limit=30){
   if(!env.DB||!env.BALLDONTLIE_API_KEY)return {graded:0};
   const rows=(await env.DB.prepare('SELECT * FROM game_shadow WHERE result IS NULL AND game_time<? AND game_time>? ORDER BY game_time LIMIT ?').bind(new Date(now-4*3600000).toISOString(),new Date(now-14*86400000).toISOString(),limit).all()).results||[];
   if(!rows.length)return {graded:0};
-  const q=new URLSearchParams({per_page:'100'}),dates=new Set();
-  for(const r of rows){const t=Date.parse(r.game_time);dates.add(new Date(t-6*3600000).toISOString().slice(0,10));dates.add(new Date(t).toISOString().slice(0,10))}
-  for(const d of dates)q.append('dates[]',d);
-  const games=(await bdlRequest(`/nfl/v1/games?${q}`,env.BALLDONTLIE_API_KEY))?.data||[];
+  const games=await finalGames(rows,env);
   const statements=[],stamp=new Date(now).toISOString();
   for(const r of rows){
     const g=games.find(g=>normalizedName(g.home_team?.full_name)===normalizedName(r.home)&&normalizedName(g.visitor_team?.full_name)===normalizedName(r.away));
@@ -1117,6 +1127,140 @@ async function gradeBookShadow(env,now=Date.now(),limit=30){
   }
   if(statements.length)await env.DB.batch(statements);
   return {graded:statements.length,checked:rows.length};
+}
+
+// Prediction markets (shadow). The Odds API's us_ex region lists exchanges as
+// bookmakers; they never enter a sportsbook fair price. An exchange price at
+// least 1% better than our sportsbook fair price (3+ licensed books) is
+// logged once per player prop or game market and graded. Listed prices are
+// before exchange fees, so the analysis should take those off.
+const EXCHANGES={kalshi:'Kalshi',polymarket:'Polymarket',novig:'Novig',prophetx:'ProphetX',betopenly:'BetOpenly'};
+const EXCHANGE_PROP_MARKETS=['player_receptions','player_reception_yds','player_rush_yds','player_pass_yds','player_pass_tds','player_rush_attempts','player_pass_completions'];
+async function fetchExchangeOdds(eventId,apiKey){
+  const q=new URLSearchParams({apiKey,regions:'us_ex',markets:EXCHANGE_PROP_MARKETS.join(','),oddsFormat:'american',dateFormat:'iso'});
+  const r=await fetch(`${API_BASE}/sports/${SPORTS[0].key}/events/${eventId}/odds?${q}`,{headers:{accept:'application/json'}});
+  const body=await r.text();if(!r.ok)throw new Error(providerMessage(body,'Exchange prices are unavailable.'));
+  const left=r.headers.get('x-requests-remaining');if(left!==null&&Number.isFinite(Number(left)))oddsCreditsLeft=Number(left);
+  const d=JSON.parse(body);return {...d,bookmakers:(d.bookmakers||[]).filter(b=>EXCHANGES[b.key])};
+}
+// Sportsbook fair chance of the Over for every player line priced by 3+ books.
+function sportsbookFairs(boards,now=Date.now()){
+  const groups=new Map();
+  for(const board of boards){
+    const gameId=board.eventID||`NFL--${board.id}`;
+    for(const book of board.bookmakers||[]){if(EXCHANGES[book.key])continue;
+      for(const m of book.markets||[]){
+        const label=recordLabels[m.key],updated=Date.parse(m.last_update||book.last_update||'');
+        if(!label||/_alternate$/.test(m.key)||!Number.isFinite(updated)||now-updated>15*60000)continue;
+        for(const o of m.outcomes||[]){const side=String(o.name).toLowerCase(),player=String(o.description||'').trim(),line=BTGStats.number(o.point),odds=BTGStats.number(o.price);if(!player||line===null||odds===null||!['over','under'].includes(side))continue;
+          const k=`${gameId}|${normalizedName(player)}|${label}|${line}`,g=groups.get(k)||new Map(),pair=g.get(book.key)||{};pair[side]=odds;g.set(book.key,pair);groups.set(k,g)}
+      }
+    }
+  }
+  const fairs=new Map();
+  for(const [k,g] of groups){const pairs=[...g.values()].filter(p=>p.over!=null&&p.under!=null);if(pairs.length<3)continue;fairs.set(k,pairs.reduce((s,p)=>{const o=1/recordDecimal(p.over),u=1/recordDecimal(p.under);return s+o/(o+u)},0)/pairs.length)}
+  return fairs;
+}
+function exchangePropCandidates(board,exchangeBoard,fairs,now=Date.now()){
+  const gameId=board.eventID||`NFL--${board.id}`,kick=Date.parse(board.commence_time),best=new Map(),coverage={};
+  if(!(kick>now+5*60000))return {picks:[],coverage};
+  for(const ex of exchangeBoard.bookmakers||[]){
+    const name=EXCHANGES[ex.key];if(!name)continue;const cov=coverage[ex.key]||={lines:0,matched:0};
+    for(const m of ex.markets||[]){
+      const label=recordLabels[m.key];if(!label)continue;
+      for(const o of m.outcomes||[]){
+        const side=String(o.name).toLowerCase(),player=String(o.description||'').trim(),line=BTGStats.number(o.point),odds=BTGStats.number(o.price);
+        if(!player||line===null||odds===null||!['over','under'].includes(side))continue;
+        cov.lines++;const fair=fairs.get(`${gameId}|${normalizedName(player)}|${label}|${line}`);if(fair===undefined)continue;cov.matched++;
+        const p=side==='over'?fair:1-fair,edge=100*(p-1/recordDecimal(odds));
+        if(edge<1||edge>15||odds<-250||odds>300)continue;
+        const row={kind:'prop',exchange:name,eventId:gameId,player,team:`${board.away_team} · @ ${board.home_team}`,market:label,side:side==='over'?'Over':'Under',line,odds,fair:p,edge,gameTime:new Date(kick).toISOString()};
+        const k=`${gameId}|${normalizedName(player)}`;if(!best.has(k)||best.get(k).edge<edge)best.set(k,row);
+      }
+    }
+  }
+  return {picks:[...best.values()],coverage};
+}
+function exchangeGameCandidates(events,now=Date.now()){
+  const best=new Map();
+  for(const e of events){
+    const kick=Date.parse(e.commence_time);if(!(kick>now+5*60000))continue;
+    for(const [key,label] of Object.entries(GAME_MARKETS))for(const [line,list] of gameGroups(e,key,now)){
+      const books=list.filter(p=>!EXCHANGES[p.key]);if(books.length<3)continue;
+      const fair=books.reduce((s,p)=>{const x=1/recordDecimal(p.a),y=1/recordDecimal(p.c);return s+x/(x+y)},0)/books.length;
+      for(const ex of list.filter(p=>EXCHANGES[p.key]))for(const side of ['a','c']){
+        const odds=ex[side],prob=side==='a'?fair:1-fair,edge=100*(prob-1/recordDecimal(odds));
+        if(edge<1||edge>12||odds<-250||odds>300)continue;
+        const name=key==='totals'?(side==='a'?'Over':'Under'):(side==='a'?e.home_team:e.away_team);
+        const row={kind:'game',exchange:EXCHANGES[ex.key],eventId:e.eventID||`NFL--${e.id}`,home:e.home_team,away:e.away_team,market:label,side:name,line:line==='ml'?null:key==='spreads'&&side==='c'?-line:line,odds,fair:prob,edge,gameTime:new Date(kick).toISOString()};
+        const k=`${row.eventId}|${label}`;if(!best.has(k)||best.get(k).edge<edge)best.set(k,row);
+      }
+    }
+  }
+  return [...best.values()];
+}
+const exchangeInsert=(env,p,stamp)=>env.DB.prepare('INSERT OR IGNORE INTO exchange_shadow (id,kind,exchange,event_id,home,away,player,team,market,side,line,odds,fair_pct,edge,game_time,logged_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(p.kind==='prop'?`prop|${p.eventId}|${normalizedName(p.player)}`:`game|${p.eventId}|${p.market}`,p.kind,p.exchange,p.eventId,p.home||null,p.away||null,p.player||null,p.team||null,p.market,p.side,p.line,p.odds,+(100*p.fair).toFixed(2),+p.edge.toFixed(2),p.gameTime,stamp);
+// Player props on exchanges: one us_ex call per game in the next 48 hours,
+// every 30 minutes (7 credits a game), compared with this run's boards.
+async function recordExchangeProps(env,boards,now=Date.now()){
+  if(!env.DB||!env.THE_ODDS_API_KEY)return {};
+  const last=Number(await appSetting(env,'exchange-props-at')||0);
+  if(now-last<29*60000)return {skipped:true};
+  await setAppSetting(env,'exchange-props-at',String(now));
+  const fairs=sportsbookFairs(boards,now),stamp=new Date(now).toISOString(),statements=[],coverage={};let picks=0,games=0;
+  for(const board of boards){
+    const kick=Date.parse(board.commence_time);if(!(kick>now+5*60000)||kick-now>48*3600000)continue;
+    let ex;try{ex=await fetchExchangeOdds(board.id,env.THE_ODDS_API_KEY)}catch{continue}
+    games++;const out=exchangePropCandidates(board,ex,fairs,now);
+    for(const [k,c] of Object.entries(out.coverage)){const t=coverage[k]||={lines:0,matched:0};t.lines+=c.lines;t.matched+=c.matched}
+    for(const p of out.picks){statements.push(exchangeInsert(env,p,stamp));picks++}
+    // Closing price at the same exchange, line and side.
+    const open=(await env.DB.prepare("SELECT id,exchange,player,market,side,line FROM exchange_shadow WHERE kind='prop' AND event_id=? AND game_time>?").bind(board.eventID||`NFL--${board.id}`,stamp).all()).results||[];
+    for(const r of open){const key=Object.keys(EXCHANGES).find(k=>EXCHANGES[k]===r.exchange);let price=null;
+      for(const b of ex.bookmakers||[])if(b.key===key)for(const m of b.markets||[])if(recordLabels[m.key]===r.market)for(const o of m.outcomes||[])if(String(o.description||'').trim()===r.player&&String(o.name).toLowerCase()===r.side.toLowerCase()&&BTGStats.number(o.point)===Number(r.line))price=BTGStats.number(o.price);
+      if(price!==null)statements.push(env.DB.prepare('UPDATE exchange_shadow SET close_odds=?,close_at=? WHERE id=?').bind(price,stamp,r.id))}
+  }
+  if(statements.length)await env.DB.batch(statements);
+  await setAppSetting(env,'exchange-coverage',JSON.stringify({at:stamp,games,coverage})).catch(()=>{});
+  return {games,logged:picks};
+}
+async function gradeExchangeShadow(env,now=Date.now(),limit=30){
+  if(!env.DB||!env.BALLDONTLIE_API_KEY)return {graded:0};
+  const rows=(await env.DB.prepare('SELECT * FROM exchange_shadow WHERE result IS NULL AND game_time<? AND game_time>? ORDER BY game_time LIMIT ?').bind(new Date(now-4*3600000).toISOString(),new Date(now-14*86400000).toISOString(),limit).all()).results||[];
+  if(!rows.length)return {graded:0};
+  const statements=[],stamp=new Date(now).toISOString(),cache=new Map();
+  const games=rows.some(r=>r.kind==='game')?await finalGames(rows,env):[];
+  for(const r of rows){
+    if(r.kind==='game'){const g=games.find(g=>normalizedName(g.home_team?.full_name)===normalizedName(r.home)&&normalizedName(g.visitor_team?.full_name)===normalizedName(r.away));
+      if(!g||nflGameState(g)!=='final')continue;const hs=Number(g.home_team_score),as=Number(g.visitor_team_score);if(!Number.isFinite(hs)||!Number.isFinite(as))continue;
+      statements.push(env.DB.prepare('UPDATE exchange_shadow SET home_score=?,away_score=?,result=?,graded_at=? WHERE id=?').bind(hs,as,gameLineResult(r,hs,as),stamp,r.id));continue}
+    const record={sport:'NFL',player:r.player,team:r.team,gameTime:r.game_time,market:r.market,side:r.side,line:r.line};
+    const stat=await recordPlayerStats(record,env,undefined,cache).catch(()=>null);
+    if(shadowVoid(stat,r.game_time,now)){statements.push(env.DB.prepare('UPDATE exchange_shadow SET result=?,graded_at=? WHERE id=?').bind('void',stamp,r.id));continue}
+    if(!stat||stat.missingPlayerStats||!(stat.scoreboardFinal||nflGameState(stat.game||{})==='final'))continue;
+    const value=BTGStats.metric(record,stat).value,result=value===null?null:BTGStats.grade(r.side,r.line,value);
+    if(result)statements.push(env.DB.prepare('UPDATE exchange_shadow SET actual=?,result=?,graded_at=? WHERE id=?').bind(value,result,stamp,r.id));
+  }
+  if(statements.length)await env.DB.batch(statements);
+  return {graded:statements.length,checked:rows.length};
+}
+// Where a visitor can bet, from Cloudflare's request.cf (never stored).
+// Online sportsbook states as of Oct 2026, and the states where DraftKings
+// Predictions and FanDuel Predicts offer sports contracts (states without an
+// online sportsbook). Both lists change: check before relying on them.
+const SPORTSBOOK_STATES=new Set(['AZ','AR','CO','CT','DC','DE','FL','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MO','NV','NH','NJ','NY','NC','OH','OR','PA','RI','TN','VT','VA','WV','WY']);
+const PREDICTION_SPORTS_STATES=new Set(['AK','AL','CA','DE','FL','GA','HI','ID','MN','ND','NE','NM','OK','RI','SC','SD','TX','UT']);
+const EXCHANGE_EXCLUDED={kalshi:['NV'],polymarket:['NV'],novig:['AZ','MI','NV'],prophetx:[],betopenly:[]};
+function bettingOptions(request){
+  const country=request.cf?.country,state=String(request.cf?.regionCode||'').toUpperCase();
+  if(country!=='US'||!/^[A-Z]{2}$/.test(state))return {state:null,mode:'unknown'};
+  const sportsbooks=SPORTSBOOK_STATES.has(state);
+  return {state,mode:sportsbooks?'sportsbooks':'predictions',sportsbooks,
+    predictions:{draftkings:PREDICTION_SPORTS_STATES.has(state),fanduel:PREDICTION_SPORTS_STATES.has(state)},
+    exchanges:Object.keys(EXCHANGES).filter(k=>!EXCHANGE_EXCLUDED[k].includes(state)).map(k=>EXCHANGES[k])};
+}
+function bettingOptionsResponse(request){
+  return new Response(JSON.stringify({success:true,...bettingOptions(request)}),{headers:{'content-type':'application/json; charset=utf-8','cache-control':'private, no-store'}});
 }
 
 // Stats check (shadow): does the stat line agree with a pick? For each
@@ -1326,6 +1470,7 @@ async function publishOfficialPicks(request,env,ctx,opts={}){
     if(!opts.soonOnly)jobStep('publish','near shadow');await recordNearShadow(env,boards,plan.filter(p=>p.tier==='props').flatMap(p=>p.legs),Date.now()).catch(error=>console.warn('near_shadow_failed',error.message));
     if(!opts.soonOnly)jobStep('publish','leans');await recordLeans(env,boards,Date.now()).catch(error=>console.warn('lean_shadow_failed',error.message));
     if(!opts.soonOnly)jobStep('publish','bump shadow');await recordBumpShadow(env,boards,injuries,Date.now()).catch(error=>console.warn('bump_shadow_failed',error.message));
+    if(!opts.soonOnly)jobStep('publish','exchange props');await recordExchangeProps(env,boards,Date.now()).catch(error=>console.warn('exchange_shadow_failed',error.message));
     if(!opts.soonOnly)jobStep('publish','book shadow');await recordBookShadow(env,boards,Date.now()).catch(error=>console.warn('book_shadow_failed',error.message));
     if(!opts.soonOnly)jobStep('publish','td shadow');await recordTdShadow(env,boards,Date.now()).catch(error=>console.warn('td_shadow_failed',error.message));
     if(!opts.soonOnly)jobStep('publish','form wanted');await recordFormWanted(env,boards,Date.now()).catch(error=>console.warn('player_form_failed',error.message));

@@ -150,6 +150,26 @@ On each publish run, `sendBookAlerts` (in `worker/records.js`) also tells people
 
 Board cards show how often each bet hit in the player's last 10 games, and the prop sheet charts those games and lists every book's price. Publish runs record who is on the board and which markets they have (`player_form`, migration `0018`). Every in-between cron run, and publish runs outside NFL windows, fetch players from BALLDONTLIE in up to six parallel parts of five players, each part a separate invocation through the `SELF` binding with its own request allowance. A busy reply (429) pauses the fill until the next run. Each player is fetched again once per slate, after Tuesday and Friday 12:00 UTC. Visitors read everything from one cached `/api/form` request, so the board makes no per-card stats calls.
 
+## Prediction markets (shadow)
+
+Kalshi, Polymarket, Novig, ProphetX and BetOpenly come from The Odds API's
+`us_ex` region (DraftKings Predictions and FanDuel Predicts have no public
+price feed yet). They never enter a sportsbook fair price.
+
+- Game lines: the game-lines call now asks for `us,us_ex` (6 credits).
+- Player props: every 30 minutes, one `us_ex` call per game in the next 48
+  hours (7 markets, 7 credits), compared with that run's sportsbook boards.
+- An exchange price at least 1% better than the sportsbook fair price (3+
+  licensed books) is logged once per player prop or game market in
+  `exchange_shadow`, tracked to kickoff and graded. Prices are as listed,
+  before exchange fees. `exchange-coverage` in app_settings counts how many
+  exchange lines each run saw and how many matched a sportsbook fair price.
+
+`/api/where` reads the visitor's state from Cloudflare (never stored) and says
+whether they'd see sportsbooks or prediction markets, which prediction apps
+offer sports there, and which exchanges are open. The state lists in
+`records.js` are as of Oct 2026 and change often.
+
 ## Props the 3-book rule skips (shadow)
 
 Official picks need 3+ books pricing both sides. Two shadow tests in

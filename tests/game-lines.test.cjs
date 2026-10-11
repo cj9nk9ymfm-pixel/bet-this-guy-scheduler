@@ -5,7 +5,7 @@ const context=vm.createContext({URL,URLSearchParams,Request,Response,Headers,Abo
 const template=read('worker/index.template.js');
 vm.runInContext(template.slice(template.indexOf('const API_BASE')).replace('__MOVEMENT_SERVER__',read('worker/movement.js')).replace('__LIVE_SERVER__',read('worker/live.js')).replace('__STATS_SHARED__',read('dist/stats.js')).replace('__RECORDS_SERVER__',read('worker/records.js')).replace('__ACCOUNTS_SERVER__',read('worker/accounts.js')).replace('export default {','this.worker={'),context);
 const db=new DatabaseSync(':memory:');
-for(const f of ['0006_app_settings.sql','0023_game_lines.sql'].map(f=>require('node:fs').readdirSync('drizzle').find(x=>x.startsWith(f.slice(0,4)))))db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''));
+for(const f of ['0006_app_settings.sql','0023_game_lines.sql','0025_exchange_shadow.sql'].map(f=>require('node:fs').readdirSync('drizzle').find(x=>x.startsWith(f.slice(0,4)))))db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''));
 const wrap=(sql,args=[])=>({bind(...values){return wrap(sql,values)},async first(){return db.prepare(sql).get(...args)||null},async all(){return{results:db.prepare(sql).all(...args)}},async run(){const r=db.prepare(sql).run(...args);return{success:true,meta:{changes:Number(r.changes)}}}});
 context.env={DB:{prepare:sql=>wrap(sql),async batch(list){for(const s of list)await s.run()}},THE_ODDS_API_KEY:'k',BALLDONTLIE_API_KEY:'b'};
 const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v));
@@ -16,10 +16,12 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
     {key:'spreads',last_update:upd,outcomes:[{name:'New England Patriots',price:spread[0],point:-3.5},{name:'Las Vegas Raiders',price:spread[1],point:3.5}]},
     {key:'totals',last_update:upd,outcomes:[{name:'Over',price:total[0],point:44.5},{name:'Under',price:total[1],point:44.5}]}]});
   // BetMGM hangs a better Raiders moneyline (+175 vs ~+150 fair); spreads and totals are fair everywhere.
-  const event={id:'g1',commence_time:kick,home_team:'New England Patriots',away_team:'Las Vegas Raiders',bookmakers:[book('draftkings',[-180,150],[-110,-110],[-110,-110]),book('fanduel',[-178,148],[-110,-110],[-110,-110]),book('betrivers',[-182,152],[-110,-110],[-110,-110]),book('betmgm',[-200,175],[-110,-110],[-110,-110])]};
+  const event={id:'g1',commence_time:kick,home_team:'New England Patriots',away_team:'Las Vegas Raiders',bookmakers:[book('draftkings',[-180,150],[-110,-110],[-110,-110]),book('fanduel',[-178,148],[-110,-110],[-110,-110]),book('betrivers',[-182,152],[-110,-110],[-110,-110]),book('betmgm',[-200,175],[-110,-110],[-110,-110]),book('kalshi',[-185,150],[-110,-110],[105,-115])]};
   context.events=[event];
   let picks=J(run(`gameLineCandidates(events,${now})`));
-  assert.equal(picks.length,1,'only the mispriced side qualifies');
+  assert.equal(picks.length,1,'only the mispriced side qualifies (an exchange never moves the sportsbook fair price)');
+  const ex=J(run(`exchangeGameCandidates(events,${now})`));
+  assert.deepEqual(ex.map(p=>[p.exchange,p.market,p.side,p.odds]),[['Kalshi','Total','Over',105]],'Kalshi\'s +105 total beats the sportsbook fair price');
   assert.deepEqual([picks[0].market,picks[0].side,picks[0].line,picks[0].odds,picks[0].book],['Moneyline','Las Vegas Raiders',null,175,'betmgm']);
   // Results from final scores.
   const R=(m,side,line,hs,as)=>run(`gameLineResult(${JSON.stringify({market:m,side,line,home:'H',away:'A'})},${hs},${as})`);
@@ -28,11 +30,12 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
   // Logging: fetch stubbed; throttled to one call per window.
   let oddsCalls=0;
   context.fetch=async url=>{url=String(url);
-    if(url.includes('the-odds-api.com')){oddsCalls++;assert.ok(url.includes('markets=h2h%2Cspreads%2Ctotals'));return new Response(JSON.stringify(context.events))}
+    if(url.includes('the-odds-api.com')){oddsCalls++;assert.ok(url.includes('markets=h2h%2Cspreads%2Ctotals')&&url.includes('regions=us%2Cus_ex'));return new Response(JSON.stringify(context.events))}
     if(url.includes('balldontlie'))return new Response(JSON.stringify({data:[{home_team:{full_name:'New England Patriots'},visitor_team:{full_name:'Las Vegas Raiders'},home_team_score:17,visitor_team_score:24,status:'Final'}]}));
     if(url.includes('open-meteo')){const times=[...Array(24)].map((_,h)=>`2026-10-11T${String(h).padStart(2,'0')}:00`);return new Response(JSON.stringify({hourly:{time:times,temperature_2m:times.map(()=>48),wind_speed_10m:times.map((_,h)=>h===18?22:9),wind_gusts_10m:times.map(()=>30),precipitation_probability:times.map(()=>20)}}))}
     return new Response(null,{status:404})};
-  let out=J(await run(`recordGameShadow(env,${now})`));assert.deepEqual(out,{games:1,qualified:1,tracked:0},'tracking starts on the next run');
+  let out=J(await run(`recordGameShadow(env,${now})`));assert.deepEqual(out,{games:1,qualified:1,tracked:0,exchange:1},'tracking starts on the next run');
+  assert.equal(db.prepare('SELECT exchange FROM exchange_shadow').get().exchange,'Kalshi');
   out=J(await run(`recordGameShadow(env,${now+120000})`));assert.deepEqual(out,{skipped:true});assert.equal(oddsCalls,1);
   // The price moves before kickoff: the close is tracked.
   event.bookmakers[3].markets[0].outcomes[1].price=160;
