@@ -1145,7 +1145,7 @@ async function scheduledMaintenance(request,env,ctx){
   if(!await maintenanceAuthorized(request,env))return json({success:false,error:'Unauthorized'},401);
   if(!env.DB||!env.THE_ODDS_API_KEY||!env.BALLDONTLIE_API_KEY)return json({success:false,error:'Maintenance configuration incomplete'},503);
   const job=new URL(request.url).searchParams.get('job');
-  const jobs={publish:()=>publishOfficialPicks(request,env,ctx),digest:()=>sendWeeklyDigest(env),alerts:()=>sendDueAlerts(env),xpost:()=>runXPosts(env),tdGrade:async()=>({td:await gradeTdShadow(env),bump:await gradeBumpShadow(env).catch(error=>({error:error.message})),live:await gradeLiveShadow(env).catch(error=>({error:error.message})),games:await gradeGameShadow(env).catch(error=>({error:error.message})),books:await gradeBookShadow(env).catch(error=>({error:error.message}))}),live:()=>recordLiveShadow(env,ctx),form:()=>{const q=new URL(request.url).searchParams,size=Math.min(8,Math.max(1,Number(q.get('size'))||5)),part=Math.min(7,Math.max(0,Number(q.get('part'))||0));return fillPlayerForm(env,ctx,Date.now(),size,part*size)},lineGrade:()=>gradeLineShadow(env),nearGrade:()=>gradeNearShadow(env),statsCheck:()=>runStatsChecks(env,ctx),grade:()=>settlePublicRecords(env),closing:()=>captureClosingLines(env)};
+  const jobs={publish:()=>publishOfficialPicks(request,env,ctx),digest:()=>sendWeeklyDigest(env),alerts:()=>sendDueAlerts(env),xpost:()=>runXPosts(env),tdGrade:async()=>({td:await gradeTdShadow(env),bump:await gradeBumpShadow(env).catch(error=>({error:error.message})),live:await gradeLiveShadow(env).catch(error=>({error:error.message})),games:await gradeGameShadow(env).catch(error=>({error:error.message})),books:await gradeBookShadow(env).catch(error=>({error:error.message})),exchanges:await gradeExchangeShadow(env).catch(error=>({error:error.message}))}),live:()=>recordLiveShadow(env,ctx),form:()=>{const q=new URL(request.url).searchParams,size=Math.min(8,Math.max(1,Number(q.get('size'))||5)),part=Math.min(7,Math.max(0,Number(q.get('part'))||0));return fillPlayerForm(env,ctx,Date.now(),size,part*size)},lineGrade:()=>gradeLineShadow(env),nearGrade:()=>gradeNearShadow(env),statsCheck:()=>runStatsChecks(env,ctx),grade:()=>settlePublicRecords(env),closing:()=>captureClosingLines(env)};
   if(!Object.hasOwn(jobs,job))return json({success:false,error:'Unknown maintenance job'},400);
   // Form fills run in parts at once; each part is its own job.
   const key=job==='form'?`form:${new URL(request.url).searchParams.get('part')||0}`:job;
@@ -1285,6 +1285,7 @@ async function routeRequest(request, env, ctx) {
     if (url.pathname === "/api/injuries") return injuriesResponse(request, env, ctx);
     if (url.pathname === "/api/leans") return leansResponse(request, env, ctx);
     if (url.pathname === "/api/weather") return weatherResponse(request, env, ctx);
+    if (url.pathname === "/api/where") return bettingOptionsResponse(request);
     if (url.pathname === "/api/live-games") return liveGames(request, env, ctx);
     if (url.pathname === "/api/live-player") return livePlayer(request, env, ctx);
     if (url.pathname === "/api/live-game-stats") return liveGameStats(request, env, ctx);
