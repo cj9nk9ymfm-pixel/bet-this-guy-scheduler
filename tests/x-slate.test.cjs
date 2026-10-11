@@ -40,5 +40,8 @@ pick('d','Brock Purdy',110,'2026-10-13T00:15:00.000Z');pick('e','Old Pick',150,'
   const pt=posts.at(-1).text;assert.ok(pt.startsWith('🔔 We bet the number')&&pt.includes('2 of 3 of Sunday’s picks paid more')&&pt.includes('Turn on alerts')&&pt.length<=280,pt);
   assert.ok(run('globalThis.__svg').includes('LOCKED BEFORE KICKOFF'));
   assert.equal((await run(`postAlertsPinToX(env,${Date.parse('2026-10-11T17:50:00Z')})`)).done,true,'once per request');
+  assert.ok(run('globalThis.__svg').includes('2-leg')===false&&run('globalThis.__svg').includes('Under 4.5 rec'),'short market names');
+  db.prepare("UPDATE app_settings SET value='2026-10-11#2' WHERE key='x-pin-request'").run();
+  assert.equal((await run(`postAlertsPinToX(env,${Date.parse('2026-10-11T17:55:00Z')})`)).posted,1,'a suffix resends');
   console.log('PASS: slate post sends the day\'s pending picks on one graphic, once, from 16 hours before kickoff, and a final card 30 minutes out');
 })().catch(error=>{console.error(error);process.exit(1)});
