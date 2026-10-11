@@ -2198,6 +2198,8 @@ async function postWeeklyToX(env,now=Date.now()){
 // What the player actually did, for result posts: "had 3 receptions".
 function xActual(l){
   const v=Number(l?.actualValue);if(l?.actualValue==null||!Number.isFinite(v))return '';
+  if(/passing touchdowns/i.test(l.market||''))return `threw ${v} TD${v===1?'':'s'}`;
+  if(/interceptions thrown/i.test(l.market||''))return `threw ${v} INT${v===1?'':'s'}`;
   if(/touchdown/i.test(l.market||'')&&Number(l.line)===0.5)return v>=1?`scored (${v})`:'no touchdown';
   const m=String(l.market||'').toLowerCase();
   return `had ${v} ${v===1?m.replace(/s$/,''):m}`;
@@ -2385,13 +2387,14 @@ function xSlateSvg(d){
   const short=t=>String(t).replace(/interceptions thrown/i,'INT').replace(/passing touchdowns/i,'pass TDs').replace(/receiving yards/i,'rec yds').replace(/rushing yards/i,'rush yds').replace(/passing yards/i,'pass yds').replace(/receptions/i,'rec');
   const picks=d.picks.slice(0,16).map(p=>({...p,text:short(p.text)})),more=d.picks.length-picks.length,gap=picks.length>6?58:62;
   const H=Math.max(675,150+picks.length*gap+(more>0?40:0)+110),B=H-675;
-  const rows=picks.map((p,i)=>{const y=150+i*gap;return `<circle cx="${X+10}" cy="${y-9}" r="6" fill="${M}"/><text x="${X+30}" y="${y}" font-family="${F.sb}" font-size="${xFit(p.text,W-130,25,.56)}" fill="#ffffff">${xEsc(p.text)}</text><text x="${R}" y="${y}" text-anchor="end" font-family="${F.xb}" font-size="24" fill="${M}">${xEsc(p.odds)}</text><text x="${X+30}" y="${y+25}" font-family="${F.sb}" font-size="18" fill="#9fb0cc">${xEsc(p.sub)}</text>`}).join('');
+  const mark=(res,x,y)=>res==='won'?`<circle cx="${x}" cy="${y}" r="11" fill="${M}"/><path d="M${x-5} ${y}l3.5 3.5 7-7.5" fill="none" stroke="#06231a" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>`:res==='lost'?`<circle cx="${x}" cy="${y}" r="11" fill="#f87171"/><path d="M${x-4.5} ${y-4.5}l9 9M${x+4.5} ${y-4.5}l-9 9" fill="none" stroke="#2a0909" stroke-width="2.6" stroke-linecap="round"/>`:res==='push'?`<circle cx="${x}" cy="${y}" r="11" fill="#cbd5e1"/>`:`<circle cx="${x}" cy="${y}" r="6" fill="${M}"/>`;
+  const rows=picks.map((p,i)=>{const y=150+i*gap;return `${mark(p.res,X+10,y-9)}<text x="${X+30}" y="${y}" font-family="${F.sb}" font-size="${xFit(p.text,W-130,25,.56)}" fill="#ffffff">${xEsc(p.text)}</text><text x="${R}" y="${y}" text-anchor="end" font-family="${F.xb}" font-size="24" fill="${p.res==="lost"?"#f87171":p.res==="push"?"#cbd5e1":M}">${xEsc(p.odds)}</text><text x="${X+30}" y="${y+25}" font-family="${F.sb}" font-size="18" fill="#9fb0cc">${xEsc(p.sub)}</text>`}).join('');
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="${H}" viewBox="0 0 1200 ${H}">
 <defs><linearGradient id="tm" x1="0" y1="0" x2="0.45" y2="1"><stop offset="0" stop-color="#1d4ed8"/><stop offset="1" stop-color="#0b1530"/></linearGradient></defs>
 <rect width="1200" height="${H}" fill="#0b1530"/><rect width="470" height="${H}" fill="url(#tm)"/>
 <text x="56" y="120" font-family="${F.xb}" font-size="22" letter-spacing="4" fill="#ffffff" fill-opacity=".8">${xEsc(d.kicker||(d.final?'FINAL CARD':'OFFICIAL PICKS'))}</text>
-<text x="50" y="260" font-family="${F.g}" font-size="${xFit(d.day,380,120,.62)}" fill="#ffffff">${xEsc(d.day)}</text>
-<text x="56" y="318" font-family="${F.sb}" font-size="26" fill="#ffffff" fill-opacity=".75">${xEsc(d.date)} · ${d.picks.length} pick${d.picks.length===1?'':'s'}${d.final?'':' so far'}</text>
+<text x="50" y="260" font-family="${F.g}" font-size="${xFit(d.day,380,120,.62)}" fill="${d.dayColor||"#ffffff"}">${xEsc(d.day)}</text>
+<text x="56" y="318" font-family="${F.sb}" font-size="26" fill="#ffffff" fill-opacity=".75">${xEsc(d.dateLine||`${d.date} · ${d.picks.length} pick${d.picks.length===1?'':'s'}${d.final?'':' so far'}`)}</text>
 <text x="56" y="352" font-family="${F.sb}" font-size="22" fill="#ffffff" fill-opacity=".6">${xEsc(d.note||(d.final?`All locked · kickoff ${d.kick}`:'More can drop up to kickoff'))}</text>
 ${d.season?`<text x="56" y="430" font-family="${F.sb}" font-size="24" fill="#ffffff" fill-opacity=".75">Season <tspan font-family="${F.xb}" fill="#ffffff" fill-opacity="1">${xEsc(d.season)}</tspan></text>`:''}
 ${xLogo(56,520+B,56)}<text x="128" y="${558+B}" font-family="${F.g}" font-size="30" fill="#ffffff">Bet This Guy</text>
@@ -2453,6 +2456,34 @@ async function postAlertsPinToX(env,now=Date.now()){
   try{const sent=await xPost(env,text,mediaId);await xDone(env,key,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} pin ${day} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,picks:rows.length,moved,graphic:Boolean(mediaId)}}
   catch(error){console.warn('x_pin_failed',error.message);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
 }
+// Day recap: a game day's graded card (record, $100-a-pick money, closing
+// lines) on one graphic. Posts once per value of app_settings x-recap-request,
+// an Eastern date (2026-10-11, or 2026-10-11#2 to resend), once all are graded.
+async function postDayRecapToX(env,now=Date.now()){
+  if(!env.DB||!xReady(env))return {posted:0,disabled:true};
+  const req=String((await appSetting(env,'x-recap-request'))||'');if(!/^\d{4}-\d{2}-\d{2}(#\w{1,8})?$/.test(req))return {posted:0,none:true};
+  const day=req.slice(0,10),key=`x-recap:${req}`;if(!(await xClaimable(env,key,now)))return {posted:0,done:true};
+  const all=(await env.DB.prepare("SELECT * FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%'").all()).results||[];
+  const rows=all.filter(r=>etDate(Date.parse(r.game_time),{year:'numeric',month:'2-digit',day:'2-digit'})===`${day.slice(5,7)}/${day.slice(8,10)}/${day.slice(0,4)}`).sort((a,b)=>String(a.game_time).localeCompare(String(b.game_time))||String(a.posted_at).localeCompare(String(b.posted_at)));
+  if(!rows.length)return {posted:0,empty:true};
+  const s=weeklySummary(rows);if(s.pending)return {posted:0,waiting:s.pending};
+  if(!(await xClaim(env,key,now)))return {posted:0,done:true};
+  const season=weeklySummary(all),dayName=etDate(Date.parse(rows[0].game_time),{weekday:'long'});
+  // Average closing-line value: how much more our price paid than the close.
+  const clv=rows.filter(r=>r.kind==='prop'&&r.closing_odds!=null&&(r.closing_line==null||Math.abs(Number(r.closing_line)-Number(r.line))<=.01)).map(r=>(weeklyDecimal(r.odds)/weeklyDecimal(r.closing_odds)-1)*100);
+  const avg=clv.length?clv.reduce((a,b)=>a+b,0)/clv.length:null,total=s.profit+s.parlayProfit;
+  const rec=`${s.wins}–${s.losses}${s.pushes?`–${s.pushes}`:''}`;
+  const picks=rows.map(r=>{const legs=recordLegs(r),f=legs[0]||{},closed=r.closing_odds!=null?` · closed ${weeklyOdds(r.closing_odds)}`:'';return r.kind==='parlay'?{res:r.result,text:`${legs.length}-leg parlay`,odds:weeklyOdds(r.combined_odds),sub:legs.map(l=>l.player).join(' + ')}:{res:r.result,text:`${r.player} · ${weeklyLegText(r)}`,odds:weeklyOdds(r.odds),sub:`${xActual(f)?xActual(f).replace(/^./,c=>c.toUpperCase()):''}${closed}`.replace(/^ · /,'')}});
+  const parlays=s.parlayWins+s.parlayLosses?` Parlay${s.parlayWins+s.parlayLosses>1?'s':''} ${s.parlayWins}–${s.parlayLosses}, ${weeklyMoney(total)} on the day.`:'';
+  const beatLine=s.tracked?`\n${s.beat} of ${s.tracked} beat the closing line${avg!==null&&avg>0?`, paying ${avg.toFixed(1)}% more than the price at kickoff on average`:''}.`:'';
+  const seasonLine=season.wins+season.losses>=5?`\nSeason: ${season.wins}–${season.losses}, ${weeklyMoney(season.profit)}${season.tracked?` · ${season.beat} of ${season.tracked} beat the close`:''}.`:'';
+  const text=xShort(`📊 ${dayName}’s card: ${rec} on props, ${weeklyMoney(s.profit)} at $100 a pick.${parlays}${beatLine}${seasonLine}\n\nEvery pick graded in public. Link in bio. 21+`);
+  let mediaId=null;
+  try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(xSlateSvg({final:true,kicker:`${dayName.toUpperCase()} RESULTS`,day:rec,dayColor:s.profit>=0?'#2ee6a8':'#f87171',dateLine:`${weeklyMoney(s.profit)} on props · $100 a pick`,note:s.tracked?`${s.beat} of ${s.tracked} beat the closing line`:'',season:season.wins+season.losses>=5?`${season.wins}–${season.losses} · ${weeklyMoney(season.profit)}`:'',picks})))}
+  catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} recap graphic: ${error.message}`).catch(()=>{})}
+  try{const sent=await xPost(env,text,mediaId);await xDone(env,key,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} recap ${req} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,graphic:Boolean(mediaId)}}
+  catch(error){console.warn('x_recap_failed',error.message);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
+}
 async function runXPosts(env,now=Date.now()){
   const picks=await postPicksToX(env,now);
   const weekly=await postWeeklyToX(env,now);
@@ -2463,10 +2494,11 @@ async function runXPosts(env,now=Date.now()){
   const final=picks.posted||weekly.posted?{posted:0,waiting:true}:await postSlateToX(env,now,true);
   const slate=picks.posted||weekly.posted||final.posted?{posted:0,waiting:true}:await postSlateToX(env,now);
   const pin=picks.posted||weekly.posted||final.posted||slate.posted?{posted:0,waiting:true}:await postAlertsPinToX(env,now);
-  const results=picks.posted||weekly.posted||final.posted||slate.posted||pin.posted?{posted:0,waiting:true}:await postResultsToX(env,now);
+  const recap=picks.posted||weekly.posted||final.posted||slate.posted||pin.posted?{posted:0,waiting:true}:await postDayRecapToX(env,now);
+  const results=picks.posted||weekly.posted||final.posted||slate.posted||pin.posted||recap.posted?{posted:0,waiting:true}:await postResultsToX(env,now);
   // The pinned summary waits for a run with nothing else heavy.
-  const summary=picks.posted||weekly.posted||final.posted||slate.posted||pin.posted||results.posted?{posted:0,waiting:true}:await postSummaryToX(env,now);
-  return {picks,weekly,closing,final,slate,pin,results,summary};
+  const summary=picks.posted||weekly.posted||final.posted||slate.posted||pin.posted||recap.posted||results.posted?{posted:0,waiting:true}:await postSummaryToX(env,now);
+  return {picks,weekly,closing,final,slate,pin,recap,results,summary};
 }
 // "My book" alerts: a good-value price at one of someone's own sportsbooks.
 // The fair price always comes from every book (3+ pricing both sides, the same
