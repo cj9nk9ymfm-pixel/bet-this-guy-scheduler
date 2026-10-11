@@ -2408,7 +2408,7 @@ function statsProp(l){
   };
 })();
 
-// "Just missed the cut" (leans): props close to the official bar, and qualifying ones held back by the
+// "Worth a look" (leans): props close to the official bar, and qualifying ones held back by the
 // two-a-game limit. Shown under the picks, never counted in the record.
 (()=>{
   if(typeof document.getElementById!=='function'||!document.getElementById('leansNow')||typeof fetch!=='function')return;
