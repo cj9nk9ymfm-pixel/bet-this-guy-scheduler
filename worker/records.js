@@ -335,6 +335,31 @@ async function recordNbaShadow(request,env,ctx,now=Date.now()){
   if(statements.length)await env.DB.batch(statements);
   return {games:games.length,boards:boards.length,logged:picks.length,tracked:open.length};
 }
+// NBA preseason (a plumbing test before the season): the preseason feed is
+// read here only, never by the public board, at most once an hour. Rows go
+// in nba_shadow with event ids starting NBAPRE-- so they stay out of the NBA
+// record. Preseason minutes are erratic, so results say little about edge;
+// the point is that odds, logging and grading all work end to end.
+const NBA_PRESEASON_KEY='basketball_nba_preseason';
+async function recordNbaPreseason(env,now=Date.now()){
+  if(!env.DB||!env.THE_ODDS_API_KEY)return {logged:0};
+  const last=Number(await appSetting(env,'nba-pre-at')||0);
+  if(now-last<55*60000)return {skipped:true};
+  await setAppSetting(env,'nba-pre-at',String(now));
+  const sport={...NBA_SPORT,key:NBA_PRESEASON_KEY,expandedMarkets:[]};
+  const events=(await fetchSportEvents(sport,env.THE_ODDS_API_KEY)).filter(e=>{const t=Date.parse(e.commence_time);return t>now+5*60000&&t<=now+24*3600000}).slice(0,10);
+  const boards=[],errors=[];
+  for(const e of events){try{const d=await fetchEventOdds(sport,e.id,env.THE_ODDS_API_KEY,false);boards.push({...d,eventID:`NBAPRE--${e.id}`,sport_label:'NBA'})}catch(error){errors.push(error.message)}}
+  const priced=boards.filter(b=>(b.bookmakers||[]).some(k=>(k.markets||[]).length)).length;
+  const stamp=new Date(now).toISOString(),picks=officialCandidates(boards,now);
+  const statements=picks.map(p=>env.DB.prepare('INSERT OR IGNORE INTO nba_shadow (id,event_id,player,team,market,side,line,odds,book,edge,game_time,logged_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)').bind(`${p.gameId}|${normalizedName(p.player)}`,p.gameId,p.player,p.team||null,p.market,p.side,p.line,p.odds,p.book,+p.edge.toFixed(2),p.gameTime,stamp));
+  const open=(await env.DB.prepare("SELECT id,event_id,player,market,side,line FROM nba_shadow WHERE game_time>? AND event_id LIKE 'NBAPRE--%'").bind(stamp).all()).results||[];
+  for(const r of open){const event=boards.find(e=>e.eventID===r.event_id);const best=event?bigFivePrice(event,r):null;if(best!==null)statements.push(env.DB.prepare('UPDATE nba_shadow SET close_odds=?,close_at=? WHERE id=?').bind(best,stamp,r.id))}
+  if(statements.length)await env.DB.batch(statements);
+  // What the feed had, for the end-of-preseason report.
+  const props=boards.reduce((n,b)=>n+(b.bookmakers||[]).reduce((m,k)=>m+(k.markets||[]).reduce((x,mk)=>x+(mk.outcomes||[]).length,0),0),0);
+  return {games:events.length,priced,props,logged:picks.length,tracked:open.length,...(errors.length?{error:errors[0].slice(0,80)}:{})};
+}
 // The best big-5 price on offer for a shadow pick's player, market, side and line.
 function bigFivePrice(event,r){
   let best=null;
