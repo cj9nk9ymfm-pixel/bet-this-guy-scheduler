@@ -150,6 +150,20 @@ On each publish run, `sendBookAlerts` (in `worker/records.js`) also tells people
 
 Board cards show how often each bet hit in the player's last 10 games, and the prop sheet charts those games and lists every book's price. Publish runs record who is on the board and which markets they have (`player_form`, migration `0018`). Every in-between cron run, and publish runs outside NFL windows, fetch players from BALLDONTLIE in up to six parallel parts of five players, each part a separate invocation through the `SELF` binding with its own request allowance. A busy reply (429) pauses the fill until the next run. Each player is fetched again once per slate, after Tuesday and Friday 12:00 UTC. Visitors read everything from one cached `/api/form` request, so the board makes no per-card stats calls.
 
+## Parlay from our singles
+
+Fresh parlays need two props qualifying in different games at the same moment,
+which is now rare. When a run posts no parlay, `singlesParlay` pairs two
+pending official singles from different games whose current big-5 price is
+still at least 0.5% better than fair, once the first leg is within two hours of
+kickoff. It's locked at today's prices (not the singles' posted prices), counts
+in the 2-leg parlay record, and posts at most one a day.
+
+## Pick engine alert
+
+The 5-minute GitHub workflow also reads `/api/engine`. If the last pick check
+is 30 minutes old it pushes an alert to `ALERT_NTFY_TOPIC` (again at 2 hours).
+
 ## Leans and the per-game limit
 
 Official props are capped at two per game (`OFFICIAL_PER_GAME`): picks in one

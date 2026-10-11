@@ -173,6 +173,34 @@ function officialPlan(candidates,existing,week,now=Date.now()){
   }
   return plan;
 }
+// Parlay from our own singles: when no parlay forms from fresh qualifiers
+// (two props qualifying in different games at the same moment is rare), pair
+// two pending official singles from different games whose current big-5
+// price is still better than fair, inside two hours of the first kickoff.
+// Priced and locked at today's prices; at most one a day.
+function singlesParlay(boards,existing,now=Date.now()){
+  const saved=existing.map(r=>({...r,legs:recordLegs(r)}));
+  const day=t=>new Date(t).toISOString().slice(0,10);
+  const done=new Set(saved.filter(r=>r.kind==='parlay'&&r.legs.some(l=>l.fromSingles)).map(r=>day(Date.parse(r.legs.map(l=>l.gameTime).sort()[0]))));
+  const current=officialCandidates(boards,now,{},{min:.5});
+  const legs=[];
+  for(const r of saved){
+    if(r.kind!=='prop'||r.result||Date.parse(r.game_time)<=now+5*60000)continue;
+    const leg=r.legs[0]||{},key=officialPlayer({gameId:r.game_id,player:r.player});
+    const c=current.find(c=>c.playerKey===key&&c.market===r.market&&c.side===r.side&&Number(c.line)===Number(r.line));
+    if(c)legs.push({...c,fromSingles:true});
+  }
+  legs.sort((a,b)=>b.edge-a.edge);
+  for(let i=0;i<legs.length;i++)for(let j=i+1;j<legs.length;j++){
+    const pair=[legs[i],legs[j]];if(pair[0].gameId===pair[1].gameId)continue;
+    const first=Math.min(...pair.map(l=>Date.parse(l.gameTime)));
+    if(first>now+PARLAY_WINDOW||done.has(day(first)))continue;
+    const odds=recordAmerican(pair.reduce((d,l)=>d*recordDecimal(l.odds),1));
+    if(odds<100||odds>999)continue;
+    return {tier:'reasonable',legs:pair};
+  }
+  return null;
+}
 async function writeOfficialPlan(plan,week,env){
   const prefix=`official|${week}|`,statements=[];
   for(const pick of plan){
@@ -1029,7 +1057,10 @@ async function publishOfficialPicks(request,env,ctx,opts={}){
     // Players listed Out or Doubtful are taken off the boards first.
     const injuries=await injuryMap(env).catch(()=>new Map());boards.splice(0,boards.length,...withoutInjured(boards,injuries));
     if(!opts.soonOnly)jobStep('publish','plan');const existing=await env.DB.prepare('SELECT * FROM public_recommendations WHERE id>=? AND id<?').bind(prefix,prefix+'\uffff').all();
-    const stats={};const candidates=officialCandidates(boards,Date.now(),stats);const plan=officialPlan(candidates,existing.results||[],week,Date.now()),posted=await writeOfficialPlan(plan,week,env);
+    const stats={};const candidates=officialCandidates(boards,Date.now(),stats);const plan=officialPlan(candidates,existing.results||[],week,Date.now());
+    // No fresh parlay this run: try one from our own pending singles.
+    if(!plan.some(p=>p.tier!=='props')){const extra=singlesParlay(boards,existing.results||[],Date.now());if(extra)plan.push(extra)}
+    const posted=await writeOfficialPlan(plan,week,env);
     // One row per full run: what the pick job saw and why it did or didn't post
     // (the quick soon-games runs aren't logged, so the engine status stays whole-board).
     if(!opts.soonOnly)await env.DB.batch([
