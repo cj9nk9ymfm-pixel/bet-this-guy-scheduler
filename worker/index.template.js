@@ -781,6 +781,7 @@ function gradeRecordSide(side, line, value) {
   return BTGStats.grade(side, line, value);
 }
 
+const EARLY_MARKETS=/^(receptions|rush attempts|pass attempts|pass completions|interceptions thrown|passing touchdowns|rushing touchdowns|receiving touchdowns|rush \+ receiving touchdowns|pass \+ rush \+ receiving tds|longest reception|longest rush|longest pass completion|sacks|solo tackles|tackles \+ assists|assists|defensive interceptions|field goals made|field goals|extra points|kicking points)$/i;
 async function gradePublicRecord(record, env, statsCache, signal) {
   const selections=record.kind === 'parlay'?recordLegs(record):[{...recordLegs(record)[0],player:record.player,market:record.market,side:record.side,line:record.line,odds:record.odds,sport:record.sport,gameTime:record.gameTime||record.game_time}];
   const rawLegs = selections.map(leg => {const {legs_json,legs,...selection}=leg;return {...selection,gameTime:leg.gameTime||leg.game_time||record.game_time}});
@@ -816,6 +817,14 @@ async function gradePublicRecord(record, env, statsCache, signal) {
       const playValue=await playByPlayMarketValue(leg,row,env,signal,statsCache);
       if(playValue!==null)observedValue=playValue;
     }
+    // Stats that only go up (not yards: a loss of yards can lower them): once
+    // the live box score passes the line, the bet is decided, so it settles
+    // now (Under lost, Over won) instead of waiting for the final.
+    let decidedEarly=false;
+    if(!finished&&observedValue===null&&row&&!row.missingPlayerStats&&EARLY_MARKETS.test(String(leg.market||''))&&['Over','Under'].includes(leg.side)){
+      const live=BTGStats.number(recordMarketValue(leg,row));
+      if(live!==null&&live>Number(leg.line)){observedValue=live;decidedEarly=true}
+    }
     let minimumOnly=false;
     // Reported scoring components establish an over hit even when the feed
     // omits other touchdown categories. Missing components never imply zero.
@@ -832,7 +841,7 @@ async function gradePublicRecord(record, env, statsCache, signal) {
     const pendingReason=!provisional?(Date.parse(leg.gameTime)>Date.now()?'Game not started':!row?'Player stats not available':!finished?'Game in progress':!BTGStats.supports(leg)?'Market needs play-by-play verification':'Required stat not reported'):null;
     // A short, stat-free note on why a finished leg could not be graded.
     const evidence=pendingReason&&row?{box:row.missingPlayerStats?`no unique row (${row.boxMatches??'?'} of ${row.boxRowCount??'?'})`:'matched',playerId:row.player_id??row.player?.id??null,statFields:Object.keys(row).filter(key=>/field_goal|extra_point|recept|kicking|total_points/.test(key)).map(key=>`${key}=${row[key]}`).slice(0,8),plays:row.game?.id?(await recordGamePlays(row,env,signal,statsCache))?.length??null:null}:undefined;
-    record.gradedLegs.push({...leg, result:provisional||'pending', actualValue:observedValue, minimumOnly,pendingReason,...(evidence?{evidence}:{}),boxScoreFinal:Boolean(row&&nflGameState(row.game||{})==='final')});
+    record.gradedLegs.push({...leg, result:provisional||'pending', actualValue:observedValue, minimumOnly,...(decidedEarly?{decidedEarly}:{}),pendingReason,...(evidence?{evidence}:{}),boxScoreFinal:Boolean(row&&nflGameState(row.game||{})==='final')});
   }
   const aggregate=values=>values.includes('lost')?'lost':values.every(value=>value==='push')?'push':values.every(value=>value==='won'||value==='push')?'won':null;
   record.provisionalResult=record.kind==='parlay'?aggregate(provisionalResults):provisionalResults[0];
