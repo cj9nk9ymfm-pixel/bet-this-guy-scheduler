@@ -2199,7 +2199,8 @@ async function postWeeklyToX(env,now=Date.now()){
 function xActual(l){
   const v=Number(l?.actualValue);if(l?.actualValue==null||!Number.isFinite(v))return '';
   if(/touchdown/i.test(l.market||'')&&Number(l.line)===0.5)return v>=1?`scored (${v})`:'no touchdown';
-  return `had ${v} ${String(l.market||'').toLowerCase()}`;
+  const m=String(l.market||'').toLowerCase();
+  return `had ${v} ${v===1?m.replace(/s$/,''):m}`;
 }
 const XRESULT={won:{label:'WINNER',fill:'#2ee6a8',ink:'#06231a',icon:'check',odds:'#2ee6a8',emoji:'✅',word:'Cashed'},lost:{label:'LOSS',fill:'#f87171',ink:'#2a0909',icon:'x',odds:'#f87171',emoji:'❌',word:'Lost'},push:{label:'PUSH',fill:'#cbd5e1',ink:'#0b1530',icon:'dash',odds:'#cbd5e1',emoji:'➖',word:'Push'}};
 const xPayout=r=>{const d=weeklyDecimal(r.kind==='parlay'?r.combined_odds:r.odds);return r.result==='won'&&d?100*(d-1):r.result==='lost'?-100:0};
@@ -2208,7 +2209,7 @@ function xResultText(r,season){
   const legs=recordLegs(r),look=XRESULT[r.result],record=season&&season.wins+season.losses>=5?`Season: ${season.wins}–${season.losses}, ${weeklyMoney(season.profit)} at $100 a pick.`:'';
   const head=r.kind==='parlay'
     ?`${look.emoji} ${look.word}: ${legs.length}-leg parlay (${weeklyOdds(r.combined_odds)})\n${legs.map(l=>`${l.result==='won'?'✅':l.result==='lost'?'❌':'➖'} ${l.player} ${weeklyLegText(l)}`).join('\n')}`
-    :`${look.emoji} ${look.word}: ${r.player} ${weeklyLegText(r)} (${weeklyOdds(r.odds)})${xActual(legs[0])?`\nFinal: ${xActual(legs[0])}.`:''}`;
+    :`${look.emoji} ${look.word}: ${r.player} ${weeklyLegText(r)} (${weeklyOdds(r.odds)})${xActual(legs[0])?(r.status==='provisional'?`\n${r.player} already ${xActual(legs[0])}, with the game still on.`:`\nFinal: ${xActual(legs[0])}.`):''}`;
   const tail=r.result==='lost'?'We post every loss too.':'Every pick graded in public.';
   return xShort(`${head}\n\n${tail}${record?` ${record}`:''}\n21+`);
 }
@@ -2226,7 +2227,7 @@ async function xResultData(env,r,season){
 async function postResultsToX(env,now=Date.now(),limit=1){
   if(!env.DB||!xReady(env))return {posted:0,disabled:true};
   const since=new Date(now-3*86400000).toISOString();
-  const rows=(await env.DB.prepare("SELECT id,kind,sport,player,market,side,line,odds,combined_odds,legs_json,game_time,status,result FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND status='final' AND result IN ('won','lost','push') AND settled_at>? ORDER BY settled_at LIMIT 8").bind(since).all()).results||[];
+  const rows=(await env.DB.prepare("SELECT id,kind,sport,player,market,side,line,odds,combined_odds,legs_json,game_time,status,result FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND ((status='final' AND result IN ('won','lost','push') AND settled_at>?) OR (status='provisional' AND result IN ('won','lost') AND game_time>?)) ORDER BY COALESCE(settled_at,game_time) LIMIT 8").bind(since,since).all()).results||[];
   let posted=0,season=null;
   for(const r of rows){
     if(posted>=limit)break;
