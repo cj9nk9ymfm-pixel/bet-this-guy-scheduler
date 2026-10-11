@@ -2379,22 +2379,26 @@ async function announceNow(env){
 // day, from 16 hours before the first of them kicks off.
 function xSlateSvg(d){
   const M='#2ee6a8',F={g:'BTG Grotesk',xb:'BTG Inter XB',sb:'BTG Inter SB'},X=526,R=1200-56,W=R-X;
-  const picks=d.picks.slice(0,7),more=d.picks.length-picks.length,gap=picks.length>6?58:62;
-  const rows=picks.map((p,i)=>{const y=150+i*gap;return `<circle cx="${X+10}" cy="${y-9}" r="6" fill="${M}"/><text x="${X+30}" y="${y}" font-family="${F.sb}" font-size="${xFit(p.text,W-130,25,.53)}" fill="#ffffff">${xEsc(p.text)}</text><text x="${R}" y="${y}" text-anchor="end" font-family="${F.xb}" font-size="24" fill="${M}">${xEsc(p.odds)}</text><text x="${X+30}" y="${y+25}" font-family="${F.sb}" font-size="18" fill="#9fb0cc">${xEsc(p.sub)}</text>`}).join('');
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675" viewBox="0 0 1200 675">
+  // Every pick fits: past 7 the card grows taller (X shows the whole image when opened).
+  // Short market names so long props don't run into the price.
+  const short=t=>String(t).replace(/interceptions thrown/i,'INT').replace(/passing touchdowns/i,'pass TDs').replace(/receiving yards/i,'rec yds').replace(/rushing yards/i,'rush yds').replace(/passing yards/i,'pass yds').replace(/receptions/i,'rec');
+  const picks=d.picks.slice(0,16).map(p=>({...p,text:short(p.text)})),more=d.picks.length-picks.length,gap=picks.length>6?58:62;
+  const H=Math.max(675,150+picks.length*gap+(more>0?40:0)+110),B=H-675;
+  const rows=picks.map((p,i)=>{const y=150+i*gap;return `<circle cx="${X+10}" cy="${y-9}" r="6" fill="${M}"/><text x="${X+30}" y="${y}" font-family="${F.sb}" font-size="${xFit(p.text,W-130,25,.56)}" fill="#ffffff">${xEsc(p.text)}</text><text x="${R}" y="${y}" text-anchor="end" font-family="${F.xb}" font-size="24" fill="${M}">${xEsc(p.odds)}</text><text x="${X+30}" y="${y+25}" font-family="${F.sb}" font-size="18" fill="#9fb0cc">${xEsc(p.sub)}</text>`}).join('');
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="${H}" viewBox="0 0 1200 ${H}">
 <defs><linearGradient id="tm" x1="0" y1="0" x2="0.45" y2="1"><stop offset="0" stop-color="#1d4ed8"/><stop offset="1" stop-color="#0b1530"/></linearGradient></defs>
-<rect width="1200" height="675" fill="#0b1530"/><rect width="470" height="675" fill="url(#tm)"/>
+<rect width="1200" height="${H}" fill="#0b1530"/><rect width="470" height="${H}" fill="url(#tm)"/>
 <text x="56" y="120" font-family="${F.xb}" font-size="22" letter-spacing="4" fill="#ffffff" fill-opacity=".8">${xEsc(d.kicker||(d.final?'FINAL CARD':'OFFICIAL PICKS'))}</text>
 <text x="50" y="260" font-family="${F.g}" font-size="${xFit(d.day,380,120,.62)}" fill="#ffffff">${xEsc(d.day)}</text>
 <text x="56" y="318" font-family="${F.sb}" font-size="26" fill="#ffffff" fill-opacity=".75">${xEsc(d.date)} · ${d.picks.length} pick${d.picks.length===1?'':'s'}${d.final?'':' so far'}</text>
 <text x="56" y="352" font-family="${F.sb}" font-size="22" fill="#ffffff" fill-opacity=".6">${xEsc(d.note||(d.final?`All locked · kickoff ${d.kick}`:'More can drop up to kickoff'))}</text>
 ${d.season?`<text x="56" y="430" font-family="${F.sb}" font-size="24" fill="#ffffff" fill-opacity=".75">Season <tspan font-family="${F.xb}" fill="#ffffff" fill-opacity="1">${xEsc(d.season)}</tspan></text>`:''}
-${xLogo(56,520,56)}<text x="128" y="558" font-family="${F.g}" font-size="30" fill="#ffffff">Bet This Guy</text>
-<text x="56" y="643" font-family="${F.xb}" font-size="20" letter-spacing="2.5" fill="#ffffff" fill-opacity=".85">LOCKED BEFORE KICKOFF · 21+</text>
+${xLogo(56,520+B,56)}<text x="128" y="${558+B}" font-family="${F.g}" font-size="30" fill="#ffffff">Bet This Guy</text>
+<text x="56" y="${643+B}" font-family="${F.xb}" font-size="20" letter-spacing="2.5" fill="#ffffff" fill-opacity=".85">LOCKED BEFORE KICKOFF · 21+</text>
 ${rows}${more>0?`<text x="${X+30}" y="${150+picks.length*gap}" font-family="${F.sb}" font-size="22" fill="#9fb0cc">+ ${more} more</text>`:''}
-<rect x="470" y="589" width="730" height="86" fill="${M}"/>
-<text x="${X}" y="643" font-family="${F.g}" font-size="29" fill="#06231a">Graded in public</text>
-<text x="${R-38}" y="644" text-anchor="end" font-family="${F.g}" font-size="31" fill="#06231a">betthisguy.com</text><path d="M1118 633h24m-9-9 9 9-9 9" fill="none" stroke="#06231a" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="470" y="${589+B}" width="730" height="86" fill="${M}"/>
+<text x="${X}" y="${643+B}" font-family="${F.g}" font-size="29" fill="#06231a">Graded in public</text>
+<text x="${R-38}" y="${644+B}" text-anchor="end" font-family="${F.g}" font-size="31" fill="#06231a">betthisguy.com</text><path d="M1118 ${633+B}h24m-9-9 9 9-9 9" fill="none" stroke="#06231a" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>`;
 }
 const etDate=(t,o)=>new Date(t).toLocaleString('en-US',{timeZone:'America/New_York',...o});
@@ -2426,11 +2430,12 @@ async function postSlateToX(env,now=Date.now(),final=false){
 }
 // Alerts post to pin: a day's locked picks as proof, and why alerts matter
 // (prices move after a pick locks). Posts once per value of the app_settings
-// key x-pin-request, an Eastern date like 2026-10-11.
+// key x-pin-request, an Eastern date like 2026-10-11 (2026-10-11#2 resends).
 async function postAlertsPinToX(env,now=Date.now()){
   if(!env.DB||!xReady(env))return {posted:0,disabled:true};
-  const day=String((await appSetting(env,'x-pin-request'))||'');if(!/^\d{4}-\d{2}-\d{2}$/.test(day))return {posted:0,none:true};
-  const key=`x-pin:${day}`;if(!(await xClaimable(env,key,now)))return {posted:0,done:true};
+  // A suffix (2026-10-11#2) sends a fresh one for the same day.
+  const req=String((await appSetting(env,'x-pin-request'))||'');if(!/^\d{4}-\d{2}-\d{2}(#\w{1,8})?$/.test(req))return {posted:0,none:true};
+  const day=req.slice(0,10),key=`x-pin:${req}`;if(!(await xClaimable(env,key,now)))return {posted:0,done:true};
   const all=(await env.DB.prepare("SELECT * FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND game_time>? AND game_time<? ORDER BY game_time,posted_at").bind(`${day}T00:00:00Z`,new Date(Date.parse(`${day}T00:00:00Z`)+2*86400000).toISOString()).all()).results||[];
   const rows=all.filter(r=>etDate(Date.parse(r.game_time),{year:'numeric',month:'2-digit',day:'2-digit'})===`${day.slice(5,7)}/${day.slice(8,10)}/${day.slice(0,4)}`);
   if(!rows.length)return {posted:0,empty:true};
@@ -2442,7 +2447,7 @@ async function postAlertsPinToX(env,now=Date.now()){
   const proof=singles.length&&moved*2>=singles.length?` ${moved} of ${singles.length} of ${dayName}’s picks paid more when we locked them than they did at kickoff.`:'';
   const text=xShort(`🔔 We bet the number, and numbers move.${proof}\n\nFree pick alerts ping you the second a pick locks, at the best price. That’s how you bet them.\n\n${dayName}’s locked card below. Turn on alerts: link in bio. 21+`);
   let mediaId=null;
-  try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(xSlateSvg({kicker:'LOCKED BEFORE KICKOFF',note:'Alerts get every pick first',day:dayName,date:etDate(first,{month:'short',day:'numeric'}),picks})))}
+  try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(xSlateSvg({final:true,kicker:'LOCKED BEFORE KICKOFF',note:'Alerts get every pick first',day:dayName,date:etDate(first,{month:'short',day:'numeric'}),picks})))}
   catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} pin graphic: ${error.message}`).catch(()=>{})}
   try{const sent=await xPost(env,text,mediaId);await xDone(env,key,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} pin ${day} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,picks:rows.length,moved,graphic:Boolean(mediaId)}}
   catch(error){console.warn('x_pin_failed',error.message);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
