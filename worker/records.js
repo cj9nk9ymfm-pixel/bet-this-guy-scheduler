@@ -122,6 +122,9 @@ function officialCandidates(events,now=Date.now(),stats={},opts={}){
     }
     for(const group of groups.values()){
       const pairs=[...group.books.values()].filter(p=>p.over&&p.under);
+      // Market coverage for the run log: lines seen, and how many had the 3+
+      // two-sided books a fair price needs.
+      const cov=(stats.markets||={})[group.market]||={lines:0,priced:0,books:0};cov.lines++;cov.books=Math.max(cov.books,group.books.size);if(pairs.length>=3)cov.priced++;
       if(pairs.length<3)continue;
       const fair=pairs.reduce((sum,p)=>{const o=1/recordDecimal(p.over.odds),u=1/recordDecimal(p.under.odds);return sum+o/(o+u)},0)/pairs.length;
       // The fair price uses every licensed book; the pick itself must be
@@ -1234,6 +1237,7 @@ async function publishOfficialPicks(request,env,ctx,opts={}){
     // No fresh parlay this run: try one from our own pending singles.
     if(!plan.some(p=>p.tier!=='props')){const extra=singlesParlay(boards,existing.results||[],Date.now());if(extra)plan.push(extra)}
     const posted=await writeOfficialPlan(plan,week,env);
+    if(!opts.soonOnly&&stats.markets)await setAppSetting(env,'market-coverage',JSON.stringify({at:new Date(now).toISOString(),markets:stats.markets})).catch(()=>{});
     // One row per full run: what the pick job saw and why it did or didn't post
     // (the quick soon-games runs aren't logged, so the engine status stays whole-board).
     if(!opts.soonOnly)await env.DB.batch([
