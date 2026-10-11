@@ -2384,10 +2384,10 @@ function xSlateSvg(d){
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675" viewBox="0 0 1200 675">
 <defs><linearGradient id="tm" x1="0" y1="0" x2="0.45" y2="1"><stop offset="0" stop-color="#1d4ed8"/><stop offset="1" stop-color="#0b1530"/></linearGradient></defs>
 <rect width="1200" height="675" fill="#0b1530"/><rect width="470" height="675" fill="url(#tm)"/>
-<text x="56" y="120" font-family="${F.xb}" font-size="22" letter-spacing="4" fill="#ffffff" fill-opacity=".8">${d.final?'FINAL CARD':'OFFICIAL PICKS'}</text>
+<text x="56" y="120" font-family="${F.xb}" font-size="22" letter-spacing="4" fill="#ffffff" fill-opacity=".8">${xEsc(d.kicker||(d.final?'FINAL CARD':'OFFICIAL PICKS'))}</text>
 <text x="50" y="260" font-family="${F.g}" font-size="${xFit(d.day,380,120,.62)}" fill="#ffffff">${xEsc(d.day)}</text>
 <text x="56" y="318" font-family="${F.sb}" font-size="26" fill="#ffffff" fill-opacity=".75">${xEsc(d.date)} · ${d.picks.length} pick${d.picks.length===1?'':'s'}${d.final?'':' so far'}</text>
-<text x="56" y="352" font-family="${F.sb}" font-size="22" fill="#ffffff" fill-opacity=".6">${d.final?`All locked · kickoff ${xEsc(d.kick)}`:'More can drop up to kickoff'}</text>
+<text x="56" y="352" font-family="${F.sb}" font-size="22" fill="#ffffff" fill-opacity=".6">${xEsc(d.note||(d.final?`All locked · kickoff ${d.kick}`:'More can drop up to kickoff'))}</text>
 ${d.season?`<text x="56" y="430" font-family="${F.sb}" font-size="24" fill="#ffffff" fill-opacity=".75">Season <tspan font-family="${F.xb}" fill="#ffffff" fill-opacity="1">${xEsc(d.season)}</tspan></text>`:''}
 ${xLogo(56,520,56)}<text x="128" y="558" font-family="${F.g}" font-size="30" fill="#ffffff">Bet This Guy</text>
 <text x="56" y="643" font-family="${F.xb}" font-size="20" letter-spacing="2.5" fill="#ffffff" fill-opacity=".85">LOCKED BEFORE KICKOFF · 21+</text>
@@ -2424,6 +2424,29 @@ async function postSlateToX(env,now=Date.now(),final=false){
   try{await xPost(env,text,mediaId);await xDone(env,key,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} slate ${key}`).catch(()=>{});return {posted:1,final,picks:rows.length,graphic:Boolean(mediaId)}}
   catch(error){console.warn('x_slate_failed',error.message);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});return {posted:0,error:error.message}}
 }
+// Alerts post to pin: a day's locked picks as proof, and why alerts matter
+// (prices move after a pick locks). Posts once per value of the app_settings
+// key x-pin-request, an Eastern date like 2026-10-11.
+async function postAlertsPinToX(env,now=Date.now()){
+  if(!env.DB||!xReady(env))return {posted:0,disabled:true};
+  const day=String((await appSetting(env,'x-pin-request'))||'');if(!/^\d{4}-\d{2}-\d{2}$/.test(day))return {posted:0,none:true};
+  const key=`x-pin:${day}`;if(!(await xClaimable(env,key,now)))return {posted:0,done:true};
+  const all=(await env.DB.prepare("SELECT * FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND game_time>? AND game_time<? ORDER BY game_time,posted_at").bind(`${day}T00:00:00Z`,new Date(Date.parse(`${day}T00:00:00Z`)+2*86400000).toISOString()).all()).results||[];
+  const rows=all.filter(r=>etDate(Date.parse(r.game_time),{year:'numeric',month:'2-digit',day:'2-digit'})===`${day.slice(5,7)}/${day.slice(8,10)}/${day.slice(0,4)}`);
+  if(!rows.length)return {posted:0,empty:true};
+  if(!(await xClaim(env,key,now)))return {posted:0,done:true};
+  const dec=o=>o>0?1+o/100:1+100/-o,singles=rows.filter(r=>r.kind==='prop');
+  const moved=singles.filter(r=>{const t=(recordLegs(r)[0]?.priceTrail||[]).filter(p=>p&&p.o!=null).at(-1);return t&&dec(t.o)<dec(Number(r.odds))}).length;
+  const picks=rows.map(r=>{const legs=recordLegs(r),f=legs[0]||{};return r.kind==='parlay'?{text:`${legs.length}-leg parlay`,odds:weeklyOdds(r.combined_odds),sub:legs.map(l=>l.player).join(' + ')}:{text:`${r.player} · ${weeklyLegText(r)}`,odds:weeklyOdds(r.odds),sub:[xMatchup(f.team),f.book].filter(Boolean).join(' · ')}});
+  const first=Date.parse(rows[0].game_time),dayName=etDate(first,{weekday:'long'});
+  const proof=singles.length&&moved*2>=singles.length?` ${moved} of ${singles.length} of ${dayName}’s picks paid more when we locked them than they did at kickoff.`:'';
+  const text=xShort(`🔔 We bet the number, and numbers move.${proof}\n\nFree pick alerts ping you the second a pick locks, at the best price. That’s how you bet them.\n\n${dayName}’s locked card below. Turn on alerts: link in bio. 21+`);
+  let mediaId=null;
+  try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(xSlateSvg({kicker:'LOCKED BEFORE KICKOFF',note:'Alerts get every pick first',day:dayName,date:etDate(first,{month:'short',day:'numeric'}),picks})))}
+  catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} pin graphic: ${error.message}`).catch(()=>{})}
+  try{const sent=await xPost(env,text,mediaId);await xDone(env,key,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} pin ${day} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,picks:rows.length,moved,graphic:Boolean(mediaId)}}
+  catch(error){console.warn('x_pin_failed',error.message);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
+}
 async function runXPosts(env,now=Date.now()){
   const picks=await postPicksToX(env,now);
   const weekly=await postWeeklyToX(env,now);
@@ -2433,10 +2456,11 @@ async function runXPosts(env,now=Date.now()){
   // The day's slate graphic waits for a run that didn't post a pick or the weekly.
   const final=picks.posted||weekly.posted?{posted:0,waiting:true}:await postSlateToX(env,now,true);
   const slate=picks.posted||weekly.posted||final.posted?{posted:0,waiting:true}:await postSlateToX(env,now);
-  const results=picks.posted||weekly.posted||final.posted||slate.posted?{posted:0,waiting:true}:await postResultsToX(env,now);
+  const pin=picks.posted||weekly.posted||final.posted||slate.posted?{posted:0,waiting:true}:await postAlertsPinToX(env,now);
+  const results=picks.posted||weekly.posted||final.posted||slate.posted||pin.posted?{posted:0,waiting:true}:await postResultsToX(env,now);
   // The pinned summary waits for a run with nothing else heavy.
-  const summary=picks.posted||weekly.posted||final.posted||slate.posted||results.posted?{posted:0,waiting:true}:await postSummaryToX(env,now);
-  return {picks,weekly,closing,final,slate,results,summary};
+  const summary=picks.posted||weekly.posted||final.posted||slate.posted||pin.posted||results.posted?{posted:0,waiting:true}:await postSummaryToX(env,now);
+  return {picks,weekly,closing,final,slate,pin,results,summary};
 }
 // "My book" alerts: a good-value price at one of someone's own sportsbooks.
 // The fair price always comes from every book (3+ pricing both sides, the same
