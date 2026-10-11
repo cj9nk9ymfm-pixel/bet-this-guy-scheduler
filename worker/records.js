@@ -323,12 +323,13 @@ function bigFivePrice(event,r){
 // kickoff is the closing price.
 // GET /api/leans: this week's leans (near misses and props held back by the
 // per-game limit) for upcoming games, at most two a game, cached 5 minutes.
-// Not official picks and not on the record.
+// Not official picks and not on the record; a lean that later became an
+// official pick is left out.
 async function leansResponse(request,env,ctx,now=Date.now()){
   if(!env.DB)return json({success:true,leans:[]});
   const saved=await readFeedCache(request,'leans-v1-NFL');
   if(saved.response&&cacheAge(saved.response)<300000)return cachedForClient(saved.response,'fresh');
-  const rows=(await env.DB.prepare('SELECT event_id,player,team,market,side,line,odds,book,edge,close_odds,game_time FROM near_shadow WHERE game_time>? AND game_time<? ORDER BY edge DESC').bind(new Date(now+5*60000).toISOString(),new Date(now+8*86400000).toISOString()).all().catch(()=>({results:[]}))).results||[];
+  const rows=(await env.DB.prepare('SELECT event_id,player,team,market,side,line,odds,book,edge,close_odds,game_time FROM near_shadow n WHERE game_time>? AND game_time<? AND NOT EXISTS(SELECT 1 FROM public_recommendations r WHERE r.id LIKE \'official|%\' AND r.kind=\'prop\' AND r.game_id=n.event_id AND r.player=n.player) ORDER BY edge DESC').bind(new Date(now+5*60000).toISOString(),new Date(now+8*86400000).toISOString()).all().catch(()=>({results:[]}))).results||[];
   const games=new Map(),leans=[];
   for(const r of rows){const n=games.get(r.event_id)||0;if(n>=2||leans.length>=10)continue;games.set(r.event_id,n+1);leans.push({player:r.player,team:r.team||'',market:r.market,side:r.side,line:r.line,odds:r.close_odds??r.odds,flagged:r.odds,book:r.book,edge:+Number(r.edge).toFixed(1),gameTime:r.game_time})}
   leans.sort((a,b)=>a.gameTime.localeCompare(b.gameTime)||b.edge-a.edge);

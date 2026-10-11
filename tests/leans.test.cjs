@@ -6,7 +6,7 @@ const context=vm.createContext({URL,URLSearchParams,Request,Response,Headers,Abo
 const template=read('worker/index.template.js');
 vm.runInContext(template.slice(template.indexOf('const API_BASE')).replace('__MOVEMENT_SERVER__',read('worker/movement.js')).replace('__LIVE_SERVER__',read('worker/live.js')).replace('__STATS_SHARED__',read('dist/stats.js')).replace('__RECORDS_SERVER__',read('worker/records.js')).replace('__ACCOUNTS_SERVER__',read('worker/accounts.js')).replace('export default {','this.worker={'),context);
 const db=new DatabaseSync(':memory:');
-for(const f of require('node:fs').readdirSync('drizzle').filter(f=>/near_shadow/.test(f)))db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''));
+for(const f of require('node:fs').readdirSync('drizzle').filter(f=>/near_shadow|^000[0-2]_/.test(f)).sort())db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''));
 const wrap=(sql,args=[])=>({bind(...values){return wrap(sql,values)},async first(){return db.prepare(sql).get(...args)||null},async all(){return{results:db.prepare(sql).all(...args)}},async run(){const r=db.prepare(sql).run(...args);return{success:true,meta:{changes:Number(r.changes)}}}});
 context.env={DB:{prepare:sql=>wrap(sql),async batch(list){for(const s of list)await s.run()}}};
 (async()=>{
@@ -14,9 +14,12 @@ context.env={DB:{prepare:sql=>wrap(sql),async batch(list){for(const s of list)aw
   const ins=db.prepare('INSERT INTO near_shadow (id,event_id,player,team,market,side,line,odds,book,edge,game_time,logged_at,close_odds) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)');
   [['a1','A','P1',0.9,5,null],['a2','A','P2',0.7,5,115],['a3','A','P3',1.3,5,null],['b1','B','P4',0.6,8,null],['c1','C','P5',0.8,-1,null]]
     .forEach(([id,g,p,e,h,close])=>ins.run(id,g,p,'X · @ Y','Receptions','Over',3.5,110,'BetMGM',e,iso(h),iso(-2),close));
+  // P6 became an official pick after it was logged as a lean.
+  ins.run('d1','D','P6','X · @ Y','Receptions','Over',3.5,110,'BetMGM',0.9,iso(6),iso(-2),null);
+  db.prepare("INSERT INTO public_recommendations (id,kind,sport,player,market,side,line,odds,game_id,game_time,legs_json,posted_at,status,source) VALUES ('official|2026-10-06|props|prop|x','prop','NFL','P6','Receptions','Over',3.5,120,'D',?,'[]',?,'pending','market-verified-v2')").run(iso(6),iso(-1));
   const res=await vm.runInContext(`leansResponse(new Request('https://betthisguy.com/api/leans'),env,{waitUntil(){}},${now})`,context);
   const body=await res.json();
-  assert.deepEqual(body.leans.map(l=>l.player),['P3','P1','P4'],'two a game (best edges first), started games left out, sorted by kickoff');
+  assert.deepEqual(body.leans.map(l=>l.player),['P3','P1','P4'],'two a game (best edges first), started games and official picks left out, sorted by kickoff');
   assert.ok(!body.leans.some(l=>l.player==='P2'),'third in a game is dropped');
   db.prepare("UPDATE near_shadow SET close_odds=-105 WHERE id='a1'").run();
   const again=await (await vm.runInContext(`leansResponse(new Request('https://betthisguy.com/api/leans'),env,{waitUntil(){}},${now})`,context)).json();
