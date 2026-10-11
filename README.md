@@ -155,7 +155,7 @@ Board cards show how often each bet hit in the player's last 10 games, and the p
 Official props are capped at two per game (`OFFICIAL_PER_GAME`): picks in one
 game tend to win or lose together. A qualifying prop held back by the cap, and
 props just under the bar (0.5% to 1% better than fair), are logged in
-`near_shadow` and shown on the home page under the picks as **Leans**
+`near_shadow` and shown on the home page under the picks as **Just missed the cut**
 (`/api/leans`: upcoming games, at most two a game, latest big-5 price). Leans
 are not official and are not in the record; `near_shadow` grades them so we can
 see how they do.
