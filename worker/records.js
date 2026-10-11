@@ -359,7 +359,7 @@ async function leansResponse(request,env,ctx,now=Date.now()){
   if(saved.response&&cacheAge(saved.response)<300000)return cachedForClient(saved.response,'fresh');
   const rows=(await env.DB.prepare('SELECT event_id,player,team,market,side,line,odds,book,edge,close_odds,game_time FROM near_shadow n WHERE game_time>? AND game_time<? AND NOT EXISTS(SELECT 1 FROM public_recommendations r WHERE r.id LIKE \'official|%\' AND r.kind=\'prop\' AND r.game_id=n.event_id AND r.player=n.player) ORDER BY edge DESC').bind(new Date(now+5*60000).toISOString(),new Date(now+8*86400000).toISOString()).all().catch(()=>({results:[]}))).results||[];
   const games=new Map(),leans=[];
-  for(const r of rows){const n=games.get(r.event_id)||0;if(n>=2||leans.length>=10)continue;games.set(r.event_id,n+1);leans.push({player:r.player,team:r.team||'',market:r.market,side:r.side,line:r.line,odds:r.close_odds??r.odds,flagged:r.odds,book:r.book,edge:+Number(r.edge).toFixed(1),gameTime:r.game_time})}
+  for(const r of rows){const n=games.get(r.event_id)||0;if(n>=2||leans.length>=10)continue;games.set(r.event_id,n+1);leans.push({eventId:r.event_id,player:r.player,team:r.team||'',market:r.market,side:r.side,line:r.line,odds:r.close_odds??r.odds,flagged:r.odds,book:r.book,edge:+Number(r.edge).toFixed(1),gameTime:r.game_time})}
   leans.sort((a,b)=>a.gameTime.localeCompare(b.gameTime)||b.edge-a.edge);
   const stored=storedResponse(JSON.stringify({success:true,leans,updatedAt:new Date(now).toISOString()}),300);
   if(saved.cache&&saved.key)ctx?.waitUntil?.(saved.cache.put(saved.key,stored.clone()));
@@ -670,7 +670,7 @@ async function gradeTdShadow(env,now=Date.now(),limit=40){
 async function gradeTdShadowNow(env){
   if(!env.SELF?.fetch||!env.MAINTENANCE_TOKEN)return gradeTdShadow(env,Date.now(),10);
   const cut=new Date(Date.now()-4*3600000).toISOString();
-  let waiting=0;for(const t of ['td_shadow','bump_shadow','live_shadow'])waiting+=((await env.DB.prepare(`SELECT COUNT(*) AS n FROM ${t} WHERE result IS NULL AND game_time<?`).bind(cut).first().catch(()=>null))?.n||0);
+  let waiting=0;for(const t of ['td_shadow','bump_shadow','live_shadow','game_shadow'])waiting+=((await env.DB.prepare(`SELECT COUNT(*) AS n FROM ${t} WHERE result IS NULL AND game_time<?`).bind(cut).first().catch(()=>null))?.n||0);
   if(!waiting)return {waiting:0};
   const r=await env.SELF.fetch(new Request(`${SITE_URL}/api/maintenance?job=tdGrade`,{method:'POST',headers:{authorization:`Bearer ${env.MAINTENANCE_TOKEN}`},signal:AbortSignal.timeout(60000)}));
   return {waiting,status:r.status};
@@ -872,6 +872,154 @@ async function gradeLiveShadow(env,now=Date.now(),limit=30){
   }
   if(statements.length)await env.DB.batch(statements);
   return {graded:statements.length,checked:rows.length};
+}
+
+// Game lines (shadow): moneylines, spreads and totals with the props' fair-
+// price method (no-vig average of every book pricing both sides, 3+ books),
+// best big-5 price, 1% to 12% better than fair, -250 to +300. One side per
+// game and market, logged the first time it qualifies; graded from the final.
+const GAME_MARKETS={h2h:'Moneyline',spreads:'Spread',totals:'Total'};
+async function fetchGameLines(apiKey){
+  const q=new URLSearchParams({apiKey,regions:'us',markets:Object.keys(GAME_MARKETS).join(','),oddsFormat:'american',dateFormat:'iso'});
+  const r=await fetch(`${API_BASE}/sports/${SPORTS[0].key}/odds?${q}`,{headers:{accept:'application/json'}});
+  const body=await r.text();if(!r.ok)throw new Error(providerMessage(body,'Game lines are unavailable.'));
+  const data=JSON.parse(body);return Array.isArray(data)?data:[];
+}
+// Both sides of one market at one book: a = home (or Over), c = away (or Under).
+function gamePair(event,market){
+  const o=market.outcomes||[];
+  if(market.key==='totals'){const a=o.find(x=>x.name==='Over'),c=o.find(x=>x.name==='Under');return a&&c&&Number(a.point)===Number(c.point)?{a,c,key:Number(a.point)}:null}
+  const a=o.find(x=>x.name===event.home_team),c=o.find(x=>x.name===event.away_team);if(!a||!c)return null;
+  if(market.key==='spreads')return a.point!=null&&Number(a.point)===-Number(c.point)?{a,c,key:Number(a.point)}:null;
+  return {a,c,key:'ml'};
+}
+function gameLineCandidates(events,now=Date.now()){
+  const best=new Map();
+  for(const e of events){
+    const kick=Date.parse(e.commence_time);if(!(kick>now+5*60000))continue;
+    for(const [key,label] of Object.entries(GAME_MARKETS)){
+      const groups=new Map();
+      for(const b of e.bookmakers||[]){
+        const m=(b.markets||[]).find(m=>m.key===key);if(!m)continue;
+        const updated=Date.parse(m.last_update||b.last_update||'');if(!Number.isFinite(updated)||now-updated>15*60000)continue;
+        const pair=gamePair(e,m);if(!pair)continue;
+        const a=BTGStats.number(pair.a.price),c=BTGStats.number(pair.c.price);if(a===null||c===null)continue;
+        const list=groups.get(pair.key)||[];list.push({key:b.key,title:b.title||b.key,a,c});groups.set(pair.key,list);
+      }
+      for(const [line,list] of groups){
+        if(list.length<3)continue;
+        const fair=list.reduce((s,p)=>{const x=1/recordDecimal(p.a),y=1/recordDecimal(p.c);return s+x/(x+y)},0)/list.length;
+        for(const side of ['a','c']){
+          const top=list.filter(p=>OFFICIAL_BOOKS.has(p.key)).sort((x,y)=>recordDecimal(y[side])-recordDecimal(x[side]))[0];if(!top)continue;
+          const odds=top[side],edge=100*((side==='a'?fair:1-fair)-1/recordDecimal(odds));
+          if(edge<1||edge>12||odds<-250||odds>300)continue;
+          const name=key==='totals'?(side==='a'?'Over':'Under'):(side==='a'?e.home_team:e.away_team);
+          const point=line==='ml'?null:key==='spreads'&&side==='c'?-line:line;
+          const row={eventId:e.eventID||`NFL--${e.id}`,home:e.home_team,away:e.away_team,market:label,side:name,line:point,odds,book:top.title,edge,gameTime:new Date(kick).toISOString()};
+          const k=`${row.eventId}|${label}`;if(!best.has(k)||best.get(k).edge<edge)best.set(k,row);
+        }
+      }
+    }
+  }
+  return [...best.values()];
+}
+function gameLinePrice(event,r){
+  const key=Object.keys(GAME_MARKETS).find(k=>GAME_MARKETS[k]===r.market);let top=null;
+  for(const b of event.bookmakers||[])if(OFFICIAL_BOOKS.has(b.key))for(const m of b.markets||[]){
+    if(m.key!==key)continue;
+    for(const o of m.outcomes||[])if(o.name===r.side&&(r.line===null||Number(o.point)===Number(r.line))){const p=BTGStats.number(o.price);if(p!==null&&(top===null||recordDecimal(p)>recordDecimal(top)))top=p}
+  }
+  return top;
+}
+async function recordGameShadow(env,now=Date.now()){
+  if(!env.DB||!env.THE_ODDS_API_KEY)return {logged:0};
+  // 3 credits a call: every 10 minutes in NFL windows, every 30 otherwise.
+  const last=Number(await appSetting(env,'game-lines-at')||0);
+  if(now-last<(nflActiveWindow(new Date(now))?9:29)*60000)return {skipped:true};
+  await setAppSetting(env,'game-lines-at',String(now));
+  const events=(await fetchGameLines(env.THE_ODDS_API_KEY)).map(e=>({...e,eventID:`NFL--${e.id}`}));
+  const stamp=new Date(now).toISOString(),statements=[];
+  const picks=gameLineCandidates(events,now);
+  for(const p of picks)statements.push(env.DB.prepare('INSERT OR IGNORE INTO game_shadow (id,event_id,home,away,market,side,line,odds,book,edge,game_time,logged_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)').bind(`${p.eventId}|${p.market}`,p.eventId,p.home,p.away,p.market,p.side,p.line,p.odds,p.book,+p.edge.toFixed(2),p.gameTime,stamp));
+  const open=(await env.DB.prepare('SELECT id,event_id,market,side,line FROM game_shadow WHERE game_time>?').bind(stamp).all()).results||[];
+  for(const r of open){const e=events.find(e=>e.eventID===r.event_id);const p=e?gameLinePrice(e,r):null;if(p!==null)statements.push(env.DB.prepare('UPDATE game_shadow SET close_odds=?,close_at=? WHERE id=?').bind(p,stamp,r.id))}
+  if(statements.length)await env.DB.batch(statements);
+  return {games:events.length,qualified:picks.length,tracked:open.length};
+}
+function gameLineResult(r,hs,as){
+  const diff=(v)=>v>0?'won':v<0?'lost':'push';
+  if(r.market==='Total')return diff((r.side==='Over'?1:-1)*(hs+as-r.line));
+  const mine=r.side===r.home?hs:as,theirs=r.side===r.home?as:hs;
+  return diff(mine+(r.market==='Spread'?Number(r.line):0)-theirs);
+}
+async function gradeGameShadow(env,now=Date.now(),limit=30){
+  if(!env.DB||!env.BALLDONTLIE_API_KEY)return {graded:0};
+  const rows=(await env.DB.prepare('SELECT * FROM game_shadow WHERE result IS NULL AND game_time<? AND game_time>? ORDER BY game_time LIMIT ?').bind(new Date(now-4*3600000).toISOString(),new Date(now-14*86400000).toISOString(),limit).all()).results||[];
+  if(!rows.length)return {graded:0};
+  const q=new URLSearchParams({per_page:'100'}),dates=new Set();
+  for(const r of rows){const t=Date.parse(r.game_time);dates.add(new Date(t-6*3600000).toISOString().slice(0,10));dates.add(new Date(t).toISOString().slice(0,10))}
+  for(const d of dates)q.append('dates[]',d);
+  const games=(await bdlRequest(`/nfl/v1/games?${q}`,env.BALLDONTLIE_API_KEY))?.data||[];
+  const statements=[],stamp=new Date(now).toISOString();
+  for(const r of rows){
+    const g=games.find(g=>normalizedName(g.home_team?.full_name)===normalizedName(r.home)&&normalizedName(g.visitor_team?.full_name)===normalizedName(r.away));
+    if(!g||nflGameState(g)!=='final')continue;
+    const hs=Number(g.home_team_score),as=Number(g.visitor_team_score);if(!Number.isFinite(hs)||!Number.isFinite(as))continue;
+    statements.push(env.DB.prepare('UPDATE game_shadow SET home_score=?,away_score=?,result=?,graded_at=? WHERE id=?').bind(hs,as,gameLineResult(r,hs,as),stamp,r.id));
+  }
+  if(statements.length)await env.DB.batch(statements);
+  return {graded:statements.length,checked:rows.length};
+}
+// Weather: the forecast at each outdoor stadium (domes and closed roofs are
+// left out), refreshed every two hours for games in the next three days.
+// Sunday games before 16:00 UTC are international and skipped (the home
+// team's stadium isn't where they're played).
+const OUTDOOR_STADIUMS={
+  'Baltimore Ravens':['M&T Bank Stadium',39.278,-76.623],'Buffalo Bills':['Highmark Stadium',42.774,-78.787],'Carolina Panthers':['Bank of America Stadium',35.226,-80.853],
+  'Chicago Bears':['Soldier Field',41.862,-87.617],'Cincinnati Bengals':['Paycor Stadium',39.095,-84.516],'Cleveland Browns':['Huntington Bank Field',41.506,-81.700],
+  'Denver Broncos':['Empower Field',39.744,-105.020],'Green Bay Packers':['Lambeau Field',44.501,-88.062],'Jacksonville Jaguars':['EverBank Stadium',30.324,-81.637],
+  'Kansas City Chiefs':['Arrowhead Stadium',39.049,-94.484],'Miami Dolphins':['Hard Rock Stadium',25.958,-80.239],'New England Patriots':['Gillette Stadium',42.091,-71.264],
+  'New York Giants':['MetLife Stadium',40.814,-74.074],'New York Jets':['MetLife Stadium',40.814,-74.074],'Philadelphia Eagles':['Lincoln Financial Field',39.901,-75.168],
+  'Pittsburgh Steelers':['Acrisure Stadium',40.447,-80.016],'San Francisco 49ers':["Levi's Stadium",37.403,-121.970],'Seattle Seahawks':['Lumen Field',47.595,-122.332],
+  'Tampa Bay Buccaneers':['Raymond James Stadium',27.976,-82.503],'Tennessee Titans':['Nissan Stadium',36.166,-86.771],'Washington Commanders':['Northwest Stadium',38.908,-76.864]
+};
+const internationalSlot=t=>{const d=new Date(t);return d.getUTCDay()===0&&d.getUTCHours()<16};
+async function refreshWeather(env,games,now=Date.now()){
+  if(!env.DB)return {};
+  const have=new Map(((await env.DB.prepare('SELECT event_id,fetched_at FROM game_weather WHERE game_time>?').bind(new Date(now).toISOString()).all()).results||[]).map(r=>[r.event_id,r.fetched_at]));
+  const statements=[];let fetched=0;
+  for(const g of games){
+    const kick=Date.parse(g.startsAt),stadium=OUTDOOR_STADIUMS[g.home];
+    if(!stadium||!(kick>now)||kick-now>72*3600000||internationalSlot(kick)||now-(have.get(g.eventID)||0)<2*3600000||fetched>=8)continue;
+    const day=new Date(kick).toISOString().slice(0,10),end=new Date(kick+4*3600000).toISOString().slice(0,10);
+    const q=new URLSearchParams({latitude:String(stadium[1]),longitude:String(stadium[2]),hourly:'temperature_2m,wind_speed_10m,wind_gusts_10m,precipitation_probability',temperature_unit:'fahrenheit',wind_speed_unit:'mph',timezone:'UTC',start_date:day,end_date:end});
+    let body=null;try{const r=await fetch(`https://api.open-meteo.com/v1/forecast?${q}`,{signal:AbortSignal.timeout(10000)});if(r.ok)body=await r.json()}catch{}
+    fetched++;if(!body?.hourly?.time)continue;
+    // The three hours of the game: average temperature, the strongest wind.
+    const idx=body.hourly.time.map((t,i)=>[Date.parse(t+'Z'),i]).filter(([t])=>t>=kick-1800000&&t<=kick+3*3600000).map(([,i])=>i);
+    if(!idx.length)continue;
+    const vals=k=>idx.map(i=>body.hourly[k]?.[i]).filter(v=>Number.isFinite(v)),max=k=>{const v=vals(k);return v.length?Math.max(...v):null},avg=k=>{const v=vals(k);return v.length?v.reduce((a,b)=>a+b,0)/v.length:null};
+    const r1=v=>v===null?null:Math.round(v);
+    statements.push(env.DB.prepare('INSERT OR REPLACE INTO game_weather (event_id,stadium,game_time,temp_f,wind_mph,gust_mph,precip_pct,fetched_at) VALUES (?,?,?,?,?,?,?,?)').bind(g.eventID,stadium[0],new Date(kick).toISOString(),r1(avg('temperature_2m')),r1(max('wind_speed_10m')),r1(max('wind_gusts_10m')),r1(max('precipitation_probability')),now));
+  }
+  if(statements.length)await env.DB.batch(statements);
+  return {fetched,saved:statements.length};
+}
+async function refreshWeatherFromSchedule(env,ctx,now=Date.now()){
+  const schedule=await (await futureSchedule(new Request(new URL('/api/schedule',SITE_URL)),env,ctx||{waitUntil(){}})).json().catch(()=>({}));
+  const games=(schedule.data||[]).filter(e=>String(e.eventID||'').startsWith('NFL--')).map(e=>({eventID:e.eventID,home:e.teams?.home?.names?.medium,startsAt:e.status?.startsAt}));
+  return refreshWeather(env,games,now);
+}
+// GET /api/weather: forecasts for upcoming outdoor games, cached 10 minutes.
+async function weatherResponse(request,env,ctx,now=Date.now()){
+  if(!env.DB)return json({success:true,games:{}});
+  const saved=await readFeedCache(request,'weather-v1-NFL');
+  if(saved.response&&cacheAge(saved.response)<600000)return cachedForClient(saved.response,'fresh');
+  const rows=(await env.DB.prepare('SELECT * FROM game_weather WHERE game_time>?').bind(new Date(now-4*3600000).toISOString()).all().catch(()=>({results:[]}))).results||[];
+  const games={};for(const r of rows)games[r.event_id]={stadium:r.stadium,temp:r.temp_f,wind:r.wind_mph,gust:r.gust_mph,precip:r.precip_pct};
+  const stored=storedResponse(JSON.stringify({success:true,games,updatedAt:new Date(now).toISOString()}),600);
+  if(saved.cache&&saved.key)ctx?.waitUntil?.(saved.cache.put(saved.key,stored.clone()));
+  return cachedForClient(stored,'miss');
 }
 
 // Stats check (shadow): does the stat line agree with a pick? For each

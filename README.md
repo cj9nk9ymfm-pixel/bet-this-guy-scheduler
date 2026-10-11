@@ -150,6 +150,24 @@ On each publish run, `sendBookAlerts` (in `worker/records.js`) also tells people
 
 Board cards show how often each bet hit in the player's last 10 games, and the prop sheet charts those games and lists every book's price. Publish runs record who is on the board and which markets they have (`player_form`, migration `0018`). Every in-between cron run, and publish runs outside NFL windows, fetch players from BALLDONTLIE in up to six parallel parts of five players, each part a separate invocation through the `SELF` binding with its own request allowance. A busy reply (429) pauses the fill until the next run. Each player is fetched again once per slate, after Tuesday and Friday 12:00 UTC. Visitors read everything from one cached `/api/form` request, so the board makes no per-card stats calls.
 
+## Game lines (shadow)
+
+Every in-between cron run (throttled to every 10 minutes in NFL windows, 30
+otherwise; 3 Odds API credits a call) prices moneylines, spreads and totals
+with the props' fair-price method: the no-vig average of every book pricing
+both sides (3+ books), best big-5 price, 1% to 12% better than fair, -250 to
++300. One side per game and market is logged in `game_shadow`, its price is
+tracked to kickoff, and it's graded from BALLDONTLIE final scores. Never
+posted.
+
+## Weather
+
+Outdoor stadiums only (domes and closed roofs left out; Sunday games before
+16:00 UTC are international and skipped). Open-Meteo forecasts for the game's
+three hours are saved in `game_weather` every two hours for games in the next
+three days, and served at `/api/weather`. Pick rows show a short note when it
+could matter: wind 15+ mph, gusts 25+, rain chance 50%+, or freezing.
+
 ## Parlay from our singles
 
 Fresh parlays need two props qualifying in different games at the same moment,

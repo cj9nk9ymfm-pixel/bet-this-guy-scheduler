@@ -1584,3 +1584,5 @@ html body .leans-now .lean-row .on-price{font-size:15px;background:transparent;b
 html body .official-now.leans-now{margin-top:22px!important;padding-top:14px}
 @media (min-width:900px){html body #leansList.on-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0}html body .leans-now #leansList .lean-row:nth-child(2){border-top:0}html body .leans-now #leansList .lean-row:nth-child(even){border-left:1px solid var(--line)}}
 html body .leans-now a.lean-book{color:inherit;text-decoration:none}html body .leans-now a.lean-book:hover{border-color:#6aa8ff}
+html body .on-who .on-wx{font-style:normal;font-size:12.5px;color:#7cc4ff}
+body.light .on-who .on-wx{color:#0b63b6}
