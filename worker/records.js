@@ -2384,10 +2384,10 @@ function xSlateSvg(d){
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675" viewBox="0 0 1200 675">
 <defs><linearGradient id="tm" x1="0" y1="0" x2="0.45" y2="1"><stop offset="0" stop-color="#1d4ed8"/><stop offset="1" stop-color="#0b1530"/></linearGradient></defs>
 <rect width="1200" height="675" fill="#0b1530"/><rect width="470" height="675" fill="url(#tm)"/>
-<text x="56" y="120" font-family="${F.xb}" font-size="22" letter-spacing="4" fill="#ffffff" fill-opacity=".8">OFFICIAL PICKS</text>
+<text x="56" y="120" font-family="${F.xb}" font-size="22" letter-spacing="4" fill="#ffffff" fill-opacity=".8">${d.final?'FINAL CARD':'OFFICIAL PICKS'}</text>
 <text x="50" y="260" font-family="${F.g}" font-size="${xFit(d.day,380,120,.62)}" fill="#ffffff">${xEsc(d.day)}</text>
-<text x="56" y="318" font-family="${F.sb}" font-size="26" fill="#ffffff" fill-opacity=".75">${xEsc(d.date)} · ${d.picks.length} pick${d.picks.length===1?'':'s'} so far</text>
-<text x="56" y="352" font-family="${F.sb}" font-size="22" fill="#ffffff" fill-opacity=".6">More can drop up to kickoff</text>
+<text x="56" y="318" font-family="${F.sb}" font-size="26" fill="#ffffff" fill-opacity=".75">${xEsc(d.date)} · ${d.picks.length} pick${d.picks.length===1?'':'s'}${d.final?'':' so far'}</text>
+<text x="56" y="352" font-family="${F.sb}" font-size="22" fill="#ffffff" fill-opacity=".6">${d.final?`All locked · kickoff ${xEsc(d.kick)}`:'More can drop up to kickoff'}</text>
 ${d.season?`<text x="56" y="430" font-family="${F.sb}" font-size="24" fill="#ffffff" fill-opacity=".75">Season <tspan font-family="${F.xb}" fill="#ffffff" fill-opacity="1">${xEsc(d.season)}</tspan></text>`:''}
 ${xLogo(56,520,56)}<text x="128" y="558" font-family="${F.g}" font-size="30" fill="#ffffff">Bet This Guy</text>
 <text x="56" y="643" font-family="${F.xb}" font-size="20" letter-spacing="2.5" fill="#ffffff" fill-opacity=".85">LOCKED BEFORE KICKOFF · 21+</text>
@@ -2405,21 +2405,23 @@ async function slatePicks(env,now){
   const day=etDate(Date.parse(rows[0].game_time),{year:'numeric',month:'2-digit',day:'2-digit'});
   return {rows:rows.filter(r=>etDate(Date.parse(r.game_time),{year:'numeric',month:'2-digit',day:'2-digit'})===day),first:Date.parse(rows[0].game_time)};
 }
-async function postSlateToX(env,now=Date.now()){
+// final: the same card about 30 minutes before the day's first pick kicks
+// off (the run 25 to 35 minutes out), with everything that's locked by then.
+async function postSlateToX(env,now=Date.now(),final=false){
   if(!env.DB||!xReady(env))return {posted:0,disabled:true};
   const {rows,first}=await slatePicks(env,now);
-  if(rows.length<2||first-now>16*3600000)return {posted:0,due:false};
-  const key=`x-slate:${new Date(first).toISOString().slice(0,10)}`;
+  if(rows.length<(final?1:2)||(final?(first-now>35*60000||first-now<20*60000):first-now>16*3600000))return {posted:0,due:false};
+  const key=`x-${final?'final':'slate'}:${new Date(first).toISOString().slice(0,10)}`;
   if(!(await xClaim(env,key,now)))return {posted:0,done:true};
   const all=(await env.DB.prepare("SELECT kind,line,odds,combined_odds,status,result,closing_line,closing_odds,closing_captured_at FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%'").all()).results||[];
   const season=weeklySummary(all);
   const picks=rows.map(r=>{const legs=recordLegs(r),f=legs[0]||{};return r.kind==='parlay'?{text:`${legs.length}-leg parlay`,odds:weeklyOdds(r.combined_odds),sub:legs.map(l=>l.player).join(' + '),line:`• ${legs.length}-leg parlay (${weeklyOdds(r.combined_odds)})`}:{text:`${r.player} · ${weeklyLegText(r)}`,odds:weeklyOdds(r.odds),sub:[xMatchup(f.team),f.book].filter(Boolean).join(' · '),line:`• ${r.player} ${weeklyLegText(r)} (${weeklyOdds(r.odds)})`}});
-  const dayName=etDate(first,{weekday:'long'});
-  const text=xShort(`🔒 ${dayName}’s official picks so far\n${picks.map(p=>p.line).join('\n')}\n\nMore can drop up to kickoff: turn on alerts, link in bio. 21+`);
+  const dayName=etDate(first,{weekday:'long'}),kick=`${etDate(first,{hour:'numeric',minute:'2-digit'})} ET`;
+  const text=final?xShort(`🔒 Final card for ${dayName}: ${rows.length} pick${rows.length===1?'':'s'}, all locked\n${picks.map(p=>p.line).join('\n')}\n\nKickoff ${kick}. Graded in public, link in bio. 21+`):xShort(`🔒 ${dayName}’s official picks so far\n${picks.map(p=>p.line).join('\n')}\n\nMore can drop up to kickoff: turn on alerts, link in bio. 21+`);
   let mediaId=null;
-  try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(xSlateSvg({day:dayName,date:etDate(first,{month:'short',day:'numeric'}),picks,season:season.wins+season.losses>=5?`${season.wins}–${season.losses} · ${weeklyMoney(season.profit)}`:''})))}
+  try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(xSlateSvg({final,kick,day:dayName,date:etDate(first,{month:'short',day:'numeric'}),picks,season:season.wins+season.losses>=5?`${season.wins}–${season.losses} · ${weeklyMoney(season.profit)}`:''})))}
   catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} slate graphic: ${error.message}`).catch(()=>{})}
-  try{await xPost(env,text,mediaId);await xDone(env,key,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} slate ${key}`).catch(()=>{});return {posted:1,picks:rows.length,graphic:Boolean(mediaId)}}
+  try{await xPost(env,text,mediaId);await xDone(env,key,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} slate ${key}`).catch(()=>{});return {posted:1,final,picks:rows.length,graphic:Boolean(mediaId)}}
   catch(error){console.warn('x_slate_failed',error.message);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});return {posted:0,error:error.message}}
 }
 async function runXPosts(env,now=Date.now()){
@@ -2429,11 +2431,12 @@ async function runXPosts(env,now=Date.now()){
   // A result graphic needs about as many requests as a pick, so it waits
   // for a run that didn't already post a pick or the weekly graphic.
   // The day's slate graphic waits for a run that didn't post a pick or the weekly.
-  const slate=picks.posted||weekly.posted?{posted:0,waiting:true}:await postSlateToX(env,now);
-  const results=picks.posted||weekly.posted||slate.posted?{posted:0,waiting:true}:await postResultsToX(env,now);
+  const final=picks.posted||weekly.posted?{posted:0,waiting:true}:await postSlateToX(env,now,true);
+  const slate=picks.posted||weekly.posted||final.posted?{posted:0,waiting:true}:await postSlateToX(env,now);
+  const results=picks.posted||weekly.posted||final.posted||slate.posted?{posted:0,waiting:true}:await postResultsToX(env,now);
   // The pinned summary waits for a run with nothing else heavy.
-  const summary=picks.posted||weekly.posted||slate.posted||results.posted?{posted:0,waiting:true}:await postSummaryToX(env,now);
-  return {picks,weekly,closing,slate,results,summary};
+  const summary=picks.posted||weekly.posted||final.posted||slate.posted||results.posted?{posted:0,waiting:true}:await postSummaryToX(env,now);
+  return {picks,weekly,closing,final,slate,results,summary};
 }
 // "My book" alerts: a good-value price at one of someone's own sportsbooks.
 // The fair price always comes from every book (3+ pricing both sides, the same

@@ -24,5 +24,12 @@ pick('d','Brock Purdy',110,'2026-10-13T00:15:00.000Z');pick('e','Old Pick',150,'
   assert.deepEqual(posts[0].media,{media_ids:['m1']});assert.ok(!/https?:\/\//.test(text),'no link in the text');
   const svg=run('globalThis.__svg');assert.ok(svg.includes('Sunday')&&svg.includes('Carnell Tate')&&svg.includes('Texans @ Titans · FanDuel'));
   assert.equal((await run(`postSlateToX(env,${Date.parse('2026-10-11T02:05:00Z')})`)).done,true,'once per game day');assert.equal(posts.length,1);
-  console.log('PASS: slate post sends the day\'s pending picks on one graphic, once, from 16 hours before kickoff');
+  // Final card: the run 25 to 35 minutes before the first pick kicks off.
+  assert.equal((await run(`postSlateToX(env,${Date.parse('2026-10-11T16:00:00Z')},true)`)).due,false,'not an hour out');
+  const fin=await run(`postSlateToX(env,${Date.parse('2026-10-11T16:25:00Z')},true)`);
+  assert.equal(fin.posted,1);assert.equal(fin.final,true);
+  assert.ok(posts[1].text.startsWith('🔒 Final card for Sunday: 3 picks, all locked')&&posts[1].text.includes('Kickoff 1:00 PM ET'),posts[1].text);
+  assert.ok(run('globalThis.__svg').includes('FINAL CARD')&&run('globalThis.__svg').includes('All locked'));
+  assert.equal((await run(`postSlateToX(env,${Date.parse('2026-10-11T16:35:00Z')},true)`)).done,true,'final card once a day');
+  console.log('PASS: slate post sends the day\'s pending picks on one graphic, once, from 16 hours before kickoff, and a final card 30 minutes out');
 })().catch(error=>{console.error(error);process.exit(1)});
