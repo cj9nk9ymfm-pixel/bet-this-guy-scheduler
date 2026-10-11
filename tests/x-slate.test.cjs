@@ -31,5 +31,14 @@ pick('d','Brock Purdy',110,'2026-10-13T00:15:00.000Z');pick('e','Old Pick',150,'
   assert.ok(posts[1].text.startsWith('🔒 Final card for Sunday: 3 picks, all locked')&&posts[1].text.includes('Kickoff 1:00 PM ET'),posts[1].text);
   assert.ok(run('globalThis.__svg').includes('FINAL CARD')&&run('globalThis.__svg').includes('All locked'));
   assert.equal((await run(`postSlateToX(env,${Date.parse('2026-10-11T16:35:00Z')},true)`)).done,true,'final card once a day');
+  // Alerts pin post: once per x-pin-request date, with the day's locked picks (even after kickoff).
+  assert.equal((await run(`postAlertsPinToX(env,${Date.parse('2026-10-11T17:40:00Z')})`)).none,true,'nothing until requested');
+  db.prepare("UPDATE public_recommendations SET legs_json=json_set(legs_json,'$[0].priceTrail',json('[{\"o\":-120}]')) WHERE player IN ('Carnell Tate','Brock Bowers')").run();
+  db.prepare("INSERT INTO app_settings (key,value) VALUES ('x-pin-request','2026-10-11')").run();
+  const pin=await run(`postAlertsPinToX(env,${Date.parse('2026-10-11T17:40:00Z')})`);
+  assert.equal(pin.posted,1);assert.equal(pin.picks,3,'Sunday ET picks, incl. games already started');assert.equal(pin.moved,2);
+  const pt=posts.at(-1).text;assert.ok(pt.startsWith('🔔 We bet the number')&&pt.includes('2 of 3 of Sunday’s picks paid more')&&pt.includes('Turn on alerts')&&pt.length<=280,pt);
+  assert.ok(run('globalThis.__svg').includes('LOCKED BEFORE KICKOFF'));
+  assert.equal((await run(`postAlertsPinToX(env,${Date.parse('2026-10-11T17:50:00Z')})`)).done,true,'once per request');
   console.log('PASS: slate post sends the day\'s pending picks on one graphic, once, from 16 hours before kickoff, and a final card 30 minutes out');
 })().catch(error=>{console.error(error);process.exit(1)});
