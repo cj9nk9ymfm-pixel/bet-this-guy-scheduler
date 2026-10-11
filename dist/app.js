@@ -1466,7 +1466,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     const kicker=`<span class="on-kicker">${icon('star')} Official${books.length===1?` · ${htmlEscape(books[0])}`:''}</span>`;
     const why=edges.length?(isParlay?`Every leg beats fair`:`${Math.max(...edges).toFixed(1)}% better than fair`):'';
     const game=String(legs[0]?.team||'').replace(' · @ ',' @ ').replace(' · vs ',' vs '),matchup=isParlay?'':game&&typeof compactGameName==='function'?compactGameName(game):game;
-    return `<button type="button" class="on-row on-${status[0]}-row" data-on="${i}" data-on-player="${htmlEscape(isParlay?'':r.player||'')}" data-on-team="${htmlEscape(isParlay?'':legs[0]?.team||'')}" aria-label="Details for ${htmlEscape(title)}">${avatar}<span class="on-who">${kicker}<b>${htmlEscape(title)}</b><span>${htmlEscape(sub)}</span><small>${htmlEscape([matchup,kickoff(r.game_time)].filter(Boolean).join(' · '))}</small>${why?`<i class="on-why">${htmlEscape(why)}</i>`:''}<i class="on-form" data-on-form="${i}" hidden></i><em class="on-live" data-on-live="${i}" hidden></em></span><span class="on-end"><b class="on-price">${htmlEscape(formatOdds(odds))}</b><span class="on-tag on-${status[0]}">${tag}</span></span></button>`;
+    return `<button type="button" class="on-row on-${status[0]}-row" data-on="${i}" data-on-player="${htmlEscape(isParlay?'':r.player||'')}" data-on-team="${htmlEscape(isParlay?'':legs[0]?.team||'')}" aria-label="Details for ${htmlEscape(title)}">${avatar}<span class="on-who">${kicker}<b>${htmlEscape(title)}</b><span>${htmlEscape(sub)}</span><small>${htmlEscape([matchup,kickoff(r.game_time)].filter(Boolean).join(' · '))}</small>${why?`<i class="on-why">${htmlEscape(why)}</i>`:''}<i class="on-form" data-on-form="${i}" hidden></i><i class="on-wx" data-wx="${htmlEscape(r.game_id||legs[0]?.gameId||'')}" hidden></i><em class="on-live" data-on-live="${i}" hidden></em></span><span class="on-end"><b class="on-price">${htmlEscape(formatOdds(odds))}</b><span class="on-tag on-${status[0]}">${tag}</span></span></button>`;
   }
   // Live progress for locked picks, refreshed with the live board (every 5s in games).
   let officialLiveList=[];
@@ -2429,7 +2429,7 @@ function statsProp(l){
     const game=String(l.team||'').replace(' · @ ',' @ ').replace(' · vs ',' vs '),matchup=game&&typeof compactGameName==='function'?compactGameName(game):game;
     const p={player:l.player,market:l.market,side:l.side,line:Number(l.line)},f=window.BTGForm?.get?.(p);
     const form=f?`${l.side} in ${f.hits} of last ${f.n}`:'';
-    return `<div class="on-row lean-row"><span class="on-avatar"><span>${htmlEscape(initials)}</span><img loading="lazy" decoding="async" src="/api/player-photo?name=${encodeURIComponent(l.player||'')}" alt="" onerror="this.remove()"></span><span class="on-who">${l.book?`<span class="on-kicker lean-kicker">${htmlEscape(l.book)}</span>`:''}<b>${htmlEscape(l.player)}</b><span>${htmlEscape(bet.charAt(0).toUpperCase()+bet.slice(1))}</span><small>${htmlEscape([matchup,when(l.gameTime)].filter(Boolean).join(' · '))}</small>${form?`<i class="on-form" data-lean-form="${i}">${htmlEscape(form)}</i>`:''}</span><span class="on-end">${(u=>u?`<a class="on-price lean-book" href="${u}" target="_blank" rel="noopener sponsored" aria-label="Bet at ${htmlEscape(l.book)}">${htmlEscape(formatOdds(l.odds))}</a>`:`<span class="on-price">${htmlEscape(formatOdds(l.odds))}</span>`)(typeof sportsbookDestination==='function'?sportsbookDestination(l.book):null)}</span></div>`;
+    return `<div class="on-row lean-row"><span class="on-avatar"><span>${htmlEscape(initials)}</span><img loading="lazy" decoding="async" src="/api/player-photo?name=${encodeURIComponent(l.player||'')}" alt="" onerror="this.remove()"></span><span class="on-who">${l.book?`<span class="on-kicker lean-kicker">${htmlEscape(l.book)}</span>`:''}<b>${htmlEscape(l.player)}</b><span>${htmlEscape(bet.charAt(0).toUpperCase()+bet.slice(1))}</span><small>${htmlEscape([matchup,when(l.gameTime)].filter(Boolean).join(' · '))}</small>${form?`<i class="on-form" data-lean-form="${i}">${htmlEscape(form)}</i>`:''}<i class="on-wx" data-wx="${htmlEscape(l.eventId||'')}" hidden></i></span><span class="on-end">${(u=>u?`<a class="on-price lean-book" href="${u}" target="_blank" rel="noopener sponsored" aria-label="Bet at ${htmlEscape(l.book)}">${htmlEscape(formatOdds(l.odds))}</a>`:`<span class="on-price">${htmlEscape(formatOdds(l.odds))}</span>`)(typeof sportsbookDestination==='function'?sportsbookDestination(l.book):null)}</span></div>`;
   }
   function render(){
     const host=document.getElementById('leansNow'),now=Date.now(),list=leans.filter(l=>Date.parse(l.gameTime)>now);
@@ -2441,4 +2441,16 @@ function statsProp(l){
   load();setInterval(load,5*60000);
   // Form loads separately; repaint once it's in.
   let tries=0;const wait=setInterval(()=>{if(++tries>20||!leans.length){if(tries>20)clearInterval(wait);return}if(window.BTGForm?.get?.({player:leans[0].player,market:leans[0].market,side:leans[0].side,line:Number(leans[0].line)})){render();clearInterval(wait)}},1500);
+})();
+
+// Weather on picks: a short note when it could matter (wind 15+ mph, gusts
+// 25+, rain chance 50%+, or freezing), from the stadium forecast.
+(()=>{
+  if(typeof document.getElementById!=='function'||typeof fetch!=='function'||typeof MutationObserver!=='function')return;
+  let games={};
+  const note=w=>{if(!w)return '';const out=[];if(w.wind>=15||w.gust>=25)out.push(`Wind ${w.wind} mph${w.gust>=25?`, gusts ${w.gust}`:''}`);if(w.precip>=50)out.push(`Rain ${w.precip}%`);if(w.temp!=null&&w.temp<=32)out.push(`${w.temp}°F`);return out.join(' · ')};
+  const paint=()=>document.querySelectorAll('[data-wx]').forEach(el=>{const w=games[el.dataset.wx],t=note(w);el.hidden=!t;if(t){el.textContent=t;el.title=w?`Forecast at ${w.stadium}: ${w.temp}°F, wind ${w.wind} mph, rain ${w.precip}%`:''}});
+  const load=async()=>{try{const r=await fetch('/api/weather');const body=await r.json();if(r.ok&&body?.games){games=body.games;paint()}}catch{}};
+  for(const id of ['officialNowList','leansList']){const el=document.getElementById(id);if(el)new MutationObserver(paint).observe(el,{childList:true})}
+  load();setInterval(load,15*60000);
 })();
