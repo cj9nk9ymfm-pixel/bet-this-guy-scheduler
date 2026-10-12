@@ -100,7 +100,7 @@
           <p class="hero-note" id="heroNote">Singles at $100 each at the posted price (change your usual wager in Settings). Every pick is locked before kickoff and graded in public. Past results don’t guarantee future ones.</p>
         </section>
         <button type="button" class="my-pl" id="myRecord" hidden></button>
-        <div class="welcome-note" id="welcomeNote" hidden><p><b>New here?</b> We post NFL player props that are priced better than they should be, before kickoff, and grade every pick in public. Tap a pick to see the bet and where to place it.</p><button type="button" id="welcomeClose">Got it</button></div>
+        <button type="button" class="why-strip" id="whyStrip" hidden><span class="why-items"><span><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg><b id="whyBeat">Beats the kickoff price</b></span><span><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Every pick on the record</span><span><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Free</span></span><span class="why-more">How it works ›</span></button>
         <nav class="jump-bar" id="jumpBar" aria-label="Jump to"><div class="jump-links"><a href="#officialNow" data-jump="picks">Picks</a><a href="#leansNow" data-jump="leans">Worth a look</a><a href="#propsSection" data-jump="board">Board</a></div><div class="price-view" id="priceView" role="group" aria-label="Show prices as"><button type="button" data-view="odds" aria-pressed="true">Sportsbook</button><button type="button" data-view="predictions" aria-pressed="false">Prediction apps</button></div></nav>
         <section class="official-now" id="officialNow" aria-labelledby="officialNowTitle" hidden>
           <div class="on-head"><h2 id="officialNowTitle">This week’s picks <span class="on-count" id="officialNowCount"></span></h2><button type="button" class="alerts-btn on-alerts" data-alerts-toggle>Get pick alerts</button></div>
@@ -281,6 +281,26 @@
     <p class="auth-status" id="authStatus" role="status" hidden></p>
   </div></dialog>
   <dialog id="feedDialog"><button class="dialog-close" aria-label="Close">×</button><p class="eyebrow">LIVE PRICES</p><h2>Where our prices come from</h2><p id="feedDescription">The current NFL board loads first. Additional game prop trees load only when you open that game, keeping startup quick.</p><div class="feed-detail"><span>Prices</span><strong>Licensed U.S. sportsbooks, compared every few minutes</strong><span>Official picks</span><strong>DraftKings, FanDuel, BetMGM, Caesars and Fanatics only</strong><span>Grading</span><strong>Official box scores, wins and losses</strong><span>Live games</span><strong>Scores and stats every few seconds</strong></div><p class="trust-inline"><a href="/trust">See every graded pick →</a></p><div class="dialog-actions"><button id="resetFeed" hidden>View demo board</button><button class="primary" id="saveFeed">Refresh prices</button></div><small id="feedMessage"></small></dialog>
+  <dialog id="welcomeDialog" class="welcome-dialog" aria-labelledby="welcomeTitle"><div class="wd-shell">
+    <button type="button" class="wd-close" id="welcomeX" aria-label="Close">×</button>
+    <p class="wd-eyebrow">BET THIS GUY · FREE NFL PROP PICKS</p>
+    <h2 id="welcomeTitle">Get the price before the line moves.</h2>
+    <p class="wd-lede">We find NFL player props the sportsbooks have priced wrong and alert you before they fix it.</p>
+    <ul class="wd-proof">
+      <li id="wdBeatRow"><span class="wd-ic"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span><b id="wdBeat">We beat the kickoff price on most picks</b><small id="wdBeatSub">Every price we post is compared with the price at kickoff.</small></span></li>
+      <li><span class="wd-ic"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span><b>Every pick on the record</b><small id="wdRecordSub">Locked before kickoff, graded from box scores, losses included.</small></span></li>
+      <li><span class="wd-ic"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span><b>Free. No paywall, no premium tier.</b><small>Every pick, every result, every alert.</small></span></li>
+    </ul>
+    <p class="wd-how-title">How it works</p>
+    <ol class="wd-how"><li><span>1</span>We post a pick with the price to take.</li><li><span>2</span>You get an alert and bet before the price moves.</li><li><span>3</span>We grade every pick in public.</li></ol>
+    <div class="wd-actions">
+      <button type="button" class="wd-primary" id="wdAlerts" data-alerts-toggle data-alerts-keep>Turn on pick alerts</button>
+      <button type="button" class="wd-secondary" id="wdAccount">Create a free account</button>
+      <button type="button" class="wd-skip" id="wdSkip">Just browse →</button>
+    </div>
+    <p class="wd-why"><b>Alerts:</b> prices move within hours, so the alert is how you get our price. <b>Account:</b> email alerts, your own graded record, and your settings on every device.</p>
+    <p class="wd-fine">Research and entertainment, not a sportsbook. 21+ where legal. Past results don’t guarantee future ones. Gambling problem? Call 1-800-GAMBLER.</p>
+  </div></dialog>
   <dialog id="settingsDialog" class="settings-dialog st-dialog" aria-labelledby="settingsTitle"><div class="settings-shell"><header class="settings-head st-top"><h2 id="settingsTitle">Settings</h2><button class="dialog-close" aria-label="Close">×</button></header><div class="settings-body st-body">
 <section class="st-group" aria-labelledby="stAlertsHead"><h3 class="st-head" id="stAlertsHead">Alerts</h3><div class="st-card">
 <div class="st-row"><span class="st-text"><span class="st-label">Pick alerts</span><small id="stAlertsSub">A notification on this phone when picks post</small></span><button type="button" class="st-switch st-switch-btn" role="switch" aria-checked="false" aria-label="Pick alerts" data-alerts-toggle data-alerts-switch></button></div>
