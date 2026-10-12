@@ -1629,12 +1629,12 @@ if(typeof fetch==='function')window.btgCountVisit?.('view:home');
     const reg=await navigator.serviceWorker.register('/sw.js');await navigator.serviceWorker.ready;
     const {publicKey}=await (await fetch('/api/alerts/key')).json();
     const sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:keyBytes(publicKey)});
-    const response=await fetch('/api/alerts/subscribe',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...sub.toJSON(),books:preferences.books||[],follows:(window.BTGFollow?.read().players||[]).map(f=>f.name)})});
+    const response=await fetch('/api/alerts/subscribe',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...sub.toJSON(),books:preferences.books||[],follows:(window.BTGFollow?.read().players||[]).map(f=>f.name),priceView:window.BTGPriceView?.view?.()||'odds',state:window.BTGPriceView?.state?.()||''})});
     if(!response.ok){await sub.unsubscribe().catch(()=>{});note('Couldn’t turn alerts on right now. Try again in a minute.');return}
-    show(true);note(preferences.books?.length?`Alerts are on. We’ll ping you when a new official pick drops, and when ${preferences.books.length===1?preferences.books[0]:'one of your sportsbooks'} has a good-value price.`:'Alerts are on. We’ll ping you when a new official pick drops.');window.btgCount?.('alerts:on');
+    show(true);note(window.BTGPriceView?.view?.()==='predictions'?'Alerts are on, with prediction-market prices. We’ll ping you when a new official pick drops. Switch to sportsbook odds at the top of the home screen.':preferences.books?.length?`Alerts are on. We’ll ping you when a new official pick drops, and when ${preferences.books.length===1?preferences.books[0]:'one of your sportsbooks'} has a good-value price.`:'Alerts are on. We’ll ping you when a new official pick drops.');window.btgCount?.('alerts:on');
   }
   // Saving Settings keeps the books stored with this phone's alerts up to date.
-  window.BTGSyncAlertBooks=async()=>{try{if(!('serviceWorker' in navigator))return;const reg=await navigator.serviceWorker.getRegistration('/sw.js');const sub=await reg?.pushManager?.getSubscription();if(sub)await fetch('/api/alerts/subscribe',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...sub.toJSON(),books:preferences.books||[],follows:(window.BTGFollow?.read().players||[]).map(f=>f.name)})})}catch{}};
+  window.BTGSyncAlertBooks=async()=>{try{if(!('serviceWorker' in navigator))return;const reg=await navigator.serviceWorker.getRegistration('/sw.js');const sub=await reg?.pushManager?.getSubscription();if(sub)await fetch('/api/alerts/subscribe',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...sub.toJSON(),books:preferences.books||[],follows:(window.BTGFollow?.read().players||[]).map(f=>f.name),priceView:window.BTGPriceView?.view?.()||'odds',state:window.BTGPriceView?.state?.()||''})})}catch{}};
   async function turnOff(sub){
     await fetch('/api/alerts/unsubscribe',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({endpoint:sub.endpoint})}).catch(()=>{});
     await sub.unsubscribe().catch(()=>{});show(false);note('Alerts are off.');window.btgCount?.('alerts:off');
@@ -2502,10 +2502,13 @@ function statsProp(l){
       document.getElementById('pmList').innerHTML=value.length?value.map(row).join(''):`<p class="pm-empty">${d.mode==='unknown'?'Choose your state to see prediction-market prices.':'No prediction-market prices beat the sportsbooks right now. Prices are checked every 30 minutes.'}</p>`;
       document.getElementById('pmWhere').innerHTML=picker(d.state);
     }
-    document.querySelectorAll('[data-pm-state]').forEach(sel=>sel.onchange=()=>{store(KEY,sel.value);load()});
+    document.querySelectorAll('[data-pm-state]').forEach(sel=>sel.onchange=()=>{store(KEY,sel.value);load().then(resync)});
     paintPicks();
   }
-  document.getElementById('priceView')?.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{store(VIEW,b.dataset.view);render()});
+  // Alerts follow the switch: the phone's alerts are re-saved with the new choice.
+  window.BTGPriceView={view,state:()=>stored(KEY)||data?.state||''};
+  const resync=()=>{try{window.BTGSyncAlertBooks?.()}catch{}};
+  document.getElementById('priceView')?.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{store(VIEW,b.dataset.view);render();resync()});
   async function load(){try{const st=stored(KEY),r=await fetch(`/api/predictions${st?`?state=${encodeURIComponent(st)}`:''}`);const body=await r.json();if(!r.ok||!body?.success)return;data=body;render()}catch{}}
   const host=document.getElementById('officialNowList');if(host)new MutationObserver(paintPicks).observe(host,{childList:true});
   render();load();setInterval(load,10*60000);
