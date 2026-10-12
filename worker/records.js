@@ -142,10 +142,8 @@ function officialCandidates(events,now=Date.now(),stats={},opts={}){
   // from multiplying the official sample. Highest qualifying edge wins.
   const seen=new Set();return result.sort((a,b)=>b.edge-a.edge||a.playerKey.localeCompare(b.playerKey)).filter(p=>{if(seen.has(p.playerKey))return false;seen.add(p.playerKey);return true});
 }
-// Parlays wait until the first leg is this close to kickoff, when the most
-// picks qualify. Built earlier, the 2-leg tier used every pair as soon as two
-// picks existed, and the one-shared-leg rule then blocked every bigger parlay.
-const PARLAY_WINDOW=2*3600000;
+// Parlays post as soon as their legs qualify, like singles (they come from
+// their own next-tier pool, so there's no reason to wait for kickoff).
 // Same-game parlays: at most 2 legs from one game, and only unlinked stat
 // types (no passing with receiving, no touchdowns or kicking, which all move
 // with scoring). Books price same-game parlays below the multiplied odds and
@@ -168,8 +166,8 @@ function officialPlan(candidates,existing,week,now=Date.now(),pool=candidates){
   // Hardest tiers first: they need the most unshared legs.
   // 2 to 5 legs: 2-3 leg and 3-4 leg tiers carry most parlays; 4-5 legs only when a long price forms.
   const tiers=[['moonshot',4,5,2501,15000],['swing',3,4,1000,2500],['reasonable',2,3,100,999]];
-  const soon=p=>Date.parse(p.gameTime)<=now+PARLAY_WINDOW,legPool=pool.filter(p=>!used.has(p.playerKey));
-  if(!legPool.some(soon))return plan;
+  const legPool=pool.filter(p=>!used.has(p.playerKey));
+  if(legPool.length<2)return plan;
   for(const [tier,min,max,low,high] of tiers){
     for(let attempt=0;attempt<500&&counts[tier]<OFFICIAL_CAPS[tier];attempt++){
       const size=min+attempt%(max-min+1),legs=[],gameIds=new Map(),markets=new Map();
@@ -184,7 +182,7 @@ function officialPlan(candidates,existing,week,now=Date.now(),pool=candidates){
         if(prior.some(keys=>keys.includes(p.playerKey)&&legs.some(l=>keys.includes(l.playerKey))))continue;
         legs.push(p);gameIds.set(p.gameId,(gameIds.get(p.gameId)||0)+1);markets.set(p.market,(markets.get(p.market)||0)+1);
       }
-      if(legs.length!==size||!legs.some(soon))continue;
+      if(legs.length!==size)continue;
       const odds=recordAmerican(parlayDecimal(legs)),keys=legs.map(p=>p.playerKey);
       if(odds<low||odds>high||prior.some(p=>p.filter(k=>keys.includes(k)).length>1))continue;
       plan.push({tier,legs:legs.map(l=>legs.some(o=>o!==l&&o.gameId===l.gameId)?{...l,sameGame:true}:l)});counts[tier]++;prior.push(keys);keys.forEach(k=>exposure.set(k,(exposure.get(k)||0)+1));
