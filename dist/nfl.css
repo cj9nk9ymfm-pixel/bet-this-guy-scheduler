@@ -1685,3 +1685,16 @@ html body #leansList.on-list{overscroll-behavior-x:contain;touch-action:pan-x pa
   html body #officialNowList .on-row{flex:0 0 min(80%,310px);width:min(80%,310px);scroll-snap-align:start;align-self:stretch}
   html body #officialNowList .on-empty{flex:1 0 100%}
 }
+/* Jump bar scrolls with the page (sticky overlapped the picks heading on iPhone). */
+.jump-bar{position:static!important}
+/* State note: one line */
+html body .pm-banner{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:9px 12px;margin:2px 0 10px;font-size:13.5px;line-height:1.4}
+html body .pm-banner p{margin:0;flex:1 1 220px}
+html body .pm-banner .pm-where{font-size:12.5px}
+html body .pm-banner .pm-where select{padding:3px 6px;font-size:12.5px}
+.pm-switch{font:inherit;font-size:13px;font-weight:700;color:#0b1020;background:#7c9cff;border:0;border-radius:999px;padding:6px 12px;cursor:pointer;flex:none}
+html body .jump-bar{margin:0 0 2px!important;padding:2px 0!important;background:transparent!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;border-bottom:0!important}
+html body #heroBanner.hero{margin-bottom:8px}
+html body .jump-bar+.pm-picks,html body .jump-bar~#officialNow{margin-top:6px!important}
+html body .pm-picks{padding-top:4px!important}
+html body .pm-banner[hidden]{display:none!important}
