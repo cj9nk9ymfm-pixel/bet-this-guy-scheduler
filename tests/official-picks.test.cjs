@@ -35,10 +35,15 @@ const events=Array.from({length:16},(_,g)=>({id:'game'+g,eventID:'NFL--game'+g,c
  // Last Saturday: four picks in four games. Pairs posted as each pick arrived
  // used every combination, so no 3- or 4-leg parlay could ever form.
  context.saturday=[['Borregales','a',110],['Shough','b',120],['Jones','c',200],['JWilliams','d',104],['Slye','e',115],['Lawrence','f',105]].map(([player,game,odds],i)=>({player,gameId:'NFL--'+game,gameTime:'2026-09-27T17:00:00Z',market:['Field Goals Made','Interceptions Thrown','Passing Touchdowns','Longest Reception','Field Goals Made','Passing Touchdowns'][i],side:'Over',line:1.5,odds,edge:2-i/10,playerKey:'NFL--'+game+'|'+player.toLowerCase()}));
- run("var sat=officialPlan(saturday,[],'2026-09-22',Date.parse('2026-09-27T15:30:00Z')),satTiers=sat.map(p=>p.tier)");
+ // The next tier down (here, all six) feeds parlays; no singles this run.
+ run("var sat=officialPlan([],[],'2026-09-22',Date.parse('2026-09-27T15:30:00Z'),saturday),satTiers=sat.map(p=>p.tier)");
  assert.ok(run('satTiers.includes("swing")&&satTiers.includes("moonshot")'),'a full slate now reaches both bigger tiers');
  assert.ok(run('satTiers.includes("reasonable")'),'2-leg parlays still post alongside them');
  assert.ok(run('sat.filter(p=>p.tier!=="props").every((a,i,all)=>all.every((b,j)=>i===j||a.legs.filter(x=>b.legs.some(y=>y.playerKey===x.playerKey)).length<=1))'),'no two parlays share more than one leg');
+ // A player who is an official single (posted earlier or this run) is never a parlay leg.
+ run("var mixed=officialPlan(saturday.slice(0,2),[],'2026-09-22',Date.parse('2026-09-27T15:30:00Z'),saturday),singleKeys=mixed.filter(p=>p.tier==='props').map(p=>p.legs[0].playerKey)");
+ assert.equal(run('singleKeys.length'),2);
+ assert.ok(run('mixed.filter(p=>p.tier!=="props").length>0&&mixed.filter(p=>p.tier!=="props").every(p=>p.legs.every(l=>!singleKeys.includes(l.playerKey)))'),'parlays never reuse a single');
  assert.equal(await run("writeOfficialPlan(plan,'2026-09-22',env)"),62,'the writer reports how many picks it posted (this is what triggers pick alerts)');
  assert.equal(db.prepare('SELECT COUNT(*) n FROM public_recommendations').get().n,62);
  const before=db.prepare('SELECT id,odds,combined_odds,posted_at,legs_json FROM public_recommendations ORDER BY id').all();
