@@ -28,7 +28,7 @@ const events=Array.from({length:16},(_,g)=>({id:'game'+g,eventID:'NFL--game'+g,c
  assert.equal(run('officialCandidates(later).length'),160,'a game three days out can lock a pick');
  context.thin=events.map(e=>({...e,bookmakers:e.bookmakers.slice(0,2)}));assert.equal(run('officialCandidates(thin).length'),0);
  run("var candidates=officialCandidates(events),early=officialPlan(candidates,[],'2026-09-22')");
- assert.equal(run('early.filter(p=>p.tier!=="props").length'),0,'no parlays until the first leg is two hours from kickoff');
+ assert.ok(run('early.filter(p=>p.tier!=="props").length')>0,'parlays post as soon as legs qualify, days before kickoff');
  run("var plan=officialPlan(candidates,[],'2026-09-22',Date.parse('2026-09-27T15:30:00Z'))");
  assert.equal(run('plan.filter(p=>p.tier==="props").length'),32,'two props a game across 16 games');
  for(const [tier,cap] of [['reasonable',15],['swing',10],['moonshot',3]])assert.equal(run(`plan.filter(p=>p.tier==='${tier}').length`),cap);
