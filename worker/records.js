@@ -145,17 +145,18 @@ function officialCandidates(events,now=Date.now(),stats={},opts={}){
 // Parlays post as soon as their legs qualify, like singles (they come from
 // their own next-tier pool, so there's no reason to wait for kickoff).
 // Same-game parlays: at most 2 legs from one game, and only unlinked legs:
-// players on different teams (any pair but two touchdown props), or for
+// players on different teams (any pair), or for
 // teammates, unlinked stat types (no passing with receiving, no touchdowns or
 // kicking, which all move with scoring). Books price same-game parlays below the multiplied odds and
 // our feed has no same-game prices, so they're graded at the multiplied
 // price with the payout cut by SGP_CUT (20%).
 const SGP_CUT=.2;
 const statFamily=m=>/touchdown|tds\b/i.test(m)?'td':/kick|field goal|extra point/i.test(m)?'kick':/pass|interception/i.test(m)?'passing':/recep/i.test(m)?'receiving':/rush/i.test(m)?'rushing':'other';
-// Players on different teams (known from saved form): any pair but two
-// touchdown props. Same team or team unknown: the strict rule above.
+// Players on different teams (known from saved form): any pair, touchdown
+// props included, as long as each leg qualifies on its own price. Same team or
+// team unknown: the strict rule above.
 function sgpOk(a,b){const x=statFamily(a.market),y=statFamily(b.market);
-  if(a.playerTeam&&b.playerTeam&&normalizedName(a.playerTeam)!==normalizedName(b.playerTeam))return !(x==='td'&&y==='td');
+  if(a.playerTeam&&b.playerTeam&&normalizedName(a.playerTeam)!==normalizedName(b.playerTeam))return true;
   if(x===y||[x,y].some(f=>f==='td'||f==='kick'||f==='other'))return false;return !(new Set([x,y]).has('passing')&&new Set([x,y]).has('receiving'))}
 // Each player's team from saved form, for the same-game rule.
 async function playerTeams(env){const rows=(await env.DB.prepare('SELECT player,team FROM player_form WHERE team IS NOT NULL').all().catch(()=>({results:[]}))).results||[];return new Map(rows.map(r=>[normalizedName(r.player),r.team]))}
