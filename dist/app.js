@@ -2545,13 +2545,22 @@ function statsProp(l){
     const note=[`Fair chance ${Math.round(r.fair)}%`,r.open===false?`not offered in ${data?.stateName||'your state'}`:''].filter(Boolean).join(' · ');
     return `<div class="on-row lean-row pm-pick"><span class="on-avatar"><span>${htmlEscape(initials)}</span><img loading="lazy" decoding="async" src="/api/player-photo?name=${encodeURIComponent(r.player||'')}" alt="" onerror="this.remove()"></span><span class="on-who"><span class="on-kicker">★ Prediction pick · ${htmlEscape(r.exchange)}</span><b>${htmlEscape(r.player)}</b><span>${htmlEscape(bet.charAt(0).toUpperCase()+bet.slice(1))}</span><small>${htmlEscape([matchup,when(r.gameTime)].filter(Boolean).join(' · '))}</small><i class="on-why">${tag} ${htmlEscape(note)}</i></span><span class="on-end">${price}</span></div>`;
   }
+  function parlayRow(r){
+    const status=r.result==='won'?['won','Won']:r.result==='lost'?['lost','Lost']:r.result==='push'?['push','Push']:Date.parse(r.gameTime)<=Date.now()?['live','Live']:['locked','Locked'];
+    const same=r.legs.some(l=>l.sameGame),url=LINKS[r.exchange];
+    const priceText=pct(r.odds),price=url&&!r.result?`<a class="on-price pm-price" href="${url}" target="_blank" rel="noopener" aria-label="Open ${htmlEscape(r.exchange)}">${htmlEscape(priceText)}</a>`:`<span class="on-price pm-price">${htmlEscape(priceText)}</span>`;
+    const legs=r.legs.map(l=>`${l.result==='won'?'✓ ':l.result==='lost'?'✗ ':''}${l.player} ${l.side} ${l.line} ${String(l.market||'').toLowerCase()}`).join(' + ');
+    const note=[`¼ unit${same?' · same game':''}`,r.open===false?`not offered in ${data?.stateName||'your state'}`:''].filter(Boolean).join(' · ');
+    return `<div class="on-row lean-row pm-pick"><span class="on-avatar on-parlay">${typeof icon==='function'?icon('layers'):''}</span><span class="on-who"><span class="on-kicker">★ Prediction parlay · ${htmlEscape(r.exchange)}</span><b>${r.legs.length}-leg parlay</b><span>${htmlEscape(legs)}</span><small>${htmlEscape(when(r.gameTime))}</small><i class="on-why"><em class="pm-status pm-${status[0]}">${status[1]}</em> ${htmlEscape(note)}</i></span><span class="on-end">${price}</span></div>`;
+  }
   function renderPicks(v){
     const host=document.getElementById('pmPicksNow');if(!host)return;
-    const list=data?.pmPicks||[],rec=data?.pmRecord;host.hidden=v!=='predictions'||!data||data.mode==='unknown';if(host.hidden)return;
+    const list=[...(data?.pmPicks||[]),...(data?.pmParlays||[])],rec=data?.pmRecord,pr=data?.pmParlayRecord;host.hidden=v!=='predictions'||!data||data.mode==='unknown';if(host.hidden)return;
     const games=rec?rec.wins+rec.losses+rec.pushes:0;
     host.classList.toggle('pm-none',!list.length);
-    document.getElementById('pmPicksRecord').textContent=!list.length&&!games?'None yet this week. They post when a market beats the sportsbooks’ fair chance by 1+ point after its fee. Own record.':games?`Record ${rec.wins}–${rec.losses}${rec.pushes?`–${rec.pushes}`:''} · ${money(rec.profit)} at $100 a pick after fees${rec.tracked?` · ${rec.beat} of ${rec.tracked} beat the close`:''}`:'First picks are being graded. Own record, after fees.';
-    document.getElementById('pmPicksList').innerHTML=list.map(pickRow).join('');
+    const pg=pr?pr.wins+pr.losses+pr.pushes:0,parlayText=pg?` · Parlays ${pr.wins}–${pr.losses} (${money(pr.profit)})`:'';
+    document.getElementById('pmPicksRecord').textContent=!list.length&&!games&&!pg?'None yet this week. They post when a market beats the sportsbooks’ fair chance by 1+ point after its fee. Own record.':games?`Record ${rec.wins}–${rec.losses}${rec.pushes?`–${rec.pushes}`:''} · ${money(rec.profit)} at $100 a pick after fees${rec.tracked?` · ${rec.beat} of ${rec.tracked} beat the close`:''}${parlayText}`:`First picks are being graded. Own record, after fees.${parlayText}`;
+    document.getElementById('pmPicksList').innerHTML=list.map(r=>r.parlay?parlayRow(r):pickRow(r)).join('');
   }
   // Board: every prop's best prediction-market chance in the visitor's state.
   const boardPrices=new Map(),boardWanted=new Set();let boardTimer=null;

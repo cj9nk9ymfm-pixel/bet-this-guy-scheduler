@@ -144,14 +144,22 @@ function officialCandidates(events,now=Date.now(),stats={},opts={}){
 }
 // Parlays post as soon as their legs qualify, like singles (they come from
 // their own next-tier pool, so there's no reason to wait for kickoff).
-// Same-game parlays: at most 2 legs from one game, and only unlinked stat
-// types (no passing with receiving, no touchdowns or kicking, which all move
-// with scoring). Books price same-game parlays below the multiplied odds and
+// Same-game parlays: at most 2 legs from one game, and only unlinked legs:
+// players on different teams (any pair but two touchdown props), or for
+// teammates, unlinked stat types (no passing with receiving, no touchdowns or
+// kicking, which all move with scoring). Books price same-game parlays below the multiplied odds and
 // our feed has no same-game prices, so they're graded at the multiplied
 // price with the payout cut by SGP_CUT (20%).
 const SGP_CUT=.2;
 const statFamily=m=>/touchdown|tds\b/i.test(m)?'td':/kick|field goal|extra point/i.test(m)?'kick':/pass|interception/i.test(m)?'passing':/recep/i.test(m)?'receiving':/rush/i.test(m)?'rushing':'other';
-function sgpOk(a,b){const x=statFamily(a.market),y=statFamily(b.market);if(x===y||[x,y].some(f=>f==='td'||f==='kick'||f==='other'))return false;return !(new Set([x,y]).has('passing')&&new Set([x,y]).has('receiving'))}
+// Players on different teams (known from saved form): any pair but two
+// touchdown props. Same team or team unknown: the strict rule above.
+function sgpOk(a,b){const x=statFamily(a.market),y=statFamily(b.market);
+  if(a.playerTeam&&b.playerTeam&&normalizedName(a.playerTeam)!==normalizedName(b.playerTeam))return !(x==='td'&&y==='td');
+  if(x===y||[x,y].some(f=>f==='td'||f==='kick'||f==='other'))return false;return !(new Set([x,y]).has('passing')&&new Set([x,y]).has('receiving'))}
+// Each player's team from saved form, for the same-game rule.
+async function playerTeams(env){const rows=(await env.DB.prepare('SELECT player,team FROM player_form WHERE team IS NOT NULL').all().catch(()=>({results:[]}))).results||[];return new Map(rows.map(r=>[normalizedName(r.player),r.team]))}
+const withTeams=(list,teams)=>list.map(p=>({...p,playerTeam:teams.get(normalizedName(p.player))||null}));
 // Parlay price from its legs: multiplied, then the same-game cut when two legs share a game.
 function parlayDecimal(legs){const d=legs.reduce((p,l)=>p*recordDecimal(l.odds),1),same=new Set(legs.map(l=>l.gameId)).size<legs.length;return same?1+(d-1)*(1-SGP_CUT):d}
 // Singles are the top tier (1%+ edge). Parlays are built from the next tier
@@ -1221,7 +1229,8 @@ const exchangeInsert=(env,p,stamp)=>env.DB.prepare('INSERT OR IGNORE INTO exchan
 const PREDICTION_FEES={kalshi:p=>7*p*(1-p),polymarket:p=>7*p*(1-p),prophetx:()=>1,betopenly:()=>1,novig:()=>0};
 const PREDICTION_MIN=1,PREDICTION_MAX=12,PREDICTION_PER_GAME=2;
 function predictionNet(key,odds){const p=1/recordDecimal(odds),cost=Math.min(.99,p+(PREDICTION_FEES[key]||(()=>1))(p)/100);return {chance:100*p,netChance:100*cost,netOdds:recordAmerican(1/cost)}}
-function predictionCandidates(board,exchangeBoard,fairs,now=Date.now()){
+function predictionCandidates(board,exchangeBoard,fairs,now=Date.now(),opts={}){
+  const min=opts.min??PREDICTION_MIN,max=opts.max??PREDICTION_MAX;
   const gameId=board.eventID||`NFL--${board.id}`,kick=Date.parse(board.commence_time),best=new Map();
   if(!(kick>now+5*60000))return [];
   for(const ex of exchangeBoard.bookmakers||[]){if(!EXCHANGES[ex.key])continue;
@@ -1231,9 +1240,9 @@ function predictionCandidates(board,exchangeBoard,fairs,now=Date.now()){
         if(!player||line===null||odds===null||!['over','under'].includes(side)||odds<-250||odds>300)continue;
         const fair=fairs.get(`${gameId}|${normalizedName(player)}|${label}|${line}`);if(fair===undefined)continue;
         const f=100*(side==='over'?fair:1-fair),n=predictionNet(ex.key,odds),edge=f-n.netChance;
-        if(edge<PREDICTION_MIN||edge>PREDICTION_MAX)continue;
+        if(edge<min||(opts.max!==undefined?edge>=max:edge>max))continue;
         const row={exchange:EXCHANGES[ex.key],eventId:gameId,player,team:`${board.away_team} · @ ${board.home_team}`,market:label,side:side==='over'?'Over':'Under',line,odds,netOdds:n.netOdds,fair:f,edge,gameTime:new Date(kick).toISOString()};
-        const k=normalizedName(player);if(!best.has(k)||best.get(k).edge<edge)best.set(k,row);
+        const k=opts.perExchange?`${ex.key}|${normalizedName(player)}`:normalizedName(player);if(!best.has(k)||best.get(k).edge<edge)best.set(k,row);
       }}}
   return [...best.values()].sort((a,b)=>b.edge-a.edge);
 }
@@ -1291,6 +1300,16 @@ async function sendPredictionEmails(env,now=Date.now()){
 // X: one post per prediction pick, text only, with the prediction record.
 async function postPredictionPicksToX(env,now=Date.now()){
   if(!env.DB||!xReady(env))return {posted:0,disabled:true};
+  // Prediction parlays first-come with picks: one post per run.
+  const parlays=(await env.DB.prepare('SELECT * FROM prediction_parlays WHERE posted_at>? AND game_time>? ORDER BY posted_at LIMIT 6').bind(new Date(now-24*3600000).toISOString(),new Date(now).toISOString()).all().catch(()=>({results:[]}))).results||[];
+  for(const r of parlays){
+    const key=`xpmp:${r.id}`;if(!(await xClaimable(env,key,now)))continue;if(!(await xClaim(env,key,now)))continue;
+    let legs=[];try{legs=JSON.parse(r.legs_json)}catch{}
+    const same=legs.some(l=>l.sameGame);
+    const text=xShort(`📈 Prediction market parlay · ${r.exchange} · ¼ unit\n${legs.map(l=>`• ${l.player} ${weeklyLegText(l)}`).join('\n')}\nPriced at ${exchangePct(r.odds)}% after fees${same?' (same-game)':''}: take it at that chance or lower in ${r.exchange}’s parlay builder.\n\nOwn record. Link in bio. 18+/21+ by app.`);
+    try{const sent=await xPost(env,text);await xDone(env,key,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} prediction-parlay ${r.id} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,parlay:true}}
+    catch(error){await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});return {posted:0,error:error.message}}
+  }
   const rows=(await env.DB.prepare('SELECT * FROM prediction_picks WHERE posted_at>? AND game_time>? ORDER BY posted_at LIMIT 6').bind(new Date(now-24*3600000).toISOString(),new Date(now).toISOString()).all()).results||[];
   for(const r of rows){
     const key=`xpm:${r.id}`;if(!(await xClaimable(env,key,now)))continue;
@@ -1304,6 +1323,84 @@ async function postPredictionPicksToX(env,now=Date.now()){
   }
   return {posted:0};
 }
+// Prediction parlays: legs from the next tier (0.5 to just under 1 point after
+// fees), never a player who is a prediction pick, all legs on one app. Same
+// sizes and same-game rules as sportsbook parlays; priced from each leg's
+// after-fee price (the same-game cut when two legs share a game); graded at a
+// quarter unit. Each app's own combo price may differ, so posts say the
+// price to take it at.
+const PM_PARLAY_TIERS=[['long',4,5,2501,15000,2],['mid',3,4,1000,2500,5],['short',2,3,100,999,8]];
+function predictionParlayPlan(pool,existing,week,now=Date.now()){
+  const prior=existing.map(r=>{try{return JSON.parse(r.legs_json).map(l=>`${l.eventId}|${normalizedName(l.player)}`)}catch{return []}});
+  const exposure=new Map();prior.flat().forEach(k=>exposure.set(k,(exposure.get(k)||0)+1));
+  const counts=Object.fromEntries(PM_PARLAY_TIERS.map(([t])=>[t,existing.filter(r=>r.tier===t).length])),plan=[];
+  const key=l=>`${l.eventId}|${normalizedName(l.player)}`;
+  for(const exName of [...new Set(pool.map(p=>p.exchange))]){
+    const legsOn=pool.filter(p=>p.exchange===exName&&Date.parse(p.gameTime)>now+5*60000);if(legsOn.length<2)continue;
+    for(const [tier,min,max,low,high,cap] of PM_PARLAY_TIERS){
+      for(let attempt=0;attempt<300&&counts[tier]<cap;attempt++){
+        const size=min+attempt%(max-min+1),legs=[];
+        const sorted=[...legsOn].sort((a,b)=>(exposure.get(key(a))||0)-(exposure.get(key(b))||0)||b.edge-a.edge);
+        for(let j=0;j<sorted.length&&legs.length<size;j++){
+          const p=sorted[(j+Math.floor(attempt/(max-min+1)))%sorted.length],inGame=legs.filter(l=>l.eventId===p.eventId);
+          if((exposure.get(key(p))||0)>=3||legs.some(l=>key(l)===key(p))||inGame.length>=2||(inGame.length&&!sgpOk(inGame[0],p)))continue;
+          if(prior.some(keys=>keys.includes(key(p))&&legs.some(l=>keys.includes(key(l)))))continue;
+          legs.push(p);
+        }
+        if(legs.length!==size)continue;
+        const priced=legs.map(l=>({gameId:l.eventId,odds:l.netOdds})),odds=recordAmerican(parlayDecimal(priced)),keys=legs.map(key);
+        if(odds<low||odds>high||prior.some(p=>p.filter(k=>keys.includes(k)).length>1))continue;
+        const same=new Set(legs.map(l=>l.eventId)).size<legs.length;
+        plan.push({tier,exchange:exName,odds,legs:legs.map(l=>({...l,sameGame:same&&legs.some(o=>o!==l&&o.eventId===l.eventId)}))});counts[tier]++;prior.push(keys);keys.forEach(k=>exposure.set(k,(exposure.get(k)||0)+1));
+      }
+    }
+  }
+  return plan;
+}
+async function recordPredictionParlays(env,pool,now=Date.now()){
+  if(!env.DB||pool.length<2)return {posted:0};
+  const week=officialWeek(now),existing=(await env.DB.prepare('SELECT tier,legs_json FROM prediction_parlays WHERE week=?').bind(week).all()).results||[];
+  const picks=new Set((((await env.DB.prepare('SELECT event_id,player FROM prediction_picks WHERE game_time>?').bind(new Date(now).toISOString()).all()).results)||[]).map(r=>`${r.event_id}|${normalizedName(r.player)}`));
+  const teams=await playerTeams(env),plan=predictionParlayPlan(withTeams(pool.filter(p=>!picks.has(`${p.eventId}|${normalizedName(p.player)}`)),teams),existing,week,now),stamp=new Date(now).toISOString();
+  const statements=[];
+  for(const p of plan){const legs=p.legs.map(({team,...l})=>({...l,team}));const id=`pmp|${week}|${p.tier}|${p.exchange}|${p.legs.map(l=>`${l.eventId}:${normalizedName(l.player)}:${l.market}`).sort().join(',')}`;
+    statements.push(env.DB.prepare('INSERT OR IGNORE INTO prediction_parlays (id,week,tier,exchange,legs_json,odds,game_time,posted_at) VALUES (?,?,?,?,?,?,?,?)').bind(id.slice(0,480),week,p.tier,p.exchange,JSON.stringify(legs),p.odds,p.legs.map(l=>l.gameTime).sort().at(-1),stamp))}
+  if(statements.length)await env.DB.batch(statements);
+  return {posted:statements.length};
+}
+// Grade each leg from box scores; a lost leg loses the parlay once its game is final.
+async function gradePredictionParlays(env,now=Date.now(),limit=15){
+  if(!env.DB||!env.BALLDONTLIE_API_KEY)return {graded:0};
+  const rows=(await env.DB.prepare('SELECT * FROM prediction_parlays WHERE result IS NULL AND posted_at<? ORDER BY game_time LIMIT ?').bind(new Date(now).toISOString(),limit).all()).results||[];
+  const cache=new Map(),statements=[],stamp=new Date(now).toISOString();let graded=0;
+  for(const r of rows){
+    let legs;try{legs=JSON.parse(r.legs_json)}catch{continue}
+    let changed=false;
+    for(const l of legs){
+      if(l.result||Date.parse(l.gameTime)>now-4*3600000)continue;
+      const record={sport:'NFL',player:l.player,team:l.team,gameTime:l.gameTime,market:l.market,side:l.side,line:l.line};
+      const stat=await recordPlayerStats(record,env,undefined,cache).catch(()=>null);
+      if(shadowVoid(stat,l.gameTime,now)){l.result='push';changed=true;continue}
+      if(!stat||stat.missingPlayerStats||!(stat.scoreboardFinal||nflGameState(stat.game||{})==='final'))continue;
+      const value=BTGStats.metric(record,stat).value,res=value===null?null:BTGStats.grade(l.side,l.line,value);
+      if(res){l.result=res;l.actual=value;changed=true}
+    }
+    const result=legs.some(l=>l.result==='lost')?'lost':legs.every(l=>l.result)?(legs.every(l=>l.result==='push')?'push':'won'):null;
+    if(changed||result)statements.push(env.DB.prepare('UPDATE prediction_parlays SET legs_json=?,result=?,graded_at=? WHERE id=?').bind(JSON.stringify(legs),result,result?stamp:null,r.id));
+    if(result)graded++;
+  }
+  if(statements.length)await env.DB.batch(statements);
+  return {graded,checked:rows.length};
+}
+// Parlay record at a quarter unit ($25): pushed legs drop out of the price.
+function predictionParlayPay(r){
+  if(r.result==='lost')return -25;if(r.result!=='won')return 0;
+  let legs=[];try{legs=JSON.parse(r.legs_json)}catch{}
+  const live=legs.filter(l=>l.result!=='push'),d=live.length&&live.length<legs.length?parlayDecimal(live.map(l=>({gameId:l.eventId,odds:l.netOdds??l.odds}))):recordDecimal(Number(r.odds));
+  return 25*(d-1);
+}
+function predictionParlayRecord(rows){const g=rows.filter(r=>['won','lost','push'].includes(r.result));return {wins:g.filter(r=>r.result==='won').length,losses:g.filter(r=>r.result==='lost').length,pushes:g.filter(r=>r.result==='push').length,profit:Math.round(g.reduce((s,r)=>s+predictionParlayPay(r),0)),pending:rows.length-g.length}}
+const predictionParlayText=r=>{let legs=[];try{legs=JSON.parse(r.legs_json)}catch{}return `${legs.length}-leg parlay on ${r.exchange} at ${exchangePct(r.odds)}%: ${legs.map(l=>`${l.player} ${weeklyLegText(l)}`).join(' + ')}`};
 // Record for prediction picks at $100 a pick, after fees (net price).
 function predictionRecord(rows){
   const graded=rows.filter(r=>['won','lost','push'].includes(r.result)),dec=o=>recordDecimal(Number(o));
@@ -1319,12 +1416,13 @@ async function recordExchangeProps(env,boards,now=Date.now()){
   const last=Number(await appSetting(env,'exchange-props-at')||0);
   if(now-last<29*60000)return {skipped:true};
   await setAppSetting(env,'exchange-props-at',String(now));
-  const fairs=sportsbookFairs(boards,now),stamp=new Date(now).toISOString(),statements=[],coverage={};let picks=0,games=0;
+  const fairs=sportsbookFairs(boards,now),stamp=new Date(now).toISOString(),statements=[],coverage={};let picks=0,games=0;const pmPool=[];
   for(const board of boards){
     const kick=Date.parse(board.commence_time);if(!(kick>now+5*60000)||kick-now>48*3600000)continue;
     let ex;try{ex=await fetchExchangeOdds(board.id,env.THE_ODDS_API_KEY)}catch{continue}
     games++;const out=exchangePropCandidates(board,ex,fairs,now);
     statements.push(...await recordPredictionPicks(env,board,ex,fairs,now).catch(()=>[]));
+    pmPool.push(...predictionCandidates(board,ex,fairs,now,{min:.5,max:1,perExchange:true}));
     statements.push(env.DB.prepare('INSERT OR REPLACE INTO exchange_prices (event_id,game_time,prices_json,updated_at) VALUES (?,?,?,?)').bind(board.eventID||`NFL--${board.id}`,new Date(kick).toISOString(),JSON.stringify(exchangePriceList(ex)),stamp));
     for(const [k,c] of Object.entries(out.coverage)){const t=coverage[k]||={lines:0,matched:0};t.lines+=c.lines;t.matched+=c.matched}
     for(const p of out.picks){statements.push(exchangeInsert(env,p,stamp));picks++}
@@ -1340,8 +1438,10 @@ async function recordExchangeProps(env,boards,now=Date.now()){
       if(price!==null)statements.push(env.DB.prepare('UPDATE prediction_picks SET close_odds=?,close_at=? WHERE id=?').bind(price,stamp,r.id))}
   }
   if(statements.length)await env.DB.batch(statements);
+  // Prediction parlays, after this run's prediction picks are saved (their players are left out).
+  const pmParlays=await recordPredictionParlays(env,pmPool,now).catch(error=>({error:error.message}));
   await setAppSetting(env,'exchange-coverage',JSON.stringify({at:stamp,games,coverage})).catch(()=>{});
-  return {games,logged:picks};
+  return {games,logged:picks,pmParlays};
 }
 async function gradeExchangeShadow(env,now=Date.now(),limit=30){
   if(!env.DB||!env.BALLDONTLIE_API_KEY)return {graded:0};
@@ -1472,7 +1572,9 @@ async function predictionsResponse(request,env,now=Date.now()){
   // Prediction-market picks: this week's card and the season record.
   const pmRows=(await env.DB.prepare('SELECT * FROM prediction_picks ORDER BY game_time,posted_at').all()).results||[];
   const pmPicks=pmRows.filter(r=>Date.parse(r.game_time)>now-5*86400000).slice(-24).map(r=>{const key=Object.keys(EXCHANGES).find(k=>EXCHANGES[k]===r.exchange);return {id:r.id,exchange:r.exchange,open:allowed.has(key),eventId:r.event_id,player:r.player,team:r.team||'',market:r.market,side:r.side,line:r.line,odds:r.odds,netOdds:r.net_odds,fair:r.fair_pct,edge:r.edge,gameTime:r.game_time,postedAt:r.posted_at,closeOdds:r.close_odds,result:r.result,actual:r.actual}});
-  return new Response(JSON.stringify({success:true,...pub,picks,fairs,locked,value:value.slice(0,8),pmPicks,pmRecord:predictionRecord(pmRows)}),{headers:head});
+  const pmParlayRows=(await env.DB.prepare('SELECT * FROM prediction_parlays ORDER BY game_time,posted_at').all().catch(()=>({results:[]}))).results||[];
+  const pmParlays=pmParlayRows.filter(r=>Date.parse(r.game_time)>now-5*86400000).slice(-16).map(r=>{let legs=[];try{legs=JSON.parse(r.legs_json)}catch{}const key=Object.keys(EXCHANGES).find(k=>EXCHANGES[k]===r.exchange);return {id:r.id,parlay:true,exchange:r.exchange,open:allowed.has(key),odds:r.odds,gameTime:legs.map(l=>l.gameTime).sort()[0]||r.game_time,result:r.result,legs:legs.map(l=>({player:l.player,market:l.market,side:l.side,line:l.line,team:l.team,sameGame:Boolean(l.sameGame),result:l.result||null}))}});
+  return new Response(JSON.stringify({success:true,...pub,picks,fairs,locked,value:value.slice(0,8),pmPicks,pmRecord:predictionRecord(pmRows),pmParlays,pmParlayRecord:predictionParlayRecord(pmParlayRows)}),{headers:head});
 }
 function bettingOptionsResponse(request){
   const {exchangeKeys,...where}=bettingOptions(request);
@@ -1664,7 +1766,7 @@ async function publishOfficialPicks(request,env,ctx,opts={}){
     if(!opts.soonOnly)jobStep('publish','plan');const existing=await env.DB.prepare('SELECT * FROM public_recommendations WHERE id>=? AND id<?').bind(prefix,prefix+'\uffff').all();
     const stats={};const candidates=officialCandidates(boards,Date.now(),stats);
     // Parlay legs come from the next tier down (0.5% to just under 1%), not from the singles.
-    const nextTier=officialCandidates(boards,Date.now(),{},{min:.5,below:1});
+    const nextTier=withTeams(officialCandidates(boards,Date.now(),{},{min:.5,below:1}),await playerTeams(env));
     const plan=officialPlan(candidates,existing.results||[],week,Date.now(),nextTier);
     const posted=await writeOfficialPlan(plan,week,env);
     await stampExchangePrices(env,Date.now()).catch(error=>console.warn('exchange_stamp_failed',error.message));
@@ -2022,7 +2124,8 @@ async function latestAlert(env,now=Date.now(),endpoint=null){
   const picks=rows.results||[];
   if(!picks.length&&endpoint&&validPushEndpoint(endpoint)){
     const mine=await env.DB.prepare("SELECT price_view FROM push_subscriptions WHERE endpoint=?").bind(endpoint).first().catch(()=>null);
-    if(mine?.price_view==='predictions'){const fresh=(await env.DB.prepare('SELECT * FROM prediction_picks WHERE posted_at>=? ORDER BY posted_at DESC LIMIT 3').bind(new Date(now-3*3600000).toISOString()).all()).results||[];if(fresh.length)return predictionAlert(fresh)}
+    if(mine?.price_view==='predictions'){const fresh=(await env.DB.prepare('SELECT * FROM prediction_picks WHERE posted_at>=? ORDER BY posted_at DESC LIMIT 3').bind(new Date(now-3*3600000).toISOString()).all()).results||[];if(fresh.length)return predictionAlert(fresh);
+      const fp=(await env.DB.prepare('SELECT * FROM prediction_parlays WHERE posted_at>=? ORDER BY posted_at DESC LIMIT 2').bind(new Date(now-3*3600000).toISOString()).all().catch(()=>({results:[]}))).results||[];if(fp.length)return {title:fp.length===1?'📈 New prediction market parlay':`📈 ${fp.length} new prediction market parlays`,body:fp.map(predictionParlayText).join('\n'),url:'/'}}
   }
   if(!picks.length)return {title:'New Bet This Guy picks',body:'Fresh official picks are on the board.',url:'/'};
   // A phone set to prediction markets gets each pick's prediction-market chances
@@ -2034,6 +2137,8 @@ async function latestAlert(env,now=Date.now(),endpoint=null){
     const newest=picks.length?(await env.DB.prepare("SELECT MAX(posted_at) AS at FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%'").first())?.at||'':'';
     const fresh=(await env.DB.prepare('SELECT * FROM prediction_picks WHERE posted_at>=? AND posted_at>? ORDER BY posted_at DESC LIMIT 3').bind(new Date(now-3*3600000).toISOString(),newest).all()).results||[];
     if(fresh.length)return predictionAlert(fresh);
+    const fp=(await env.DB.prepare('SELECT * FROM prediction_parlays WHERE posted_at>=? AND posted_at>? ORDER BY posted_at DESC LIMIT 2').bind(new Date(now-3*3600000).toISOString(),newest).all().catch(()=>({results:[]}))).results||[];
+    if(fp.length)return {title:fp.length===1?'📈 New prediction market parlay':`📈 ${fp.length} new prediction market parlays`,body:fp.map(predictionParlayText).join('\n'),url:'/'};
   }
   const line=r=>{if(r.kind==='parlay')return `${recordLegs(r).length}-leg parlay (${weeklyOdds(r.combined_odds)}): ${recordLegs(r).map(l=>l.player).join(' + ')}`;
     if(pm){const ex=exchangeLine(r,sub.state||null),any=exchangeLine(r,sub.state||null,1,true);return `${r.player} ${weeklyLegText(r)}: ${ex?`good value on ${ex}`:any?`${any} is worse than fair, skip on prediction markets (${weeklyOdds(r.odds)} at sportsbooks)`:`not on prediction markets yet (${weeklyOdds(r.odds)} at sportsbooks)`}`}
@@ -2080,7 +2185,8 @@ async function sendPickAlerts(env,now=Date.now(),only=null){
 async function sendPredictionAlerts(env,now=Date.now()){
   if(!env.DB)return {sent:0};
   const done=await appSetting(env,'pm-alert-for')||'';
-  const fresh=(await env.DB.prepare('SELECT exchange,posted_at FROM prediction_picks WHERE posted_at>? AND game_time>? ORDER BY posted_at').bind(done||new Date(now-3*3600000).toISOString(),new Date(now).toISOString()).all()).results||[];
+  const since=done||new Date(now-3*3600000).toISOString(),upcoming=new Date(now).toISOString();
+  const fresh=[...((await env.DB.prepare('SELECT exchange,posted_at FROM prediction_picks WHERE posted_at>? AND game_time>?').bind(since,upcoming).all()).results||[]),...((await env.DB.prepare('SELECT exchange,posted_at FROM prediction_parlays WHERE posted_at>? AND game_time>?').bind(since,upcoming).all().catch(()=>({results:[]}))).results||[])].sort((a,b)=>a.posted_at.localeCompare(b.posted_at));
   if(!fresh.length)return {sent:0};
   await setAppSetting(env,'pm-alert-for',fresh.at(-1).posted_at);
   const keys=[...new Set(fresh.map(r=>Object.keys(EXCHANGES).find(k=>EXCHANGES[k]===r.exchange)))];

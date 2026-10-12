@@ -48,6 +48,9 @@ const events=Array.from({length:16},(_,g)=>({id:'game'+g,eventID:'NFL--game'+g,c
  assert.ok(run('snfPlan.length>0&&snfPlan.every(p=>p.legs.length===2&&p.legs.every(l=>l.sameGame))'),'a standalone game makes 2-leg same-game parlays');
  assert.ok(run('snfPlan.every(p=>sgpOk(p.legs[0],p.legs[1]))'),'only unlinked legs');
  assert.equal(run('sgpOk({market:"Passing Yards"},{market:"Receptions"})'),false,'no QB with receivers');assert.equal(run('sgpOk({market:"Anytime Touchdown"},{market:"Rushing Yards"})'),false,'no touchdowns');
+ assert.equal(run('sgpOk({market:"Interceptions Thrown",playerTeam:"Buffalo Bills"},{market:"Passing Touchdowns",playerTeam:"Los Angeles Rams"})'),true,'different teams: a TD prop can pair');
+ assert.equal(run('sgpOk({market:"Anytime Touchdown",playerTeam:"Buffalo Bills"},{market:"Passing Touchdowns",playerTeam:"Los Angeles Rams"})'),false,'never two TD props');
+ assert.equal(run('sgpOk({market:"Passing Yards",playerTeam:"Buffalo Bills"},{market:"Receptions",playerTeam:"Buffalo Bills"})'),false,'teammates: no QB with receiver');
  assert.equal(run('recordAmerican(parlayDecimal([{gameId:"g",odds:100},{gameId:"g",odds:100}]))'),240,'same game: +300 multiplied, paid 20% less');
  assert.equal(run('recordAmerican(parlayDecimal([{gameId:"a",odds:100},{gameId:"b",odds:100}]))'),300,'different games: multiplied');
  // A player who is an official single (posted earlier or this run) is never a parlay leg.
