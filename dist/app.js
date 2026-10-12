@@ -1402,7 +1402,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     const trail=isParlay?[]:(Array.isArray(first.priceTrail)?first.priceTrail:[]).filter(p=>p&&p.o!=null).map(p=>p.o);
     const close=done&&!isParlay&&r.closing_odds!=null&&!moveOf(r.line,r.closing_line,r.side)?[r.closing_odds]:[];
     const points=[odds,...trail,...close].filter(o=>o!=null);
-    return {chip,title:isParlay?`${legs.length}-leg parlay`:r.player,bet,game,price:formatOdds(odds),stake:stakeText(),
+    return {chip,title:isParlay?`${legs.length}-leg ${legs.some(l=>l.sameGame)?'same-game ':''}parlay`:r.player,bet,game,price:formatOdds(odds),stake:stakeText(),
       money:done?money(payout(r)):d?`wins $${Math.round(heroStake*(d-1)).toLocaleString('en-US')}`:'—',moneyCls:done?(r.result==='won'?'pos':r.result==='lost'?'neg':''):'pos',
       rows,legs:legRows,chart:points.length>=2?{label:done?'Price posted → kickoff':'Price since posted',points}:null,
       actions:[...betAction(r,legs,done),...bookAction(r,legs,done),{label:done&&r.result==='won'?'Share this hit':'Share',icon:'share',primary:false,wide:true,share:`${done&&r.result==='won'?'✅ Hit':'Bet This Guy pick'}: ${isParlay?`${legs.length}-leg parlay (${formatOdds(odds)})`:`${r.player} ${bet} (${formatOdds(odds)})`} · ${location.origin}`}],
@@ -1468,7 +1468,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     const legs=recordLegs(r),isParlay=r.kind==='parlay',odds=isParlay?r.combined_odds:r.odds;
     const done=graded(r);
     const status=done?{won:['won','Won'],lost:['lost','Lost'],push:['push','Push']}[r.result]:['locked','Locked'];
-    const title=isParlay?`${legs.length}-leg parlay`:r.player;
+    const title=isParlay?`${legs.length}-leg ${legs.some(l=>l.sameGame)?'same-game ':''}parlay`:r.player;
     const sub0=isParlay?legs.map(l=>l.player).join(' + '):legText({side:r.side,line:r.line,market:String(r.market||'').toLowerCase()}),sub=sub0.charAt(0).toUpperCase()+sub0.slice(1);
     const initials=String(r.player||'').split(' ').map(x=>x[0]||'').join('').slice(0,3);
     const avatar=isParlay?`<span class="on-avatar on-parlay">${icon('layers')}</span>`:`<span class="on-avatar"><span>${htmlEscape(initials)}</span><img loading="lazy" decoding="async" src="/api/player-photo?name=${encodeURIComponent(r.player||'')}${(r.sport||r.sport_label)==='NBA'?'&sport=NBA':''}" alt="" onerror="this.remove()"></span>`;
