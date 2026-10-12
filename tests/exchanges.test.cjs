@@ -6,7 +6,7 @@ const context=vm.createContext({URL,URLSearchParams,Request,Response,Headers,Abo
 const template=read('worker/index.template.js');
 vm.runInContext(template.slice(template.indexOf('const API_BASE')).replace('__MOVEMENT_SERVER__',read('worker/movement.js')).replace('__LIVE_SERVER__',read('worker/live.js')).replace('__STATS_SHARED__',read('dist/stats.js')).replace('__RECORDS_SERVER__',read('worker/records.js')).replace('__ACCOUNTS_SERVER__',read('worker/accounts.js')).replace('export default {','this.worker={'),context);
 const fs=require('node:fs'),db=new DatabaseSync(':memory:');
-for(const f of fs.readdirSync('drizzle').filter(f=>/^000[0-2]_|^0006_|^0008_|^0013_|0025_|0026_|0027_|0028_|0030_|0018_/.test(f)).sort())db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''));
+for(const f of fs.readdirSync('drizzle').filter(f=>/^000[0-2]_|^0006_|^0008_|^0013_|0025_|0026_|0027_|0031_|0028_|0030_|0018_/.test(f)).sort())db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''));
 const wrap=(sql,args=[])=>({bind(...values){return wrap(sql,values)},async first(){return db.prepare(sql).get(...args)||null},async all(){return{results:db.prepare(sql).all(...args)}},async run(){const r=db.prepare(sql).run(...args);return{success:true,meta:{changes:Number(r.changes)}}}});
 context.env={DB:{prepare:sql=>wrap(sql),async batch(list){for(const s of list)await s.run()}},THE_ODDS_API_KEY:'k',BALLDONTLIE_API_KEY:'b'};
 const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v));
@@ -94,6 +94,17 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
   await sub({endpoint:ep,keys,priceView:'predictions',state:'TX'});
   alert=J(await run(`latestAlert(env,${now+60000},${JSON.stringify(ep)})`));
   assert.deepEqual(alert,{title:'📈 New prediction market pick',body:'Tre Tucker Over 3.5 receptions: Novig 47% (fair chance 50%)',url:'/'});
+  // The two alert checkboxes: prediction pings on the sportsbook view, or off on the prediction view.
+  await sub({endpoint:ep,keys,priceView:'odds',state:'TX',alertSportsbook:true,alertPredictions:true});
+  assert.deepEqual({...db.prepare('SELECT alert_sportsbook,alert_predictions FROM push_subscriptions').get()},{alert_sportsbook:1,alert_predictions:1});
+  assert.equal(J(await run(`latestAlert(env,${now+60000},${JSON.stringify(ep)})`)).title,'📈 New prediction market pick','sportsbook view still gets prediction pings when ticked');
+  await sub({endpoint:ep,keys,priceView:'predictions',state:'TX',alertSportsbook:true,alertPredictions:false});
+  assert.equal(J(await run(`latestAlert(env,${now+60000},${JSON.stringify(ep)})`)).title,'New Bet This Guy picks','unticked: no prediction pick in the alert');
+  assert.equal(J(await run(`sendPredictionAlerts(env,${now+60000})`)).sent,0,'unticked phones are not pinged');db.prepare("DELETE FROM app_settings WHERE key='pm-alert-for'").run();
+  await sub({endpoint:ep,keys,priceView:'odds',state:'TX',alertSportsbook:false,alertPredictions:false});
+  assert.deepEqual({...db.prepare('SELECT alert_sportsbook,alert_predictions FROM push_subscriptions').get()},{alert_sportsbook:1,alert_predictions:0},'never both off');
+  await sub({endpoint:ep,keys,priceView:'predictions',state:'TX'});
+  assert.deepEqual({...db.prepare('SELECT alert_sportsbook,alert_predictions FROM push_subscriptions').get()},{alert_sportsbook:1,alert_predictions:1},'older pages: prediction pings follow the view');
   const pushes=[],tweets=[];const oldFetch=context.fetch;
   context.fetch=async(url,init={})=>{url=String(url);if(url.startsWith('https://fcm.googleapis.com')){pushes.push(url);return new Response(null,{status:201})}if(url==='https://api.twitter.com/2/tweets'){tweets.push(JSON.parse(init.body).text);return Response.json({data:{id:'t1'}})}return oldFetch(url,init)};
   const sent=J(await run(`sendPredictionAlerts(env,${now+60000})`));assert.equal(sent.sent,1);assert.equal(pushes.length,1);

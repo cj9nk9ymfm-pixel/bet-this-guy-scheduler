@@ -1770,3 +1770,5 @@ html body #parlaysList .on-more[hidden],html body #parlaysList .on-final[hidden]
   html body #parlaysList .on-row,html body #pmParlaysList .on-row{flex:0 0 min(86%,330px);width:min(86%,330px);scroll-snap-align:start}
   html body #parlaysList .on-empty,html body #pmParlaysList .on-empty,html body #pmPicksList .on-empty{flex:1 0 100%}
 }
+
+.alert-kinds{display:flex;flex-wrap:wrap;gap:8px 18px}.alert-kinds label{display:inline-flex;align-items:center;gap:8px;font:600 15px "DM Sans",sans-serif;color:#f2f4f7;cursor:pointer;min-height:40px}.alert-kinds input{width:18px;height:18px;accent-color:var(--accent,#2ee6a8)}

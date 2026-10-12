@@ -2139,26 +2139,22 @@ async function latestAlert(env,now=Date.now(),endpoint=null){
     const official=(await env.DB.prepare("SELECT posted_at FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' ORDER BY posted_at DESC LIMIT 1").all()).results?.[0];
     if(mine&&(!official||mine.sent_at>official.posted_at)){try{const m=JSON.parse(mine.message_json);return {title:m.title,body:m.body,url:m.url||'/'}}catch{}}
   }
-  const rows=await env.DB.prepare("SELECT kind,player,market,side,line,odds,combined_odds,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND posted_at>=? ORDER BY posted_at DESC LIMIT 3").bind(new Date(now-3*3600000).toISOString()).all();
-  const picks=rows.results||[];
-  if(!picks.length&&endpoint&&validPushEndpoint(endpoint)){
-    const mine=await env.DB.prepare("SELECT price_view FROM push_subscriptions WHERE endpoint=?").bind(endpoint).first().catch(()=>null);
-    if(mine?.price_view==='predictions'){const fresh=(await env.DB.prepare('SELECT * FROM prediction_picks WHERE posted_at>=? ORDER BY posted_at DESC LIMIT 3').bind(new Date(now-3*3600000).toISOString()).all()).results||[];if(fresh.length)return predictionAlert(fresh);
-      const fp=(await env.DB.prepare('SELECT * FROM prediction_parlays WHERE posted_at>=? ORDER BY posted_at DESC LIMIT 2').bind(new Date(now-3*3600000).toISOString()).all().catch(()=>({results:[]}))).results||[];if(fp.length)return {title:fp.length===1?'📈 New prediction market parlay':`📈 ${fp.length} new prediction market parlays`,body:fp.map(predictionParlayText).join('\n'),url:'/'}}
-  }
-  if(!picks.length)return {title:'New Bet This Guy picks',body:'Fresh official picks are on the board.',url:'/'};
-  // A phone set to prediction markets gets each pick's prediction-market chances
-  // (from the exchanges open in its state) in place of the sportsbook odds.
-  const sub=endpoint&&validPushEndpoint(endpoint)?await env.DB.prepare('SELECT price_view,state FROM push_subscriptions WHERE endpoint=?').bind(endpoint).first().catch(()=>null):null;
-  const pm=sub?.price_view==='predictions';
-  // A newer prediction pick than any official pick: that's what this phone was pinged for.
-  if(pm){
+  // What this phone is pinged for: sportsbook picks and/or prediction app picks.
+  const sub=endpoint&&validPushEndpoint(endpoint)?await env.DB.prepare('SELECT price_view,state,alert_sportsbook,alert_predictions FROM push_subscriptions WHERE endpoint=?').bind(endpoint).first().catch(()=>null):null;
+  const wantSb=!sub||sub.alert_sportsbook!==0,wantPm=Boolean(sub&&(sub.alert_predictions??(sub.price_view==='predictions'?1:0)));
+  const picks=wantSb?((await env.DB.prepare("SELECT kind,player,market,side,line,odds,combined_odds,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND posted_at>=? ORDER BY posted_at DESC LIMIT 3").bind(new Date(now-3*3600000).toISOString()).all()).results||[]):[];
+  // A newer prediction pick or parlay than any official pick: that's what this phone was pinged for.
+  if(wantPm){
     const newest=picks.length?(await env.DB.prepare("SELECT MAX(posted_at) AS at FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%'").first())?.at||'':'';
     const fresh=(await env.DB.prepare('SELECT * FROM prediction_picks WHERE posted_at>=? AND posted_at>? ORDER BY posted_at DESC LIMIT 3').bind(new Date(now-3*3600000).toISOString(),newest).all()).results||[];
     if(fresh.length)return predictionAlert(fresh);
     const fp=(await env.DB.prepare('SELECT * FROM prediction_parlays WHERE posted_at>=? AND posted_at>? ORDER BY posted_at DESC LIMIT 2').bind(new Date(now-3*3600000).toISOString(),newest).all().catch(()=>({results:[]}))).results||[];
     if(fp.length)return {title:fp.length===1?'📈 New prediction market parlay':`📈 ${fp.length} new prediction market parlays`,body:fp.map(predictionParlayText).join('\n'),url:'/'};
   }
+  if(!picks.length)return wantSb?{title:'New Bet This Guy picks',body:'Fresh official picks are on the board.',url:'/'}:{title:'New prediction market picks',body:'Fresh prediction app picks are on the board.',url:'/'};
+  // A phone set to prediction markets gets each pick's prediction-market chances
+  // (from the exchanges open in its state) in place of the sportsbook odds.
+  const pm=sub?.price_view==='predictions';
   const line=r=>{if(r.kind==='parlay')return `${recordLegs(r).length}-leg parlay (${weeklyOdds(r.combined_odds)}): ${recordLegs(r).map(l=>l.player).join(' + ')}`;
     if(pm){const ex=exchangeLine(r,sub.state||null),any=exchangeLine(r,sub.state||null,1,true);return `${r.player} ${weeklyLegText(r)}: ${ex?`good value on ${ex}`:any?`${any} is worse than fair, skip on prediction markets (${weeklyOdds(r.odds)} at sportsbooks)`:`not on prediction markets yet (${weeklyOdds(r.odds)} at sportsbooks)`}`}
     return `${r.player} ${weeklyLegText(r)} (${weeklyOdds(r.odds)})`};
@@ -2173,7 +2169,7 @@ async function sendPickAlerts(env,now=Date.now(),only=null){
     if(Number.isFinite(last)&&now-last<15*60000)return {sent:0,throttled:true};
     await setAppSetting(env,'last-alert-at',new Date(now).toISOString());
   }
-  let subs=(await env.DB.prepare('SELECT endpoint,failures FROM push_subscriptions LIMIT 2000').all()).results||[];
+  let subs=(await env.DB.prepare(only?'SELECT endpoint,failures FROM push_subscriptions LIMIT 2000':'SELECT endpoint,failures FROM push_subscriptions WHERE COALESCE(alert_sportsbook,1)=1 LIMIT 2000').all()).results||[];
   if(only)subs=subs.filter(sub=>only.includes(sub.endpoint));
   let sent=0,lastError=null;const failed=[];
   for(let i=0;i<subs.length;i+=20){
@@ -2209,7 +2205,7 @@ async function sendPredictionAlerts(env,now=Date.now()){
   if(!fresh.length)return {sent:0};
   await setAppSetting(env,'pm-alert-for',fresh.at(-1).posted_at);
   const keys=[...new Set(fresh.map(r=>Object.keys(EXCHANGES).find(k=>EXCHANGES[k]===r.exchange)))];
-  const subs=(await env.DB.prepare("SELECT endpoint,state FROM push_subscriptions WHERE price_view='predictions'").all()).results||[];
+  const subs=(await env.DB.prepare('SELECT endpoint,state FROM push_subscriptions WHERE alert_predictions=1').all()).results||[];
   const only=subs.filter(r=>!r.state||keys.some(k=>!EXCHANGE_EXCLUDED[k]?.includes(r.state))).map(r=>r.endpoint);
   if(!only.length)return {sent:0,picks:fresh.length};
   return {...await sendPickAlerts(env,now,only),picks:fresh.length};
@@ -2249,7 +2245,9 @@ async function alertsApi(request,env){
   if(url.pathname==='/api/alerts/subscribe'){
     const p256dh=String(body?.keys?.p256dh||''),auth=String(body?.keys?.auth||'');
     if(!/^[A-Za-z0-9_-]{40,200}$/.test(p256dh)||!/^[A-Za-z0-9_-]{8,60}$/.test(auth))return reply({success:false,error:'Invalid subscription.'},400);
-    await env.DB.prepare('INSERT INTO push_subscriptions (endpoint,p256dh,auth,created_at,failures,books_json,follows_json,price_view,state) VALUES (?,?,?,?,0,?,?,?,?) ON CONFLICT(endpoint) DO UPDATE SET p256dh=excluded.p256dh,auth=excluded.auth,failures=0,books_json=excluded.books_json,follows_json=excluded.follows_json,price_view=excluded.price_view,state=excluded.state').bind(endpoint,p256dh,auth,new Date().toISOString(),JSON.stringify(cleanBooks(body?.books)),JSON.stringify(cleanFollows(body?.follows)),body?.priceView==='predictions'?'predictions':'odds',US_STATES[String(body?.state||'').toUpperCase()]?String(body.state).toUpperCase():null).run();
+    // Which picks to ping for; older pages send neither, so prediction pings follow the view.
+    const view=body?.priceView==='predictions'?'predictions':'odds',pm=typeof body?.alertPredictions==='boolean'?Number(body.alertPredictions):Number(view==='predictions'),sb=typeof body?.alertSportsbook==='boolean'?Number(body.alertSportsbook||!pm):1;
+    await env.DB.prepare('INSERT INTO push_subscriptions (endpoint,p256dh,auth,created_at,failures,books_json,follows_json,price_view,state,alert_sportsbook,alert_predictions) VALUES (?,?,?,?,0,?,?,?,?,?,?) ON CONFLICT(endpoint) DO UPDATE SET p256dh=excluded.p256dh,auth=excluded.auth,failures=0,books_json=excluded.books_json,follows_json=excluded.follows_json,price_view=excluded.price_view,state=excluded.state,alert_sportsbook=excluded.alert_sportsbook,alert_predictions=excluded.alert_predictions').bind(endpoint,p256dh,auth,new Date().toISOString(),JSON.stringify(cleanBooks(body?.books)),JSON.stringify(cleanFollows(body?.follows)),view,US_STATES[String(body?.state||'').toUpperCase()]?String(body.state).toUpperCase():null,sb,pm).run();
     return reply({success:true});
   }
   return reply({success:false},404);
