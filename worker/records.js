@@ -146,6 +146,16 @@ function officialCandidates(events,now=Date.now(),stats={},opts={}){
 // picks qualify. Built earlier, the 2-leg tier used every pair as soon as two
 // picks existed, and the one-shared-leg rule then blocked every bigger parlay.
 const PARLAY_WINDOW=2*3600000;
+// Same-game parlays: at most 2 legs from one game, and only unlinked stat
+// types (no passing with receiving, no touchdowns or kicking, which all move
+// with scoring). Books price same-game parlays below the multiplied odds and
+// our feed has no same-game prices, so they're graded at the multiplied
+// price with the payout cut by SGP_CUT (20%).
+const SGP_CUT=.2;
+const statFamily=m=>/touchdown|tds\b/i.test(m)?'td':/kick|field goal|extra point/i.test(m)?'kick':/pass|interception/i.test(m)?'passing':/recep/i.test(m)?'receiving':/rush/i.test(m)?'rushing':'other';
+function sgpOk(a,b){const x=statFamily(a.market),y=statFamily(b.market);if(x===y||[x,y].some(f=>f==='td'||f==='kick'||f==='other'))return false;return !(new Set([x,y]).has('passing')&&new Set([x,y]).has('receiving'))}
+// Parlay price from its legs: multiplied, then the same-game cut when two legs share a game.
+function parlayDecimal(legs){const d=legs.reduce((p,l)=>p*recordDecimal(l.odds),1),same=new Set(legs.map(l=>l.gameId)).size<legs.length;return same?1+(d-1)*(1-SGP_CUT):d}
 // Singles are the top tier (1%+ edge). Parlays are built from the next tier
 // down (pool: props 0.5% to just under 1%), one leg per game, and never use
 // a player who is an official single: a bad single can't also sink a parlay.
@@ -162,20 +172,22 @@ function officialPlan(candidates,existing,week,now=Date.now(),pool=candidates){
   if(!legPool.some(soon))return plan;
   for(const [tier,min,max,low,high] of tiers){
     for(let attempt=0;attempt<500&&counts[tier]<OFFICIAL_CAPS[tier];attempt++){
-      const size=min+attempt%(max-min+1),legs=[],gameIds=new Set(),markets=new Map();
+      const size=min+attempt%(max-min+1),legs=[],gameIds=new Map(),markets=new Map();
       const pool=[...legPool].sort((a,b)=>(exposure.get(a.playerKey)||0)-(exposure.get(b.playerKey)||0)||b.edge-a.edge);
       if(!pool.length)break;
       for(let j=0;j<pool.length&&legs.length<size;j++){
         const p=pool[(j+Math.floor(attempt/(max-min+1)))%pool.length];
-        if((exposure.get(p.playerKey)||0)>=3||gameIds.has(p.gameId)||(markets.get(p.market)||0)>=2)continue;
+        // A second leg from the same game only when the two are unlinked; never a third.
+        const inGame=legs.filter(l=>l.gameId===p.gameId);
+        if((exposure.get(p.playerKey)||0)>=3||inGame.length>=2||(inGame.length&&!sgpOk(inGame[0],p))||(markets.get(p.market)||0)>=2)continue;
         // Skip a leg that would make this parlay share two players with a posted one.
         if(prior.some(keys=>keys.includes(p.playerKey)&&legs.some(l=>keys.includes(l.playerKey))))continue;
-        legs.push(p);gameIds.add(p.gameId);markets.set(p.market,(markets.get(p.market)||0)+1);
+        legs.push(p);gameIds.set(p.gameId,(gameIds.get(p.gameId)||0)+1);markets.set(p.market,(markets.get(p.market)||0)+1);
       }
       if(legs.length!==size||!legs.some(soon))continue;
-      const odds=recordAmerican(legs.reduce((d,p)=>d*recordDecimal(p.odds),1)),keys=legs.map(p=>p.playerKey);
+      const odds=recordAmerican(parlayDecimal(legs)),keys=legs.map(p=>p.playerKey);
       if(odds<low||odds>high||prior.some(p=>p.filter(k=>keys.includes(k)).length>1))continue;
-      plan.push({tier,legs});counts[tier]++;prior.push(keys);keys.forEach(k=>exposure.set(k,(exposure.get(k)||0)+1));
+      plan.push({tier,legs:legs.map(l=>legs.some(o=>o!==l&&o.gameId===l.gameId)?{...l,sameGame:true}:l)});counts[tier]++;prior.push(keys);keys.forEach(k=>exposure.set(k,(exposure.get(k)||0)+1));
     }
   }
   return plan;
@@ -185,7 +197,7 @@ async function writeOfficialPlan(plan,week,env){
   for(const pick of plan){
     const now=Date.now();if(pick.legs.some(p=>Date.parse(p.gameTime)<=now+5*60000))continue;
     const kind=pick.tier==='props'?'prop':'parlay',legs=pick.legs.map(p=>({...p,officialWeek:week,officialTier:pick.tier})),first=legs[0],id=prefix+pick.tier+'|'+await boundedRecordId(kind,legs);
-    const combined=kind==='parlay'?recordAmerican(legs.reduce((d,p)=>d*recordDecimal(p.odds),1)):null;
+    const combined=kind==='parlay'?recordAmerican(parlayDecimal(legs)):null;
     // Every condition is evaluated inside the INSERT, so concurrent visitors
     // cannot exceed caps, repeat a player as a single, or bypass overlap limits.
     statements.push(env.DB.prepare(`INSERT OR IGNORE INTO public_recommendations
@@ -2274,7 +2286,7 @@ function xPickText(r,season){
   const legs=recordLegs(r),first=legs[0]||{},when=weeklyDay(r.game_time||first.gameTime),matchup=String(first.team||'').replace(' · ',' ');
   const edge=Number(first.edge),value=Number.isFinite(edge)&&edge>0?`\n${edge.toFixed(1)}% better than the fair price.`:'';
   const record=season&&season.wins+season.losses>=5?`\nSeason: ${season.wins}–${season.losses}, ${weeklyMoney(season.profit)} at $100 a pick.`:'';
-  const head=r.kind==='parlay'?`🔒 Official ${legs.length}-leg parlay (${weeklyOdds(r.combined_odds)})${recordShare(r)<1?' · ¼ unit':''}\n${legs.map(l=>`• ${l.player} ${weeklyLegText(l)}`).join('\n')}`:`🔒 Official pick: ${r.player} ${weeklyLegText(r)} (${weeklyOdds(r.odds)}${first.book?`, ${first.book}`:''})\n${matchup}${matchup&&when?' · ':''}${when}`;
+  const head=r.kind==='parlay'?`🔒 Official ${legs.length}-leg parlay (${weeklyOdds(r.combined_odds)})${recordShare(r)<1?' · ¼ unit':''}\n${legs.map(l=>`• ${l.player} ${weeklyLegText(l)}`).join('\n')}${legs.some(l=>l.sameGame)?`\nSame-game parlay: check your book’s same-game price and bet it at ${weeklyOdds(r.combined_odds)} or better.`:''}`:`🔒 Official pick: ${r.player} ${weeklyLegText(r)} (${weeklyOdds(r.odds)}${first.book?`, ${first.book}`:''})\n${matchup}${matchup&&when?' · ':''}${when}`;
   // Where sportsbooks aren't legal, followers can bet it on a prediction market.
   const best=r.kind==='prop'?exchangeLine(r,null,1):'',also=best?`\n📈 Also on ${best.replace(/ (\d+%)$/,' at $1')}`:'';
   // No link in the text: X charges far more for posts with a URL, so the link lives in the bio.

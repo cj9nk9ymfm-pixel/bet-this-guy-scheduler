@@ -42,6 +42,14 @@ const events=Array.from({length:16},(_,g)=>({id:'game'+g,eventID:'NFL--game'+g,c
  assert.ok(run('satTiers.includes("swing")&&satTiers.includes("moonshot")'),'a full slate now reaches both bigger tiers');
  assert.ok(run('satTiers.includes("reasonable")'),'2-leg parlays still post alongside them');
  assert.ok(run('sat.filter(p=>p.tier!=="props").every((a,i,all)=>all.every((b,j)=>i===j||a.legs.filter(x=>b.legs.some(y=>y.playerKey===x.playerKey)).length<=1))'),'no two parlays share more than one leg');
+ // Same-game parlays: one standalone game can still make a parlay from two unlinked legs, priced 20% under the multiplied odds.
+ context.snf=[['Allen','Passing Yards',110],['Cook','Rushing Yards',105],['Shakir','Receptions',100],['Kupp','Anytime Touchdown',150]].map(([player,market,odds],i)=>({player,gameId:'NFL--snf',gameTime:'2026-09-28T00:20:00Z',market,side:'Over',line:1.5,odds,edge:.8,playerKey:'NFL--snf|'+player}));
+ run("var snfPlan=officialPlan([],[],'2026-09-22',Date.parse('2026-09-27T23:00:00Z'),snf).filter(p=>p.tier!=='props')");
+ assert.ok(run('snfPlan.length>0&&snfPlan.every(p=>p.legs.length===2&&p.legs.every(l=>l.sameGame))'),'a standalone game makes 2-leg same-game parlays');
+ assert.ok(run('snfPlan.every(p=>sgpOk(p.legs[0],p.legs[1]))'),'only unlinked legs');
+ assert.equal(run('sgpOk({market:"Passing Yards"},{market:"Receptions"})'),false,'no QB with receivers');assert.equal(run('sgpOk({market:"Anytime Touchdown"},{market:"Rushing Yards"})'),false,'no touchdowns');
+ assert.equal(run('recordAmerican(parlayDecimal([{gameId:"g",odds:100},{gameId:"g",odds:100}]))'),240,'same game: +300 multiplied, paid 20% less');
+ assert.equal(run('recordAmerican(parlayDecimal([{gameId:"a",odds:100},{gameId:"b",odds:100}]))'),300,'different games: multiplied');
  // A player who is an official single (posted earlier or this run) is never a parlay leg.
  run("var mixed=officialPlan(saturday.slice(0,2),[],'2026-09-22',Date.parse('2026-09-27T15:30:00Z'),saturday),singleKeys=mixed.filter(p=>p.tier==='props').map(p=>p.legs[0].playerKey)");
  assert.equal(run('singleKeys.length'),2);
@@ -52,7 +60,7 @@ const events=Array.from({length:16},(_,g)=>({id:'game'+g,eventID:'NFL--game'+g,c
  assert.equal(await run("writeOfficialPlan(plan,'2026-09-22',env)"),0,'a repeat run posts nothing, so no alert');assert.deepEqual(db.prepare('SELECT id,odds,combined_odds,posted_at,legs_json FROM public_recommendations ORDER BY id').all(),before,'repeat/concurrent-plan publication cannot replace or multiply picks');
  assert.ok(db.prepare("SELECT COUNT(*) n FROM public_recommendations WHERE kind='prop' GROUP BY game_id").all().every(r=>r.n<=2),'at most two official props a game');
  const parlays=db.prepare("SELECT legs_json FROM public_recommendations WHERE kind='parlay'").all().map(r=>JSON.parse(r.legs_json));
- const exposure=new Map();for(const legs of parlays){assert.equal(new Set(legs.map(p=>p.gameId)).size,legs.length);for(const leg of legs)exposure.set(leg.playerKey,(exposure.get(leg.playerKey)||0)+1)}assert.ok([...exposure.values()].every(n=>n<=3));
+ const exposure=new Map();for(const legs of parlays){const byGame=new Map();legs.forEach(l=>byGame.set(l.gameId,[...(byGame.get(l.gameId)||[]),l]));for(const g of byGame.values()){assert.ok(g.length<=2,'at most two legs from one game');if(g.length===2)assert.ok(g.every(l=>l.sameGame)&&run(`sgpOk(${JSON.stringify(g[0])},${JSON.stringify(g[1])})`),'same-game legs are unlinked and flagged')}for(const leg of legs)exposure.set(leg.playerKey,(exposure.get(leg.playerKey)||0)+1)}assert.ok([...exposure.values()].every(n=>n<=3));
  for(let i=0;i<parlays.length;i++)for(let j=i+1;j<parlays.length;j++)assert.ok(parlays[i].filter(a=>parlays[j].some(b=>a.playerKey===b.playerKey)).length<=1);
  // Price trail: publish runs record each pending pick's price without touching other fields.
  {const pick=db.prepare("SELECT id,legs_json FROM public_recommendations WHERE kind='prop' ORDER BY id LIMIT 1").get(),leg=JSON.parse(pick.legs_json)[0];
