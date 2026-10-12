@@ -151,6 +151,12 @@ function officialCandidates(events,now=Date.now(),stats={},opts={}){
 // our feed has no same-game prices, so they're graded at the multiplied
 // price with the payout cut by SGP_CUT (20%).
 const SGP_CUT=.2;
+// Parlays never take both sides of a prop: once a player's market is used in
+// one direction (Over or Under, any line), every later parlay that week must
+// use the same direction. Prediction parlays: no game carries more than
+// PARLAYS_PER_GAME (one-game nights otherwise fill the weekly caps).
+const PARLAYS_PER_GAME=3;
+const sideKey=(game,player,market)=>`${game}|${normalizedName(player)}|${String(market||'').toLowerCase()}`;
 const statFamily=m=>/touchdown|tds\b/i.test(m)?'td':/kick|field goal|extra point/i.test(m)?'kick':/pass|interception/i.test(m)?'passing':/recep/i.test(m)?'receiving':/rush/i.test(m)?'rushing':'other';
 // Players on different teams (known from saved form): any pair, touchdown
 // props included, as long as each leg qualifies on its own price. Same team or
@@ -172,6 +178,9 @@ function officialPlan(candidates,existing,week,now=Date.now(),pool=candidates){
   singles.forEach(r=>games.set(r.game_id,(games.get(r.game_id)||0)+1));
   for(const p of candidates){if(counts.props>=100)break;if(used.has(p.playerKey)||(games.get(p.gameId)||0)>=OFFICIAL_PER_GAME)continue;plan.push({tier:'props',legs:[p]});counts.props++;used.add(p.playerKey);games.set(p.gameId,(games.get(p.gameId)||0)+1)}
   const prior=saved.filter(r=>r.kind==='parlay').map(r=>r.legs.map(officialPlayer)),exposure=new Map();prior.flat().forEach(k=>exposure.set(k,(exposure.get(k)||0)+1));
+  const sides=new Map(),perGame=new Map();
+  saved.forEach(r=>r.legs.forEach(l=>sides.set(sideKey(l.gameId,l.player,l.market),l.side)));
+  saved.filter(r=>r.kind==='parlay').forEach(r=>new Set(r.legs.map(l=>l.gameId)).forEach(g=>perGame.set(g,(perGame.get(g)||0)+1)));
   // Hardest tiers first: they need the most unshared legs.
   // 2 to 5 legs: 2-3 leg and 3-4 leg tiers carry most parlays; 4-5 legs only when a long price forms.
   const tiers=[['moonshot',4,5,2501,15000],['swing',3,4,1000,2500],['reasonable',2,3,100,999]];
@@ -187,6 +196,7 @@ function officialPlan(candidates,existing,week,now=Date.now(),pool=candidates){
         // A second leg from the same game only when the two are unlinked; never a third.
         const inGame=legs.filter(l=>l.gameId===p.gameId);
         if((exposure.get(p.playerKey)||0)>=3||inGame.length>=2||(inGame.length&&!sgpOk(inGame[0],p))||(markets.get(p.market)||0)>=2)continue;
+        const was=sides.get(sideKey(p.gameId,p.player,p.market));if(was&&was!==p.side)continue;
         // Skip a leg that would make this parlay share two players with a posted one.
         if(prior.some(keys=>keys.includes(p.playerKey)&&legs.some(l=>keys.includes(l.playerKey))))continue;
         legs.push(p);gameIds.set(p.gameId,(gameIds.get(p.gameId)||0)+1);markets.set(p.market,(markets.get(p.market)||0)+1);
@@ -194,6 +204,7 @@ function officialPlan(candidates,existing,week,now=Date.now(),pool=candidates){
       if(legs.length!==size)continue;
       const odds=recordAmerican(parlayDecimal(legs)),keys=legs.map(p=>p.playerKey);
       if(odds<low||odds>high||prior.some(p=>p.filter(k=>keys.includes(k)).length>1))continue;
+      legs.forEach(l=>sides.set(sideKey(l.gameId,l.player,l.market),l.side));new Set(legs.map(l=>l.gameId)).forEach(g=>perGame.set(g,(perGame.get(g)||0)+1));
       plan.push({tier,legs:legs.map(l=>legs.some(o=>o!==l&&o.gameId===l.gameId)?{...l,sameGame:true}:l)});counts[tier]++;prior.push(keys);keys.forEach(k=>exposure.set(k,(exposure.get(k)||0)+1));
     }
   }
@@ -1346,12 +1357,14 @@ async function postPredictionPicksToX(env,now=Date.now()){
 // after-fee price (the same-game cut when two legs share a game); graded at a
 // quarter unit. Each app's own combo price may differ, so posts say the
 // price to take it at.
-const PM_PARLAY_TIERS=[['long',4,5,2501,15000,2],['mid',3,4,1000,2500,5],['short',2,3,100,999,8]];
+const PM_PARLAY_TIERS=[['long',4,5,2501,15000,1],['mid',3,4,1000,2500,3],['short',2,3,100,999,5]];
 function predictionParlayPlan(pool,existing,week,now=Date.now()){
   const prior=existing.map(r=>{try{return JSON.parse(r.legs_json).map(l=>`${l.eventId}|${normalizedName(l.player)}`)}catch{return []}});
   const exposure=new Map();prior.flat().forEach(k=>exposure.set(k,(exposure.get(k)||0)+1));
   const counts=Object.fromEntries(PM_PARLAY_TIERS.map(([t])=>[t,existing.filter(r=>r.tier===t).length])),plan=[];
   const key=l=>`${l.eventId}|${normalizedName(l.player)}`;
+  const sides=new Map(),perGame=new Map();
+  existing.forEach(r=>{let legs=[];try{legs=JSON.parse(r.legs_json)}catch{}legs.forEach(l=>sides.set(sideKey(l.eventId,l.player,l.market),l.side));new Set(legs.map(l=>l.eventId)).forEach(g=>perGame.set(g,(perGame.get(g)||0)+1))});
   for(const exName of [...new Set(pool.map(p=>p.exchange))]){
     const legsOn=pool.filter(p=>p.exchange===exName&&Date.parse(p.gameTime)>now+5*60000);if(legsOn.length<2)continue;
     for(const [tier,min,max,low,high,cap] of PM_PARLAY_TIERS){
@@ -1362,12 +1375,14 @@ function predictionParlayPlan(pool,existing,week,now=Date.now()){
           const p=sorted[(j+Math.floor(attempt/(max-min+1)))%sorted.length],inGame=legs.filter(l=>l.eventId===p.eventId);
           if((exposure.get(key(p))||0)>=3||legs.some(l=>key(l)===key(p))||inGame.length>=2||(inGame.length&&!sgpOk(inGame[0],p)))continue;
           if(prior.some(keys=>keys.includes(key(p))&&legs.some(l=>keys.includes(key(l)))))continue;
+          const was=sides.get(sideKey(p.eventId,p.player,p.market));if((was&&was!==p.side)||(perGame.get(p.eventId)||0)>=PARLAYS_PER_GAME)continue;
           legs.push(p);
         }
         if(legs.length!==size)continue;
         const priced=legs.map(l=>({gameId:l.eventId,odds:l.netOdds})),odds=recordAmerican(parlayDecimal(priced)),keys=legs.map(key);
         if(odds<low||odds>high||prior.some(p=>p.filter(k=>keys.includes(k)).length>1))continue;
         const same=new Set(legs.map(l=>l.eventId)).size<legs.length;
+        legs.forEach(l=>sides.set(sideKey(l.eventId,l.player,l.market),l.side));new Set(legs.map(l=>l.eventId)).forEach(g=>perGame.set(g,(perGame.get(g)||0)+1));
         plan.push({tier,exchange:exName,odds,legs:legs.map(l=>({...l,sameGame:same&&legs.some(o=>o!==l&&o.eventId===l.eventId)}))});counts[tier]++;prior.push(keys);keys.forEach(k=>exposure.set(k,(exposure.get(k)||0)+1));
       }
     }
