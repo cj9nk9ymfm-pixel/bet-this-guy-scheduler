@@ -1496,25 +1496,33 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     return {cls:s.key,html:`<b>${htmlEscape(s.clock)}</b> · <strong>${htmlEscape(val)}</strong>${s.value!==null?` · ${htmlEscape(s.detail)}`:''}`};
   }
   function updateOfficialLive(){
-    $$('#officialNowList [data-on-live]').forEach(el=>{const line=liveLine(officialLiveList[+el.dataset.onLive]||{});el.hidden=!line;if(el.previousElementSibling)el.previousElementSibling.hidden=!!line;el.className=`on-live${line?.cls?' '+line.cls:''}`;el.innerHTML=line?line.html:''});
+    $$('#officialNowList [data-on-live], #parlaysList [data-on-live]').forEach(el=>{const line=liveLine(officialLiveList[+el.dataset.onLive]||{});el.hidden=!line;if(el.previousElementSibling)el.previousElementSibling.hidden=!!line;el.className=`on-live${line?.cls?' '+line.cls:''}`;el.innerHTML=line?line.html:''});
   }
   (window.btgLiveHooks||=[]).push(updateOfficialLive);
   window.BTGOfficialLive=liveLine;
   function renderOfficialNow(rows){
     const host=$('#officialNow');if(!host||!Array.isArray(rows))return;
-    const list=officialNow(rows);
-    $('#officialNowCount').textContent=list.length?String(list.length):'';
-    // The next 4 picks show; the rest open with "See all", and finished picks sit
-    // behind a "Final" line (open when nothing is left to play).
-    const rowsOf=items=>items.map(([r,i])=>officialRow(r,i)).join(''),indexed=list.map((r,i)=>[r,i]);
-    const open=indexed.filter(([r])=>!officialDone(r)),done=indexed.filter(([r])=>officialDone(r)),SHOW=4;
-    const tally=done.reduce((t,[r])=>{t[r.result]=(t[r.result]||0)+1;return t},{}),doneRec=`${tally.won||0}–${tally.lost||0}${tally.push?`–${tally.push}`:''}`;
-    $('#officialNowList').innerHTML=list.length?rowsOf(open.slice(0,SHOW))+(open.length>SHOW?`<div class="on-more" hidden>${rowsOf(open.slice(SHOW))}</div><button type="button" class="on-toggle" data-on-toggle="more" aria-expanded="false">See all ${open.length} picks</button>`:'')+(done.length?`<button type="button" class="on-toggle on-final-toggle" data-on-toggle="final" aria-expanded="${open.length?'false':'true'}">Final · ${done.length} pick${done.length===1?'':'s'} · ${doneRec}</button><div class="on-final"${open.length?' hidden':''}>${rowsOf(done)}</div>`:''):'<div class="on-empty"><strong>No picks yet this week.</strong><span>They post the moment a price qualifies, any day before kickoff.</span></div>';
-    $$('#officialNowList [data-on-toggle]').forEach(b=>b.onclick=()=>{const box=b.dataset.onToggle==='more'?b.previousElementSibling:b.nextElementSibling;const show=box.hidden;box.hidden=!show;b.setAttribute('aria-expanded',String(show));if(b.dataset.onToggle==='more')b.textContent=show?'Show fewer':`See all ${open.length} picks`});
-    $$('#officialNowList button[data-on]').forEach(b=>b.onclick=()=>openPick(list[+b.dataset.on]));
+    const list=officialNow(rows),indexed=list.map((r,i)=>[r,i]);
+    // Singles go in This week's picks, parlays in This week's parlays. In each, the
+    // next 4 show, "See all" opens the rest, and finished ones sit behind "Final"
+    // (open when nothing is left to play).
+    const rowsOf=items=>items.map(([r,i])=>officialRow(r,i)).join(''),SHOW=4;
+    function fill(sel,items,noun,empty){
+      const box=$(sel);if(!box)return;
+      const open=items.filter(([r])=>!officialDone(r)),done=items.filter(([r])=>officialDone(r));
+      const tally=done.reduce((t,[r])=>{t[r.result]=(t[r.result]||0)+1;return t},{}),doneRec=`${tally.won||0}–${tally.lost||0}${tally.push?`–${tally.push}`:''}`;
+      box.innerHTML=items.length?rowsOf(open.slice(0,SHOW))+(open.length>SHOW?`<div class="on-more" hidden>${rowsOf(open.slice(SHOW))}</div><button type="button" class="on-toggle" data-on-toggle="more" aria-expanded="false">See all ${open.length} ${noun}s</button>`:'')+(done.length?`<button type="button" class="on-toggle on-final-toggle" data-on-toggle="final" aria-expanded="${open.length?'false':'true'}">Final · ${done.length} ${noun}${done.length===1?'':'s'} · ${doneRec}</button><div class="on-final"${open.length?' hidden':''}>${rowsOf(done)}</div>`:''):empty;
+      box.querySelectorAll('[data-on-toggle]').forEach(b=>b.onclick=()=>{const el=b.dataset.onToggle==='more'?b.previousElementSibling:b.nextElementSibling;const show=el.hidden;el.hidden=!show;b.setAttribute('aria-expanded',String(show));if(b.dataset.onToggle==='more')b.textContent=show?'Show fewer':`See all ${open.length} ${noun}s`});
+    }
+    const singles=indexed.filter(([r])=>r.kind!=='parlay'),parlays=indexed.filter(([r])=>r.kind==='parlay');
+    $('#officialNowCount').textContent=singles.length?String(singles.length):'';
+    if($('#parlaysCount'))$('#parlaysCount').textContent=parlays.length?String(parlays.length):'';
+    fill('#officialNowList',singles,'pick','<div class="on-empty"><strong>No picks yet this week.</strong><span>They post the moment a price qualifies, any day before kickoff.</span></div>');
+    fill('#parlaysList',parlays,'parlay','<div class="on-empty"><strong>No parlays yet this week.</strong><span>They post when two or more Worth a look props line up.</span></div>');
+    $$('#officialNowList button[data-on], #parlaysList button[data-on]').forEach(b=>b.onclick=()=>openPick(list[+b.dataset.on]));
     officialLiveList=list;updateOfficialLive();window.btgOfficialForm?.(list);
     $$('#officialNowList [data-on-player]').forEach(row=>{const player=row.dataset.onPlayer;if(!player||typeof playerStatsFor!=='function')return;const r=list[+row.dataset.on];playerStatsFor({sport:r?.sport||'NFL',player,team:row.dataset.onTeam}).then(payload=>window.BTGPaintTeam?.(row,payload?.player?.team,r?.sport||'NFL')).catch(()=>{})});
-    host.hidden=false;
+    host.hidden=false;if($('#parlaysNow'))$('#parlaysNow').hidden=false;
   }
   let heroRows=null,heroSeason=null;
   async function loadHero(){
@@ -2259,7 +2267,7 @@ function statsProp(l){
   // Desktop rail: on wide screens the record, your bets, alerts and Following
   // sit in a sticky column beside the picks; on phones they stay in the flow.
   const board=document.querySelector('.workspace .board'),rail=document.createElement('aside');rail.className='desk-rail';rail.setAttribute('aria-label','Your corner');
-  const parts=['heroBanner','myRecord','alertsHero','leansNow'].map(id=>document.getElementById(id)).filter(Boolean),marks=parts.map(el=>{const m=document.createComment('rail');el.before(m);return m});
+  const parts=['heroBanner','myRecord','alertsHero','leansNow','pmNow'].map(id=>document.getElementById(id)).filter(Boolean),marks=parts.map(el=>{const m=document.createComment('rail');el.before(m);return m});
   const official=document.getElementById('officialNow');
   const wide=window.matchMedia?.('(min-width: 1180px)');
   function place(){if(!board)return;if(wide?.matches){board.classList.add('has-rail');board.prepend(rail);parts.forEach(el=>rail.appendChild(el));rail.appendChild(panel)}else{board.classList.remove('has-rail');parts.forEach((el,i)=>marks[i].after(el));rail.remove();(document.getElementById('alertsHero')||official?.lastElementChild)?.after?.(panel)}}
@@ -2554,13 +2562,17 @@ function statsProp(l){
   }
   function renderPicks(v){
     const host=document.getElementById('pmPicksNow');if(!host)return;
-    const list=[...(data?.pmPicks||[]),...(data?.pmParlays||[])],rec=data?.pmRecord,pr=data?.pmParlayRecord;host.hidden=v!=='predictions'||!data||data.mode==='unknown';if(host.hidden)return;
+    const list=data?.pmPicks||[],parlays=data?.pmParlays||[],rec=data?.pmRecord,pr=data?.pmParlayRecord;host.hidden=v!=='predictions'||!data||data.mode==='unknown';
+    const ph=document.getElementById('pmParlaysNow');if(ph)ph.hidden=host.hidden;if(host.hidden)return;
+    const pl=document.getElementById('pmParlaysList'),pcount=document.getElementById('pmParlaysCount');
+    if(pl)pl.innerHTML=parlays.length?parlays.map(parlayRow).join(''):'<div class="on-empty"><strong>No parlays yet this week.</strong><span>They post when two or more Worth a look props line up on one app.</span></div>';
+    if(pcount)pcount.textContent=parlays.length?String(parlays.length):'';
     const games=rec?rec.wins+rec.losses+rec.pushes:0;
-    host.classList.toggle('pm-none',!list.length);
+
     const pc=document.getElementById('pmPicksCount');if(pc)pc.textContent=list.length?String(list.length):'';
     const pg=pr?pr.wins+pr.losses+pr.pushes:0,parlayText=pg?` · Parlays ${pr.wins}–${pr.losses} (${money(pr.profit)})`:'';
-    document.getElementById('pmPicksRecord').textContent=!list.length&&!games&&!pg?'None yet this week. They post when an app’s price beats the sportsbooks’ fair chance by 1+ point after its fee. Own record: singles $100, parlays $25.':games?`Record ${rec.wins}–${rec.losses}${rec.pushes?`–${rec.pushes}`:''} · ${money(rec.profit)} at $100 a pick after fees${rec.tracked?` · ${rec.beat} of ${rec.tracked} beat the close`:''}${parlayText}`:`Own record after fees: singles $100, parlays $25. First picks are being graded.${parlayText}`;
-    document.getElementById('pmPicksList').innerHTML=list.map(r=>r.parlay?parlayRow(r):pickRow(r)).join('');
+    document.getElementById('pmPicksRecord').textContent=!games&&!pg?'Own record after fees: singles $100, parlays $25.':games?`Record ${rec.wins}–${rec.losses}${rec.pushes?`–${rec.pushes}`:''} · ${money(rec.profit)} at $100 a pick after fees${rec.tracked?` · ${rec.beat} of ${rec.tracked} beat the close`:''}${parlayText}`:`Own record after fees: singles $100, parlays $25. First picks are being graded.${parlayText}`;
+    document.getElementById('pmPicksList').innerHTML=list.length?list.map(pickRow).join(''):'<div class="on-empty"><strong>No picks yet this week.</strong><span>They post when an app’s price beats the sportsbooks’ fair chance by 1+ point after its fee.</span></div>';
   }
   // Board: every prop's best prediction-market chance in the visitor's state.
   const boardPrices=new Map(),boardWanted=new Set();let boardTimer=null;
@@ -2601,6 +2613,9 @@ function statsProp(l){
       banner.querySelector('[data-pm-switch]')?.addEventListener('click',()=>{store(VIEW,'predictions');render();resync()});
     }
     // Hidden when it has nothing to show (the state picker lives in the banner then).
+    // The state picker lives in Settings.
+    const ss=document.getElementById('settingsState');if(ss)ss.innerHTML=picker(d.state).replace(/<label class="pm-where">Betting from /,'<label class="pm-where">');
+    const sn=document.getElementById('settingsStateNote');if(sn)sn.textContent=d.state?`Prediction apps here: ${names.length?list(names):'none right now'}. 18+ or 21+ by app. Kept on this device.`:'Decides which prediction apps we show. Kept on this device.';
     section.hidden=v!=='predictions'||(!value.length&&d.mode!=='unknown');
     if(!section.hidden){
       document.getElementById('pmCount').textContent=value.length?String(value.length):'';

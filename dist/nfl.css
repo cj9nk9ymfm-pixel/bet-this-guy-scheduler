@@ -1740,3 +1740,33 @@ html body .pm-banner{margin:2px 0 10px}
   html body #pmPicksList.on-list{display:flex;flex-direction:row;flex-wrap:nowrap;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;padding:2px 0 6px;scrollbar-width:none;border:0;background:transparent}
   html body #pmPicksList .on-row{flex:0 0 min(86%,330px);width:min(86%,330px);scroll-snap-align:start;align-self:stretch}
 }
+/* One layout for both views: picks, parlays, Worth a look. */
+body[data-price-view="predictions"] #officialNow,body[data-price-view="predictions"] #parlaysNow,body[data-price-view="predictions"] #leansNow{display:none!important}
+body:not([data-price-view="predictions"]) #pmPicksNow,body:not([data-price-view="predictions"]) #pmParlaysNow,body:not([data-price-view="predictions"]) #pmNow{display:none!important}
+html body #parlaysList,html body #pmParlaysList{display:grid;gap:8px}
+html body #parlaysList .on-row,html body #pmParlaysList .on-row{padding:9px 12px;gap:10px;border-radius:12px;border-left-width:3px}
+html body #parlaysList .on-avatar,html body #pmParlaysList .on-avatar{width:36px;height:36px;font-size:12px;flex:none}
+html body #parlaysList .on-who b,html body #pmParlaysList .on-who b{font-size:15px;line-height:1.2}
+html body #parlaysList .on-who>span,html body #pmParlaysList .on-who>span{font-size:13.5px;line-height:1.25}
+html body #parlaysList .on-who small,html body #pmParlaysList .on-who small{font-size:12px;line-height:1.3}
+html body #parlaysList .on-why{display:none}
+html body #parlaysList .on-end,html body #pmParlaysList .on-end{gap:4px}
+html body #parlaysList .on-price,html body #pmParlaysList .on-price{font-size:15px;padding:4px 9px;text-decoration:none}
+html body #parlaysList .on-tag,html body #pmParlaysList .on-tag{font-size:11px;padding:2px 7px}
+html body #parlaysList>.on-toggle,html body #parlaysList>.on-more,html body #parlaysList>.on-final{grid-column:1/-1}
+html body #parlaysList .on-more,html body #parlaysList .on-final{display:grid;gap:8px}
+html body #parlaysList .on-more[hidden],html body #parlaysList .on-final[hidden]{display:none}
+#parlaysNow,#pmParlaysNow{margin-top:14px}
+#parlaysNow .on-sub,#pmParlaysNow .on-sub{margin:-4px 0 8px;font-size:13px;color:var(--muted)}
+.on-empty{display:grid;gap:2px;padding:12px 14px;border:1px dashed var(--line);border-radius:12px;color:var(--muted);font-size:13.5px}
+.on-empty strong{color:inherit;font-size:14px}
+#alertsHero.alerts-hero{margin-top:14px!important}
+#stateSetting .pm-where select{font-size:14px;padding:6px 8px}
+@media (min-width:900px){html body #parlaysList,html body #pmParlaysList{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:1179px){
+  html body #parlaysList.on-list,html body #pmParlaysList.on-list{display:flex;flex-direction:row;flex-wrap:nowrap;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;padding:2px 0 6px;scrollbar-width:none;border:0;background:transparent;overscroll-behavior-x:contain;touch-action:pan-x pan-y}
+  html body #parlaysList>.on-more,html body #parlaysList>.on-final,html body #parlaysList>.on-more[hidden],html body #parlaysList>.on-final[hidden]{display:contents!important}
+  html body #parlaysList>.on-toggle{display:none}
+  html body #parlaysList .on-row,html body #pmParlaysList .on-row{flex:0 0 min(86%,330px);width:min(86%,330px);scroll-snap-align:start}
+  html body #parlaysList .on-empty,html body #pmParlaysList .on-empty,html body #pmPicksList .on-empty{flex:1 0 100%}
+}

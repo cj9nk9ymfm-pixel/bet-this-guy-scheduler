@@ -378,9 +378,9 @@ function bigFivePrice(event,r){
 // official pick is left out.
 async function leansResponse(request,env,ctx,now=Date.now()){
   if(!env.DB)return json({success:true,leans:[]});
-  const saved=await readFeedCache(request,'leans-v1-NFL');
+  const saved=await readFeedCache(request,'leans-v2-NFL');
   if(saved.response&&cacheAge(saved.response)<300000)return cachedForClient(saved.response,'fresh');
-  const rows=(await env.DB.prepare('SELECT event_id,player,team,market,side,line,odds,book,edge,close_odds,game_time FROM near_shadow n WHERE game_time>? AND game_time<? AND NOT EXISTS(SELECT 1 FROM public_recommendations r WHERE r.id LIKE \'official|%\' AND r.kind=\'prop\' AND r.game_id=n.event_id AND r.player=n.player) ORDER BY edge DESC').bind(new Date(now+5*60000).toISOString(),new Date(now+8*86400000).toISOString()).all().catch(()=>({results:[]}))).results||[];
+  const rows=(await env.DB.prepare('SELECT event_id,player,team,market,side,line,odds,book,edge,close_odds,game_time FROM near_shadow n WHERE game_time>? AND game_time<? AND NOT EXISTS(SELECT 1 FROM public_recommendations r WHERE r.id LIKE \'official|%\' AND r.kind=\'prop\' AND r.game_id=n.event_id AND r.player=n.player) AND NOT EXISTS(SELECT 1 FROM public_recommendations r,json_each(r.legs_json) l WHERE r.id LIKE \'official|%\' AND r.kind=\'parlay\' AND r.game_time>? AND json_extract(l.value,\'$.gameId\')=n.event_id AND json_extract(l.value,\'$.player\')=n.player) ORDER BY edge DESC').bind(new Date(now+5*60000).toISOString(),new Date(now+8*86400000).toISOString(),new Date(now).toISOString()).all().catch(()=>({results:[]}))).results||[];
   const games=new Map(),leans=[];
   for(const r of rows){const n=games.get(r.event_id)||0;if(n>=2||leans.length>=10)continue;games.set(r.event_id,n+1);leans.push({eventId:r.event_id,player:r.player,team:r.team||'',market:r.market,side:r.side,line:r.line,odds:r.close_odds??r.odds,flagged:r.odds,book:r.book,edge:+Number(r.edge).toFixed(1),gameTime:r.game_time})}
   leans.sort((a,b)=>a.gameTime.localeCompare(b.gameTime)||b.edge-a.edge);
@@ -1557,7 +1557,9 @@ async function predictionsResponse(request,env,now=Date.now()){
   // 1 point under the pick's fair chance (the official bar).
   const picks={},fairs={};
   for(const r of official){const fair=pickFairPct(r);if(fair!==null)fairs[r.id]=+fair.toFixed(1);const list=find(r.game_id,r.player,r.market,r.side,r.line).sort((a,b)=>recordDecimal(b[5])-recordDecimal(a[5]));if(list.length)picks[r.id]=list.map(p=>({exchange:EXCHANGES[p[0]],odds:p[5],...(fair!==null?{good:fair-100/recordDecimal(p[5])>=EXCHANGE_VALUE_MIN}:{})}))}
+  // Worth a look (prediction view) leaves out official picks and players in prediction parlays.
   const taken=new Set(official.map(r=>`${r.game_id}|${normalizedName(r.player)}`)),value=[];
+  for(const r of (((await env.DB.prepare('SELECT legs_json FROM prediction_parlays WHERE game_time>?').bind(stamp).all().catch(()=>({results:[]}))).results)||[])){try{for(const l of JSON.parse(r.legs_json))taken.add(`${l.eventId}|${normalizedName(l.player)}`)}catch{}}
   const rows=(await env.DB.prepare("SELECT exchange,event_id,player,team,market,side,line,fair_pct,game_time FROM exchange_shadow WHERE kind='prop' AND game_time>?").bind(new Date(now+5*60000).toISOString()).all()).results||[];
   for(const r of rows){
     if(taken.has(`${r.event_id}|${normalizedName(r.player)}`))continue;
