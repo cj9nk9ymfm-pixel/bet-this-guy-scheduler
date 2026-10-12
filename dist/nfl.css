@@ -1586,3 +1586,20 @@ html body .official-now.leans-now{margin-top:22px!important;padding-top:14px}
 html body .leans-now a.lean-book{color:inherit;text-decoration:none}html body .leans-now a.lean-book:hover{border-color:#6aa8ff}
 html body .on-who .on-wx{font-style:normal;font-size:12.5px;color:#7cc4ff}
 body.light .on-who .on-wx{color:#0b63b6}
+
+/* Prediction markets by location */
+html body .on-row .on-pm{display:block;font-style:normal;font-size:12px;font-weight:600;color:#7c9cff;margin-top:3px}
+html body .on-row .on-pm[hidden]{display:none}
+.pm-banner{margin:4px 0 12px;padding:12px 14px;border:1px solid rgba(124,156,255,.35);border-radius:14px;background:rgba(124,156,255,.08);font-size:14px;line-height:1.45}
+.pm-banner p{margin:0 0 8px}
+.pm-where{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+.pm-where select{font:inherit;color:inherit;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:4px 8px;max-width:180px}
+.pm-foot{margin-top:10px;font-size:12px;color:var(--muted);line-height:1.45}
+.pm-foot p{margin:6px 0 0}
+.pm-empty{margin:0;padding:14px;font-size:14px;color:var(--muted)}
+.price-view{display:flex;gap:4px;padding:4px;margin:4px 0 14px;border:1px solid var(--line);border-radius:999px;background:var(--panel);width:max-content;max-width:100%}
+.price-view button{font:inherit;font-size:13px;font-weight:700;color:var(--muted);background:transparent;border:0;border-radius:999px;padding:8px 14px;cursor:pointer;white-space:nowrap}
+.price-view button[aria-pressed="true"]{background:#7c9cff;color:#0b1020}
+body[data-price-view="predictions"] #leansNow{display:none!important}
+html body .on-row .on-price.pm-price{color:#9db4ff}
+body[data-price-view="predictions"] #officialNowList .on-why{display:none}
