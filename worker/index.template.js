@@ -518,7 +518,7 @@ async function xCardPreview(request, env) {
   // ?week=YYYY-MM-DD shows that week's results graphic. Never posts anything.
   const params = new URL(request.url).searchParams, id = params.get("id") || "", week = params.get("week") || "";
   if (!env.DB) return new Response("", { status: 404 });
-  const seasonRows = (await env.DB.prepare("SELECT kind,line,odds,combined_odds,status,result,closing_line,closing_odds,closing_captured_at FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%'").all()).results || [];
+  const seasonRows = (await env.DB.prepare("SELECT kind,posted_at,line,odds,combined_odds,status,result,closing_line,closing_odds,closing_captured_at FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%'").all()).results || [];
   let svg;
   if (/^\d{4}-\d{2}-\d{2}$/.test(week)) {
     const rows = await weeklyRows(env, week), info = nflWeekOf(week);
@@ -1049,7 +1049,7 @@ let homeRowsCache = { at: 0, rows: null };
 let homeSeasonCache = { at: 0, season: null };
 async function homeSeason(env, now = Date.now()) {
   if (homeSeasonCache.season && now - homeSeasonCache.at < 60000) return homeSeasonCache.season;
-  const rows = (await env.DB.prepare("SELECT kind, line, odds, combined_odds, status, result, closing_line, closing_odds, closing_captured_at FROM public_recommendations WHERE source = 'market-verified-v2' AND id LIKE 'official|%' AND kind IN ('prop','parlay')").all()).results || [];
+  const rows = (await env.DB.prepare("SELECT kind, posted_at, line, odds, combined_odds, status, result, closing_line, closing_odds, closing_captured_at FROM public_recommendations WHERE source = 'market-verified-v2' AND id LIKE 'official|%' AND kind IN ('prop','parlay')").all()).results || [];
   const s = weeklySummary(rows);
   const season = { wins: s.wins, losses: s.losses, pushes: s.pushes, profit: Math.round(s.profit), parlayWins: s.parlayWins, parlayLosses: s.parlayLosses, parlayProfit: Math.round(s.parlayProfit), beat: s.beat, tracked: s.tracked };
   homeSeasonCache = { at: now, season };

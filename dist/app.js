@@ -1289,7 +1289,9 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
   let heroStake=100;
   const viewerStake=()=>Math.max(1,Number(preferences?.typicalWager)||100);
   const stakeText=()=>`$${heroStake.toLocaleString('en-US',{maximumFractionDigits:2})}`;
-  const payout=r=>{const d=oddsDecimal(r.kind==='parlay'?r.combined_odds:r.odds);return r.result==='won'&&d?heroStake*(d-1):r.result==='lost'?-heroStake:0};
+  // Parlays posted from Oct 12, 2026 on are a quarter unit; earlier ones a full unit.
+  const share=r=>r.kind==='parlay'&&String(r.posted_at||'')>='2026-10-12T18:00:00Z'?.25:1;
+  const payout=r=>{const d=oddsDecimal(r.kind==='parlay'?r.combined_odds:r.odds),k=heroStake*share(r);return r.result==='won'&&d?k*(d-1):r.result==='lost'?-k:0};
   // Same comparison as the results page: same line only, 0.05% tolerance.
   const beatClose=r=>{
     if(r.kind!=='prop'||!r.closing_captured_at||r.closing_odds==null)return null;

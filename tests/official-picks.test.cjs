@@ -31,7 +31,9 @@ const events=Array.from({length:16},(_,g)=>({id:'game'+g,eventID:'NFL--game'+g,c
  assert.equal(run('early.filter(p=>p.tier!=="props").length'),0,'no parlays until the first leg is two hours from kickoff');
  run("var plan=officialPlan(candidates,[],'2026-09-22',Date.parse('2026-09-27T15:30:00Z'))");
  assert.equal(run('plan.filter(p=>p.tier==="props").length'),32,'two props a game across 16 games');
- for(const [tier,cap] of [['reasonable',15],['swing',10],['moonshot',5]])assert.equal(run(`plan.filter(p=>p.tier==='${tier}').length`),cap);
+ for(const [tier,cap] of [['reasonable',15],['swing',10],['moonshot',3]])assert.equal(run(`plan.filter(p=>p.tier==='${tier}').length`),cap);
+ assert.ok(run('plan.filter(p=>p.tier!=="props").every(p=>p.legs.length>=2&&p.legs.length<=5)'),'parlays are 2 to 5 legs');
+ assert.ok(run('plan.filter(p=>p.tier!=="props"&&p.legs.length<=4).length>plan.filter(p=>p.legs.length===5).length*3'),'most parlays are 2 to 4 legs');
  // Last Saturday: four picks in four games. Pairs posted as each pick arrived
  // used every combination, so no 3- or 4-leg parlay could ever form.
  context.saturday=[['Borregales','a',110],['Shough','b',120],['Jones','c',200],['JWilliams','d',104],['Slye','e',115],['Lawrence','f',105]].map(([player,game,odds],i)=>({player,gameId:'NFL--'+game,gameTime:'2026-09-27T17:00:00Z',market:['Field Goals Made','Interceptions Thrown','Passing Touchdowns','Longest Reception','Field Goals Made','Passing Touchdowns'][i],side:'Over',line:1.5,odds,edge:2-i/10,playerKey:'NFL--'+game+'|'+player.toLowerCase()}));
@@ -44,8 +46,8 @@ const events=Array.from({length:16},(_,g)=>({id:'game'+g,eventID:'NFL--game'+g,c
  run("var mixed=officialPlan(saturday.slice(0,2),[],'2026-09-22',Date.parse('2026-09-27T15:30:00Z'),saturday),singleKeys=mixed.filter(p=>p.tier==='props').map(p=>p.legs[0].playerKey)");
  assert.equal(run('singleKeys.length'),2);
  assert.ok(run('mixed.filter(p=>p.tier!=="props").length>0&&mixed.filter(p=>p.tier!=="props").every(p=>p.legs.every(l=>!singleKeys.includes(l.playerKey)))'),'parlays never reuse a single');
- assert.equal(await run("writeOfficialPlan(plan,'2026-09-22',env)"),62,'the writer reports how many picks it posted (this is what triggers pick alerts)');
- assert.equal(db.prepare('SELECT COUNT(*) n FROM public_recommendations').get().n,62);
+ assert.equal(await run("writeOfficialPlan(plan,'2026-09-22',env)"),60,'the writer reports how many picks it posted (this is what triggers pick alerts)');
+ assert.equal(db.prepare('SELECT COUNT(*) n FROM public_recommendations').get().n,60);
  const before=db.prepare('SELECT id,odds,combined_odds,posted_at,legs_json FROM public_recommendations ORDER BY id').all();
  assert.equal(await run("writeOfficialPlan(plan,'2026-09-22',env)"),0,'a repeat run posts nothing, so no alert');assert.deepEqual(db.prepare('SELECT id,odds,combined_odds,posted_at,legs_json FROM public_recommendations ORDER BY id').all(),before,'repeat/concurrent-plan publication cannot replace or multiply picks');
  assert.ok(db.prepare("SELECT COUNT(*) n FROM public_recommendations WHERE kind='prop' GROUP BY game_id").all().every(r=>r.n<=2),'at most two official props a game');
@@ -68,7 +70,7 @@ const events=Array.from({length:16},(_,g)=>({id:'game'+g,eventID:'NFL--game'+g,c
  await assert.rejects(run('verifiedRecordStatements([{kind:"prop",...candidates[0]}],new Request("https://test.invalid/api/record"),env,{waitUntil(){}})'),/server only/,'clients cannot nominate official picks');
  context.existing=db.prepare('SELECT * FROM public_recommendations').all();assert.equal(run("officialPlan(candidates,existing,'2026-09-22').length"),0);
  run('futureSchedule=async()=>Response.json({data:events.map(e=>({eventID:e.eventID,status:{startsAt:e.commence_time}}))});var jobs=[];queueOfficialPicks(new Request("https://test.invalid/api/props"),env,{waitUntil:p=>jobs.push(p)})');await Promise.all(run('jobs'));
- assert.equal(db.prepare('SELECT COUNT(*) n FROM public_recommendations').get().n,62,'production trigger uses schedule and persisted state');
+ assert.equal(db.prepare('SELECT COUNT(*) n FROM public_recommendations').get().n,60,'production trigger uses schedule and persisted state');
  // Games starting within 4 hours get fresher prices, and a quick run that checks only them.
  run('var asked=[];eventProps=async(request,env,ctx,opts)=>{asked.push([new URL(request.url).searchParams.get("eventID"),(opts&&opts.maxAge)||0]);return Response.json({data:[]})}');
  run('futureSchedule=async()=>Response.json({data:events.map((e,i)=>({eventID:e.eventID,status:{startsAt:i<3?"2026-09-27T12:00:00Z":e.commence_time}}))})');
@@ -79,6 +81,6 @@ const events=Array.from({length:16},(_,g)=>({id:'game'+g,eventID:'NFL--game'+g,c
  assert.equal(run('asked.length'),16);assert.equal(run('asked.filter(a=>a[1]===240000).length'),3,'full runs also ask fresher prices for soon games only');
  run('futureSchedule=async()=>Response.json({data:events.map(e=>({eventID:e.eventID,status:{startsAt:e.commence_time}}))})');
  assert.equal(JSON.parse(JSON.stringify(await run('publishOfficialPicks(new Request("https://test.invalid/api/props"),env,{waitUntil(){}},{soonOnly:true})'))).state,'no_soon_games');
- const c=client();vm.runInContext(read('dist/trust.html').match(/<script>([\s\S]*?)<\/script>/)[1],c.ctx);c.ctx.rows=[...context.existing,{id:'legacy',source:'market-verified-v2',kind:'prop',status:'final',result:'lost'}];c.nodes.get('#recordScope').value='2026-09-22';c.eval('paint(rows)');assert.equal(c.eval('resultRows.length'),62);c.nodes.get('#recordScope').value='legacy';c.eval('paint(rows)');assert.equal(c.eval('resultRows.length'),1);
+ const c=client();vm.runInContext(read('dist/trust.html').match(/<script>([\s\S]*?)<\/script>/)[1],c.ctx);c.ctx.rows=[...context.existing,{id:'legacy',source:'market-verified-v2',kind:'prop',status:'final',result:'lost'}];c.nodes.get('#recordScope').value='2026-09-22';c.eval('paint(rows)');assert.equal(c.eval('resultRows.length'),60);c.nodes.get('#recordScope').value='legacy';c.eval('paint(rows)');assert.equal(c.eval('resultRows.length'),1);
  console.log('PASS: official weekly caps, quality gates, overlap limits, immutable odds, repeat publication, client rejection, weekly rollover and history filters (real SQLite; no production writes)');
 })().catch(e=>{console.error(e);process.exitCode=1});
