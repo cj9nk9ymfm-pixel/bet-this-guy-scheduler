@@ -27,6 +27,9 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
   const cov=JSON.parse(db.prepare("SELECT value FROM app_settings WHERE key='exchange-coverage'").get().value);
   assert.deepEqual(cov.coverage.novig,{lines:2,matched:2});assert.ok(!cov.coverage.bovada,'only prediction markets count');
   out=J(await run(`recordExchangeProps(env,boards,${now+600000})`));assert.deepEqual(out,{skipped:true},'every 30 minutes');
+  // Anytime TD: yes/no reads as Over/Under 0.5, and is requested from the exchanges.
+  assert.deepEqual(J(run(`exchangePriceList(${JSON.stringify({bookmakers:[{key:'kalshi',markets:[{key:'player_anytime_td',outcomes:[{name:'Yes',description:'Tre Tucker',price:150},{name:'No',description:'Tre Tucker',price:-180}]}]}]})})`)),[['kalshi','Tre Tucker','Anytime Touchdown','Over',0.5,150],['kalshi','Tre Tucker','Anytime Touchdown','Under',0.5,-180]]);
+  assert.ok(urls.some(u=>u.includes('player_anytime_td')),'anytime TD is in the exchange request');
   // Prediction-market pick: Novig's +115 (no fee) clears the bar after fees; Kalshi at fair plus its fee does not.
   const pm=db.prepare('SELECT * FROM prediction_picks').all();
   assert.deepEqual(pm.map(r=>[r.exchange,r.player,r.side,r.odds,r.net_odds]),[['Novig','Tre Tucker','Over',115,115]]);assert.ok(pm[0].edge>2&&pm[0].fair_pct>49);

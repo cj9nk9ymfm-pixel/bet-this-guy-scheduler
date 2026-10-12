@@ -368,7 +368,7 @@ function bigFivePrice(event,r){
   let best=null;
   for(const book of event.bookmakers||[])if(OFFICIAL_BOOKS.has(book.key))for(const market of book.markets||[]){
     if(recordLabels[market.key]!==r.market)continue;
-    for(const o of market.outcomes||[])if(String(o.description||'').trim()===r.player&&String(o.name).toLowerCase()===r.side.toLowerCase()&&BTGStats.number(o.point)===Number(r.line)){const odds=BTGStats.number(o.price);if(odds!==null&&(best===null||recordDecimal(odds)>recordDecimal(best)))best=odds}
+    for(const o of market.outcomes||[])if(String(o.description||'').trim()===r.player&&exchangeOutcome(o).side===r.side.toLowerCase()&&exchangeOutcome(o).line===Number(r.line)){const odds=BTGStats.number(o.price);if(odds!==null&&(best===null||recordDecimal(odds)>recordDecimal(best)))best=odds}
   }
   return best;
 }
@@ -1137,8 +1137,11 @@ async function gradeBookShadow(env,now=Date.now(),limit=30){
 // least 1% better than our sportsbook fair price (3+ licensed books) is
 // logged once per player prop or game market and graded. Listed prices are
 // before exchange fees, so the analysis should take those off.
+// One outcome as side/player/line/odds. Yes/no props (anytime touchdown)
+// read as Over/Under 0.5, the way the board and grading store them.
+function exchangeOutcome(o){const name=String(o.name||'').toLowerCase(),yesNo=name==='yes'||name==='no';return {side:yesNo?(name==='yes'?'over':'under'):name,player:String(o.description||'').trim(),line:yesNo?.5:BTGStats.number(o.point),odds:BTGStats.number(o.price)}}
 const EXCHANGES={kalshi:'Kalshi',polymarket:'Polymarket',novig:'Novig',prophetx:'ProphetX',betopenly:'BetOpenly'};
-const EXCHANGE_PROP_MARKETS=['player_receptions','player_reception_yds','player_rush_yds','player_pass_yds','player_pass_tds','player_rush_attempts','player_pass_completions'];
+const EXCHANGE_PROP_MARKETS=['player_receptions','player_reception_yds','player_rush_yds','player_pass_yds','player_pass_tds','player_rush_attempts','player_pass_completions','player_anytime_td'];
 async function fetchExchangeOdds(eventId,apiKey){
   const q=new URLSearchParams({apiKey,regions:'us_ex',markets:EXCHANGE_PROP_MARKETS.join(','),oddsFormat:'american',dateFormat:'iso'});
   const r=await fetch(`${API_BASE}/sports/${SPORTS[0].key}/events/${eventId}/odds?${q}`,{headers:{accept:'application/json'}});
@@ -1155,7 +1158,7 @@ function sportsbookFairs(boards,now=Date.now()){
       for(const m of book.markets||[]){
         const label=recordLabels[m.key],updated=Date.parse(m.last_update||book.last_update||'');
         if(!label||/_alternate$/.test(m.key)||!Number.isFinite(updated)||now-updated>15*60000)continue;
-        for(const o of m.outcomes||[]){const side=String(o.name).toLowerCase(),player=String(o.description||'').trim(),line=BTGStats.number(o.point),odds=BTGStats.number(o.price);if(!player||line===null||odds===null||!['over','under'].includes(side))continue;
+        for(const o of m.outcomes||[]){const {side,player,line,odds}=exchangeOutcome(o);if(!player||line===null||odds===null||!['over','under'].includes(side))continue;
           const k=`${gameId}|${normalizedName(player)}|${label}|${line}`,g=groups.get(k)||new Map(),pair=g.get(book.key)||{};pair[side]=odds;g.set(book.key,pair);groups.set(k,g)}
       }
     }
@@ -1172,7 +1175,7 @@ function exchangePropCandidates(board,exchangeBoard,fairs,now=Date.now()){
     for(const m of ex.markets||[]){
       const label=recordLabels[m.key];if(!label)continue;
       for(const o of m.outcomes||[]){
-        const side=String(o.name).toLowerCase(),player=String(o.description||'').trim(),line=BTGStats.number(o.point),odds=BTGStats.number(o.price);
+        const {side,player,line,odds}=exchangeOutcome(o);
         if(!player||line===null||odds===null||!['over','under'].includes(side))continue;
         cov.lines++;const fair=fairs.get(`${gameId}|${normalizedName(player)}|${label}|${line}`);if(fair===undefined)continue;cov.matched++;
         const p=side==='over'?fair:1-fair,edge=100*(p-1/recordDecimal(odds));
@@ -1207,7 +1210,7 @@ function exchangePriceList(exchangeBoard){
   const out=[];
   for(const ex of exchangeBoard.bookmakers||[]){if(!EXCHANGES[ex.key])continue;
     for(const m of ex.markets||[]){const label=recordLabels[m.key];if(!label)continue;
-      for(const o of m.outcomes||[]){const side=String(o.name).toLowerCase(),player=String(o.description||'').trim(),line=BTGStats.number(o.point),odds=BTGStats.number(o.price);
+      for(const o of m.outcomes||[]){const {side,player,line,odds}=exchangeOutcome(o);
         if(player&&line!==null&&odds!==null&&['over','under'].includes(side))out.push([ex.key,player,label,side==='over'?'Over':'Under',line,odds])}}}
   return out;
 }
@@ -1226,7 +1229,7 @@ function predictionCandidates(board,exchangeBoard,fairs,now=Date.now()){
   for(const ex of exchangeBoard.bookmakers||[]){if(!EXCHANGES[ex.key])continue;
     for(const m of ex.markets||[]){const label=recordLabels[m.key];if(!label)continue;
       for(const o of m.outcomes||[]){
-        const side=String(o.name).toLowerCase(),player=String(o.description||'').trim(),line=BTGStats.number(o.point),odds=BTGStats.number(o.price);
+        const {side,player,line,odds}=exchangeOutcome(o);
         if(!player||line===null||odds===null||!['over','under'].includes(side)||odds<-250||odds>300)continue;
         const fair=fairs.get(`${gameId}|${normalizedName(player)}|${label}|${line}`);if(fair===undefined)continue;
         const f=100*(side==='over'?fair:1-fair),n=predictionNet(ex.key,odds),edge=f-n.netChance;
@@ -1312,7 +1315,7 @@ function predictionRecord(rows){
     beat:closes.filter(r=>dec(r.odds)>dec(r.close_odds)).length,tracked:closes.length,pending:rows.filter(r=>!r.result).length};
 }
 // Player props on exchanges: one us_ex call per game in the next 48 hours,
-// every 30 minutes (7 credits a game), compared with this run's boards.
+// every 30 minutes (8 credits a game), compared with this run's boards.
 async function recordExchangeProps(env,boards,now=Date.now()){
   if(!env.DB||!env.THE_ODDS_API_KEY)return {};
   const last=Number(await appSetting(env,'exchange-props-at')||0);
@@ -1330,12 +1333,12 @@ async function recordExchangeProps(env,boards,now=Date.now()){
     // Closing price at the same exchange, line and side.
     const open=(await env.DB.prepare("SELECT id,exchange,player,market,side,line FROM exchange_shadow WHERE kind='prop' AND event_id=? AND game_time>?").bind(board.eventID||`NFL--${board.id}`,stamp).all()).results||[];
     for(const r of open){const key=Object.keys(EXCHANGES).find(k=>EXCHANGES[k]===r.exchange);let price=null;
-      for(const b of ex.bookmakers||[])if(b.key===key)for(const m of b.markets||[])if(recordLabels[m.key]===r.market)for(const o of m.outcomes||[])if(String(o.description||'').trim()===r.player&&String(o.name).toLowerCase()===r.side.toLowerCase()&&BTGStats.number(o.point)===Number(r.line))price=BTGStats.number(o.price);
+      for(const b of ex.bookmakers||[])if(b.key===key)for(const m of b.markets||[])if(recordLabels[m.key]===r.market)for(const o of m.outcomes||[])if(String(o.description||'').trim()===r.player&&exchangeOutcome(o).side===r.side.toLowerCase()&&exchangeOutcome(o).line===Number(r.line))price=BTGStats.number(o.price);
       if(price!==null)statements.push(env.DB.prepare('UPDATE exchange_shadow SET close_odds=?,close_at=? WHERE id=?').bind(price,stamp,r.id))}
     // Prediction picks: the same exchange's latest price, until kickoff.
     const mine=(await env.DB.prepare('SELECT id,exchange,player,market,side,line FROM prediction_picks WHERE event_id=? AND game_time>?').bind(board.eventID||`NFL--${board.id}`,stamp).all()).results||[];
     for(const r of mine){const key=Object.keys(EXCHANGES).find(k=>EXCHANGES[k]===r.exchange);let price=null;
-      for(const b of ex.bookmakers||[])if(b.key===key)for(const m of b.markets||[])if(recordLabels[m.key]===r.market)for(const o of m.outcomes||[])if(normalizedName(o.description)===normalizedName(r.player)&&String(o.name).toLowerCase()===r.side.toLowerCase()&&BTGStats.number(o.point)===Number(r.line))price=BTGStats.number(o.price);
+      for(const b of ex.bookmakers||[])if(b.key===key)for(const m of b.markets||[])if(recordLabels[m.key]===r.market)for(const o of m.outcomes||[])if(normalizedName(o.description)===normalizedName(r.player)&&exchangeOutcome(o).side===r.side.toLowerCase()&&exchangeOutcome(o).line===Number(r.line))price=BTGStats.number(o.price);
       if(price!==null)statements.push(env.DB.prepare('UPDATE prediction_picks SET close_odds=?,close_at=? WHERE id=?').bind(price,stamp,r.id))}
   }
   if(statements.length)await env.DB.batch(statements);
