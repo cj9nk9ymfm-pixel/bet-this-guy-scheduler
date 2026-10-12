@@ -1706,3 +1706,6 @@ html body .pm-banner[hidden]{display:none!important}
   html body #pmList .pm-empty{flex:1 0 100%}
   html body .pm-picks .pm-foot,html body .pm-now .pm-foot p{font-size:11.5px}
 }
+/* Prediction view: only picks and props with a prediction-market price. */
+body[data-price-view="predictions"] .pm-hide{display:none!important}
+#pmNoPicks,#pmBoardEmpty{margin:4px 0 10px}
