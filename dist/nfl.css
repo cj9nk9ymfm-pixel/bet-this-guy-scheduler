@@ -1606,3 +1606,9 @@ body[data-price-view="predictions"] #officialNowList .on-why{display:none}
 html body .on-row .on-pm.pm-ok{color:#2ee6a8}
 html body .on-row .on-pm.pm-bad{color:#f59e0b}
 html body .on-row .on-price.pm-skip{color:var(--muted);text-decoration:line-through;opacity:.75}
+html body .pm-picks{margin-top:4px!important}
+html body .pm-picks a.on-price{color:inherit;text-decoration:none}
+.prop-card .pm-board{display:block;margin:-4px 0 6px;font-size:12px;font-weight:600;color:#9db4ff}
+.mockup-pick b.pm-price{color:#9db4ff}
+.pm-status{font-style:normal;font-weight:800;margin-right:4px}
+.pm-status.pm-won{color:#2ee6a8}.pm-status.pm-lost{color:#f87171}.pm-status.pm-locked{color:#9db4ff}.pm-status.pm-live{color:#f59e0b}.pm-status.pm-push{color:var(--muted)}

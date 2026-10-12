@@ -1475,7 +1475,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     const kicker=`<span class="on-kicker">${icon('star')} Official${books.length===1?` · ${htmlEscape(books[0])}`:''}</span>`;
     const why=edges.length?(isParlay?`Every leg beats fair`:`${Math.max(...edges).toFixed(1)}% better than fair`):'';
     const game=String(legs[0]?.team||'').replace(' · @ ',' @ ').replace(' · vs ',' vs '),matchup=isParlay?'':game&&typeof compactGameName==='function'?compactGameName(game):game;
-    return `<button type="button" class="on-row on-${status[0]}-row" data-on="${i}" data-on-player="${htmlEscape(isParlay?'':r.player||'')}" data-on-team="${htmlEscape(isParlay?'':legs[0]?.team||'')}" aria-label="Details for ${htmlEscape(title)}">${avatar}<span class="on-who">${kicker}<b>${htmlEscape(title)}</b><span>${htmlEscape(sub)}</span><small>${htmlEscape([matchup,kickoff(r.game_time)].filter(Boolean).join(' · '))}</small>${why?`<i class="on-why">${htmlEscape(why)}</i>`:''}<i class="on-form" data-on-form="${i}" hidden></i><i class="on-wx" data-wx="${htmlEscape(r.game_id||legs[0]?.gameId||'')}" hidden></i><em class="on-live" data-on-live="${i}" hidden></em>${isParlay?'':`<i class="on-pm" data-pm="${htmlEscape(r.id||'')}" data-pm-odds="${htmlEscape(String(odds))}" hidden></i>`}</span><span class="on-end"><b class="on-price">${htmlEscape(formatOdds(odds))}</b><span class="on-tag on-${status[0]}">${tag}</span></span></button>`;
+    return `<button type="button" class="on-row on-${status[0]}-row" data-on="${i}" data-on-player="${htmlEscape(isParlay?'':r.player||'')}" data-on-team="${htmlEscape(isParlay?'':legs[0]?.team||'')}" aria-label="Details for ${htmlEscape(title)}">${avatar}<span class="on-who">${kicker}<b>${htmlEscape(title)}</b><span>${htmlEscape(sub)}</span><small>${htmlEscape([matchup,kickoff(r.game_time)].filter(Boolean).join(' · '))}</small>${why?`<i class="on-why">${htmlEscape(why)}</i>`:''}<i class="on-form" data-on-form="${i}" hidden></i><i class="on-wx" data-wx="${htmlEscape(r.game_id||legs[0]?.gameId||'')}" hidden></i><em class="on-live" data-on-live="${i}" hidden></em>${isParlay?'':`<i class="on-pm" data-pm="${htmlEscape(r.id||'')}" data-pm-odds="${htmlEscape(String(odds))}" data-pm-status="${htmlEscape(status[0])}" hidden></i>`}</span><span class="on-end"><b class="on-price">${htmlEscape(formatOdds(odds))}</b><span class="on-tag on-${status[0]}">${tag}</span></span></button>`;
   }
   // Live progress for locked picks, refreshed with the live board (every 5s in games).
   let officialLiveList=[];
@@ -2473,13 +2473,17 @@ function statsProp(l){
   function paintPicks(){
     const pm=view()==='predictions';
     document.querySelectorAll('[data-pm]').forEach(el=>{
-      const prices=data?.picks?.[el.dataset.pm]||[],posted=Number(el.dataset.pmOdds),price=el.closest('.on-row')?.querySelector('.on-price');let text='';
+      // Upcoming picks use the latest prices; started and final ones the prices saved when they locked.
+      const live=data?.picks?.[el.dataset.pm],atLock=data?.locked?.[el.dataset.pm],prices=live||atLock||[],lockedOnly=!live&&Boolean(atLock),pending=['locked','pending'].includes(el.dataset.pmStatus)||!el.dataset.pmStatus;
+      const posted=Number(el.dataset.pmOdds),price=el.closest('.on-row')?.querySelector('.on-price');let text='';
+      if(pm&&!prices.length&&!pending){if(price&&price.dataset.odds){price.textContent=price.dataset.odds;price.classList.remove('pm-price','pm-skip')}el.hidden=true;return}
       // good: still 1+ point under the pick's fair chance at that market.
       const good=prices.filter(p=>p.good),best=prices[0],fair=data?.fairs?.[el.dataset.pm],ok=Boolean(best?.good);
       if(price){if(!price.dataset.odds)price.dataset.odds=price.textContent;price.textContent=pm?(best?pct(best.odds):'—'):price.dataset.odds;price.classList.toggle('pm-price',pm);price.classList.toggle('pm-skip',pm&&Boolean(best)&&!ok);price.title=pm?(best?`${best.exchange}: ${pct(best.odds)} chance${fair!=null?`; fair chance ${Math.round(fair)}%`:''}`:'Not on prediction markets yet'):''}
       el.classList.remove('pm-ok','pm-bad');
       if(pm){
         if(!best)text=data?'Not on prediction markets yet':'';
+        else if(lockedOnly)text=`At lock: ${prices.slice(0,3).map(p=>`${p.exchange} ${pct(p.odds)}`).join(' · ')}${ok?' (good value)':''}`;
         else if(ok){text=`✓ Good value: ${good.slice(0,3).map(p=>`${p.exchange} ${pct(p.odds)}`).join(' · ')}`;el.classList.add('pm-ok')}
         else{text=`Worse than fair here, skip: ${best.exchange} ${pct(best.odds)}${fair!=null?` vs fair ${Math.round(fair)}%`:''}`;el.classList.add('pm-bad')}
       }
@@ -2494,6 +2498,46 @@ function statsProp(l){
     const why=Number.isFinite(Number(v.fair))?`Fair chance ${Math.round(v.fair)}%`:`${Number(v.edge).toFixed(1)}% better than fair`;
     return `<div class="on-row lean-row"><span class="on-avatar"><span>${htmlEscape(initials)}</span><img loading="lazy" decoding="async" src="/api/player-photo?name=${encodeURIComponent(v.player||'')}" alt="" onerror="this.remove()"></span><span class="on-who"><span class="on-kicker lean-kicker">${htmlEscape(v.exchange)}</span><b>${htmlEscape(v.player)}</b><span>${htmlEscape(bet.charAt(0).toUpperCase()+bet.slice(1))}</span><small>${htmlEscape([matchup,when(v.gameTime)].filter(Boolean).join(' · '))}</small><i class="on-why">${htmlEscape(why)}</i></span><span class="on-end">${price}</span></div>`;
   }
+  // Prediction-market picks: their own card and record (after fees).
+  const money=v=>`${v<0?'−':'+'}$${Math.abs(Math.round(v)).toLocaleString('en-US')}`;
+  function pickRow(r){
+    const initials=String(r.player||'').split(' ').map(x=>x[0]||'').join('').slice(0,3),bet=`${r.side} ${r.line} ${String(r.market||'').toLowerCase()}`;
+    const game=String(r.team||'').replace(' · @ ',' @ ').replace(' · vs ',' vs '),matchup=game&&typeof compactGameName==='function'?compactGameName(game):game,url=LINKS[r.exchange];
+    const status=r.result==='won'?['won','Won']:r.result==='lost'?['lost','Lost']:r.result==='push'?['push','Push']:r.result==='void'?['push','Void']:Date.parse(r.gameTime)<=Date.now()?['live','Live']:['locked','Locked'];
+    const tag=`<em class="pm-status pm-${status[0]}">${status[1]}</em>`;
+    const priceText=pct(r.odds),price=url&&!r.result?`<a class="on-price pm-price" href="${url}" target="_blank" rel="noopener" aria-label="Open ${htmlEscape(r.exchange)}">${htmlEscape(priceText)}</a>`:`<span class="on-price pm-price">${htmlEscape(priceText)}</span>`;
+    const note=[`Fair chance ${Math.round(r.fair)}%`,r.open===false?`not offered in ${data?.stateName||'your state'}`:''].filter(Boolean).join(' · ');
+    return `<div class="on-row lean-row pm-pick"><span class="on-avatar"><span>${htmlEscape(initials)}</span><img loading="lazy" decoding="async" src="/api/player-photo?name=${encodeURIComponent(r.player||'')}" alt="" onerror="this.remove()"></span><span class="on-who"><span class="on-kicker">★ Prediction pick · ${htmlEscape(r.exchange)}</span><b>${htmlEscape(r.player)}</b><span>${htmlEscape(bet.charAt(0).toUpperCase()+bet.slice(1))}</span><small>${htmlEscape([matchup,when(r.gameTime)].filter(Boolean).join(' · '))}</small><i class="on-why">${tag} ${htmlEscape(note)}</i></span><span class="on-end">${price}</span></div>`;
+  }
+  function renderPicks(v){
+    const host=document.getElementById('pmPicksNow');if(!host)return;
+    const list=data?.pmPicks||[],rec=data?.pmRecord;host.hidden=v!=='predictions'||!data||data.mode==='unknown';if(host.hidden)return;
+    const games=rec?rec.wins+rec.losses+rec.pushes:0;
+    document.getElementById('pmPicksRecord').textContent=games?`Record ${rec.wins}–${rec.losses}${rec.pushes?`–${rec.pushes}`:''} · ${money(rec.profit)} at $100 a pick after fees${rec.tracked?` · ${rec.beat} of ${rec.tracked} beat the close`:''}`:'New: the first picks are being graded. Separate from our sportsbook record.';
+    document.getElementById('pmPicksList').innerHTML=list.length?list.map(pickRow).join(''):'<p class="pm-empty">No prediction-market picks yet this week. They post when a market’s price, after its fee, beats the sportsbooks’ fair chance by 1+ point.</p>';
+  }
+  // Board: every prop's best prediction-market chance in the visitor's state.
+  const boardPrices=new Map(),boardWanted=new Set();let boardTimer=null;
+  async function loadBoard(id){
+    if(!id||boardWanted.has(id))return;boardWanted.add(id);
+    try{const st=stored(KEY),r=await fetch(`/api/predictions/board?event=${encodeURIComponent(id)}${st?`&state=${encodeURIComponent(st)}`:''}`);const body=await r.json();const m=new Map();for(const p of body?.prices||[])m.set(`${String(p[0]).toLowerCase().replace(/[^a-z]/g,'')}|${p[1]}|${p[2]}|${p[3]}`,{exchange:p[4],odds:p[5]});boardPrices.set(id,m)}catch{boardPrices.set(id,new Map())}
+    paintBoard();
+  }
+  function paintBoard(){
+    const pm=view()==='predictions';
+    document.querySelectorAll('#propList .prop-card[data-id]').forEach(cardEl=>{
+      const b=cardEl.querySelector('.mockup-pick b');if(!b)return;if(!b.dataset.odds)b.dataset.odds=b.textContent;
+      let note=cardEl.querySelector('.pm-board');
+      if(!pm){b.textContent=b.dataset.odds;b.classList.remove('pm-price');note?.remove();return}
+      const p=typeof props!=='undefined'?props.find(x=>x.id===+cardEl.dataset.id):null;if(!p)return;
+      const id=p.eventID;if(id&&!boardPrices.has(id)){loadBoard(id);return}
+      const hit=boardPrices.get(id)?.get(`${String(p.player).toLowerCase().replace(/[^a-z]/g,'')}|${p.market}|${p.side}|${Number(p.line)}`);
+      b.textContent=hit?pct(hit.odds):'—';b.classList.add('pm-price');
+      if(!note){note=document.createElement('small');note.className='pm-board';cardEl.querySelector('.mockup-pick')?.after(note)}
+      note.textContent=hit?`${hit.exchange} · ${pct(hit.odds)} chance`:'Not on prediction markets';
+    });
+  }
+  const boardHost=document.getElementById('propList');if(boardHost)new MutationObserver(()=>{clearTimeout(boardTimer);boardTimer=setTimeout(paintBoard,60)}).observe(boardHost,{childList:true});
   function render(){
     const banner=document.getElementById('pmBanner'),section=document.getElementById('pmNow'),toggle=document.getElementById('priceView');
     const d=data||{mode:'unknown'},v=view(),now=Date.now(),value=(d.value||[]).filter(x=>Date.parse(x.gameTime)>now),names=apps(d);
@@ -2509,8 +2553,8 @@ function statsProp(l){
       document.getElementById('pmList').innerHTML=value.length?value.map(row).join(''):`<p class="pm-empty">${d.mode==='unknown'?'Choose your state to see prediction-market prices.':'No prediction-market prices beat the sportsbooks right now. Prices are checked every 30 minutes.'}</p>`;
       document.getElementById('pmWhere').innerHTML=picker(d.state);
     }
-    document.querySelectorAll('[data-pm-state]').forEach(sel=>sel.onchange=()=>{store(KEY,sel.value);load().then(resync)});
-    paintPicks();
+    document.querySelectorAll('[data-pm-state]').forEach(sel=>sel.onchange=()=>{store(KEY,sel.value);boardPrices.clear();boardWanted.clear();load().then(resync)});
+    paintPicks();renderPicks(v);paintBoard();
   }
   // Alerts follow the switch: the phone's alerts are re-saved with the new choice.
   window.BTGPriceView={view,state:()=>stored(KEY)||data?.state||''};

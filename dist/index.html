@@ -101,6 +101,11 @@
         </section>
         <button type="button" class="my-pl" id="myRecord" hidden></button>
         <div class="price-view" id="priceView" role="group" aria-label="Show prices as"><button type="button" data-view="odds" aria-pressed="true">Sportsbook odds</button><button type="button" data-view="predictions" aria-pressed="false">Prediction markets</button></div>
+        <section class="official-now leans-now pm-picks" id="pmPicksNow" aria-labelledby="pmPicksTitle" hidden>
+          <div class="on-head"><div><h2 id="pmPicksTitle">Prediction market picks</h2><p id="pmPicksRecord"></p></div></div>
+          <div class="on-list" id="pmPicksList"></div>
+          <p class="pm-foot">Own record, separate from our sportsbook picks. Graded at $100 a pick at the market’s price after its estimated fee. Shown as each market’s chance.</p>
+        </section>
         <section class="official-now" id="officialNow" aria-labelledby="officialNowTitle" hidden>
           <div class="on-head"><h2 id="officialNowTitle">This week’s picks <span class="on-count" id="officialNowCount"></span></h2><button type="button" class="alerts-btn on-alerts" data-alerts-toggle>Get pick alerts</button></div>
           <p class="on-engine" id="engineStatus" hidden></p>
