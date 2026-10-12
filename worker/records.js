@@ -146,7 +146,10 @@ function officialCandidates(events,now=Date.now(),stats={},opts={}){
 // picks qualify. Built earlier, the 2-leg tier used every pair as soon as two
 // picks existed, and the one-shared-leg rule then blocked every bigger parlay.
 const PARLAY_WINDOW=2*3600000;
-function officialPlan(candidates,existing,week,now=Date.now()){
+// Singles are the top tier (1%+ edge). Parlays are built from the next tier
+// down (pool: props 0.5% to just under 1%), one leg per game, and never use
+// a player who is an official single: a bad single can't also sink a parlay.
+function officialPlan(candidates,existing,week,now=Date.now(),pool=candidates){
   const saved=existing.map(r=>({...r,legs:recordLegs(r)})),counts=Object.fromEntries(Object.keys(OFFICIAL_CAPS).map(t=>[t,saved.filter(r=>r.id.startsWith(`official|${week}|${t}|`)).length]));
   const plan=[],singles=saved.filter(r=>r.kind==='prop'),games=new Map(),used=new Set(singles.flatMap(r=>r.legs.map(officialPlayer)));
   singles.forEach(r=>games.set(r.game_id,(games.get(r.game_id)||0)+1));
@@ -154,12 +157,12 @@ function officialPlan(candidates,existing,week,now=Date.now()){
   const prior=saved.filter(r=>r.kind==='parlay').map(r=>r.legs.map(officialPlayer)),exposure=new Map();prior.flat().forEach(k=>exposure.set(k,(exposure.get(k)||0)+1));
   // Hardest tiers first: they need the most unshared legs.
   const tiers=[['moonshot',4,7,2501,15000],['swing',3,6,1000,2500],['reasonable',2,4,100,999]];
-  const soon=p=>Date.parse(p.gameTime)<=now+PARLAY_WINDOW;
-  if(!candidates.some(soon))return plan;
+  const soon=p=>Date.parse(p.gameTime)<=now+PARLAY_WINDOW,legPool=pool.filter(p=>!used.has(p.playerKey));
+  if(!legPool.some(soon))return plan;
   for(const [tier,min,max,low,high] of tiers){
     for(let attempt=0;attempt<500&&counts[tier]<OFFICIAL_CAPS[tier];attempt++){
       const size=min+attempt%(max-min+1),legs=[],gameIds=new Set(),markets=new Map();
-      const pool=[...candidates].sort((a,b)=>(exposure.get(a.playerKey)||0)-(exposure.get(b.playerKey)||0)||b.edge-a.edge);
+      const pool=[...legPool].sort((a,b)=>(exposure.get(a.playerKey)||0)-(exposure.get(b.playerKey)||0)||b.edge-a.edge);
       if(!pool.length)break;
       for(let j=0;j<pool.length&&legs.length<size;j++){
         const p=pool[(j+Math.floor(attempt/(max-min+1)))%pool.length];
@@ -175,34 +178,6 @@ function officialPlan(candidates,existing,week,now=Date.now()){
     }
   }
   return plan;
-}
-// Parlay from our own singles: when no parlay forms from fresh qualifiers
-// (two props qualifying in different games at the same moment is rare), pair
-// two pending official singles from different games whose current big-5
-// price is still better than fair, inside two hours of the first kickoff.
-// Priced and locked at today's prices; at most one a day.
-function singlesParlay(boards,existing,now=Date.now()){
-  const saved=existing.map(r=>({...r,legs:recordLegs(r)}));
-  const day=t=>new Date(t).toISOString().slice(0,10);
-  const done=new Set(saved.filter(r=>r.kind==='parlay'&&r.legs.some(l=>l.fromSingles)).map(r=>day(Date.parse(r.legs.map(l=>l.gameTime).sort()[0]))));
-  const current=officialCandidates(boards,now,{},{min:.5});
-  const legs=[];
-  for(const r of saved){
-    if(r.kind!=='prop'||r.result||Date.parse(r.game_time)<=now+5*60000)continue;
-    const leg=r.legs[0]||{},key=officialPlayer({gameId:r.game_id,player:r.player});
-    const c=current.find(c=>c.playerKey===key&&c.market===r.market&&c.side===r.side&&Number(c.line)===Number(r.line));
-    if(c)legs.push({...c,fromSingles:true});
-  }
-  legs.sort((a,b)=>b.edge-a.edge);
-  for(let i=0;i<legs.length;i++)for(let j=i+1;j<legs.length;j++){
-    const pair=[legs[i],legs[j]];if(pair[0].gameId===pair[1].gameId)continue;
-    const first=Math.min(...pair.map(l=>Date.parse(l.gameTime)));
-    if(first>now+PARLAY_WINDOW||done.has(day(first)))continue;
-    const odds=recordAmerican(pair.reduce((d,l)=>d*recordDecimal(l.odds),1));
-    if(odds<100||odds>999)continue;
-    return {tier:'reasonable',legs:pair};
-  }
-  return null;
 }
 async function writeOfficialPlan(plan,week,env){
   const prefix=`official|${week}|`,statements=[];
@@ -1664,9 +1639,10 @@ async function publishOfficialPicks(request,env,ctx,opts={}){
     // Players listed Out or Doubtful are taken off the boards first.
     const injuries=await injuryMap(env).catch(()=>new Map());boards.splice(0,boards.length,...withoutInjured(boards,injuries));
     if(!opts.soonOnly)jobStep('publish','plan');const existing=await env.DB.prepare('SELECT * FROM public_recommendations WHERE id>=? AND id<?').bind(prefix,prefix+'\uffff').all();
-    const stats={};const candidates=officialCandidates(boards,Date.now(),stats);const plan=officialPlan(candidates,existing.results||[],week,Date.now());
-    // No fresh parlay this run: try one from our own pending singles.
-    if(!plan.some(p=>p.tier!=='props')){const extra=singlesParlay(boards,existing.results||[],Date.now());if(extra)plan.push(extra)}
+    const stats={};const candidates=officialCandidates(boards,Date.now(),stats);
+    // Parlay legs come from the next tier down (0.5% to just under 1%), not from the singles.
+    const nextTier=officialCandidates(boards,Date.now(),{},{min:.5,below:1});
+    const plan=officialPlan(candidates,existing.results||[],week,Date.now(),nextTier);
     const posted=await writeOfficialPlan(plan,week,env);
     await stampExchangePrices(env,Date.now()).catch(error=>console.warn('exchange_stamp_failed',error.message));
     if(!opts.soonOnly&&stats.markets)await setAppSetting(env,'market-coverage',JSON.stringify({at:new Date(now).toISOString(),markets:stats.markets})).catch(()=>{});
