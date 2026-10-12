@@ -2536,30 +2536,30 @@ function statsProp(l){
   }
   // Prediction-market picks: their own card and record (after fees).
   const money=v=>`${v<0?'−':'+'}$${Math.abs(Math.round(v)).toLocaleString('en-US')}`;
+  // Prediction picks and parlays use the official pick card: avatar, name, bet,
+  // a meta line (matchup · time · app), one note line, and price over status.
+  const pmStatus=r=>r.result==='won'?['won','Won']:r.result==='lost'?['lost','Lost']:r.result==='push'?['push','Push']:r.result==='void'?['push','Void']:Date.parse(r.gameTime)<=Date.now()?['live','Live']:['locked',`${typeof icon==='function'?icon('lock'):''} Locked`];
+  const pmEnd=(r,st)=>{const url=LINKS[r.exchange],t=pct(r.odds);return `<span class="on-end">${url&&!r.result?`<a class="on-price" href="${url}" target="_blank" rel="noopener" aria-label="Open ${htmlEscape(r.exchange)}">${htmlEscape(t)}</a>`:`<b class="on-price">${htmlEscape(t)}</b>`}<span class="on-tag on-${st[0]}">${st[1]}</span></span>`};
   function pickRow(r){
     const initials=String(r.player||'').split(' ').map(x=>x[0]||'').join('').slice(0,3),bet=`${r.side} ${r.line} ${String(r.market||'').toLowerCase()}`;
-    const game=String(r.team||'').replace(' · @ ',' @ ').replace(' · vs ',' vs '),matchup=game&&typeof compactGameName==='function'?compactGameName(game):game,url=LINKS[r.exchange];
-    const status=r.result==='won'?['won','Won']:r.result==='lost'?['lost','Lost']:r.result==='push'?['push','Push']:r.result==='void'?['push','Void']:Date.parse(r.gameTime)<=Date.now()?['live','Live']:['locked','Locked'];
-    const tag=`<em class="pm-status pm-${status[0]}">${status[1]}</em>`;
-    const priceText=pct(r.odds),price=url&&!r.result?`<a class="on-price pm-price" href="${url}" target="_blank" rel="noopener" aria-label="Open ${htmlEscape(r.exchange)}">${htmlEscape(priceText)}</a>`:`<span class="on-price pm-price">${htmlEscape(priceText)}</span>`;
+    const game=String(r.team||'').replace(' · @ ',' @ ').replace(' · vs ',' vs '),matchup=game&&typeof compactGameName==='function'?compactGameName(game):game,st=pmStatus(r);
     const note=[`Fair chance ${Math.round(r.fair)}%`,r.open===false?`not offered in ${data?.stateName||'your state'}`:''].filter(Boolean).join(' · ');
-    return `<div class="on-row lean-row pm-pick"><span class="on-avatar"><span>${htmlEscape(initials)}</span><img loading="lazy" decoding="async" src="/api/player-photo?name=${encodeURIComponent(r.player||'')}" alt="" onerror="this.remove()"></span><span class="on-who"><span class="on-kicker">★ Prediction pick · ${htmlEscape(r.exchange)}</span><b>${htmlEscape(r.player)}</b><span>${htmlEscape(bet.charAt(0).toUpperCase()+bet.slice(1))}</span><small>${htmlEscape([matchup,when(r.gameTime)].filter(Boolean).join(' · '))}</small><i class="on-why">${tag} ${htmlEscape(note)}</i></span><span class="on-end">${price}</span></div>`;
+    return `<div class="on-row on-${st[0]}-row pm-pick"><span class="on-avatar"><span>${htmlEscape(initials)}</span><img loading="lazy" decoding="async" src="/api/player-photo?name=${encodeURIComponent(r.player||'')}" alt="" onerror="this.remove()"></span><span class="on-who"><b>${htmlEscape(r.player)}</b><span>${htmlEscape(bet.charAt(0).toUpperCase()+bet.slice(1))}</span><small>${htmlEscape([matchup,when(r.gameTime),r.exchange].filter(Boolean).join(' · '))}</small><i class="on-pm pm-ok">${htmlEscape(note)}</i></span>${pmEnd(r,st)}</div>`;
   }
   function parlayRow(r){
-    const status=r.result==='won'?['won','Won']:r.result==='lost'?['lost','Lost']:r.result==='push'?['push','Push']:Date.parse(r.gameTime)<=Date.now()?['live','Live']:['locked','Locked'];
-    const same=r.legs.some(l=>l.sameGame),url=LINKS[r.exchange];
-    const priceText=pct(r.odds),price=url&&!r.result?`<a class="on-price pm-price" href="${url}" target="_blank" rel="noopener" aria-label="Open ${htmlEscape(r.exchange)}">${htmlEscape(priceText)}</a>`:`<span class="on-price pm-price">${htmlEscape(priceText)}</span>`;
+    const st=pmStatus(r),same=r.legs.some(l=>l.sameGame);
     const legs=r.legs.map(l=>`${l.result==='won'?'✓ ':l.result==='lost'?'✗ ':''}${l.player} ${l.side} ${l.line} ${String(l.market||'').toLowerCase()}`).join(' + ');
     const note=[`¼ unit${same?' · same game':''}`,r.open===false?`not offered in ${data?.stateName||'your state'}`:''].filter(Boolean).join(' · ');
-    return `<div class="on-row lean-row pm-pick"><span class="on-avatar on-parlay">${typeof icon==='function'?icon('layers'):''}</span><span class="on-who"><span class="on-kicker">★ Prediction parlay · ${htmlEscape(r.exchange)}</span><b>${r.legs.length}-leg parlay</b><span>${htmlEscape(legs)}</span><small>${htmlEscape(when(r.gameTime))}</small><i class="on-why"><em class="pm-status pm-${status[0]}">${status[1]}</em> ${htmlEscape(note)}</i></span><span class="on-end">${price}</span></div>`;
+    return `<div class="on-row on-${st[0]}-row pm-pick"><span class="on-avatar on-parlay">${typeof icon==='function'?icon('layers'):''}</span><span class="on-who"><b>${r.legs.length}-leg parlay</b><span>${htmlEscape(legs)}</span><small>${htmlEscape([when(r.gameTime),r.exchange].filter(Boolean).join(' · '))}</small><i class="on-pm pm-ok">${htmlEscape(note)}</i></span>${pmEnd(r,st)}</div>`;
   }
   function renderPicks(v){
     const host=document.getElementById('pmPicksNow');if(!host)return;
     const list=[...(data?.pmPicks||[]),...(data?.pmParlays||[])],rec=data?.pmRecord,pr=data?.pmParlayRecord;host.hidden=v!=='predictions'||!data||data.mode==='unknown';if(host.hidden)return;
     const games=rec?rec.wins+rec.losses+rec.pushes:0;
     host.classList.toggle('pm-none',!list.length);
+    const pc=document.getElementById('pmPicksCount');if(pc)pc.textContent=list.length?String(list.length):'';
     const pg=pr?pr.wins+pr.losses+pr.pushes:0,parlayText=pg?` · Parlays ${pr.wins}–${pr.losses} (${money(pr.profit)})`:'';
-    document.getElementById('pmPicksRecord').textContent=!list.length&&!games&&!pg?'None yet this week. They post when a market beats the sportsbooks’ fair chance by 1+ point after its fee. Own record.':games?`Record ${rec.wins}–${rec.losses}${rec.pushes?`–${rec.pushes}`:''} · ${money(rec.profit)} at $100 a pick after fees${rec.tracked?` · ${rec.beat} of ${rec.tracked} beat the close`:''}${parlayText}`:`First picks are being graded. Own record, after fees.${parlayText}`;
+    document.getElementById('pmPicksRecord').textContent=!list.length&&!games&&!pg?'None yet this week. They post when an app’s price beats the sportsbooks’ fair chance by 1+ point after its fee. Own record: singles $100, parlays $25.':games?`Record ${rec.wins}–${rec.losses}${rec.pushes?`–${rec.pushes}`:''} · ${money(rec.profit)} at $100 a pick after fees${rec.tracked?` · ${rec.beat} of ${rec.tracked} beat the close`:''}${parlayText}`:`Own record after fees: singles $100, parlays $25. First picks are being graded.${parlayText}`;
     document.getElementById('pmPicksList').innerHTML=list.map(r=>r.parlay?parlayRow(r):pickRow(r)).join('');
   }
   // Board: every prop's best prediction-market chance in the visitor's state.
@@ -2597,7 +2597,7 @@ function statsProp(l){
       const show=d.mode==='predictions'||(v==='predictions'&&d.state);banner.hidden=!show;
       // One line: in odds view a button switches to prediction prices; in prediction view, which apps and how to read them.
       const apps3=names.length>3?`${names.slice(0,3).join(', ')} +${names.length-3} more`:list(names);
-      if(show)banner.innerHTML=v==='predictions'?`<p><b>${htmlEscape(d.stateName||'')}:</b> ${htmlEscape(apps3||'no prediction markets right now')}. Lower % is a better price.</p>${picker(d.state)}`:`<p><b>No sportsbooks in ${htmlEscape(d.stateName||'')} yet.</b> Bet these on prediction markets.</p><button type="button" class="pm-switch" data-pm-switch>See prices</button>`;
+      if(show)banner.innerHTML=v==='predictions'?`<p><b>${htmlEscape(d.stateName||'')}:</b> ${htmlEscape(apps3||'no prediction markets right now')}. Lower % is a better price. 18+ or 21+ by app.</p>${picker(d.state)}`:`<p><b>No sportsbooks in ${htmlEscape(d.stateName||'')} yet.</b> Bet these on prediction markets.</p><button type="button" class="pm-switch" data-pm-switch>See prices</button>`;
       banner.querySelector('[data-pm-switch]')?.addEventListener('click',()=>{store(VIEW,'predictions');render();resync()});
     }
     // Hidden when it has nothing to show (the state picker lives in the banner then).

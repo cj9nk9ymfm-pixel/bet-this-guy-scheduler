@@ -102,16 +102,16 @@
         <button type="button" class="my-pl" id="myRecord" hidden></button>
         <div class="welcome-note" id="welcomeNote" hidden><p><b>New here?</b> We post NFL player props that are priced better than they should be, before kickoff, and grade every pick in public. Tap a pick to see the bet and where to place it.</p><button type="button" id="welcomeClose">Got it</button></div>
         <nav class="jump-bar" id="jumpBar" aria-label="Jump to"><div class="jump-links"><a href="#officialNow" data-jump="picks">Picks</a><a href="#leansNow" data-jump="leans">Worth a look</a><a href="#propsSection" data-jump="board">Board</a></div><div class="price-view" id="priceView" role="group" aria-label="Show prices as"><button type="button" data-view="odds" aria-pressed="true">Sportsbook</button><button type="button" data-view="predictions" aria-pressed="false">Prediction apps</button></div></nav>
-        <section class="official-now leans-now pm-picks" id="pmPicksNow" aria-labelledby="pmPicksTitle" hidden>
-          <div class="on-head"><div><h2 id="pmPicksTitle">Prediction market picks</h2><p id="pmPicksRecord"></p></div></div>
+        <div class="pm-banner" id="pmBanner" role="note" hidden></div>
+        <section class="official-now pm-picks" id="pmPicksNow" aria-labelledby="pmPicksTitle" hidden>
+          <div class="on-head"><h2 id="pmPicksTitle">Prediction market picks <span class="on-count" id="pmPicksCount"></span></h2></div>
+          <p class="on-sub" id="pmPicksRecord"></p>
           <div class="on-list" id="pmPicksList"></div>
-          <p class="pm-foot">Own record · singles $100, parlays $25, after each app’s fee.</p>
         </section>
         <section class="official-now" id="officialNow" aria-labelledby="officialNowTitle" hidden>
           <div class="on-head"><h2 id="officialNowTitle">This week’s picks <span class="on-count" id="officialNowCount"></span></h2><button type="button" class="alerts-btn on-alerts" data-alerts-toggle>Get pick alerts</button></div>
           <p class="on-sub">Bet them at this price or better. Tap a pick for details.</p>
           <p class="on-engine" id="engineStatus" hidden></p>
-          <div class="pm-banner" id="pmBanner" role="note" hidden></div>
           <div class="on-list" id="officialNowList"></div>
           <div class="alerts-hero" id="alertsHero" hidden><span class="ah-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></span><span class="ah-copy"><strong>Get a ping when picks post</strong></span><button type="button" class="ah-btn" data-alerts-toggle data-alerts-banner>Turn on</button><button type="button" class="ah-close" id="alertsHeroClose" aria-label="Hide this">×</button></div>
         </section>
@@ -120,9 +120,9 @@
           <div class="on-list" id="leansList"></div>
         </section>
         <section class="official-now leans-now pm-now" id="pmNow" aria-labelledby="pmTitle" hidden>
-          <div class="on-head"><div><h2 id="pmTitle">On prediction markets <span class="on-count" id="pmCount"></span></h2><p>Prediction-market prices below the sportsbooks’ fair chance, shown as each market lists them. Not official picks, not on our record.</p></div></div>
+          <div class="on-head"><div><h2 id="pmTitle">On prediction markets <span class="on-count" id="pmCount"></span></h2><p>App prices better than fair, before fees. Not counted in our record.</p></div></div>
           <div class="on-list" id="pmList"></div>
-          <div class="pm-foot"><span id="pmWhere"></span><p>Before fees, checked every 30 minutes. 18+ or 21+ by app; each app checks your location.</p></div>
+          <div class="pm-foot"><span id="pmWhere"></span></div>
         </section>
         <section class="hits-strip" id="hitsStrip" aria-labelledby="hitsTitle" hidden>
           <div class="hits-head"><h2 id="hitsTitle">Last week’s hits</h2><div class="hits-nav"><button type="button" id="hitsPrev" aria-label="Previous hits">‹</button><button type="button" id="hitsNext" aria-label="More hits">›</button></div><a href="/trust#official">See every pick →</a></div>
