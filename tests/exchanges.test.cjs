@@ -6,7 +6,7 @@ const context=vm.createContext({URL,URLSearchParams,Request,Response,Headers,Abo
 const template=read('worker/index.template.js');
 vm.runInContext(template.slice(template.indexOf('const API_BASE')).replace('__MOVEMENT_SERVER__',read('worker/movement.js')).replace('__LIVE_SERVER__',read('worker/live.js')).replace('__STATS_SHARED__',read('dist/stats.js')).replace('__RECORDS_SERVER__',read('worker/records.js')).replace('__ACCOUNTS_SERVER__',read('worker/accounts.js')).replace('export default {','this.worker={'),context);
 const fs=require('node:fs'),db=new DatabaseSync(':memory:');
-for(const f of fs.readdirSync('drizzle').filter(f=>/^000[0-2]_|^0006_|^0008_|^0013_|0025_|0026_|0027_/.test(f)).sort())db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''));
+for(const f of fs.readdirSync('drizzle').filter(f=>/^000[0-2]_|^0006_|^0008_|^0013_|0025_|0026_|0027_|0028_/.test(f)).sort())db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''));
 const wrap=(sql,args=[])=>({bind(...values){return wrap(sql,values)},async first(){return db.prepare(sql).get(...args)||null},async all(){return{results:db.prepare(sql).all(...args)}},async run(){const r=db.prepare(sql).run(...args);return{success:true,meta:{changes:Number(r.changes)}}}});
 context.env={DB:{prepare:sql=>wrap(sql),async batch(list){for(const s of list)await s.run()}},THE_ODDS_API_KEY:'k',BALLDONTLIE_API_KEY:'b'};
 const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v));
@@ -27,6 +27,14 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
   const cov=JSON.parse(db.prepare("SELECT value FROM app_settings WHERE key='exchange-coverage'").get().value);
   assert.deepEqual(cov.coverage.novig,{lines:2,matched:2});assert.ok(!cov.coverage.bovada,'only prediction markets count');
   out=J(await run(`recordExchangeProps(env,boards,${now+600000})`));assert.deepEqual(out,{skipped:true},'every 30 minutes');
+  // Prediction-market pick: Novig's +115 (no fee) clears the bar after fees; Kalshi at fair plus its fee does not.
+  const pm=db.prepare('SELECT * FROM prediction_picks').all();
+  assert.deepEqual(pm.map(r=>[r.exchange,r.player,r.side,r.odds,r.net_odds]),[['Novig','Tre Tucker','Over',115,115]]);assert.ok(pm[0].edge>2&&pm[0].fair_pct>49);
+  assert.ok(run('predictionNet("kalshi",-102)').netChance>51.9,'Kalshi fee about 1.75 points at 50%');
+  db.prepare("UPDATE prediction_picks SET result='won',close_odds=105").run();
+  assert.deepEqual(J(run(`predictionRecord(${JSON.stringify(db.prepare('SELECT * FROM prediction_picks').all())})`)),{wins:1,losses:0,pushes:0,profit:115,beat:1,tracked:1,pending:0});
+  db.prepare("UPDATE prediction_picks SET result=NULL,close_odds=NULL").run();
+
   // Where you can bet.
   const where=cf=>J(run(`bettingOptions(${JSON.stringify({cf})})`));
   let w=where({country:'US',regionCode:'CA'});assert.equal(w.mode,'predictions');assert.equal(w.predictions.draftkings,true);assert.ok(w.exchanges.includes('Kalshi'));
@@ -39,7 +47,8 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
   db.prepare("INSERT INTO public_recommendations(id,kind,player,market,side,line,odds,game_id,game_time,legs_json,posted_at,status,source) VALUES('official|x|prop|1','prop','Tre Tucker','Receptions','Under',3.5,105,'NFL--g1',?,?,?,'pending','market-verified-v2')").run(kick,JSON.stringify([{player:'Tre Tucker',edge:3.5}]),new Date(now).toISOString());
   const pred=async(state,cf)=>J(await (await run(`predictionsResponse(${JSON.stringify({url:'https://x/api/predictions'+(state?'?state='+state:''),cf})},env,${now+60000})`)).json());
   let p=await pred(null,{country:'US',regionCode:'TX'});
-  assert.equal(p.mode,'predictions');assert.equal(p.stateName,'Texas');assert.ok(!('exchangeKeys' in p));
+  assert.equal(p.mode,'predictions');assert.equal(p.stateName,'Texas');
+  assert.equal(p.pmPicks.length,1);assert.equal(p.pmPicks[0].open,true);assert.equal(p.pmRecord.pending,1);assert.ok(!('exchangeKeys' in p));
   assert.deepEqual(p.picks['official|x|prop|1'],[{exchange:'Kalshi',odds:-104,good:true},{exchange:'Novig',odds:-125,good:false}],'every exchange price on the pick, best first, marked good when 1+ point under the fair chance');
   assert.equal(p.fairs['official|x|prop|1'],52.3);
   assert.equal(p.value.length,0,'no value row for a player with an official pick');
@@ -75,6 +84,9 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
   p=await pred('CT',{country:'US',regionCode:'TX'});
   assert.equal(p.state,'CT');assert.equal(p.mode,'sportsbooks');assert.equal(p.value.length,0,'Novig is out in Connecticut');
   assert.equal((await pred(null,{country:'CA',regionCode:'ON'})).mode,'unknown');
+  const board=async(state)=>J(await (await run(`predictionBoardResponse(${JSON.stringify({url:'https://x/api/predictions/board?event=NFL--g1&state='+state,cf:{}})},env,${now+60000})`)).json());
+  let bp=await board('TX');assert.deepEqual(bp.prices.find(p=>p[2]==='Over'),['Tre Tucker','Receptions','Over',3.5,'Novig',115],'best price per prop');
+  bp=await board('CT');assert.deepEqual(bp.prices.find(p=>p[2]==='Over'),['Tre Tucker','Receptions','Over',3.5,'Kalshi',-102],'Novig is out in Connecticut');
   assert.equal((await pred(null,{country:'US',regionCode:'TX'})).predictions.draftkings,true);assert.equal((await pred('DE',{})).predictions.draftkings,false);
   console.log('PASS: exchange prices are compared with the sportsbook fair price, logged and throttled; the visitor\'s state picks sportsbooks or prediction markets');
 })().catch(error=>{console.error(error);process.exit(1)});

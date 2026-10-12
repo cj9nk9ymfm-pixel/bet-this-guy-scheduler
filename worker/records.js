@@ -1212,6 +1212,60 @@ function exchangePriceList(exchangeBoard){
   return out;
 }
 const exchangeInsert=(env,p,stamp)=>env.DB.prepare('INSERT OR IGNORE INTO exchange_shadow (id,kind,exchange,event_id,home,away,player,team,market,side,line,odds,fair_pct,edge,game_time,logged_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(p.kind==='prop'?`prop|${p.eventId}|${normalizedName(p.player)}`:`game|${p.eventId}|${p.market}`,p.kind,p.exchange,p.eventId,p.home||null,p.away||null,p.player||null,p.team||null,p.market,p.side,p.line,p.odds,+(100*p.fair).toFixed(2),+p.edge.toFixed(2),p.gameTime,stamp);
+// Prediction-market picks (their own record). Estimated fee per exchange, in
+// chance points on a price with chance p (0-1): Kalshi's taker fee is
+// 0.07*p*(1-p) per contract; Polymarket is assumed the same; ProphetX and
+// BetOpenly about 1 point; Novig none. A price qualifies when its chance plus
+// the fee is 1-12 points under the sportsbooks' fair chance.
+const PREDICTION_FEES={kalshi:p=>7*p*(1-p),polymarket:p=>7*p*(1-p),prophetx:()=>1,betopenly:()=>1,novig:()=>0};
+const PREDICTION_MIN=1,PREDICTION_MAX=12,PREDICTION_PER_GAME=2;
+function predictionNet(key,odds){const p=1/recordDecimal(odds),cost=Math.min(.99,p+(PREDICTION_FEES[key]||(()=>1))(p)/100);return {chance:100*p,netChance:100*cost,netOdds:recordAmerican(1/cost)}}
+function predictionCandidates(board,exchangeBoard,fairs,now=Date.now()){
+  const gameId=board.eventID||`NFL--${board.id}`,kick=Date.parse(board.commence_time),best=new Map();
+  if(!(kick>now+5*60000))return [];
+  for(const ex of exchangeBoard.bookmakers||[]){if(!EXCHANGES[ex.key])continue;
+    for(const m of ex.markets||[]){const label=recordLabels[m.key];if(!label)continue;
+      for(const o of m.outcomes||[]){
+        const side=String(o.name).toLowerCase(),player=String(o.description||'').trim(),line=BTGStats.number(o.point),odds=BTGStats.number(o.price);
+        if(!player||line===null||odds===null||!['over','under'].includes(side)||odds<-250||odds>300)continue;
+        const fair=fairs.get(`${gameId}|${normalizedName(player)}|${label}|${line}`);if(fair===undefined)continue;
+        const f=100*(side==='over'?fair:1-fair),n=predictionNet(ex.key,odds),edge=f-n.netChance;
+        if(edge<PREDICTION_MIN||edge>PREDICTION_MAX)continue;
+        const row={exchange:EXCHANGES[ex.key],eventId:gameId,player,team:`${board.away_team} · @ ${board.home_team}`,market:label,side:side==='over'?'Over':'Under',line,odds,netOdds:n.netOdds,fair:f,edge,gameTime:new Date(kick).toISOString()};
+        const k=normalizedName(player);if(!best.has(k)||best.get(k).edge<edge)best.set(k,row);
+      }}}
+  return [...best.values()].sort((a,b)=>b.edge-a.edge);
+}
+async function recordPredictionPicks(env,board,exchangeBoard,fairs,now=Date.now()){
+  const gameId=board.eventID||`NFL--${board.id}`;
+  const have=((await env.DB.prepare('SELECT player FROM prediction_picks WHERE event_id=?').bind(gameId).all()).results||[]).map(r=>normalizedName(r.player));
+  const room=PREDICTION_PER_GAME-have.length;if(room<=0)return [];
+  const picks=predictionCandidates(board,exchangeBoard,fairs,now).filter(p=>!have.includes(normalizedName(p.player))).slice(0,room),stamp=new Date(now).toISOString();
+  return picks.map(p=>env.DB.prepare('INSERT OR IGNORE INTO prediction_picks (id,exchange,event_id,player,team,market,side,line,odds,net_odds,fair_pct,edge,game_time,posted_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(`pm|${gameId}|${normalizedName(p.player)}`,p.exchange,gameId,p.player,p.team,p.market,p.side,p.line,p.odds,p.netOdds,+p.fair.toFixed(2),+p.edge.toFixed(2),p.gameTime,stamp));
+}
+async function gradePredictionPicks(env,now=Date.now(),limit=30){
+  if(!env.DB||!env.BALLDONTLIE_API_KEY)return {graded:0};
+  const rows=(await env.DB.prepare('SELECT * FROM prediction_picks WHERE result IS NULL AND game_time<? AND game_time>? ORDER BY game_time LIMIT ?').bind(new Date(now-4*3600000).toISOString(),new Date(now-14*86400000).toISOString(),limit).all()).results||[];
+  const cache=new Map(),statements=[],stamp=new Date(now).toISOString();
+  for(const r of rows){
+    const record={sport:'NFL',player:r.player,team:r.team,gameTime:r.game_time,market:r.market,side:r.side,line:r.line};
+    const stat=await recordPlayerStats(record,env,undefined,cache).catch(()=>null);
+    if(shadowVoid(stat,r.game_time,now)){statements.push(env.DB.prepare('UPDATE prediction_picks SET result=?,graded_at=? WHERE id=?').bind('void',stamp,r.id));continue}
+    if(!stat||stat.missingPlayerStats||!(stat.scoreboardFinal||nflGameState(stat.game||{})==='final'))continue;
+    const value=BTGStats.metric(record,stat).value,result=value===null?null:BTGStats.grade(r.side,r.line,value);
+    if(result)statements.push(env.DB.prepare('UPDATE prediction_picks SET actual=?,result=?,graded_at=? WHERE id=?').bind(value,result,stamp,r.id));
+  }
+  if(statements.length)await env.DB.batch(statements);
+  return {graded:statements.length,checked:rows.length};
+}
+// Record for prediction picks at $100 a pick, after fees (net price).
+function predictionRecord(rows){
+  const graded=rows.filter(r=>['won','lost','push'].includes(r.result)),dec=o=>recordDecimal(Number(o));
+  const closes=graded.filter(r=>r.close_odds!=null);
+  return {wins:graded.filter(r=>r.result==='won').length,losses:graded.filter(r=>r.result==='lost').length,pushes:graded.filter(r=>r.result==='push').length,
+    profit:Math.round(graded.reduce((s,r)=>s+(r.result==='won'?100*(dec(r.net_odds)-1):r.result==='lost'?-100:0),0)),
+    beat:closes.filter(r=>dec(r.odds)>dec(r.close_odds)).length,tracked:closes.length,pending:rows.filter(r=>!r.result).length};
+}
 // Player props on exchanges: one us_ex call per game in the next 48 hours,
 // every 30 minutes (7 credits a game), compared with this run's boards.
 async function recordExchangeProps(env,boards,now=Date.now()){
@@ -1224,6 +1278,7 @@ async function recordExchangeProps(env,boards,now=Date.now()){
     const kick=Date.parse(board.commence_time);if(!(kick>now+5*60000)||kick-now>48*3600000)continue;
     let ex;try{ex=await fetchExchangeOdds(board.id,env.THE_ODDS_API_KEY)}catch{continue}
     games++;const out=exchangePropCandidates(board,ex,fairs,now);
+    statements.push(...await recordPredictionPicks(env,board,ex,fairs,now).catch(()=>[]));
     statements.push(env.DB.prepare('INSERT OR REPLACE INTO exchange_prices (event_id,game_time,prices_json,updated_at) VALUES (?,?,?,?)').bind(board.eventID||`NFL--${board.id}`,new Date(kick).toISOString(),JSON.stringify(exchangePriceList(ex)),stamp));
     for(const [k,c] of Object.entries(out.coverage)){const t=coverage[k]||={lines:0,matched:0};t.lines+=c.lines;t.matched+=c.matched}
     for(const p of out.picks){statements.push(exchangeInsert(env,p,stamp));picks++}
@@ -1232,6 +1287,11 @@ async function recordExchangeProps(env,boards,now=Date.now()){
     for(const r of open){const key=Object.keys(EXCHANGES).find(k=>EXCHANGES[k]===r.exchange);let price=null;
       for(const b of ex.bookmakers||[])if(b.key===key)for(const m of b.markets||[])if(recordLabels[m.key]===r.market)for(const o of m.outcomes||[])if(String(o.description||'').trim()===r.player&&String(o.name).toLowerCase()===r.side.toLowerCase()&&BTGStats.number(o.point)===Number(r.line))price=BTGStats.number(o.price);
       if(price!==null)statements.push(env.DB.prepare('UPDATE exchange_shadow SET close_odds=?,close_at=? WHERE id=?').bind(price,stamp,r.id))}
+    // Prediction picks: the same exchange's latest price, until kickoff.
+    const mine=(await env.DB.prepare('SELECT id,exchange,player,market,side,line FROM prediction_picks WHERE event_id=? AND game_time>?').bind(board.eventID||`NFL--${board.id}`,stamp).all()).results||[];
+    for(const r of mine){const key=Object.keys(EXCHANGES).find(k=>EXCHANGES[k]===r.exchange);let price=null;
+      for(const b of ex.bookmakers||[])if(b.key===key)for(const m of b.markets||[])if(recordLabels[m.key]===r.market)for(const o of m.outcomes||[])if(normalizedName(o.description)===normalizedName(r.player)&&String(o.name).toLowerCase()===r.side.toLowerCase()&&BTGStats.number(o.point)===Number(r.line))price=BTGStats.number(o.price);
+      if(price!==null)statements.push(env.DB.prepare('UPDATE prediction_picks SET close_odds=?,close_at=? WHERE id=?').bind(price,stamp,r.id))}
   }
   if(statements.length)await env.DB.batch(statements);
   await setAppSetting(env,'exchange-coverage',JSON.stringify({at:stamp,games,coverage})).catch(()=>{});
@@ -1325,6 +1385,19 @@ function exchangeLine(r,state=null,max=3,all=false){
 // each upcoming official prop (best first), and exchange props still priced
 // 1%+ better than the sportsbooks' fair chance (the exchange shadow test).
 // Reads saved prices only: no provider calls on page load.
+// Every prediction-market price for one game, best per prop, at the exchanges
+// open in the visitor's state: [player, market, side, line, exchange, odds].
+async function predictionBoardResponse(request,env,now=Date.now()){
+  const head={'content-type':'application/json; charset=utf-8','cache-control':'private, max-age=120'};
+  const where=bettingOptions(request),id=String(new URL(request.url).searchParams.get('event')||'');
+  if(!env.DB||where.mode==='unknown'||!/^NFL--[A-Za-z0-9_-]{2,100}$/.test(id))return new Response(JSON.stringify({success:true,prices:[]}),{headers:head});
+  const row=await env.DB.prepare('SELECT prices_json,updated_at FROM exchange_prices WHERE event_id=?').bind(id).first();
+  if(!row||now-Date.parse(row.updated_at)>3*3600000)return new Response(JSON.stringify({success:true,prices:[]}),{headers:head});
+  let list=[];try{list=JSON.parse(row.prices_json)}catch{}
+  const allowed=new Set(where.exchangeKeys),best=new Map();
+  for(const p of list){if(!allowed.has(p[0]))continue;const k=`${normalizedName(p[1])}|${p[2]}|${p[3]}|${p[4]}`,b=best.get(k);if(!b||recordDecimal(p[5])>recordDecimal(b[5]))best.set(k,p)}
+  return new Response(JSON.stringify({success:true,updatedAt:row.updated_at,prices:[...best.values()].map(p=>[p[1],p[2],p[3],p[4],EXCHANGES[p[0]],p[5]])}),{headers:head});
+}
 async function predictionsResponse(request,env,now=Date.now()){
   const where=bettingOptions(request),head={'content-type':'application/json; charset=utf-8','cache-control':'private, no-store'};
   const {exchangeKeys,...pub}=where;
@@ -1346,7 +1419,14 @@ async function predictionsResponse(request,env,now=Date.now()){
     value.push({exchange:r.exchange,fair:+Number(r.fair_pct).toFixed(1),eventId:r.event_id,player:r.player,team:r.team||'',market:r.market,side:r.side,line:r.line,odds:cur[5],edge:+edge.toFixed(1),gameTime:r.game_time});
   }
   value.sort((a,b)=>b.edge-a.edge);
-  return new Response(JSON.stringify({success:true,...pub,picks,fairs,value:value.slice(0,8)}),{headers:head});
+  // Prices saved when each of this week's picks locked (for started and final picks).
+  const recent=(await env.DB.prepare("SELECT id,odds,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND kind='prop' AND game_time>? AND game_time<=?").bind(new Date(now-8*86400000).toISOString(),stamp).all()).results||[];
+  const locked={};
+  for(const r of recent){const ex=recordLegs(r)[0]?.exchanges;if(Array.isArray(ex)&&ex.length){const list=ex.filter(p=>allowed.has(p.key));if(list.length)locked[r.id]=list.map(p=>({exchange:p.exchange,odds:p.odds,good:exchangeGood(r,p)}))}}
+  // Prediction-market picks: this week's card and the season record.
+  const pmRows=(await env.DB.prepare('SELECT * FROM prediction_picks ORDER BY game_time,posted_at').all()).results||[];
+  const pmPicks=pmRows.filter(r=>Date.parse(r.game_time)>now-5*86400000).slice(-24).map(r=>{const key=Object.keys(EXCHANGES).find(k=>EXCHANGES[k]===r.exchange);return {id:r.id,exchange:r.exchange,open:allowed.has(key),eventId:r.event_id,player:r.player,team:r.team||'',market:r.market,side:r.side,line:r.line,odds:r.odds,netOdds:r.net_odds,fair:r.fair_pct,edge:r.edge,gameTime:r.game_time,postedAt:r.posted_at,closeOdds:r.close_odds,result:r.result,actual:r.actual}});
+  return new Response(JSON.stringify({success:true,...pub,picks,fairs,locked,value:value.slice(0,8),pmPicks,pmRecord:predictionRecord(pmRows)}),{headers:head});
 }
 function bettingOptionsResponse(request){
   const {exchangeKeys,...where}=bettingOptions(request);
