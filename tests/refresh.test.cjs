@@ -54,16 +54,7 @@ for(const width of [390,1440]){
  check(c.eval('$("#slipLegs").innerHTML.includes("data-remove-slip")&&!$("#slipLegs").innerHTML.includes("data-key=")'),'slip remove buttons use safe numeric indexes instead of quoted JSON keys');
  c.eval('removeSlipLeg(0)');check(c.eval('state.slip.length===1&&state.slip[0].p.player===demoProps[1].player'),'remove button action deletes exactly the selected leg');
  if(width===390){
-  check((c.events.touchmove||[]).length===1&&(c.events.touchstart||[]).length===1&&(c.events.touchend||[]).length===1,'mobile swipe installs drag, release and completion handlers');
-  let swipePrevented=false;c.events.touchstart[0]({touches:[{clientX:200,clientY:400}],target:null});c.events.touchmove[0]({touches:[{clientX:120,clientY:405}],preventDefault(){swipePrevented=true}});
-  check(swipePrevented&&c.nodes.get('main').style.transform.includes('translate3d(-'),'mobile page visibly follows the finger with increased sensitivity during a horizontal drag');
-  check(c.eval('document.body.children.some(child=>child.className==="mobile-swipe-preview"&&child.dataset.page==="parlays"&&!child.removed)'),'neighboring page is rendered beside the current page during the drag');
-  c.events.touchcancel[0]({});
-  c.eval('document.body.dataset.mobilePage="props"');check(c.eval('mobileSwipeDestination(-90,10,250)==="parlays"'),'left swipe advances to the next bottom tab');
-  c.eval('document.body.dataset.mobilePage="generator"');check(c.eval('mobileSwipeDestination(90,10,250)==="parlays"'),'right swipe returns to the previous bottom tab');
-  check(c.eval('mobileSwipeDestination(-20,5,250)===null&&mobileSwipeDestination(-90,85,250)===null&&mobileSwipeDestination(-90,5,1100)===null'),'short, diagonal and slow gestures do not switch tabs');
-  check(c.eval('mobileSwipeDestination(-40,5,250)==="movement"'),'shorter intentional swipes now switch tabs');
-  c.eval('document.body.dataset.mobilePage="slip"');check(c.eval('mobileSwipeDestination(-90,5,250)===null'),'swiping past the final tab does not wrap');
+  check(!(c.events.touchmove||[]).length&&!(c.events.touchstart||[]).length,'no page-swipe handlers: sideways swipes scroll rows instead of switching tabs');
  }
  c.eval('baseLiveProps=[];rebuildPropBoard()');check(c.eval('state.saved.size===1'),'temporary feed failure preserves bookmark identity');
 }
