@@ -1675,3 +1675,13 @@ html body #officialNowList>.on-more,html body #officialNowList>.on-final{grid-te
 html body .pm-picks.pm-none #pmPicksList,html body .pm-picks.pm-none .pm-foot{display:none}
 html body .pm-picks.pm-none{padding-bottom:0}
 html body #leansList.on-list{overscroll-behavior-x:contain;touch-action:pan-x pan-y;-webkit-overflow-scrolling:touch}
+/* Official picks: one swipe row on phones and tablets (finished picks at the end);
+   desktop keeps the grid with See all / Final. */
+@media (max-width:1179px){
+  html body #officialNowList{display:flex;flex-direction:row;flex-wrap:nowrap;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;padding:2px 0 6px;scrollbar-width:none;overscroll-behavior-x:contain;touch-action:pan-x pan-y;-webkit-overflow-scrolling:touch}
+  html body #officialNowList::-webkit-scrollbar{display:none}
+  html body #officialNowList>.on-more,html body #officialNowList>.on-final,html body #officialNowList>.on-more[hidden],html body #officialNowList>.on-final[hidden]{display:contents!important}
+  html body #officialNowList>.on-toggle{display:none}
+  html body #officialNowList .on-row{flex:0 0 min(80%,310px);width:min(80%,310px);scroll-snap-align:start;align-self:stretch}
+  html body #officialNowList .on-empty{flex:1 0 100%}
+}
