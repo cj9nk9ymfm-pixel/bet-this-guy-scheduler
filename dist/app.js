@@ -1426,7 +1426,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     $('#heroTitle').innerHTML=`${htmlEscape(s.label==='LAST WEEK'?'Last week':s.label==='THIS WEEK SO FAR'?'This week so far':(s.label.startsWith('WEEK OF ')?`Week of ${s.label.charAt(8)}${s.label.slice(9).toLowerCase()}`:s.label.charAt(0)+s.label.slice(1).toLowerCase()))} <b>${s.wins}–${s.losses}${s.pushes?`–${s.pushes}`:''}</b> <span class="hero-profit ${s.profit>=0?'up':'down'}">${htmlEscape(money(s.profit))}</span>`;
     // Lead with the season once it has real volume; last week opens below.
     const season=heroSeason&&heroSeason.wins+heroSeason.losses>=5?heroSeason:null,weekTitle=$('#heroTitle').innerHTML;
-    if(season){const net=season.profit*heroStake/100;$('#heroTitle').innerHTML=`Season <b>${season.wins}–${season.losses}${season.pushes?`–${season.pushes}`:''}</b> <span class="hero-profit ${net>=0?'up':'down'}">${htmlEscape(money(net))}</span>`}
+    if(season){const net=season.profit*heroStake/100;$('#heroTitle').innerHTML=`Season record <b>${season.wins}–${season.losses}${season.pushes?`–${season.pushes}`:''}</b> <span class="hero-profit ${net>=0?'up':'down'}">${htmlEscape(money(net))}</span>`}
     const stats=[[money(s.profit),`betting ${stakeText()} a pick`,s.profit>=0?'up':'down']];
     if(s.tracked)stats.push([`${s.beat} of ${s.tracked}`,'beat the closing line','']);
     if(s.parlayWins+s.parlayLosses)stats.push([`${s.parlayWins}–${s.parlayLosses}`,`parlays · ${money(s.parlayProfit)}`,s.parlayProfit>=0?'up':'down']);
@@ -1477,7 +1477,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     const why=edges.length?(isParlay?`Every leg beats fair`:`${Math.max(...edges).toFixed(1)}% better than fair`):'';
     const game=String(legs[0]?.team||'').replace(' · @ ',' @ ').replace(' · vs ',' vs '),matchup=isParlay?'':game&&typeof compactGameName==='function'?compactGameName(game):game;
     // Compact row: the book rides in the small line (the section already says these are official).
-    return `<button type="button" class="on-row on-${status[0]}-row" data-on="${i}" data-on-player="${htmlEscape(isParlay?'':r.player||'')}" data-on-team="${htmlEscape(isParlay?'':legs[0]?.team||'')}" aria-label="Details for ${htmlEscape(title)}">${avatar}<span class="on-who"><b>${htmlEscape(title)}</b><span>${htmlEscape(sub)}</span><small>${htmlEscape([matchup,kickoff(r.game_time),books.length===1?books[0]:''].filter(Boolean).join(' · '))}</small>${why?`<i class="on-why">${htmlEscape(why)}</i>`:''}<i class="on-form" data-on-form="${i}" hidden></i><i class="on-wx" data-wx="${htmlEscape(r.game_id||legs[0]?.gameId||'')}" hidden></i><em class="on-live" data-on-live="${i}" hidden></em>${isParlay?'':`<i class="on-pm" data-pm="${htmlEscape(r.id||'')}" data-pm-odds="${htmlEscape(String(odds))}" data-pm-status="${htmlEscape(status[0])}" hidden></i>`}</span><span class="on-end"><b class="on-price">${htmlEscape(formatOdds(odds))}</b><span class="on-tag on-${status[0]}">${tag}</span></span></button>`;
+    return `<button type="button" class="on-row on-${status[0]}-row" data-on="${i}" data-on-player="${htmlEscape(isParlay?'':r.player||'')}" data-on-team="${htmlEscape(isParlay?'':legs[0]?.team||'')}" aria-label="Details for ${htmlEscape(title)}">${avatar}<span class="on-who"><b>${htmlEscape(title)}</b><span>${htmlEscape(sub)}</span><small>${htmlEscape([matchup,kickoff(r.game_time),books.length===1?books[0]:''].filter(Boolean).join(' · '))}</small>${why?`<i class="on-why">${htmlEscape(why)}</i>`:''}<i class="on-form" data-on-form="${i}" hidden></i><i class="on-wx" data-wx="${htmlEscape(r.game_id||legs[0]?.gameId||'')}" hidden></i><em class="on-live" data-on-live="${i}" hidden></em>${isParlay?'':`<i class="on-pm" data-pm="${htmlEscape(r.id||'')}" data-pm-odds="${htmlEscape(String(odds))}" data-pm-status="${htmlEscape(status[0])}" hidden></i>`}</span><span class="on-end"><b class="on-price">${htmlEscape(formatOdds(odds))}</b><span class="on-tag on-${status[0]}"${status[0]==='locked'?' title="Posted at this price before kickoff"':''}>${tag}</span></span></button>`;
   }
   // Live progress for locked picks, refreshed with the live board (every 5s in games).
   let officialLiveList=[];
@@ -2458,6 +2458,13 @@ function statsProp(l){
   load();setInterval(load,5*60000);
   // Form loads separately; repaint once it's in.
   let tries=0;const wait=setInterval(()=>{if(++tries>20||!leans.length){if(tries>20)clearInterval(wait);return}if(window.BTGForm?.get?.({player:leans[0].player,market:leans[0].market,side:leans[0].side,line:Number(leans[0].line)})){render();clearInterval(wait)}},1500);
+})();
+
+// First visit: one plain sentence on what the site does, until dismissed.
+(()=>{
+  if(typeof document.getElementById!=='function')return;const note=document.getElementById('welcomeNote');if(!note)return;
+  let seen=false;try{seen=localStorage.getItem('btg-welcomed')==='1'}catch{}
+  note.hidden=seen;document.getElementById('welcomeClose')?.addEventListener('click',()=>{note.hidden=true;try{localStorage.setItem('btg-welcomed','1')}catch{}});
 })();
 
 // Jump bar: Picks · Worth a look · Board, with the odds / predictions switch.
