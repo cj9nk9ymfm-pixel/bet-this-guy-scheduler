@@ -56,7 +56,8 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM live_shadow WHERE result='none'").get().n,1,'checkpoint markers are never graded');
   // The cron runs it on both run types during NFL windows only.
   const sunday=Date.parse('2026-10-11T18:00:00Z');
-  for(const m of [0,5])assert.ok(J(run(`cronJobs(new Date(${sunday+m*60000}))`)).includes('live'));
+  // The live test is switched off (LIVE_SHADOW_ON), so no cron run schedules it.
+  for(const m of [0,5])assert.ok(!J(run(`cronJobs(new Date(${sunday+m*60000}))`)).includes('live'));
   assert.ok(!J(run(`cronJobs(new Date(${Date.parse('2026-10-13T18:05:00Z')}))`)).includes('live'));
   console.log('PASS: live test logs slow starts Over and hot starts Under at the 1st quarter and half, uses fresh live prices and pregame lines, retries failed fetches and grades at the final');
 })().catch(error=>{console.error(error);process.exit(1)});

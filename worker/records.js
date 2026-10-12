@@ -630,6 +630,9 @@ function tdProps(board){
 const tdRow=(env,board,gameId,r,stamp,source)=>env.DB.prepare('INSERT OR IGNORE INTO td_shadow (id,event_id,player,team,market,odds,book,books,avg_odds,gap,game_time,logged_at,source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(`${gameId}|${r.market}|${normalizedName(r.player)}`,gameId,r.player,`${board.away_team} · @ ${board.home_team}`,r.market,r.odds,r.book,r.books,r.avgOdds,r.gap,new Date(Date.parse(board.commence_time)).toISOString(),stamp,source);
 // Live: every TD prop in range, once per game about 90 minutes before
 // kickoff; the best big-5 price is tracked until kickoff as the close.
+// Dropped Oct 12 (TD 70-220, defense 36-47, live 102-130, all losing and
+// rarely beating the close). Past rows stay graded; nothing new is logged.
+const TD_SHADOW_ON=false,DEFENSE_SHADOW_ON=false,LIVE_SHADOW_ON=false;
 async function recordTdShadow(env,boards,now=Date.now()){
   if(!env.DB)return {logged:0};
   const stamp=new Date(now).toISOString(),statements=[];let logged=0;
@@ -1099,13 +1102,13 @@ function defenseCandidates(boards,form,now=Date.now()){
   }
   return [...best.values()];
 }
-async function recordBookShadow(env,boards,now=Date.now()){
+async function recordBookShadow(env,boards,now=Date.now(),opts={}){
   if(!env.DB)return {};
   const stamp=new Date(now).toISOString();
   const locked=new Set(((await env.DB.prepare("SELECT game_id,player FROM public_recommendations WHERE id LIKE 'official|%' AND kind='prop' AND game_time>?").bind(stamp).all()).results||[]).map(r=>`${r.game_id}|${normalizedName(r.player)}`));
   const two=officialCandidates(boards,now,{},{min:1,exactBooks:2}).map(p=>({...p,kind:'two_book',detail:'2 books'}));
   const form=new Map(((await env.DB.prepare('SELECT player,games_json FROM player_form WHERE games_json IS NOT NULL').all()).results||[]).map(r=>[normalizedName(r.player),r]));
-  const defense=defenseCandidates(boards,form,now);
+  const defense=(opts.defense??DEFENSE_SHADOW_ON)?defenseCandidates(boards,form,now):[];
   const rows=[...two,...defense].filter(p=>!locked.has(`${p.gameId}|${normalizedName(p.player)}`));
   const statements=rows.map(p=>env.DB.prepare('INSERT OR IGNORE INTO book_shadow (id,kind,event_id,player,team,market,side,line,odds,book,edge,detail,game_time,logged_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(`${p.kind}|${p.gameId}|${normalizedName(p.player)}`,p.kind,p.gameId,p.player,p.team||null,p.market,p.side,p.line,p.odds,p.book,+p.edge.toFixed(2),p.detail||null,p.gameTime,stamp));
   const open=(await env.DB.prepare('SELECT id,event_id,player,market,side,line FROM book_shadow WHERE game_time>?').bind(stamp).all()).results||[];
@@ -1472,7 +1475,7 @@ async function publishOfficialPicks(request,env,ctx,opts={}){
     if(!opts.soonOnly)jobStep('publish','bump shadow');await recordBumpShadow(env,boards,injuries,Date.now()).catch(error=>console.warn('bump_shadow_failed',error.message));
     if(!opts.soonOnly)jobStep('publish','exchange props');await recordExchangeProps(env,boards,Date.now()).catch(error=>console.warn('exchange_shadow_failed',error.message));
     if(!opts.soonOnly)jobStep('publish','book shadow');await recordBookShadow(env,boards,Date.now()).catch(error=>console.warn('book_shadow_failed',error.message));
-    if(!opts.soonOnly)jobStep('publish','td shadow');await recordTdShadow(env,boards,Date.now()).catch(error=>console.warn('td_shadow_failed',error.message));
+    if(!opts.soonOnly&&TD_SHADOW_ON){jobStep('publish','td shadow');await recordTdShadow(env,boards,Date.now()).catch(error=>console.warn('td_shadow_failed',error.message))}
     if(!opts.soonOnly)jobStep('publish','form wanted');await recordFormWanted(env,boards,Date.now()).catch(error=>console.warn('player_form_failed',error.message));
 
     // New picks go out right away (X post and phone alerts) instead of on the
