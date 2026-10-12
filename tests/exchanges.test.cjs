@@ -99,7 +99,9 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
   const sent=J(await run(`sendPredictionAlerts(env,${now+60000})`));assert.equal(sent.sent,1);assert.equal(pushes.length,1);
   assert.equal(J(await run(`sendPredictionAlerts(env,${now+120000})`)).sent,0,'once per new pick');
   context.env.X_API_KEY='k';context.env.X_API_SECRET='s';context.env.X_ACCESS_TOKEN='t';context.env.X_ACCESS_SECRET='a';
-  assert.equal(J(await run(`postPredictionPicksToX(env,${now+60000})`)).posted,1);
+  run(`renderCardPng=async svg=>{globalThis.lastCard=svg;return new Uint8Array([1])};xUploadImage=async()=>'m1'`);
+  const xp=J(await run(`postPredictionPicksToX(env,${now+60000})`));assert.deepEqual([xp.posted,xp.graphic],[1,true],'posts with the card graphic');
+  const card=run('lastCard');assert.ok(card.includes('PREDICTION PICK')&&card.includes('47%')&&card.includes('Tre Tucker'),'prediction card shows the pill, chance and player');
   assert.ok(tweets[0].startsWith('📈 Prediction market pick: Tre Tucker Over 3.5 receptions\nNovig at 47% · fair chance 50%, after fees')&&tweets[0].length<=280&&!/https?:/.test(tweets[0]),tweets[0]);
   assert.equal(J(await run(`postPredictionPicksToX(env,${now+120000})`)).posted,0,'once per pick');
   context.fetch=oldFetch;for(const k of ['X_API_KEY','X_API_SECRET','X_ACCESS_TOKEN','X_ACCESS_SECRET'])delete context.env[k];
