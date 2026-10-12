@@ -1709,3 +1709,16 @@ html body .pm-banner[hidden]{display:none!important}
 /* Prediction view: only picks and props with a prediction-market price. */
 body[data-price-view="predictions"] .pm-hide{display:none!important}
 #pmNoPicks,#pmBoardEmpty{margin:4px 0 10px}
+/* First-visit note and picks subtitle */
+.welcome-note{display:flex;align-items:center;gap:10px;margin:0 0 8px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--panel);font-size:13.5px;line-height:1.45}
+.welcome-note[hidden]{display:none}
+.welcome-note p{margin:0;flex:1;min-width:0}
+.welcome-note button{flex:none;font:inherit;font-size:13px;font-weight:700;color:inherit;background:transparent;border:1px solid var(--line);border-radius:999px;padding:6px 12px;cursor:pointer}
+html body #officialNow .on-sub{margin:-4px 0 8px;font-size:13px;color:var(--muted)}
+/* Phones: the switch takes the bar (the board is about a screen down, so jump links aren't needed). */
+@media (max-width:480px){
+  html body .jump-links{display:none}
+  html body .jump-bar .price-view{width:100%;display:flex}
+  html body .jump-bar .price-view button{flex:1 1 0}
+  html body #officialNowList .on-row{flex-basis:min(86%,330px);width:min(86%,330px)}
+}

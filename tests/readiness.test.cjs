@@ -45,7 +45,7 @@ trust.eval('localStorage.setItem("bet-this-guy-preferences",JSON.stringify({typi
 equal(trust.eval('profit({result:"won",odds:200})'),50,'custom stake pays correct plus-odds net');
 equal(trust.eval('profit({result:"lost",odds:-150})'),-25,'loss subtracts the custom stake');
 equal(trust.eval('profit({result:"push",odds:100})'),0,'push has no net gain or loss');
-equal(trust.eval('sectionProfit([{result:"won",status:"final",odds:100},{result:"lost",status:"provisional",odds:100}]).includes("Including provisional")'),true,'separate provisional total');
+equal(trust.eval('sectionProfit([{result:"won",status:"final",odds:100},{result:"lost",status:"provisional",odds:100}]).includes("Including picks decided early")'),true,'separate provisional total');
 trust.eval('localStorage.removeItem("bet-this-guy-preferences")');
 trust.ctx.accuracyRows=['won','lost','push','pending'].map((result,i)=>({id:'audit-'+i,kind:'parlay',source:'market-verified-v2',combined_odds:1500,result,posted_at:new Date().toISOString(),legs:[{gameId:'game',player:'Player',market:'Receptions',side:'Over',line:4.5,odds:100}]}));
 trust.eval('paint(accuracyRows)');equal(trust.nodes.get('#tierGrid').innerHTML.includes('50.0%'),true,'push and pending excluded from win percentage');
