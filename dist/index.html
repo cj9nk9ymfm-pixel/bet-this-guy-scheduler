@@ -102,28 +102,37 @@
         <button type="button" class="my-pl" id="myRecord" hidden></button>
         <div class="welcome-note" id="welcomeNote" hidden><p><b>New here?</b> We post NFL player props that are priced better than they should be, before kickoff, and grade every pick in public. Tap a pick to see the bet and where to place it.</p><button type="button" id="welcomeClose">Got it</button></div>
         <nav class="jump-bar" id="jumpBar" aria-label="Jump to"><div class="jump-links"><a href="#officialNow" data-jump="picks">Picks</a><a href="#leansNow" data-jump="leans">Worth a look</a><a href="#propsSection" data-jump="board">Board</a></div><div class="price-view" id="priceView" role="group" aria-label="Show prices as"><button type="button" data-view="odds" aria-pressed="true">Sportsbook</button><button type="button" data-view="predictions" aria-pressed="false">Prediction apps</button></div></nav>
-        <div class="pm-banner" id="pmBanner" role="note" hidden></div>
-        <section class="official-now pm-picks" id="pmPicksNow" aria-labelledby="pmPicksTitle" hidden>
-          <div class="on-head"><h2 id="pmPicksTitle">Prediction market picks <span class="on-count" id="pmPicksCount"></span></h2></div>
-          <p class="on-sub" id="pmPicksRecord"></p>
-          <div class="on-list" id="pmPicksList"></div>
-        </section>
         <section class="official-now" id="officialNow" aria-labelledby="officialNowTitle" hidden>
           <div class="on-head"><h2 id="officialNowTitle">This week’s picks <span class="on-count" id="officialNowCount"></span></h2><button type="button" class="alerts-btn on-alerts" data-alerts-toggle>Get pick alerts</button></div>
           <p class="on-sub">Bet them at this price or better. Tap a pick for details.</p>
           <p class="on-engine" id="engineStatus" hidden></p>
           <div class="on-list" id="officialNowList"></div>
-          <div class="alerts-hero" id="alertsHero" hidden><span class="ah-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></span><span class="ah-copy"><strong>Get a ping when picks post</strong></span><button type="button" class="ah-btn" data-alerts-toggle data-alerts-banner>Turn on</button><button type="button" class="ah-close" id="alertsHeroClose" aria-label="Hide this">×</button></div>
+        </section>
+        <section class="official-now pm-picks" id="pmPicksNow" aria-labelledby="pmPicksTitle" hidden>
+          <div class="on-head"><h2 id="pmPicksTitle">This week’s picks <span class="on-count" id="pmPicksCount"></span></h2></div>
+          <p class="on-sub" id="pmPicksRecord"></p>
+          <div class="on-list" id="pmPicksList"></div>
+        </section>
+        <section class="official-now" id="parlaysNow" aria-labelledby="parlaysTitle" hidden>
+          <div class="on-head"><h2 id="parlaysTitle">This week’s parlays <span class="on-count" id="parlaysCount"></span></h2></div>
+          <p class="on-sub">Built from Worth a look props, never our singles. A quarter unit ($25) each.</p>
+          <div class="on-list" id="parlaysList"></div>
+        </section>
+        <section class="official-now pm-picks" id="pmParlaysNow" aria-labelledby="pmParlaysTitle" hidden>
+          <div class="on-head"><h2 id="pmParlaysTitle">This week’s parlays <span class="on-count" id="pmParlaysCount"></span></h2></div>
+          <p class="on-sub">One app per parlay, built from Worth a look props. A quarter unit ($25) each.</p>
+          <div class="on-list" id="pmParlaysList"></div>
         </section>
         <section class="official-now leans-now" id="leansNow" aria-labelledby="leansTitle" hidden>
           <div class="on-head"><div><h2 id="leansTitle">Worth a look <span class="on-count" id="leansCount"></span></h2><p>Just missed the cut. Not counted in our record.</p></div></div>
           <div class="on-list" id="leansList"></div>
         </section>
         <section class="official-now leans-now pm-now" id="pmNow" aria-labelledby="pmTitle" hidden>
-          <div class="on-head"><div><h2 id="pmTitle">On prediction markets <span class="on-count" id="pmCount"></span></h2><p>App prices better than fair, before fees. Not counted in our record.</p></div></div>
+          <div class="on-head"><div><h2 id="pmTitle">Worth a look <span class="on-count" id="pmCount"></span></h2><p>App prices better than fair, before fees. Not counted in our record.</p></div></div>
           <div class="on-list" id="pmList"></div>
           <div class="pm-foot"><span id="pmWhere"></span></div>
         </section>
+        <div class="alerts-hero" id="alertsHero" hidden><span class="ah-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></span><span class="ah-copy"><strong>Get a ping when picks post</strong></span><button type="button" class="ah-btn" data-alerts-toggle data-alerts-banner>Turn on</button><button type="button" class="ah-close" id="alertsHeroClose" aria-label="Hide this">×</button></div>
         <section class="hits-strip" id="hitsStrip" aria-labelledby="hitsTitle" hidden>
           <div class="hits-head"><h2 id="hitsTitle">Last week’s hits</h2><div class="hits-nav"><button type="button" id="hitsPrev" aria-label="Previous hits">‹</button><button type="button" id="hitsNext" aria-label="More hits">›</button></div><a href="/trust#official">See every pick →</a></div>
           <div class="hits-row" id="hitsRow"></div>
@@ -275,7 +284,7 @@
   <dialog id="settingsDialog" class="settings-dialog"><div class="settings-shell"><header class="settings-head"><div><p class="eyebrow">PREFERENCES</p><h2>Settings</h2></div><button class="dialog-close" aria-label="Close">×</button></header><nav class="settings-tabs" aria-label="Settings sections"><button class="active" type="button" data-settings-tab="personal">Board</button><button type="button" data-settings-tab="books">My books</button><button type="button" data-settings-tab="tracking">My record</button><button type="button" data-settings-tab="safety">Limits & help</button></nav><div class="settings-body">
 <section class="settings-panel" data-settings-panel="personal"><h3>Your board</h3><p>How the board and the parlays we build for you are set up. Official picks are the same for everyone and never change.</p>
 <div class="set-fields">
-<label class="set-field"><span class="set-label">Default bet amount</span><span class="set-money"><span aria-hidden="true">$</span><input id="typicalWager" type="number" inputmode="decimal" min="0" step="1" /></span><small>Used for the payouts on cards and in your bet slip.</small></label>
+<label class="set-field"><span class="set-label">Default bet amount</span><span class="set-money"><span aria-hidden="true">$</span><input id="typicalWager" type="number" inputmode="decimal" min="0" step="1" /></span><small>Used for the payouts on cards and in your bet slip.</small></label><div class="set-field" id="stateSetting"><span class="set-label">Betting from</span><span id="settingsState"></span><small id="settingsStateNote">Decides which prediction apps we show. Kept on this device.</small></div>
 <label class="set-field"><span class="set-label">Parlay style</span><select id="riskPreference"><option value="conservative">Safer: mostly favorites</option><option value="balanced">Balanced</option><option value="aggressive">Bigger payouts: more plus-money legs</option></select><small>Shapes the parlays we build from the board.</small></label>
 <label class="set-field"><span class="set-label">Sportsbooks needed to rate a prop</span><select id="minBookCoverage"><option value="1">1 sportsbook</option><option value="2">2 sportsbooks</option><option value="3">3 sportsbooks (recommended)</option><option value="4">4 sportsbooks</option></select><small>More sportsbooks pricing a prop means a more reliable fair price.</small></label>
 <label class="set-field"><span class="set-label">Most legs in a parlay</span><select id="maxParlayLegs"><option value="4">4 legs</option><option value="6">6 legs</option><option value="8">8 legs</option><option value="10">10 legs</option></select><small>Every extra leg pays more and hits less often.</small></label>

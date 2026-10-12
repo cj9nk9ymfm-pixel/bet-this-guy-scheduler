@@ -17,9 +17,12 @@ context.env={DB:{prepare:sql=>wrap(sql),async batch(list){for(const s of list)aw
   // P6 became an official pick after it was logged as a lean.
   ins.run('d1','D','P6','X · @ Y','Receptions','Over',3.5,110,'BetMGM',0.9,iso(6),iso(-2),null);
   db.prepare("INSERT INTO public_recommendations (id,kind,sport,player,market,side,line,odds,game_id,game_time,legs_json,posted_at,status,source) VALUES ('official|2026-10-06|props|prop|x','prop','NFL','P6','Receptions','Over',3.5,120,'D',?,'[]',?,'pending','market-verified-v2')").run(iso(6),iso(-1));
+  // P7 is a leg of an official parlay, so it isn't also a Worth a look single.
+  ins.run('e1','E','P7','X · @ Y','Receptions','Over',3.5,110,'BetMGM',0.9,iso(9),iso(-2),null);
+  db.prepare("INSERT INTO public_recommendations (id,kind,sport,combined_odds,game_id,game_time,legs_json,posted_at,status,source) VALUES ('official|2026-10-06|reasonable|parlay|y','parlay','NFL',250,'E',?,?,?,'pending','market-verified-v2')").run(iso(9),JSON.stringify([{player:'P7',gameId:'E'},{player:'Z',gameId:'F'}]),iso(-1));
   const res=await vm.runInContext(`leansResponse(new Request('https://betthisguy.com/api/leans'),env,{waitUntil(){}},${now})`,context);
   const body=await res.json();
-  assert.deepEqual(body.leans.map(l=>l.player),['P3','P1','P4'],'two a game (best edges first), started games and official picks left out, sorted by kickoff');
+  assert.deepEqual(body.leans.map(l=>l.player),['P3','P1','P4'],'two a game (best edges first), started games, official picks and parlay legs left out, sorted by kickoff');
   assert.ok(!body.leans.some(l=>l.player==='P2'),'third in a game is dropped');
   db.prepare("UPDATE near_shadow SET close_odds=-105 WHERE id='a1'").run();
   const again=await (await vm.runInContext(`leansResponse(new Request('https://betthisguy.com/api/leans'),env,{waitUntil(){}},${now})`,context)).json();
