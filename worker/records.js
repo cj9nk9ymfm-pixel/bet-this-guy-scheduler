@@ -2489,6 +2489,20 @@ async function postDayRecapToX(env,now=Date.now()){
   try{const sent=await xPost(env,text,mediaId);await xDone(env,key,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} recap ${req} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,graphic:Boolean(mediaId)}}
   catch(error){console.warn('x_recap_failed',error.message);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
 }
+// Alerts proof post (text only): the season's beat-the-close count and why
+// alerts matter. Posts once per value of app_settings x-proof-request (any
+// short id, like 2026-10-12).
+async function postProofToX(env,now=Date.now()){
+  if(!env.DB||!xReady(env))return {posted:0,disabled:true};
+  const req=String((await appSetting(env,'x-proof-request'))||'');if(!/^[\w-]{1,24}(#\w{1,8})?$/.test(req))return {posted:0,none:true};
+  const key=`x-proof:${req}`;if(!(await xClaimable(env,key,now)))return {posted:0,done:true};
+  const all=(await env.DB.prepare("SELECT * FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%'").all()).results||[];
+  const s=weeklySummary(all);if(s.tracked<10||s.beat*2<=s.tracked)return {posted:0,skipped:true,beat:s.beat,tracked:s.tracked};
+  if(!(await xClaim(env,key,now)))return {posted:0,done:true};
+  const text=xShort(`📈 ${s.beat} of ${s.tracked} of our picks this season beat the closing line: we got a better price than the one at kickoff.\n\nThat edge only pays if you bet before the line moves.\n\nFree alerts ping you the second a pick locks. Link in bio. 21+`);
+  try{const sent=await xPost(env,text);await xDone(env,key,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} proof ${req} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,beat:s.beat,tracked:s.tracked}}
+  catch(error){console.warn('x_proof_failed',error.message);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
+}
 async function runXPosts(env,now=Date.now()){
   const picks=await postPicksToX(env,now);
   const weekly=await postWeeklyToX(env,now);
@@ -2500,10 +2514,11 @@ async function runXPosts(env,now=Date.now()){
   const slate=picks.posted||weekly.posted||final.posted?{posted:0,waiting:true}:await postSlateToX(env,now);
   const pin=picks.posted||weekly.posted||final.posted||slate.posted?{posted:0,waiting:true}:await postAlertsPinToX(env,now);
   const recap=picks.posted||weekly.posted||final.posted||slate.posted||pin.posted?{posted:0,waiting:true}:await postDayRecapToX(env,now);
+  const proof=await postProofToX(env,now);
   const results=picks.posted||weekly.posted||final.posted||slate.posted||pin.posted||recap.posted?{posted:0,waiting:true}:await postResultsToX(env,now);
   // The pinned summary waits for a run with nothing else heavy.
   const summary=picks.posted||weekly.posted||final.posted||slate.posted||pin.posted||recap.posted||results.posted?{posted:0,waiting:true}:await postSummaryToX(env,now);
-  return {picks,weekly,closing,final,slate,pin,recap,results,summary};
+  return {picks,weekly,closing,final,slate,pin,recap,proof,results,summary};
 }
 // "My book" alerts: a good-value price at one of someone's own sportsbooks.
 // The fair price always comes from every book (3+ pricing both sides, the same

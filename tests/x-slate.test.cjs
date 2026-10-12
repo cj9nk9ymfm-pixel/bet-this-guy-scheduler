@@ -43,5 +43,14 @@ pick('d','Brock Purdy',110,'2026-10-13T00:15:00.000Z');pick('e','Old Pick',150,'
   assert.ok(run('globalThis.__svg').includes('2-leg')===false&&run('globalThis.__svg').includes('Under 4.5 rec'),'short market names');
   db.prepare("UPDATE app_settings SET value='2026-10-11#2' WHERE key='x-pin-request'").run();
   assert.equal((await run(`postAlertsPinToX(env,${Date.parse('2026-10-11T17:55:00Z')})`)).posted,1,'a suffix resends');
+  // Proof post: the season's beat-the-close count, text only, once per x-proof-request.
+  assert.equal((await run(`postProofToX(env,${Date.parse('2026-10-12T02:00:00Z')})`)).none,true,'nothing until requested');
+  db.prepare("INSERT INTO app_settings (key,value) VALUES ('x-proof-request','2026-10-12')").run();
+  assert.equal((await run(`postProofToX(env,${Date.parse('2026-10-12T02:00:00Z')})`)).skipped,true,'needs 10+ tracked closes');
+  for(let i=0;i<12;i++){pick('p'+i,'Proof '+i,120,'2026-10-04T17:00:00.000Z',i%2?'won':'lost');db.prepare("UPDATE public_recommendations SET closing_odds=?,closing_line=4.5,closing_captured_at='2026-10-04T17:00:00Z' WHERE player=?").run(i<9?-110:150,'Proof '+i)}
+  const before=posts.length,proof=await run(`postProofToX(env,${Date.parse('2026-10-12T02:05:00Z')})`);
+  assert.equal(proof.posted,1);assert.equal(proof.beat,9);assert.equal(proof.tracked,12);assert.equal(posts.length,before+1);
+  const xt=posts.at(-1);assert.ok(xt.text.startsWith('📈 9 of 12 of our picks this season beat the closing line')&&xt.text.includes('Free alerts')&&xt.text.length<=280&&!xt.media,xt.text);
+  assert.equal((await run(`postProofToX(env,${Date.parse('2026-10-12T02:10:00Z')})`)).done,true,'once per request');
   console.log('PASS: slate post sends the day\'s pending picks on one graphic, once, from 16 hours before kickoff, and a final card 30 minutes out');
 })().catch(error=>{console.error(error);process.exit(1)});
