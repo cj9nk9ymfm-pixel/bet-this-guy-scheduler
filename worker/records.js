@@ -1303,7 +1303,7 @@ async function predictionsResponse(request,env,now=Date.now()){
     if(taken.has(`${r.event_id}|${normalizedName(r.player)}`))continue;
     const key=Object.keys(EXCHANGES).find(k=>EXCHANGES[k]===r.exchange),cur=find(r.event_id,r.player,r.market,r.side,r.line).find(p=>p[0]===key);
     if(!cur)continue;const edge=Number(r.fair_pct)-100/recordDecimal(cur[5]);if(edge<1)continue;
-    value.push({exchange:r.exchange,eventId:r.event_id,player:r.player,team:r.team||'',market:r.market,side:r.side,line:r.line,odds:cur[5],edge:+edge.toFixed(1),gameTime:r.game_time});
+    value.push({exchange:r.exchange,fair:+Number(r.fair_pct).toFixed(1),eventId:r.event_id,player:r.player,team:r.team||'',market:r.market,side:r.side,line:r.line,odds:cur[5],edge:+edge.toFixed(1),gameTime:r.game_time});
   }
   value.sort((a,b)=>b.edge-a.edge);
   return new Response(JSON.stringify({success:true,...pub,picks,value:value.slice(0,8)}),{headers:head});

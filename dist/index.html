@@ -100,6 +100,7 @@
           <p class="hero-note" id="heroNote">Singles at $100 each at the posted price (change your usual wager in Settings). Every pick is locked before kickoff and graded in public. Past results don’t guarantee future ones.</p>
         </section>
         <button type="button" class="my-pl" id="myRecord" hidden></button>
+        <div class="price-view" id="priceView" role="group" aria-label="Show prices as"><button type="button" data-view="odds" aria-pressed="true">Sportsbook odds</button><button type="button" data-view="predictions" aria-pressed="false">Prediction markets</button></div>
         <section class="official-now" id="officialNow" aria-labelledby="officialNowTitle" hidden>
           <div class="on-head"><h2 id="officialNowTitle">This week’s picks <span class="on-count" id="officialNowCount"></span></h2><button type="button" class="alerts-btn on-alerts" data-alerts-toggle>Get pick alerts</button></div>
           <p class="on-engine" id="engineStatus" hidden></p>
@@ -112,9 +113,9 @@
           <div class="on-list" id="leansList"></div>
         </section>
         <section class="official-now leans-now pm-now" id="pmNow" aria-labelledby="pmTitle" hidden>
-          <div class="on-head"><div><h2 id="pmTitle">On prediction markets <span class="on-count" id="pmCount"></span></h2><p>Prediction-market prices better than the sportsbooks’ fair price. Not official picks, not on our record.</p></div></div>
+          <div class="on-head"><div><h2 id="pmTitle">On prediction markets <span class="on-count" id="pmCount"></span></h2><p>Prediction-market prices below the sportsbooks’ fair chance, shown as each market lists them. Not official picks, not on our record.</p></div></div>
           <div class="on-list" id="pmList"></div>
-          <div class="pm-foot"><span id="pmWhere"></span><p>Prices as of the last check (every 30 minutes). Prediction markets are 18+ or 21+ depending on the app, and where they’re allowed changes often: the app checks your location before you trade.</p></div>
+          <div class="pm-foot"><span id="pmWhere"></span><p>Chances are the market’s price before any fee, as of the last check (every 30 minutes). Prediction markets are 18+ or 21+ depending on the app, and where they’re allowed changes often: the app checks your location before you trade.</p></div>
         </section>
         <section class="hits-strip" id="hitsStrip" aria-labelledby="hitsTitle" hidden>
           <div class="hits-head"><h2 id="hitsTitle">Last week’s hits</h2><div class="hits-nav"><button type="button" id="hitsPrev" aria-label="Previous hits">‹</button><button type="button" id="hitsNext" aria-label="More hits">›</button></div><a href="/trust#official">See every pick →</a></div>

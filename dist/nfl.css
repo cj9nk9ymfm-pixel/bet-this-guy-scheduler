@@ -1597,3 +1597,9 @@ html body .on-row .on-pm[hidden]{display:none}
 .pm-foot{margin-top:10px;font-size:12px;color:var(--muted);line-height:1.45}
 .pm-foot p{margin:6px 0 0}
 .pm-empty{margin:0;padding:14px;font-size:14px;color:var(--muted)}
+.price-view{display:flex;gap:4px;padding:4px;margin:4px 0 14px;border:1px solid var(--line);border-radius:999px;background:var(--panel);width:max-content;max-width:100%}
+.price-view button{font:inherit;font-size:13px;font-weight:700;color:var(--muted);background:transparent;border:0;border-radius:999px;padding:8px 14px;cursor:pointer;white-space:nowrap}
+.price-view button[aria-pressed="true"]{background:#7c9cff;color:#0b1020}
+body[data-price-view="predictions"] #leansNow{display:none!important}
+html body .on-row .on-price.pm-price{color:#9db4ff}
+body[data-price-view="predictions"] #officialNowList .on-why{display:none}
