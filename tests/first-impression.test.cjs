@@ -51,6 +51,10 @@ assert.equal(client().eval('preferences.typicalWager'),100,'new visitors start a
 assert.equal(client(390,{'bet-this-guy-preferences':JSON.stringify({typicalWager:10})}).eval('preferences.typicalWager'),100,'the old $10 default moves to $100');
 assert.equal(client(390,{'bet-this-guy-preferences':JSON.stringify({typicalWager:10,wagerDefault100:true})}).eval('preferences.typicalWager'),10,'a $10 wager chosen after the switch is kept');
 assert.equal(client(390,{'bet-this-guy-preferences':JSON.stringify({typicalWager:25})}).eval('preferences.typicalWager'),25,'custom wagers are kept');
+assert.equal(client().eval('preferences.noWeeklyLimit'),true,'the weekly limit is opt-in');
+assert.equal(client(390,{'bet-this-guy-preferences':JSON.stringify({weeklyBudget:100,noWeeklyLimit:false})}).eval('preferences.noWeeklyLimit'),true,'an untouched $100 default limit turns off once');
+assert.equal(client(390,{'bet-this-guy-preferences':JSON.stringify({weeklyBudget:250,noWeeklyLimit:false})}).eval('preferences.noWeeklyLimit'),false,'a limit someone set is kept');
+assert.equal(client(390,{'bet-this-guy-preferences':JSON.stringify({minBookCoverage:1})}).eval('preferences.minBookCoverage'),3,'props are always rated on 3+ sportsbooks');
 const twenty=summarise(rows,Date.parse('2026-09-30T04:00:00Z'),20);
 assert.equal(Math.round(twenty.profit),203,'the banner follows the viewer wager: +$203 at $20 a pick');
 assert.equal(Math.round(summarise(rows,Date.parse('2026-09-30T04:00:00Z')).profit),1014,'and stays +$1,014 at the $100 default');

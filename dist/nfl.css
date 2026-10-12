@@ -1772,3 +1772,67 @@ html body #parlaysList .on-more[hidden],html body #parlaysList .on-final[hidden]
 }
 
 .alert-kinds{display:flex;flex-wrap:wrap;gap:8px 18px}.alert-kinds label{display:inline-flex;align-items:center;gap:8px;font:600 15px "DM Sans",sans-serif;color:#f2f4f7;cursor:pointer;min-height:40px}.alert-kinds input{width:18px;height:18px;accent-color:var(--accent,#2ee6a8)}
+/* Settings: one page of grouped rows (iOS-style), dark and light. */
+#settingsDialog.st-dialog .settings-shell{background:#0e1013!important}
+#settingsDialog .st-top{display:flex;align-items:center;justify-content:space-between;padding:14px 16px 10px!important;border-bottom:1px solid #1f232a}
+#settingsDialog .st-top h2{margin:0;font:700 22px 'Space Grotesk',sans-serif;color:#f2f4f7}
+#settingsDialog .st-body{padding:6px 16px 20px!important;display:block!important}
+#settingsDialog .st-group{margin:18px 0 0}
+#settingsDialog .st-head{margin:0 0 7px 14px;font:700 12px 'DM Sans',sans-serif!important;letter-spacing:.08em;text-transform:uppercase;color:#8a93a0!important}
+#settingsDialog .st-card{background:#1a1d23!important;border:1px solid #262a31!important;border-radius:14px;overflow:hidden}
+#settingsDialog .st-row{display:flex!important;align-items:center;justify-content:space-between;gap:14px;width:100%;min-height:52px;margin:0!important;padding:9px 14px!important;background:none!important;border:0!important;border-radius:0!important;border-top:1px solid #262a31!important;color:#f2f4f7!important;text-align:left;text-decoration:none;font:inherit;cursor:pointer;box-shadow:none!important;box-sizing:border-box}
+#settingsDialog .st-card>.st-row:first-child,#settingsDialog .st-card>.st-sub:first-child>.st-row:first-child{border-top:0!important}
+#settingsDialog .st-text{display:grid;gap:2px;min-width:0}
+#settingsDialog .st-label{display:flex;align-items:center;gap:10px;font:600 15.5px 'DM Sans',sans-serif;color:#f2f4f7}
+#settingsDialog .st-text small{font-size:12.5px;line-height:1.35;color:#98a1ad}
+#settingsDialog .st-sub .st-row{padding-left:30px!important}
+#settingsDialog .st-chev{flex:0 0 auto;color:#6b7380}
+#settingsDialog .st-link:hover,#settingsDialog .st-link:focus-visible{background:#20242b!important}
+#settingsDialog .st-switch{appearance:none;-webkit-appearance:none;position:relative;flex:0 0 51px;width:51px!important;height:31px!important;margin:0;padding:0!important;border:0!important;border-radius:999px!important;background:#3a3f48!important;cursor:pointer;transition:background .18s;box-shadow:none!important}
+#settingsDialog .st-switch:after{content:"";position:absolute;top:2px;left:2px;width:27px;height:27px;border-radius:50%;background:#fff;box-shadow:0 2px 4px rgba(0,0,0,.3);transition:left .18s}
+#settingsDialog .st-switch:checked,#settingsDialog .st-switch[aria-checked="true"]{background:#1fd88f!important}
+#settingsDialog .st-switch:checked:after,#settingsDialog .st-switch[aria-checked="true"]:after{left:22px}
+#settingsDialog .st-switch:focus-visible{outline:2px solid #6aa8ff;outline-offset:2px}
+#settingsDialog .st-seg{display:inline-flex;flex:0 0 auto;padding:2px;border-radius:10px;background:#262a31}
+#settingsDialog .st-seg button{min-height:32px;padding:0 12px;border:0!important;border-radius:8px!important;background:transparent!important;color:#b5bcc7!important;font:600 13.5px 'DM Sans',sans-serif;cursor:pointer;box-shadow:none!important}
+#settingsDialog .st-seg button[aria-pressed="true"]{background:#454b56!important;color:#fff!important;box-shadow:0 1px 3px rgba(0,0,0,.35)!important}
+#settingsDialog .st-money{display:inline-flex;align-items:center;gap:4px;flex:0 0 auto;height:36px;padding:0 10px;border-radius:9px;background:#262a31;color:#98a1ad;font-weight:700}
+#settingsDialog .st-money input{width:70px!important;height:100%!important;padding:0!important;border:0!important;background:transparent!important;color:#f2f4f7!important;font:600 16px 'DM Sans',sans-serif!important;text-align:right;box-shadow:none!important;outline:0}
+#settingsDialog .st-select{position:relative;display:inline-flex;align-items:center;gap:2px;flex:0 0 auto;color:#98a1ad}
+#settingsDialog .st-select select,#settingsDialog .st-control select{appearance:none;-webkit-appearance:none;height:36px!important;padding:0 2px!important;border:0!important;background:transparent!important;color:#b5bcc7!important;font:600 15px 'DM Sans',sans-serif!important;text-align:right;text-align-last:right;cursor:pointer;box-shadow:none!important;width:auto!important;min-width:0!important}
+#settingsDialog .st-control{flex:0 0 auto}
+#settingsDialog .st-control .pm-where{display:inline-flex;align-items:center;margin:0;padding:0;background:none!important;border:0!important}
+#settingsDialog .st-control select{max-width:160px;padding-right:20px!important;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M9 6l6 6-6 6' fill='none' stroke='%236b7380' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E") right center/18px no-repeat!important}
+#settingsDialog .st-more summary{list-style:none}
+#settingsDialog .st-more summary::-webkit-details-marker{display:none}
+#settingsDialog .st-more[open] summary .st-chev{transform:rotate(90deg)}
+#settingsDialog .st-books{border-top:1px solid #262a31}
+#settingsDialog .st-books .st-row{padding-left:30px!important;min-height:48px}
+#settingsDialog .st-books .st-row:first-child{border-top:0!important}
+#settingsDialog .st-dot{width:10px;height:10px;border-radius:3px;flex:0 0 10px}
+#settingsDialog .st-inner-note{margin:0;padding:10px 14px 12px 30px;font-size:12.5px;line-height:1.4;color:#98a1ad;border-top:1px solid #262a31}
+#settingsDialog .st-note{margin:7px 14px 0;font-size:12.5px;line-height:1.45;color:#8a93a0}
+#settingsDialog .st-about{margin-top:22px;text-align:center}
+#settingsDialog .st-links{display:flex;flex-wrap:wrap;justify-content:center;gap:4px 16px;margin:0 0 8px}
+#settingsDialog .st-links a{color:#6aa8ff;font:600 14px 'DM Sans',sans-serif;text-decoration:none;padding:6px 0}
+#settingsDialog .st-fine{margin:0 auto;max-width:36ch;font-size:12px;line-height:1.45;color:#7d8590}
+#settingsDialog .st-foot{display:flex!important;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px!important;border-top:1px solid #1f232a!important;background:#0e1013!important}
+#settingsDialog .st-foot #settingsSaveStatus{font-size:13px;color:#8a93a0;transition:color .2s}
+#settingsDialog .st-foot #settingsSaveStatus.st-saved{color:#1fd88f}
+#settingsDialog .st-foot .primary{min-width:96px;height:42px;border-radius:999px}
+body.light #settingsDialog.st-dialog .settings-shell,body.light #settingsDialog .st-foot{background:#f2f4f8!important}
+body.light #settingsDialog .st-top,body.light #settingsDialog .st-foot{border-color:#dfe5ee!important}
+body.light #settingsDialog .st-top h2,body.light #settingsDialog .st-label,body.light #settingsDialog .st-row{color:#0f172a!important}
+body.light #settingsDialog .st-card{background:#fff!important;border-color:#dfe5ee!important}
+body.light #settingsDialog .st-row,body.light #settingsDialog .st-books,body.light #settingsDialog .st-inner-note{border-color:#e6ebf2!important}
+body.light #settingsDialog .st-text small,body.light #settingsDialog .st-note,body.light #settingsDialog .st-inner-note,body.light #settingsDialog .st-head,body.light #settingsDialog .st-fine,body.light #settingsDialog #settingsSaveStatus{color:#5b6472!important}
+body.light #settingsDialog .st-link:hover{background:#f5f7fb!important}
+body.light #settingsDialog .st-switch{background:#d5dbe4!important}
+body.light #settingsDialog .st-switch:checked,body.light #settingsDialog .st-switch[aria-checked="true"]{background:#16a34a!important}
+body.light #settingsDialog .st-seg,body.light #settingsDialog .st-money{background:#eef1f6}
+body.light #settingsDialog .st-seg button{color:#475569!important}
+body.light #settingsDialog .st-seg button[aria-pressed="true"]{background:#fff!important;color:#0f172a!important;box-shadow:0 1px 3px rgba(15,23,42,.15)!important}
+body.light #settingsDialog .st-money input,body.light #settingsDialog .st-select select,body.light #settingsDialog .st-control select{color:#334155!important;background-color:transparent!important}
+body.light #settingsDialog .st-links a{color:#1d4ed8}
+body.light #settingsDialog #settingsSaveStatus.st-saved{color:#15803d!important}
+body.light #settingsDialog .st-control select{background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M9 6l6 6-6 6' fill='none' stroke='%2394a3b8' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E") right center/18px no-repeat!important}

@@ -227,7 +227,7 @@ function init(){
 // never see the free-account gate flash on page load.
 let betsLoaded=false;
 async function myRecord(){if(!signedIn())return null;if(!betsLoaded){try{const result=await api('/api/me/bets');bets=result.bets||[];betsLoaded=true}catch{return null}}return {...recordMetrics(),count:bets.length}}
-window.BTGAuth={open,isSignedIn:signedIn,myRecord,hasAccount:()=>signedIn()||hasSavedSession(),savePreferences,syncSavedProps,trackParlay,refreshBets,renderTrackingPanel};
+window.BTGAuth={open,isSignedIn:signedIn,email:()=>session?.user?.email||'',myRecord,hasAccount:()=>signedIn()||hasSavedSession(),savePreferences,syncSavedProps,trackParlay,refreshBets,renderTrackingPanel};
 addEventListener('load',init,{once:true});
 // Other pages (like Results) send people here with ?join=signup to open the sign-up form.
 addEventListener('load',()=>{const q=new URLSearchParams(location.search).get('join');if(!q)return;history.replaceState(null,'',location.pathname+location.hash);setTimeout(()=>open(q==='login'?'login':'signup'),0)},{once:true});
