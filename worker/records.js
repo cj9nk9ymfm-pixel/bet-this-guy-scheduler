@@ -506,6 +506,13 @@ async function recordFormWanted(env,boards,now=Date.now()){
       }
     }
   }
+  // Receivers and backs listed Out are often off the board entirely; the
+  // usage-bump test still needs their recent role, so they're wanted too.
+  const onBoard=new Map(boards.flatMap(b=>{const kick=Date.parse(b.commence_time);return kick>now?[b.home_team,b.away_team].map(t=>[normalizedName(t),{until:new Date(kick).toISOString(),teams:`${b.away_team} @ ${b.home_team}`}]):[]}));
+  for(const r of (((await env.DB.prepare('SELECT player,team,position,status FROM injuries').all().catch(()=>({results:[]}))).results)||[])){
+    const g=onBoard.get(normalizedName(r.team));if(!g||injuryClass(r.status)!=='out'||!BUMP_MARKETS[r.position])continue;
+    const id=`NFL|${normalizedName(r.player)}`;if(!want.has(id))want.set(id,{player:r.player,teams:g.teams,until:g.until,markets:new Set(FORM_ROLE)});
+  }
   const have=new Map((((await env.DB.prepare('SELECT id,markets,wanted_until FROM player_form WHERE wanted_until>?').bind(new Date(now-14*86400000).toISOString()).all()).results)||[]).map(r=>[r.id,r]));
   const statements=[];let added=0,updated=0;
   for(const [id,w] of want){
@@ -524,7 +531,12 @@ async function recordFormWanted(env,boards,now=Date.now()){
 }
 // Last 10 games, newest first, as columns: dates, opponents and one value
 // list per market (null where the stat wasn't recorded).
-function formGames(payload,markets,now){
+// Catches and carries are always kept (FORM_ROLE), whatever props are listed:
+// the usage-bump test reads them to tell a starter from a backup, and players
+// listed Out often only have a touchdown prop left on the board.
+const FORM_ROLE=['Receptions','Rush Attempts'];
+function formGames(payload,listed,now){
+  const markets=[...new Set([...(listed||[]),...FORM_ROLE])];
   const teamId=payload?.player?.team?.id,ab=t=>t?.abbreviation||t?.name||'';
   const games=(payload?.stats||[]).map(row=>({row,t:Date.parse(row?.game?.date||row?.game?.datetime||'')})).filter(g=>Number.isFinite(g.t)&&g.t<now).sort((a,b)=>b.t-a.t)
     .map(g=>({...g,v:markets.map(m=>BTGStats.metric({market:m,sport:'NFL'},g.row).value)})).filter(g=>g.v.some(x=>x!==null)).slice(0,10);
