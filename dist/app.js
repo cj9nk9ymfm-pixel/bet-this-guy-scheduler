@@ -2497,6 +2497,8 @@ function statsProp(l){
       // Upcoming picks use the latest prices; started and final ones the prices saved when they locked.
       const live=data?.picks?.[el.dataset.pm],atLock=data?.locked?.[el.dataset.pm],prices=live||atLock||[],lockedOnly=!live&&Boolean(atLock),pending=['locked','pending'].includes(el.dataset.pmStatus)||!el.dataset.pmStatus;
       const posted=Number(el.dataset.pmOdds),price=el.closest('.on-row')?.querySelector('.on-price');let text='';
+      // Prediction view only lists picks with a prediction-market price.
+      el.closest('.on-row')?.classList.toggle('pm-hide',pm&&Boolean(data)&&!prices.length);
       if(pm&&!prices.length&&!pending){if(price&&price.dataset.odds){price.textContent=price.dataset.odds;price.classList.remove('pm-price','pm-skip')}el.hidden=true;return}
       // good: still 1+ point under the pick's fair chance at that market.
       const good=prices.filter(p=>p.good),best=prices[0],fair=data?.fairs?.[el.dataset.pm],ok=Boolean(best?.good);
@@ -2511,6 +2513,10 @@ function statsProp(l){
       else if(data?.mode==='sportsbooks'&&best&&ok&&Number.isFinite(posted)&&dec(best.odds)>dec(posted))text=`Better on ${best.exchange}: ${pct(best.odds)}`;
       el.hidden=!text;el.textContent=text;
     });
+    // Count and an empty note for the prediction view.
+    const host=document.getElementById('officialNowList'),count=document.getElementById('officialNowCount');
+    if(host&&count){const rows=[...host.querySelectorAll('.on-row')],shown=rows.filter(r=>!r.classList.contains('pm-hide'));if(!count.dataset.all||!pm)count.dataset.all=String(rows.length);count.textContent=pm&&data?String(shown.length||''):count.dataset.all==='0'?'':count.dataset.all;
+      let note=document.getElementById('pmNoPicks');if(pm&&data&&rows.length&&!shown.length){if(!note){note=document.createElement('p');note.id='pmNoPicks';note.className='pm-empty';host.before(note)}note.textContent='None of this week’s picks are on prediction markets yet.';note.hidden=false}else if(note)note.hidden=true}
   }
   function row(v){
     const initials=String(v.player||'').split(' ').map(x=>x[0]||'').join('').slice(0,3),bet=`${v.side} ${v.line} ${String(v.market||'').toLowerCase()}`;
@@ -2550,15 +2556,19 @@ function statsProp(l){
     document.querySelectorAll('#propList .prop-card[data-id]').forEach(cardEl=>{
       const b=cardEl.querySelector('.mockup-pick b');if(!b)return;if(!b.dataset.odds)b.dataset.odds=b.textContent;
       let note=cardEl.querySelector('.pm-board');
-      if(!pm){b.textContent=b.dataset.odds;b.classList.remove('pm-price');note?.remove();return}
-      const p=typeof props!=='undefined'?props.find(x=>x.id===+cardEl.dataset.id):null;if(!p)return;
-      const id=p.eventID;if(id&&!boardPrices.has(id)){loadBoard(id);return}
+      if(!pm){b.textContent=b.dataset.odds;b.classList.remove('pm-price');cardEl.classList.remove('pm-hide');note?.remove();return}
+      const p=typeof props!=='undefined'?props.find(x=>x.id===+cardEl.dataset.id):null;if(!p){cardEl.classList.add('pm-hide');return}
+      const id=p.eventID;if(id&&!boardPrices.has(id)){cardEl.classList.add('pm-hide');loadBoard(id);return}
       const hit=boardPrices.get(id)?.get(`${String(p.player).toLowerCase().replace(/[^a-z]/g,'')}|${p.market}|${p.side}|${Number(p.line)}`);
-      b.textContent=hit?pct(hit.odds):'—';b.classList.add('pm-price');
+      // No prediction-market price: the prop doesn't show in this view.
+      cardEl.classList.toggle('pm-hide',!hit);if(!hit)return;
+      b.textContent=pct(hit.odds);b.classList.add('pm-price');
       if(!note){note=document.createElement('small');note.className='pm-board';cardEl.querySelector('.mockup-pick')?.after(note)}
-      note.textContent=hit?`${hit.exchange} · ${pct(hit.odds)} chance`:'Not on prediction markets';
+      note.textContent=`${hit.exchange} · ${pct(hit.odds)} chance`;
     });
   }
+  const boardNote=()=>{const host=document.getElementById('propList');if(!host)return;const cards=host.querySelectorAll('.prop-card'),shown=[...cards].filter(c=>!c.classList.contains('pm-hide')).length;let n=document.getElementById('pmBoardEmpty');const want=view()==='predictions'&&cards.length&&!shown&&[...boardPrices.keys()].length;if(want&&!n){n=document.createElement('p');n.id='pmBoardEmpty';n.className='pm-empty';n.textContent='None of these props are on prediction markets right now. Prediction markets list receptions, yards, passing TDs, rush attempts and completions.';host.after(n)}if(n)n.hidden=!want};
+  setInterval(boardNote,1500);
   const boardHost=document.getElementById('propList');if(boardHost)new MutationObserver(()=>{clearTimeout(boardTimer);boardTimer=setTimeout(paintBoard,60)}).observe(boardHost,{childList:true});
   function render(){
     const banner=document.getElementById('pmBanner'),section=document.getElementById('pmNow'),toggle=document.getElementById('priceView');
