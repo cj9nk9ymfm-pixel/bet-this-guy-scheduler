@@ -6,7 +6,7 @@ const context=vm.createContext({URL,URLSearchParams,Request,Response,Headers,Abo
 const template=read('worker/index.template.js');
 vm.runInContext(template.slice(template.indexOf('const API_BASE')).replace('__MOVEMENT_SERVER__',read('worker/movement.js')).replace('__LIVE_SERVER__',read('worker/live.js')).replace('__STATS_SHARED__',read('dist/stats.js')).replace('__RECORDS_SERVER__',read('worker/records.js')).replace('__ACCOUNTS_SERVER__',read('worker/accounts.js')).replace('export default {','this.worker={'),context);
 const fs=require('node:fs'),db=new DatabaseSync(':memory:');
-for(const f of fs.readdirSync('drizzle').filter(f=>/^000[0-2]_|^0006_|^0008_|^0013_|0025_|0026_|0027_|0028_/.test(f)).sort())db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''));
+for(const f of fs.readdirSync('drizzle').filter(f=>/^000[0-2]_|^0006_|^0008_|^0013_|0025_|0026_|0027_|0028_|0030_|0018_/.test(f)).sort())db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''));
 const wrap=(sql,args=[])=>({bind(...values){return wrap(sql,values)},async first(){return db.prepare(sql).get(...args)||null},async all(){return{results:db.prepare(sql).all(...args)}},async run(){const r=db.prepare(sql).run(...args);return{success:true,meta:{changes:Number(r.changes)}}}});
 context.env={DB:{prepare:sql=>wrap(sql),async batch(list){for(const s of list)await s.run()}},THE_ODDS_API_KEY:'k',BALLDONTLIE_API_KEY:'b'};
 const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v));
@@ -20,7 +20,7 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
   const urls=[];
   context.fetch=async url=>{url=String(url);urls.push(url);if(url.includes('/events/g1/odds')&&url.includes('regions=us_ex'))return new Response(JSON.stringify(exchange));return new Response(null,{status:404})};
   let out=J(await run(`recordExchangeProps(env,boards,${now})`));
-  assert.deepEqual(out,{games:1,logged:1});
+  assert.deepEqual([out.games,out.logged],[1,1]);
   const row=db.prepare('SELECT * FROM exchange_shadow').get();
   assert.deepEqual([row.kind,row.exchange,row.player,row.side,row.line,row.odds],['prop','Novig','Tre Tucker','Over',3.5,115]);
   assert.ok(row.fair_pct>49&&row.fair_pct<51&&row.edge>2,'fair from the sportsbooks, edge at the exchange price');
@@ -44,6 +44,14 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
   w=where({country:'US',regionCode:'NY'});assert.equal(w.mode,'sportsbooks');assert.equal(w.predictions.fanduel,false);
   w=where({country:'US',regionCode:'NV'});assert.ok(!w.exchanges.includes('Kalshi')&&!w.exchanges.includes('Novig'));
   assert.equal(where({country:'CA',regionCode:'ON'}).mode,'unknown');
+  // Prediction parlays: one app, 2-5 legs, never a prediction-pick player, same-game legs unlinked and cut 20%.
+  {const leg=(player,game,market,netOdds,team)=>({exchange:'Novig',eventId:'NFL--'+game,player,team:'A · @ B',market,side:'Over',line:3.5,odds:netOdds,netOdds,edge:.7,gameTime:'2026-10-18T17:00:00.000Z',playerTeam:team});
+   const pool=[leg('A One','g1','Receptions',100,'T1'),leg('B Two','g2','Rushing Yards',110,'T2'),leg('C Three','g3','Receiving Yards',105,'T3'),leg('D Four','g4','Receptions',120,'T4'),leg('E Five','g1','Rushing Yards',100,'T5')];
+   const plan=J(run(`predictionParlayPlan(${JSON.stringify(pool)},[],'2026-10-13',${now})`));
+   assert.ok(plan.length>0&&plan.every(p=>p.exchange==='Novig'&&p.legs.length>=2&&p.legs.length<=5),'parlays of 2-5 legs on one app');
+   assert.ok(plan.every(p=>{const g=new Map();p.legs.forEach(l=>g.set(l.eventId,(g.get(l.eventId)||0)+1));return [...g.values()].every(n=>n<=2)}),'at most two legs a game');
+   const sg=plan.find(p=>p.legs.filter(l=>l.eventId==='NFL--g1').length===2);if(sg)assert.ok(sg.legs.filter(l=>l.eventId==='NFL--g1').every(l=>l.sameGame));
+   assert.equal(run(`predictionParlayPay({result:'won',odds:300,legs_json:'[]'})`),75,'graded at a quarter unit');}
   // Saved prices feed /api/predictions, filtered to the visitor's state.
   const saved=JSON.parse(db.prepare("SELECT prices_json FROM exchange_prices WHERE event_id='NFL--g1'").get().prices_json);
   assert.deepEqual(saved.map(p=>p[0]).sort(),['kalshi','kalshi','novig','novig'],'exchanges only, both sides');
