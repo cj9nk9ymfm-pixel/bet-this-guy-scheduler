@@ -41,6 +41,14 @@ async function emailAlertsEnabled(user,env){
   const row=await env.DB.prepare('SELECT enabled FROM email_alerts WHERE auth_user_id=?').bind(user.id).first();
   return Boolean(row?.enabled);
 }
+async function emailPredictionsEnabled(user,env){
+  const row=await env.DB.prepare('SELECT predictions FROM email_alerts WHERE auth_user_id=?').bind(user.id).first().catch(()=>null);
+  return Boolean(row?.predictions);
+}
+async function setEmailPredictions(user,env,on){
+  const now=new Date().toISOString();
+  await env.DB.prepare('INSERT INTO email_alerts (auth_user_id,enabled,token,created_at,updated_at,predictions) VALUES (?,1,?,?,?,?) ON CONFLICT(auth_user_id) DO UPDATE SET predictions=excluded.predictions,updated_at=excluded.updated_at').bind(user.id,emailAlertToken(),now,now,on?1:0).run();
+}
 async function setEmailAlerts(user,env,enabled){
   const now=new Date().toISOString();
   await env.DB.prepare('INSERT INTO email_alerts (auth_user_id,enabled,token,created_at,updated_at) VALUES (?,?,?,?,?) ON CONFLICT(auth_user_id) DO UPDATE SET enabled=excluded.enabled,updated_at=excluded.updated_at').bind(user.id,enabled?1:0,emailAlertToken(),now,now).run();
@@ -89,7 +97,7 @@ async function accountApi(request,env,ctx){
   const profile=await ensureAccountProfile(user,env),url=new URL(request.url),method=request.method;
 
   if(url.pathname==='/api/me'){
-    if(method==='GET')return accountJson({success:true,profile,emailAlerts:await emailAlertsEnabled(user,env)});
+    if(method==='GET')return accountJson({success:true,profile,emailAlerts:await emailAlertsEnabled(user,env),emailPredictions:await emailPredictionsEnabled(user,env)});
     if(method==='PATCH'){
       try{
         const body=await accountBody(request,4000),displayName=accountText(body.displayName,80);
@@ -105,6 +113,8 @@ async function accountApi(request,env,ctx){
     if(method!=='PUT')return accountJson({success:false,error:'Method not allowed.'},405);
     try{
       const body=await accountBody(request,1000);
+      // predictions alone: the prediction-picks email setting (turning it on turns emails on).
+      if(typeof body.predictions==='boolean'&&typeof body.enabled!=='boolean'){await setEmailPredictions(user,env,body.predictions);if(body.predictions)await setEmailAlerts(user,env,true);return accountJson({success:true,emailPredictions:body.predictions})}
       if(typeof body.enabled!=='boolean')throw new Error('Invalid request');
       await setEmailAlerts(user,env,body.enabled);
       return accountJson({success:true,emailAlerts:body.enabled});

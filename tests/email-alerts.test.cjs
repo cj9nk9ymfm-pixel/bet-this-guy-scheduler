@@ -13,7 +13,7 @@ const context=vm.createContext({URL,URLSearchParams,Request,Response,Headers,Abo
 const template=read('worker/index.template.js');
 vm.runInContext(template.slice(template.indexOf('const API_BASE')).replace('__MOVEMENT_SERVER__',read('worker/movement.js')).replace('__LIVE_SERVER__',read('worker/live.js')).replace('__STATS_SHARED__',read('dist/stats.js')).replace('__RECORDS_SERVER__',read('worker/records.js')).replace('__ACCOUNTS_SERVER__',read('worker/accounts.js')).replace('export default {','this.worker={'),context);
 const db=new DatabaseSync(':memory:');db.exec('PRAGMA foreign_keys=ON');
-for(const f of ['0000_public_record.sql','0001_record_settlement.sql','0002_historical_replays.sql','0004_user_accounts.sql','0006_push_alerts.sql','0007_email_alerts.sql','0008_book_alerts.sql','0013_follow_alerts.sql','0027_alert_price_view.sql'])db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''));
+for(const f of ['0000_public_record.sql','0001_record_settlement.sql','0002_historical_replays.sql','0004_user_accounts.sql','0006_push_alerts.sql','0007_email_alerts.sql','0029_email_predictions.sql','0028_prediction_picks.sql','0008_book_alerts.sql','0013_follow_alerts.sql','0027_alert_price_view.sql'])db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''));
 // Shaped like D1: run() reports changes under meta.
 const wrap=(sql,args=[])=>({bind(...values){return wrap(sql,values)},async first(){return db.prepare(sql).get(...args)||null},async all(){return{results:db.prepare(sql).all(...args)}},async run(){const r=db.prepare(sql).run(...args);return{success:true,meta:{changes:Number(r.changes)}}}});
 const DB={prepare:sql=>wrap(sql),async batch(list){const out=[];for(const s of list)out.push(await s.run());return out}};
@@ -88,5 +88,20 @@ const pick=(id,player,gameTime,postedAt,extra={})=>db.prepare("INSERT INTO publi
   t=await request('/api/me/test-email',authed('POST'));assert.equal(t.status,502);assert.match((await t.json()).error,/403\): The betthisguy.com domain is not verified/);
   assert.match(db.prepare("SELECT value FROM app_settings WHERE key='email-test-last'").get().value,/failed 403/);
   resendFail=false;assert.equal((await request('/api/me/test-email',authed('POST'))).status,200,'a failed send can be retried right away');
+  {
+  // "Also email prediction market picks": off by default; on sends one email per batch of new prediction picks.
+  me=await (await request('/api/me',authed())).json();assert.equal(me.emailPredictions,false);
+  const pmNow=Date.now();
+  db.prepare("INSERT INTO prediction_picks(id,exchange,event_id,player,team,market,side,line,odds,net_odds,fair_pct,edge,game_time,posted_at) VALUES('pm|1','Novig','NFL--g9','Jakobi Meyers','Las Vegas Raiders · @ Kansas City Chiefs','Receptions','Under',4.5,110,110,51.2,3.6,?,?)").run(new Date(pmNow+86400000).toISOString(),new Date(pmNow-60000).toISOString());
+  const pmBefore=sent.length;assert.equal(plain(await run(`sendPredictionEmails(env,${pmNow})`)).sent,0,'nobody opted in');
+  assert.equal((await request('/api/me/email-alerts',authed('PUT',{predictions:true}))).status,200);
+  me=await (await request('/api/me',authed())).json();assert.equal(me.emailPredictions,true);assert.equal(me.emailAlerts,true);
+  db.prepare("UPDATE prediction_picks SET posted_at=?").run(new Date(pmNow+1000).toISOString());
+  const pmOut=plain(await run(`sendPredictionEmails(env,${pmNow+2000})`));assert.equal(pmOut.sent,1);
+  const mail=sent.at(-1).body[0];assert.equal(mail.subject,'📈 New prediction pick: Jakobi Meyers Under 4.5 receptions');assert.ok(mail.html.includes('48%')&&mail.html.includes('Fair chance 51%')&&mail.html.includes('Check the price in the app'));
+  assert.equal(plain(await run(`sendPredictionEmails(env,${pmNow+3000})`)).sent,0,'once per batch');
+  assert.equal((await request('/api/me/email-alerts',authed('PUT',{predictions:false}))).status,200);
+  me=await (await request('/api/me',authed())).json();assert.equal(me.emailPredictions,false);assert.ok(sent.length>pmBefore);
+  }
   console.log('PASS: email alerts: sign-up opt-in, sticky opt-out, one email per batch of new picks, started games skipped, hourly limit with a kickoff exception, one send per batch across instances, one-click unsubscribe (real SQLite)');
 })().catch(e=>{console.error(e);process.exitCode=1});
