@@ -79,6 +79,19 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
   await sub({endpoint:ep,keys,priceView:'predictions',state:'XX'});
   assert.equal(db.prepare('SELECT state FROM push_subscriptions').get().state,null,'unknown states are not saved');
   db.prepare("DELETE FROM public_recommendations").run();
+  // Prediction picks: a phone set to prediction markets is pinged for them, and X gets one post each.
+  await sub({endpoint:ep,keys,priceView:'predictions',state:'TX'});
+  alert=J(await run(`latestAlert(env,${now+60000},${JSON.stringify(ep)})`));
+  assert.deepEqual(alert,{title:'📈 New prediction market pick',body:'Tre Tucker Over 3.5 receptions: Novig 47% (fair chance 50%)',url:'/'});
+  const pushes=[],tweets=[];const oldFetch=context.fetch;
+  context.fetch=async(url,init={})=>{url=String(url);if(url.startsWith('https://fcm.googleapis.com')){pushes.push(url);return new Response(null,{status:201})}if(url==='https://api.twitter.com/2/tweets'){tweets.push(JSON.parse(init.body).text);return Response.json({data:{id:'t1'}})}return oldFetch(url,init)};
+  const sent=J(await run(`sendPredictionAlerts(env,${now+60000})`));assert.equal(sent.sent,1);assert.equal(pushes.length,1);
+  assert.equal(J(await run(`sendPredictionAlerts(env,${now+120000})`)).sent,0,'once per new pick');
+  context.env.X_API_KEY='k';context.env.X_API_SECRET='s';context.env.X_ACCESS_TOKEN='t';context.env.X_ACCESS_SECRET='a';
+  assert.equal(J(await run(`postPredictionPicksToX(env,${now+60000})`)).posted,1);
+  assert.ok(tweets[0].startsWith('📈 Prediction market pick: Tre Tucker Over 3.5 receptions\nNovig at 47% · fair chance 50%, after fees')&&tweets[0].length<=280&&!/https?:/.test(tweets[0]),tweets[0]);
+  assert.equal(J(await run(`postPredictionPicksToX(env,${now+120000})`)).posted,0,'once per pick');
+  context.fetch=oldFetch;for(const k of ['X_API_KEY','X_API_SECRET','X_ACCESS_TOKEN','X_ACCESS_SECRET'])delete context.env[k];
   p=await pred(null,{country:'US',regionCode:'TX'});
   assert.deepEqual(p.value.map(v=>[v.exchange,v.player,v.side,v.odds]),[['Novig','Tre Tucker','Over',115]]);assert.ok(p.value[0].edge>2);
   p=await pred('CT',{country:'US',regionCode:'TX'});

@@ -1258,6 +1258,24 @@ async function gradePredictionPicks(env,now=Date.now(),limit=30){
   if(statements.length)await env.DB.batch(statements);
   return {graded:statements.length,checked:rows.length};
 }
+const predictionPickText=r=>`${r.player} ${weeklyLegText(r)}: ${r.exchange} ${exchangePct(r.odds)}% (fair chance ${Math.round(r.fair_pct)}%)`;
+function predictionAlert(rows){return {title:rows.length===1?'📈 New prediction market pick':`📈 ${rows.length} new prediction market picks`,body:rows.map(predictionPickText).join('\n'),url:'/'}}
+// X: one post per prediction pick, text only, with the prediction record.
+async function postPredictionPicksToX(env,now=Date.now()){
+  if(!env.DB||!xReady(env))return {posted:0,disabled:true};
+  const rows=(await env.DB.prepare('SELECT * FROM prediction_picks WHERE posted_at>? AND game_time>? ORDER BY posted_at LIMIT 6').bind(new Date(now-24*3600000).toISOString(),new Date(now).toISOString()).all()).results||[];
+  for(const r of rows){
+    const key=`xpm:${r.id}`;if(!(await xClaimable(env,key,now)))continue;
+    if(!(await xClaim(env,key,now)))continue;
+    const rec=predictionRecord((await env.DB.prepare('SELECT result,odds,net_odds,close_odds FROM prediction_picks').all()).results||[]),games=rec.wins+rec.losses+rec.pushes;
+    const when=weeklyDay(r.game_time),matchup=String(r.team||'').replace(' · ',' ');
+    const record=games>=3?`\nPrediction record: ${rec.wins}–${rec.losses}${rec.pushes?`–${rec.pushes}`:''}, ${weeklyMoney(rec.profit)} at $100 a pick after fees.`:'';
+    const text=xShort(`📈 Prediction market pick: ${r.player} ${weeklyLegText(r)}\n${r.exchange} at ${exchangePct(r.odds)}% · fair chance ${Math.round(r.fair_pct)}%, after fees\n${matchup}${matchup&&when?' · ':''}${when}${record}\n\nOwn record, separate from our sportsbook picks. Link in bio. 18+/21+ by app.`);
+    try{const sent=await xPost(env,text);await xDone(env,key,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} prediction ${r.id} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1}}
+    catch(error){console.warn('x_prediction_failed',error.message);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
+  }
+  return {posted:0};
+}
 // Record for prediction picks at $100 a pick, after fees (net price).
 function predictionRecord(rows){
   const graded=rows.filter(r=>['won','lost','push'].includes(r.result)),dec=o=>recordDecimal(Number(o));
@@ -1969,11 +1987,21 @@ async function latestAlert(env,now=Date.now(),endpoint=null){
   }
   const rows=await env.DB.prepare("SELECT kind,player,market,side,line,odds,combined_odds,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND posted_at>=? ORDER BY posted_at DESC LIMIT 3").bind(new Date(now-3*3600000).toISOString()).all();
   const picks=rows.results||[];
+  if(!picks.length&&endpoint&&validPushEndpoint(endpoint)){
+    const mine=await env.DB.prepare("SELECT price_view FROM push_subscriptions WHERE endpoint=?").bind(endpoint).first().catch(()=>null);
+    if(mine?.price_view==='predictions'){const fresh=(await env.DB.prepare('SELECT * FROM prediction_picks WHERE posted_at>=? ORDER BY posted_at DESC LIMIT 3').bind(new Date(now-3*3600000).toISOString()).all()).results||[];if(fresh.length)return predictionAlert(fresh)}
+  }
   if(!picks.length)return {title:'New Bet This Guy picks',body:'Fresh official picks are on the board.',url:'/'};
   // A phone set to prediction markets gets each pick's prediction-market chances
   // (from the exchanges open in its state) in place of the sportsbook odds.
   const sub=endpoint&&validPushEndpoint(endpoint)?await env.DB.prepare('SELECT price_view,state FROM push_subscriptions WHERE endpoint=?').bind(endpoint).first().catch(()=>null):null;
   const pm=sub?.price_view==='predictions';
+  // A newer prediction pick than any official pick: that's what this phone was pinged for.
+  if(pm){
+    const newest=picks.length?(await env.DB.prepare("SELECT MAX(posted_at) AS at FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%'").first())?.at||'':'';
+    const fresh=(await env.DB.prepare('SELECT * FROM prediction_picks WHERE posted_at>=? AND posted_at>? ORDER BY posted_at DESC LIMIT 3').bind(new Date(now-3*3600000).toISOString(),newest).all()).results||[];
+    if(fresh.length)return predictionAlert(fresh);
+  }
   const line=r=>{if(r.kind==='parlay')return `${recordLegs(r).length}-leg parlay (${weeklyOdds(r.combined_odds)}): ${recordLegs(r).map(l=>l.player).join(' + ')}`;
     if(pm){const ex=exchangeLine(r,sub.state||null),any=exchangeLine(r,sub.state||null,1,true);return `${r.player} ${weeklyLegText(r)}: ${ex?`good value on ${ex}`:any?`${any} is worse than fair, skip on prediction markets (${weeklyOdds(r.odds)} at sportsbooks)`:`not on prediction markets yet (${weeklyOdds(r.odds)} at sportsbooks)`}`}
     return `${r.player} ${weeklyLegText(r)} (${weeklyOdds(r.odds)})`};
@@ -2013,7 +2041,27 @@ async function sendPickAlerts(env,now=Date.now(),only=null){
 // pushes failed. Each new pick is alerted once (a batch held back by the
 // 15-minute limit goes on a later run), and phones whose push failed get one
 // retry on the next run.
+// Prediction picks alert the phones set to prediction markets, once per batch
+// of new picks, only where at least one new pick's exchange is open in the
+// phone's state (or the state isn't known).
+async function sendPredictionAlerts(env,now=Date.now()){
+  if(!env.DB)return {sent:0};
+  const done=await appSetting(env,'pm-alert-for')||'';
+  const fresh=(await env.DB.prepare('SELECT exchange,posted_at FROM prediction_picks WHERE posted_at>? AND game_time>? ORDER BY posted_at').bind(done||new Date(now-3*3600000).toISOString(),new Date(now).toISOString()).all()).results||[];
+  if(!fresh.length)return {sent:0};
+  await setAppSetting(env,'pm-alert-for',fresh.at(-1).posted_at);
+  const keys=[...new Set(fresh.map(r=>Object.keys(EXCHANGES).find(k=>EXCHANGES[k]===r.exchange)))];
+  const subs=(await env.DB.prepare("SELECT endpoint,state FROM push_subscriptions WHERE price_view='predictions'").all()).results||[];
+  const only=subs.filter(r=>!r.state||keys.some(k=>!EXCHANGE_EXCLUDED[k]?.includes(r.state))).map(r=>r.endpoint);
+  if(!only.length)return {sent:0,picks:fresh.length};
+  return {...await sendPickAlerts(env,now,only),picks:fresh.length};
+}
 async function sendDueAlerts(env,now=Date.now()){
+  if(!env.DB)return {sent:0};
+  const predictions=await sendPredictionAlerts(env,now).catch(error=>({error:error.message}));
+  return {...await sendOfficialAlerts(env,now),predictions};
+}
+async function sendOfficialAlerts(env,now=Date.now()){
   if(!env.DB)return {sent:0};
   const newest=(await env.DB.prepare("SELECT MAX(posted_at) AS at FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND game_time>?").bind(new Date(now).toISOString()).all()).results?.[0]?.at||null;
   const done=await appSetting(env,'push-alert-for')||await appSetting(env,'last-alert-at');
@@ -2695,10 +2743,11 @@ async function runXPosts(env,now=Date.now()){
   const pin=picks.posted||weekly.posted||final.posted||slate.posted?{posted:0,waiting:true}:await postAlertsPinToX(env,now);
   const recap=picks.posted||weekly.posted||final.posted||slate.posted||pin.posted?{posted:0,waiting:true}:await postDayRecapToX(env,now);
   const proof=await postProofToX(env,now);
+  const predictions=picks.posted?{posted:0,waiting:true}:await postPredictionPicksToX(env,now).catch(error=>({posted:0,error:error.message}));
   const results=picks.posted||weekly.posted||final.posted||slate.posted||pin.posted||recap.posted?{posted:0,waiting:true}:await postResultsToX(env,now);
   // The pinned summary waits for a run with nothing else heavy.
   const summary=picks.posted||weekly.posted||final.posted||slate.posted||pin.posted||recap.posted||results.posted?{posted:0,waiting:true}:await postSummaryToX(env,now);
-  return {picks,weekly,closing,final,slate,pin,recap,proof,results,summary};
+  return {picks,weekly,closing,final,slate,pin,recap,proof,predictions,results,summary};
 }
 // "My book" alerts: a good-value price at one of someone's own sportsbooks.
 // The fair price always comes from every book (3+ pricing both sides, the same
