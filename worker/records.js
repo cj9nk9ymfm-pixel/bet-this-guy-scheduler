@@ -2776,7 +2776,7 @@ function xSlateSvg(d){
   // Locked and closing prices side by side when the picks have a close.
   const hasClose=picks.some(p=>p.close);
   const heads=hasClose?`<text x="${R-120}" y="104" text-anchor="end" font-family="${F.xb}" font-size="15" letter-spacing="2" fill="#9fb0cc">LOCKED</text><text x="${R}" y="104" text-anchor="end" font-family="${F.xb}" font-size="15" letter-spacing="2" fill="#9fb0cc">CLOSED</text>`:'';
-  const rows=picks.map((p,i)=>{const y=150+i*gap;return `${mark(p.res,X+10,y-9)}<text x="${X+30}" y="${y}" font-family="${F.sb}" font-size="${Math.max(17,Math.min(25,Math.floor((W-(hasClose?260:130))/(String(p.text).length*.56))))}" fill="#ffffff">${xEsc(p.text)}</text><text x="${hasClose?R-120:R}" y="${y}" text-anchor="end" font-family="${F.xb}" font-size="24" fill="${p.res==="lost"?"#f87171":p.res==="push"?"#cbd5e1":M}">${xEsc(p.odds)}</text>${hasClose?`<text x="${R}" y="${y}" text-anchor="end" font-family="${F.sb}" font-size="22" fill="#9fb0cc">${xEsc(p.close||"—")}</text>`:""}<text x="${X+30}" y="${y+25}" font-family="${F.sb}" font-size="18" fill="#9fb0cc">${xEsc(p.sub)}</text>`}).join('');
+  const rows=picks.map((p,i)=>{const y=150+i*gap;return `${mark(p.res,X+10,y-9)}<text x="${X+30}" y="${y}" font-family="${F.sb}" font-size="${Math.max(17,Math.min(25,Math.floor((W-(hasClose?260:130))/(String(p.text).length*.56))))}" fill="#ffffff">${xEsc(p.text)}</text><text x="${hasClose?R-120:R}" y="${y}" text-anchor="end" font-family="${F.xb}" font-size="24" fill="${p.res==="lost"?"#f87171":p.res==="push"?"#cbd5e1":p.color||M}">${xEsc(p.odds)}</text>${hasClose?`<text x="${R}" y="${y}" text-anchor="end" font-family="${F.sb}" font-size="22" fill="#9fb0cc">${xEsc(p.close||"—")}</text>`:""}<text x="${X+30}" y="${y+25}" font-family="${F.sb}" font-size="18" fill="#9fb0cc">${xEsc(p.sub)}</text>`}).join('');
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="${H}" viewBox="0 0 1200 ${H}">
 <defs><linearGradient id="tm" x1="0" y1="0" x2="0.45" y2="1"><stop offset="0" stop-color="#1d4ed8"/><stop offset="1" stop-color="#0b1530"/></linearGradient></defs>
 <rect width="1200" height="${H}" fill="#0b1530"/><rect width="470" height="${H}" fill="url(#tm)"/>
@@ -2789,7 +2789,7 @@ ${xLogo(56,520+B,56)}<text x="128" y="${558+B}" font-family="${F.g}" font-size="
 <text x="56" y="${643+B}" font-family="${F.xb}" font-size="20" letter-spacing="2.5" fill="#ffffff" fill-opacity=".85">LOCKED BEFORE KICKOFF · 21+</text>
 ${heads}${rows}${more>0?`<text x="${X+30}" y="${150+picks.length*gap}" font-family="${F.sb}" font-size="22" fill="#9fb0cc">+ ${more} more</text>`:''}
 <rect x="470" y="${589+B}" width="730" height="86" fill="${M}"/>
-<text x="${X}" y="${643+B}" font-family="${F.g}" font-size="29" fill="#06231a">Graded in public</text>
+<text x="${X}" y="${643+B}" font-family="${F.g}" font-size="29" fill="#06231a">${xEsc(d.cta||"Graded in public")}</text>
 <text x="${R-38}" y="${644+B}" text-anchor="end" font-family="${F.g}" font-size="31" fill="#06231a">betthisguy.com</text><path d="M1118 ${633+B}h24m-9-9 9 9-9 9" fill="none" stroke="#06231a" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>`;
 }
@@ -2843,6 +2843,35 @@ async function postAlertsPinToX(env,now=Date.now()){
   catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} pin graphic: ${error.message}`).catch(()=>{})}
   try{const sent=await xPost(env,text,mediaId);await xDone(env,key,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} pin ${day} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,picks:rows.length,moved,graphic:Boolean(mediaId)}}
   catch(error){console.warn('x_pin_failed',error.message);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
+}
+// Whole card on one graphic: a game day's sportsbook picks and prediction
+// app picks and parlays, for a post to pin. Posts once per value of the
+// app_settings key x-combo-request, an Eastern date (2026-10-12, or
+// 2026-10-12#2 to resend); only games that haven't kicked off are shown.
+async function postComboToX(env,now=Date.now()){
+  if(!env.DB||!xReady(env))return {posted:0,disabled:true};
+  const req=String((await appSetting(env,'x-combo-request'))||'');if(!/^\d{4}-\d{2}-\d{2}(#\w{1,8})?$/.test(req))return {posted:0,none:true};
+  const day=req.slice(0,10),key=`x-combo:${req}`;if(!(await xClaimable(env,key,now)))return {posted:0,done:true};
+  const etDay=`${day.slice(5,7)}/${day.slice(8,10)}/${day.slice(0,4)}`,onDay=r=>etDate(Date.parse(r.game_time),{year:'numeric',month:'2-digit',day:'2-digit'})===etDay;
+  const from=new Date(now).toISOString(),to=new Date(Date.parse(`${day}T00:00:00Z`)+2*86400000).toISOString();
+  const official=((await env.DB.prepare("SELECT * FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND game_time>? AND game_time<? ORDER BY game_time,posted_at").bind(from,to).all()).results||[]).filter(onDay);
+  const pm=((await env.DB.prepare('SELECT * FROM prediction_picks WHERE game_time>? AND game_time<? ORDER BY game_time,posted_at').bind(from,to).all()).results||[]).filter(onDay);
+  const pmp=((await env.DB.prepare('SELECT * FROM prediction_parlays WHERE game_time>? AND game_time<? ORDER BY game_time,posted_at').bind(from,to).all().catch(()=>({results:[]}))).results||[]).filter(onDay);
+  const total=official.length+pm.length+pmp.length;if(!total||!pm.length&&!pmp.length||!official.length)return {posted:0,empty:true};
+  if(!(await xClaim(env,key,now)))return {posted:0,done:true};
+  const P='#c4b5fd',legsOf=r=>{try{return JSON.parse(r.legs_json)}catch{return []}};
+  const picks=[...official.map(r=>{const legs=recordLegs(r),f=legs[0]||{};return r.kind==='parlay'?{text:`${legs.length}-leg parlay`,odds:weeklyOdds(r.combined_odds),sub:`Sportsbook · ${legs.map(l=>l.player).join(' + ')}`}:{text:`${r.player} · ${weeklyLegText(r)}`,odds:weeklyOdds(r.odds),sub:['Sportsbook',f.book].filter(Boolean).join(' · ')}}),
+    ...pm.map(r=>({text:`${r.player} · ${weeklyLegText(r)}`,odds:`${exchangePct(r.odds)}%`,color:P,sub:`Prediction app · ${r.exchange} · fair ${Math.round(r.fair_pct)}%`})),
+    ...pmp.map(r=>{const legs=legsOf(r);return {text:`${legs.length}-leg parlay`,odds:`${exchangePct(r.odds)}%`,color:P,sub:`${r.exchange} · ${legs.map(l=>`${l.player.split(' ').at(-1)} ${l.side==='Under'?'U':'O'}${l.line}`).join(' + ')}`}})];
+  const all=(await env.DB.prepare("SELECT kind,posted_at,line,odds,combined_odds,status,result,closing_line,closing_odds,closing_captured_at FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%'").all()).results||[];
+  const season=weeklySummary(all),first=Math.min(...[...official,...pm,...pmp].map(r=>Date.parse(r.game_time))),dayName=etDate(first,{weekday:'long'});
+  const games=[...new Set([...official.map(r=>xMatchup(recordLegs(r)[0]?.team)),...pm.map(r=>xMatchup(r.team))].filter(Boolean))],matchup=games.length===1?games[0]:'';
+  const text=xShort(`📍 Wherever you are, Bet This Guy finds the best value on every game.\n\nSportsbooks in your state? We have the number. Prediction apps only? We price those too.\n\n${matchup?`Tonight’s full card for ${matchup}`:`${dayName}’s full card`} 👇 Free alerts, every pick graded in public. Link in bio. 21+`);
+  let mediaId=null;
+  try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(xSlateSvg({final:true,kicker:matchup?'TONIGHT’S CARD':'THE FULL CARD',day:matchup||dayName,date:etDate(first,{month:'short',day:'numeric'}),dateLine:`${etDate(first,{month:'short',day:'numeric'})} · ${total} play${total===1?'':'s'}`,note:'Sportsbooks + prediction apps',note2:`Kickoff ${etDate(first,{hour:'numeric',minute:'2-digit'})} ET`,picks,cta:'Wherever you bet',season:season.wins+season.losses>=5?`${season.wins}–${season.losses} · ${weeklyMoney(season.profit)}`:''})))}
+  catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} combo graphic: ${error.message}`).catch(()=>{})}
+  try{const sent=await xPost(env,text,mediaId);await xDone(env,key,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} combo ${day} ${mediaId?'graphic':'text'} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,plays:total,graphic:Boolean(mediaId)}}
+  catch(error){console.warn('x_combo_failed',error.message);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
 }
 // Day recap: a game day's graded card (record, $100-a-pick money, closing
 // lines) on one graphic. Posts once per value of app_settings x-recap-request,
@@ -2899,16 +2928,17 @@ async function runXPosts(env,now=Date.now()){
   // A result graphic needs about as many requests as a pick, so it waits
   // for a run that didn't already post a pick or the weekly graphic.
   // The day's slate graphic waits for a run that didn't post a pick or the weekly.
-  const final=picks.posted||weekly.posted?{posted:0,waiting:true}:await postSlateToX(env,now,true);
-  const slate=picks.posted||weekly.posted||final.posted?{posted:0,waiting:true}:await postSlateToX(env,now);
-  const pin=picks.posted||weekly.posted||final.posted||slate.posted?{posted:0,waiting:true}:await postAlertsPinToX(env,now);
-  const recap=picks.posted||weekly.posted||final.posted||slate.posted||pin.posted?{posted:0,waiting:true}:await postDayRecapToX(env,now);
+  const combo=picks.posted||weekly.posted?{posted:0,waiting:true}:await postComboToX(env,now).catch(error=>({posted:0,error:error.message}));
+  const final=picks.posted||weekly.posted||combo.posted?{posted:0,waiting:true}:await postSlateToX(env,now,true);
+  const slate=picks.posted||combo.posted||weekly.posted||final.posted?{posted:0,waiting:true}:await postSlateToX(env,now);
+  const pin=picks.posted||combo.posted||weekly.posted||final.posted||slate.posted?{posted:0,waiting:true}:await postAlertsPinToX(env,now);
+  const recap=picks.posted||combo.posted||weekly.posted||final.posted||slate.posted||pin.posted?{posted:0,waiting:true}:await postDayRecapToX(env,now);
   const proof=await postProofToX(env,now);
   const predictions=picks.posted?{posted:0,waiting:true}:await postPredictionPicksToX(env,now).catch(error=>({posted:0,error:error.message}));
-  const results=picks.posted||weekly.posted||final.posted||slate.posted||pin.posted||recap.posted?{posted:0,waiting:true}:await postResultsToX(env,now);
+  const results=picks.posted||combo.posted||weekly.posted||final.posted||slate.posted||pin.posted||recap.posted?{posted:0,waiting:true}:await postResultsToX(env,now);
   // The pinned summary waits for a run with nothing else heavy.
-  const summary=picks.posted||weekly.posted||final.posted||slate.posted||pin.posted||recap.posted||results.posted?{posted:0,waiting:true}:await postSummaryToX(env,now);
-  return {picks,weekly,closing,final,slate,pin,recap,proof,predictions,results,summary};
+  const summary=picks.posted||combo.posted||weekly.posted||final.posted||slate.posted||pin.posted||recap.posted||results.posted?{posted:0,waiting:true}:await postSummaryToX(env,now);
+  return {picks,weekly,closing,combo,final,slate,pin,recap,proof,predictions,results,summary};
 }
 // "My book" alerts: a good-value price at one of someone's own sportsbooks.
 // The fair price always comes from every book (3+ pricing both sides, the same
