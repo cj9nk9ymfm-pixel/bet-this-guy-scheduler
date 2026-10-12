@@ -1475,7 +1475,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     const kicker=`<span class="on-kicker">${icon('star')} Official${books.length===1?` · ${htmlEscape(books[0])}`:''}</span>`;
     const why=edges.length?(isParlay?`Every leg beats fair`:`${Math.max(...edges).toFixed(1)}% better than fair`):'';
     const game=String(legs[0]?.team||'').replace(' · @ ',' @ ').replace(' · vs ',' vs '),matchup=isParlay?'':game&&typeof compactGameName==='function'?compactGameName(game):game;
-    return `<button type="button" class="on-row on-${status[0]}-row" data-on="${i}" data-on-player="${htmlEscape(isParlay?'':r.player||'')}" data-on-team="${htmlEscape(isParlay?'':legs[0]?.team||'')}" aria-label="Details for ${htmlEscape(title)}">${avatar}<span class="on-who">${kicker}<b>${htmlEscape(title)}</b><span>${htmlEscape(sub)}</span><small>${htmlEscape([matchup,kickoff(r.game_time)].filter(Boolean).join(' · '))}</small>${why?`<i class="on-why">${htmlEscape(why)}</i>`:''}<i class="on-form" data-on-form="${i}" hidden></i><i class="on-wx" data-wx="${htmlEscape(r.game_id||legs[0]?.gameId||'')}" hidden></i><em class="on-live" data-on-live="${i}" hidden></em></span><span class="on-end"><b class="on-price">${htmlEscape(formatOdds(odds))}</b><span class="on-tag on-${status[0]}">${tag}</span></span></button>`;
+    return `<button type="button" class="on-row on-${status[0]}-row" data-on="${i}" data-on-player="${htmlEscape(isParlay?'':r.player||'')}" data-on-team="${htmlEscape(isParlay?'':legs[0]?.team||'')}" aria-label="Details for ${htmlEscape(title)}">${avatar}<span class="on-who">${kicker}<b>${htmlEscape(title)}</b><span>${htmlEscape(sub)}</span><small>${htmlEscape([matchup,kickoff(r.game_time)].filter(Boolean).join(' · '))}</small>${why?`<i class="on-why">${htmlEscape(why)}</i>`:''}<i class="on-form" data-on-form="${i}" hidden></i><i class="on-wx" data-wx="${htmlEscape(r.game_id||legs[0]?.gameId||'')}" hidden></i><em class="on-live" data-on-live="${i}" hidden></em>${isParlay?'':`<i class="on-pm" data-pm="${htmlEscape(r.id||'')}" data-pm-odds="${htmlEscape(String(odds))}" hidden></i>`}</span><span class="on-end"><b class="on-price">${htmlEscape(formatOdds(odds))}</b><span class="on-tag on-${status[0]}">${tag}</span></span></button>`;
   }
   // Live progress for locked picks, refreshed with the live board (every 5s in games).
   let officialLiveList=[];
@@ -2450,6 +2450,57 @@ function statsProp(l){
   load();setInterval(load,5*60000);
   // Form loads separately; repaint once it's in.
   let tries=0;const wait=setInterval(()=>{if(++tries>20||!leans.length){if(tries>20)clearInterval(wait);return}if(window.BTGForm?.get?.({player:leans[0].player,market:leans[0].market,side:leans[0].side,line:Number(leans[0].line)})){render();clearInterval(wait)}},1500);
+})();
+
+// Prediction markets by location: where sportsbooks aren't legal, show each
+// pick's price on the prediction markets open in the visitor's state (and a
+// better exchange price anywhere else), plus exchange props priced above the
+// sportsbooks' fair chance. State comes from the visitor's connection, or the
+// one they pick here (kept on this device only).
+(()=>{
+  if(typeof document.getElementById!=='function'||!document.getElementById('pmNow')||typeof fetch!=='function'||typeof MutationObserver!=='function')return;
+  const LINKS={Kalshi:'https://kalshi.com',Polymarket:'https://polymarket.com',Novig:'https://novig.us',ProphetX:'https://www.prophetx.co',BetOpenly:'https://www.betopenly.com'};
+  const STATES={AL:'Alabama',AK:'Alaska',AZ:'Arizona',AR:'Arkansas',CA:'California',CO:'Colorado',CT:'Connecticut',DE:'Delaware',DC:'Washington, DC',FL:'Florida',GA:'Georgia',HI:'Hawaii',ID:'Idaho',IL:'Illinois',IN:'Indiana',IA:'Iowa',KS:'Kansas',KY:'Kentucky',LA:'Louisiana',ME:'Maine',MD:'Maryland',MA:'Massachusetts',MI:'Michigan',MN:'Minnesota',MS:'Mississippi',MO:'Missouri',MT:'Montana',NE:'Nebraska',NV:'Nevada',NH:'New Hampshire',NJ:'New Jersey',NM:'New Mexico',NY:'New York',NC:'North Carolina',ND:'North Dakota',OH:'Ohio',OK:'Oklahoma',OR:'Oregon',PA:'Pennsylvania',RI:'Rhode Island',SC:'South Carolina',SD:'South Dakota',TN:'Tennessee',TX:'Texas',UT:'Utah',VT:'Vermont',VA:'Virginia',WA:'Washington',WV:'West Virginia',WI:'Wisconsin',WY:'Wyoming'};
+  const KEY='btg-state',dec=o=>o>0?1+o/100:1+100/-o;
+  const chosen=()=>{try{return localStorage.getItem(KEY)||''}catch{return ''}};
+  const when=iso=>{const d=new Date(iso);return Number.isFinite(d.getTime())?d.toLocaleString([],{weekday:'short',hour:'numeric',minute:'2-digit'}):''};
+  let data=null;
+  const picker=state=>`<label class="pm-where">Betting from <select data-pm-state aria-label="Your state"><option value="">Choose a state</option>${Object.entries(STATES).map(([k,v])=>`<option value="${k}"${k===state?' selected':''}>${htmlEscape(v)}</option>`).join('')}</select></label>`;
+  const apps=d=>[...(d.exchanges||[]),...(d.predictions?.fanduel?['FanDuel Predicts']:[]),...(d.predictions?.draftkings?['DraftKings Predictions']:[])];
+  const list=names=>names.length<2?names.join(''):`${names.slice(0,-1).join(', ')} and ${names.at(-1)}`;
+  function paintPicks(){
+    document.querySelectorAll('[data-pm]').forEach(el=>{
+      const prices=data?.picks?.[el.dataset.pm]||[],posted=Number(el.dataset.pmOdds);let text='';
+      if(data?.mode==='predictions')text=prices.length?`Prediction markets: ${prices.slice(0,3).map(p=>`${p.exchange} ${formatOdds(p.odds)}`).join(' · ')}`:'Not on prediction markets yet';
+      else if(data?.mode==='sportsbooks'&&prices.length&&Number.isFinite(posted)&&dec(prices[0].odds)>dec(posted))text=`Better on ${prices[0].exchange}: ${formatOdds(prices[0].odds)}`;
+      el.hidden=!text;el.textContent=text;
+    });
+  }
+  function row(v){
+    const initials=String(v.player||'').split(' ').map(x=>x[0]||'').join('').slice(0,3),bet=`${v.side} ${v.line} ${String(v.market||'').toLowerCase()}`;
+    const game=String(v.team||'').replace(' · @ ',' @ ').replace(' · vs ',' vs '),matchup=game&&typeof compactGameName==='function'?compactGameName(game):game,url=LINKS[v.exchange];
+    const price=url?`<a class="on-price lean-book" href="${url}" target="_blank" rel="noopener" aria-label="Open ${htmlEscape(v.exchange)}">${htmlEscape(formatOdds(v.odds))}</a>`:`<span class="on-price">${htmlEscape(formatOdds(v.odds))}</span>`;
+    return `<div class="on-row lean-row"><span class="on-avatar"><span>${htmlEscape(initials)}</span><img loading="lazy" decoding="async" src="/api/player-photo?name=${encodeURIComponent(v.player||'')}" alt="" onerror="this.remove()"></span><span class="on-who"><span class="on-kicker lean-kicker">${htmlEscape(v.exchange)}</span><b>${htmlEscape(v.player)}</b><span>${htmlEscape(bet.charAt(0).toUpperCase()+bet.slice(1))}</span><small>${htmlEscape([matchup,when(v.gameTime)].filter(Boolean).join(' · '))}</small><i class="on-why">${htmlEscape(`${Number(v.edge).toFixed(1)}% better than fair`)}</i></span><span class="on-end">${price}</span></div>`;
+  }
+  function render(){
+    const banner=document.getElementById('pmBanner'),section=document.getElementById('pmNow');
+    const d=data||{mode:'unknown'},now=Date.now(),value=(d.value||[]).filter(v=>Date.parse(v.gameTime)>now),names=apps(d);
+    if(banner){
+      banner.hidden=d.mode!=='predictions';
+      if(d.mode==='predictions')banner.innerHTML=`<p><b>Betting from ${htmlEscape(d.stateName||'')}?</b> Sportsbooks aren’t legal there yet, but prediction markets are${names.length?`: ${htmlEscape(list(names))}`:''}. Each pick shows its prediction-market price when one is listed.</p>${picker(d.state)}`;
+    }
+    section.hidden=!(value.length||d.mode==='predictions');
+    if(!section.hidden){
+      document.getElementById('pmCount').textContent=value.length?String(value.length):'';
+      document.getElementById('pmList').innerHTML=value.length?value.map(row).join(''):'<p class="pm-empty">No prediction-market prices beat the sportsbooks right now. Prices are checked every 30 minutes.</p>';
+      document.getElementById('pmWhere').innerHTML=picker(d.state);
+    }
+    document.querySelectorAll('[data-pm-state]').forEach(sel=>sel.onchange=()=>{try{sel.value?localStorage.setItem(KEY,sel.value):localStorage.removeItem(KEY)}catch{}load()});
+    paintPicks();
+  }
+  async function load(){try{const st=chosen(),r=await fetch(`/api/predictions${st?`?state=${encodeURIComponent(st)}`:''}`);const body=await r.json();if(!r.ok||!body?.success)return;data=body;render()}catch{}}
+  const host=document.getElementById('officialNowList');if(host)new MutationObserver(paintPicks).observe(host,{childList:true});
+  load();setInterval(load,10*60000);
 })();
 
 // Weather on picks: a short note when it could matter (wind 15+ mph, gusts
