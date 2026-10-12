@@ -1550,7 +1550,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     try{
       const response=await fetch('/api/record?view=home',{signal:AbortSignal.timeout(10000)});
       if(!response.ok)throw new Error();
-      const body=await response.json();heroRows=body.success?body.recent||[]:null;heroSeason=body.season||null;renderHero(heroRows?summarise(heroRows,Date.now(),viewerStake()):null);renderOfficialNow(heroRows);
+      const body=await response.json();heroRows=body.success?body.recent||[]:null;heroSeason=body.season||null;if(heroSeason){window.BTG_SEASON=heroSeason;dispatchEvent(new Event('btg:season'))}renderHero(heroRows?summarise(heroRows,Date.now(),viewerStake()):null);renderOfficialNow(heroRows);
     }catch{renderHero(null)}
   }
   $('#heroCta')&&($('#heroCta').onclick=event=>{event.preventDefault();$('#propsSection')?.scrollIntoView({behavior:'smooth',block:'start'})});
@@ -1658,7 +1658,7 @@ if(typeof fetch==='function')window.btgCountVisit?.('view:home');
   const ios=/iPhone|iPad|iPod/.test(navigator.userAgent||'');
   const standalone=()=>window.matchMedia?.('(display-mode: standalone)').matches||navigator.standalone===true;
   const note=text=>['#alertsNote','#stAlertsNote'].forEach(sel=>{const el=$(sel);if(!el)return;el.textContent=text;el.hidden=!text});
-  const show=on=>buttons().forEach(button=>{document.documentElement.classList.toggle('alerts-on',on);const label=on?'Alerts on':'Get pick alerts';if(button.dataset.alertsSwitch!==undefined){button.setAttribute('aria-checked',String(on));return}if(button.dataset.alertsBanner!==undefined){button.setAttribute('aria-pressed',String(on));return}if(button.dataset.alertsSheet!==undefined){const strong=button.querySelector('strong');if(strong)strong.textContent=on?'Pick alerts are on':'Pick alerts';const span=button.querySelector('span');if(span)span.textContent=on?'Tap to turn them off':'Get a notification when a new official pick drops'}else button.textContent=label;button.setAttribute('aria-pressed',String(on))});
+  const show=on=>buttons().forEach(button=>{document.documentElement.classList.toggle('alerts-on',on);const label=on?'Alerts on':'Get pick alerts';if(button.dataset.alertsSwitch!==undefined){button.setAttribute('aria-checked',String(on));return}if(button.dataset.alertsKeep!==undefined){button.setAttribute('aria-pressed',String(on));return}if(button.dataset.alertsBanner!==undefined){button.setAttribute('aria-pressed',String(on));return}if(button.dataset.alertsSheet!==undefined){const strong=button.querySelector('strong');if(strong)strong.textContent=on?'Pick alerts are on':'Pick alerts';const span=button.querySelector('span');if(span)span.textContent=on?'Tap to turn them off':'Get a notification when a new official pick drops'}else button.textContent=label;button.setAttribute('aria-pressed',String(on))});
   const keyBytes=key=>{const b=atob(key.replace(/-/g,'+').replace(/_/g,'/')+'='.repeat((4-key.length%4)%4));return Uint8Array.from(b,c=>c.charCodeAt(0))};
   async function current(){try{const reg=await navigator.serviceWorker.getRegistration('/');return reg?await reg.pushManager.getSubscription():null}catch{return null}}
   async function turnOn(){
@@ -2494,11 +2494,39 @@ function statsProp(l){
   let tries=0;const wait=setInterval(()=>{if(++tries>20||!leans.length){if(tries>20)clearInterval(wait);return}if(window.BTGForm?.get?.({player:leans[0].player,market:leans[0].market,side:leans[0].side,line:Number(leans[0].line)})){render();clearInterval(wait)}},1500);
 })();
 
-// First visit: one plain sentence on what the site does, until dismissed.
+// First visit: a welcome sheet on why the site is worth it (we get the price
+// before it moves, every pick is on the record, it's free) with alerts and
+// account buttons. Shown once; the proof strip on home reopens it. Numbers
+// come live from the season record and only show once there are enough picks.
 (()=>{
-  if(typeof document.getElementById!=='function')return;const note=document.getElementById('welcomeNote');if(!note)return;
-  let seen=false;try{seen=localStorage.getItem('btg-welcomed')==='1'}catch{}
-  note.hidden=seen;document.getElementById('welcomeClose')?.addEventListener('click',()=>{note.hidden=true;try{localStorage.setItem('btg-welcomed','1')}catch{}});
+  if(typeof document.getElementById!=='function')return;
+  const dlg=document.getElementById('welcomeDialog'),strip=document.getElementById('whyStrip');if(!dlg||!strip)return;
+  const KEY='btg-welcomed',seen=()=>{try{return localStorage.getItem(KEY)==='1'}catch{return true}},mark=()=>{try{localStorage.setItem(KEY,'1')}catch{}};
+  const dec=o=>{o=Number(o);return o>=100?1+o/100:o<=-100?1+100/-o:null},fmt=o=>o>0?`+${o}`:String(o),set=(id,t)=>{const el=document.getElementById(id);if(el&&t)el.textContent=t};
+  function paint(season){
+    if(!season)return;
+    if(season.tracked>=10){
+      const beat=`${season.beat} of ${season.tracked} picks beat the kickoff price`;
+      set('wdBeat',beat+(season.worse!=null&&season.worse<=2?`. Worse on ${season.worse===0?'none':`just ${season.worse}`}.`:''));
+      set('whyBeat',`${season.beat} of ${season.tracked} beat the kickoff price`);
+      const a=dec(season.typicalOdds),c=dec(season.typicalClose),gain=a&&c?Math.round((a-c)*100):0;
+      if(gain>=3)set('wdBeatSub',`Typical pick ${fmt(season.typicalOdds)}. Same bet at kickoff ${fmt(season.typicalClose)}. That’s $${gain} more on every $100 winner.`);
+    }
+    if(season.wins+season.losses>=10){const p=Math.round(season.profit||0);set('wdRecordSub',`Locked before kickoff, graded from box scores, losses included. Season: ${season.wins}–${season.losses}${season.pushes?`–${season.pushes}`:''}, ${p<0?'−':'+'}$${Math.abs(p).toLocaleString('en-US')} at $100 a pick.`)}
+  }
+  const open=()=>{paint(window.BTG_SEASON);const on=document.documentElement.classList.contains('alerts-on');document.getElementById('wdAlerts').hidden=on;document.getElementById('wdAccount').classList.toggle('wd-primary',on);document.getElementById('wdAccount').classList.toggle('wd-secondary',!on);if(!dlg.open)dlg.showModal()};
+  const close=how=>{mark();strip.hidden=false;if(dlg.open)dlg.close();if(how)window.btgCount?.(`welcome:${how}`)};
+  addEventListener('btg:season',()=>paint(window.BTG_SEASON));paint(window.BTG_SEASON);
+  strip.addEventListener('click',()=>{window.btgCount?.('welcome:reopen');open()});
+  document.getElementById('welcomeX').onclick=()=>close('close');
+  document.getElementById('wdSkip').onclick=()=>close('skip');
+  dlg.addEventListener('cancel',()=>close('close'));
+  dlg.addEventListener('click',e=>{if(e.target===dlg)close('close')});
+  // The alerts button is also a pick-alerts toggle (handled with the others); this just closes the sheet.
+  document.getElementById('wdAlerts').addEventListener('click',()=>close('alerts'));
+  document.getElementById('wdAccount').onclick=()=>{close('account');window.BTGAuth?.open?.(window.BTGAuth?.hasAccount?.()?'account':'signup')};
+  if(seen()){strip.hidden=false;return}
+  setTimeout(()=>{if(seen()||document.querySelector('dialog[open]'))return;open();window.btgCount?.('welcome:shown')},900);
 })();
 
 // Jump bar: Picks · Worth a look · Board, with the odds / predictions switch.

@@ -1836,3 +1836,51 @@ body.light #settingsDialog .st-money input,body.light #settingsDialog .st-select
 body.light #settingsDialog .st-links a{color:#1d4ed8}
 body.light #settingsDialog #settingsSaveStatus.st-saved{color:#15803d!important}
 body.light #settingsDialog .st-control select{background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M9 6l6 6-6 6' fill='none' stroke='%2394a3b8' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E") right center/18px no-repeat!important}
+/* First-visit welcome sheet and the proof strip that reopens it. */
+.why-strip{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;margin:0 0 10px;padding:9px 12px;border:1px solid #23302a;border-radius:12px;background:linear-gradient(90deg,rgba(31,216,143,.08),rgba(31,216,143,.02));color:#dce5ef;font:600 12.5px 'DM Sans',sans-serif;text-align:left;cursor:pointer}
+.why-strip[hidden]{display:none}
+.why-items{display:flex;flex-wrap:wrap;gap:4px 14px;min-width:0}
+.why-items>span{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.why-items svg{color:#1fd88f;width:15px;height:15px;flex:none}
+.why-items b{font-weight:700;color:#fff}
+.why-more{flex:none;color:#5ff0b5;font-weight:700}
+body.light .why-strip{border-color:#cdeadc;background:linear-gradient(90deg,#ecfbf3,#f7fdf9);color:#334155}
+body.light .why-items b{color:#0f172a}body.light .why-items svg,body.light .why-more{color:#15803d}
+.welcome-dialog{width:min(460px,calc(100vw - 24px));max-height:calc(100dvh - 24px);margin:auto;padding:0;border:1px solid #2a2f38;border-radius:22px;background:#0f1216;color:#e8edf3;box-shadow:0 30px 80px rgba(0,0,0,.6);overflow:auto}
+.welcome-dialog::backdrop{background:rgba(3,6,12,.72);backdrop-filter:blur(3px)}
+.wd-shell{position:relative;padding:26px 22px 18px;background:radial-gradient(120% 60% at 100% 0,rgba(31,216,143,.14),transparent 60%)}
+.wd-close{position:absolute;top:12px;right:12px;width:36px;height:36px;border:0;border-radius:50%;background:rgba(255,255,255,.07);color:#cbd5e1;font-size:20px;line-height:1;cursor:pointer}
+.wd-eyebrow{margin:0 0 8px;font:700 11.5px 'Space Grotesk',sans-serif;letter-spacing:.14em;color:#5ff0b5}
+.welcome-dialog h2{margin:0 36px 8px 0;font:700 clamp(25px,7vw,31px)/1.1 'Space Grotesk',sans-serif;color:#fff;text-wrap:balance}
+.wd-lede{margin:0 0 16px;font-size:15px;line-height:1.5;color:#b8c2cf}
+.wd-proof{list-style:none;margin:0 0 16px;padding:0;display:grid;gap:10px}
+.wd-proof li{display:flex;gap:11px;align-items:flex-start;padding:11px 12px;border-radius:14px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07)}
+.wd-ic{flex:none;display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:rgba(31,216,143,.16);color:#1fd88f}
+.wd-proof b{display:block;font:700 15px/1.3 'DM Sans',sans-serif;color:#fff}
+.wd-proof small{display:block;margin-top:2px;font-size:13px;line-height:1.4;color:#9aa6b4}
+.wd-how-title{margin:0 0 8px;font:700 11.5px 'DM Sans',sans-serif;letter-spacing:.1em;text-transform:uppercase;color:#8a93a0}
+.wd-how{list-style:none;margin:0 0 18px;padding:0;display:grid;gap:7px}
+.wd-how li{display:flex;align-items:center;gap:10px;font-size:14px;color:#dce3ec}
+.wd-how li span{flex:none;display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:#1e2530;color:#9fb0c6;font:700 12px 'Space Grotesk',sans-serif}
+.wd-actions{display:grid;gap:8px}
+.wd-actions button{min-height:48px;border-radius:999px;font:700 15.5px 'DM Sans',sans-serif;cursor:pointer}
+.wd-actions button[hidden]{display:none}
+.wd-primary{border:0;background:#1fd88f;color:#05231a}
+.wd-secondary{border:1px solid #2f3742;background:transparent;color:#e8edf3}
+.wd-skip{min-height:40px!important;border:0;background:none;color:#8a93a0;font-weight:600!important;font-size:14px!important}
+.wd-why{margin:12px 0 0;font-size:12.5px;line-height:1.5;color:#8f9aa8}
+.wd-why b{color:#cbd5e1}
+.wd-fine{margin:10px 0 0;font-size:11.5px;line-height:1.45;color:#6b7480}
+body.light .welcome-dialog{background:#fff;border-color:#dfe5ee;color:#0f172a;box-shadow:0 30px 80px rgba(15,23,42,.25)}
+body.light .wd-shell{background:radial-gradient(120% 60% at 100% 0,rgba(22,163,74,.10),transparent 60%)}
+body.light .welcome-dialog h2,body.light .wd-proof b{color:#0f172a}
+body.light .wd-lede,body.light .wd-how li{color:#334155}
+body.light .wd-proof li{background:#f6f8fb;border-color:#e6ebf2}
+body.light .wd-proof small,body.light .wd-why,body.light .wd-how-title{color:#5b6472}
+body.light .wd-why b{color:#1e293b}
+body.light .wd-ic{background:#dcfce7;color:#15803d}
+body.light .wd-eyebrow{color:#15803d}
+body.light .wd-how li span{background:#eef1f6;color:#475569}
+body.light .wd-primary{background:#16a34a;color:#fff}
+body.light .wd-secondary{border-color:#cbd5e1;color:#0f172a}
+body.light .wd-close{background:#eef1f6;color:#475569}
