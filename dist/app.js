@@ -2567,7 +2567,10 @@ function statsProp(l){
     if(toggle)toggle.querySelectorAll('[data-view]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.view===v)));
     if(banner){
       const show=d.mode==='predictions'||(v==='predictions'&&d.state);banner.hidden=!show;
-      if(show)banner.innerHTML=`<p>${d.mode==='predictions'?`<b>No sportsbooks in ${htmlEscape(d.stateName||'')} yet.</b> Prediction markets:`:`<b>Prediction markets in ${htmlEscape(d.stateName||'')}:</b>`} ${names.length?htmlEscape(list(names)):'none right now'}. ${v==='predictions'?'Prices are each market’s chance: lower is better.':'Tap Predictions above to see their prices.'}</p>${picker(d.state)}`;
+      // One line: in odds view a button switches to prediction prices; in prediction view, which apps and how to read them.
+      const apps3=names.length>3?`${names.slice(0,3).join(', ')} +${names.length-3} more`:list(names);
+      if(show)banner.innerHTML=v==='predictions'?`<p><b>${htmlEscape(d.stateName||'')}:</b> ${htmlEscape(apps3||'no prediction markets right now')}. Lower % is a better price.</p>${picker(d.state)}`:`<p><b>No sportsbooks in ${htmlEscape(d.stateName||'')} yet.</b> Bet these on prediction markets.</p><button type="button" class="pm-switch" data-pm-switch>See prices</button>`;
+      banner.querySelector('[data-pm-switch]')?.addEventListener('click',()=>{store(VIEW,'predictions');render();resync()});
     }
     // Hidden when it has nothing to show (the state picker lives in the banner then).
     section.hidden=v!=='predictions'||(!value.length&&d.mode!=='unknown');
