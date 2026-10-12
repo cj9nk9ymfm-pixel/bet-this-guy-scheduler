@@ -77,5 +77,13 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
   asked.length=0;await run(`fillPlayerForm(env,{waitUntil(){}},${Date.parse('2026-10-20T13:00:00Z')},5,5)`);
   assert.deepEqual(asked,['Player 5','Player 6','Player 7','Player 8','Player 9'],'each part takes its own slice');
   delete context.env.SELF;
+  // Usage-bump inputs: catches and carries are always kept, and receivers/backs
+  // listed Out are wanted even when they're off the board.
+  {const g=J(run(`formGames({stats:[{game:{date:'2026-10-04'},receptions:4,rushing_attempts:0},{game:{date:'2026-09-27'},receptions:6}]},['Anytime Touchdown'],${now})`));
+   assert.deepEqual(g.m.Receptions,[4,6],'receptions kept for a touchdown-only player');assert.equal(g.d.length,2);
+   const t=Date.parse('2026-10-08T15:00:00Z');db.prepare("INSERT INTO injuries (id,player,team,position,status,fetched_at) VALUES ('x1','Cedric Tillman','Cleveland Browns','WR','Out',?)").run(t);
+   await run(`recordFormWanted(env,boards,${t})`);
+   const row=db.prepare("SELECT markets,teams FROM player_form WHERE id='NFL|cedrictillman'").get();
+   assert.deepEqual(JSON.parse(row.markets),['Receptions','Rush Attempts'],'an Out receiver is wanted for the bump test');assert.equal(row.teams,'Cleveland Browns @ Pittsburgh Steelers');}
   console.log('PASS: player form lists board players, fills in parallel parts, waits out a busy feed, refreshes once per slate and serves one cached board-wide response');
 })().catch(error=>{console.error(error);process.exit(1)});
