@@ -1182,17 +1182,17 @@ function cronJobs(date){
   // line-value picks on its own, so it has its own request allowance.
   // Every in-between run, and publish runs outside NFL windows, also fill
   // player form (each board player's last 10 games, in parallel parts).
-  // In NFL windows every run also checks games in progress for the live test.
-  if(minute%10>=5){const grade=nflActiveWindow(date)||(date.getUTCHours()%6===0&&minute<10);return ['xpost',...(grade?['lineGrade']:[]),'form','leans',...(nflActiveWindow(date)?['live']:[])]}
+  // The live test (games in progress, every NFL-window run) is off: LIVE_SHADOW_ON.
+  if(minute%10>=5){const grade=nflActiveWindow(date)||(date.getUTCHours()%6===0&&minute<10);return ['xpost',...(grade?['lineGrade']:[]),'form','leans',...(LIVE_SHADOW_ON&&nflActiveWindow(date)?['live']:[])]}
   const publish=['publish'];
-  if(nflActiveWindow(date))return [...publish,'grade','live'];
+  if(nflActiveWindow(date))return [...publish,'grade',...(LIVE_SHADOW_ON?['live']:[])];
   return [...publish,...(date.getUTCHours()%6===0&&minute<5?['grade']:[]),'form'];
 }
 async function runCron(controller,env,ctx){
   const due=cronJobs(new Date(controller.scheduledTime));
   if(!due.length||!env.DB||!env.BALLDONTLIE_API_KEY)return;
   if(!env.THE_ODDS_API_KEY)due.splice(0,due.length,...due.filter(job=>['xpost','lineGrade','form','leans','live'].includes(job)));
-  const request=new Request(`${SITE_URL}/api/maintenance`),jobs={publish:()=>publishOfficialPicks(request,env,ctx),grade:()=>settlePublicRecords(env),nbaShadow:async()=>({season:await recordNbaShadow(request,env,ctx).catch(error=>({error:error.message})),preseason:await recordNbaPreseason(env).catch(error=>({error:error.message}))}),nbaGrade:()=>gradeNbaShadow(env),digest:()=>sendWeeklyDigest(env),alerts:()=>sendDueAlerts(env),xpost:()=>runXPosts(env),form:()=>fillFormBurst(env,ctx),live:()=>recordLiveShadow(env,ctx),leans:async()=>({injuries:await refreshInjuries(env).catch(error=>({error:error.message})),leans:await backfillLeans(env),td:await backfillTdShadow(env).catch(error=>({error:error.message})),tdGrade:await gradeTdShadowNow(env).catch(error=>({error:error.message})),games:await recordGameShadow(env).catch(error=>({error:error.message})),weather:await refreshWeatherFromSchedule(env,ctx).catch(error=>({error:error.message}))}),
+  const request=new Request(`${SITE_URL}/api/maintenance`),jobs={publish:()=>publishOfficialPicks(request,env,ctx),grade:()=>settlePublicRecords(env),nbaShadow:async()=>({season:await recordNbaShadow(request,env,ctx).catch(error=>({error:error.message})),preseason:await recordNbaPreseason(env).catch(error=>({error:error.message}))}),nbaGrade:()=>gradeNbaShadow(env),digest:()=>sendWeeklyDigest(env),alerts:()=>sendDueAlerts(env),xpost:()=>runXPosts(env),form:()=>fillFormBurst(env,ctx),live:()=>recordLiveShadow(env,ctx),leans:async()=>({injuries:await refreshInjuries(env).catch(error=>({error:error.message})),leans:await backfillLeans(env),td:TD_SHADOW_ON?await backfillTdShadow(env).catch(error=>({error:error.message})):{off:true},tdGrade:await gradeTdShadowNow(env).catch(error=>({error:error.message})),games:await recordGameShadow(env).catch(error=>({error:error.message})),weather:await refreshWeatherFromSchedule(env,ctx).catch(error=>({error:error.message}))}),
     // Line-value grading, near-miss grading and the stats check take turns
     // (minutes 15/45, 25/55 and 5/35) so each run stays inside the request limit.
     // While games kick off within 4 hours, the 15/45 and 25/55 slots check

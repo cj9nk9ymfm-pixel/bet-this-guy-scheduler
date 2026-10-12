@@ -23,7 +23,7 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
   const form=(player,label,values)=>db.prepare('INSERT INTO player_form (id,sport,player,teams,markets,wanted_until,games_json) VALUES (?,?,?,?,?,?,?)').run(`NFL|${player}`,'NFL',player,'','[]',kick,JSON.stringify({d:[],o:[],m:{[label]:values}}));
   form('Aidan Hutchinson','Sacks',[0,0.5,1,2,1,2,2,1,0,0]);   // over 0.5 in 6 of 10 (one push)
   form('Jack Campbell','Solo Tackles',[6,5,7,4,6,5,6,3,5,6]);  // a coin flip around 5.5: no edge
-  let out=J(await run(`recordBookShadow(env,boards,${now})`));
+  let out=J(await run(`recordBookShadow(env,boards,${now},{defense:true})`));
   assert.deepEqual([out.twoBook,out.defense],[1,1]);
   const rows=db.prepare('SELECT * FROM book_shadow ORDER BY kind').all().map(r=>({...r}));
   const d=rows.find(r=>r.kind==='defense'),t=rows.find(r=>r.kind==='two_book');
@@ -35,7 +35,7 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
   // A player with an official pick in the game is left out.
   db.exec('DELETE FROM book_shadow');
   db.prepare("INSERT INTO public_recommendations (id,kind,sport,player,market,side,line,odds,game_id,game_time,legs_json,posted_at,status,source) VALUES ('official|2026-10-06|props|prop|x','prop','NFL','Aidan Hutchinson','Sacks','Over',0.5,120,'NFL--g1',?,'[]',?,'pending','market-verified-v2')").run(kick,new Date(now).toISOString());
-  await run(`recordBookShadow(env,boards,${now})`);assert.ok(!db.prepare("SELECT 1 FROM book_shadow WHERE player='Aidan Hutchinson'").get());
+  await run(`recordBookShadow(env,boards,${now},{defense:true})`);assert.ok(!db.prepare("SELECT 1 FROM book_shadow WHERE player='Aidan Hutchinson'").get());
   // Grading from the box score.
   context.recordPlayerStats=async rec=>({scoreboardFinal:true,receptions:rec.player==='Sam LaPorta'?6:0});run('recordPlayerStats=globalThis.recordPlayerStats');
   out=J(await run(`gradeBookShadow(env,${Date.parse(kick)+5*3600000})`));assert.equal(out.graded,1);
