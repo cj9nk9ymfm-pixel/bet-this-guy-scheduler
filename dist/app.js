@@ -2567,7 +2567,7 @@ function statsProp(l){
       note.textContent=`${hit.exchange} · ${pct(hit.odds)} chance`;
     });
   }
-  const boardNote=()=>{const host=document.getElementById('propList');if(!host)return;const cards=host.querySelectorAll('.prop-card'),shown=[...cards].filter(c=>!c.classList.contains('pm-hide')).length;let n=document.getElementById('pmBoardEmpty');const want=view()==='predictions'&&cards.length&&!shown&&[...boardPrices.keys()].length;if(want&&!n){n=document.createElement('p');n.id='pmBoardEmpty';n.className='pm-empty';n.textContent='None of these props are on prediction markets right now. Prediction markets list receptions, yards, passing TDs, rush attempts and completions.';host.after(n)}if(n)n.hidden=!want};
+  const boardNote=()=>{const host=document.getElementById('propList');if(!host)return;const cards=host.querySelectorAll('.prop-card'),shown=[...cards].filter(c=>!c.classList.contains('pm-hide')).length;let n=document.getElementById('pmBoardEmpty');const want=view()==='predictions'&&cards.length&&!shown&&[...boardPrices.keys()].length;if(want&&!n){n=document.createElement('p');n.id='pmBoardEmpty';n.className='pm-empty';n.textContent='None of these props are on prediction markets right now. Prediction markets list receptions, yards, passing TDs, anytime TDs, rush attempts and completions.';host.after(n)}if(n)n.hidden=!want};
   setInterval(boardNote,1500);
   const boardHost=document.getElementById('propList');if(boardHost)new MutationObserver(()=>{clearTimeout(boardTimer);boardTimer=setTimeout(paintBoard,60)}).observe(boardHost,{childList:true});
   function render(){
