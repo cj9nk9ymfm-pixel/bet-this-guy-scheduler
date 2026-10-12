@@ -1627,6 +1627,14 @@ if(typeof fetch==='function')window.btgCountVisit?.('view:home');
 // Pick alerts: a browser push notification whenever a new official pick
 // posts. iPhones need the site added to the Home Screen first (iOS 16.4+).
 (function(){
+  // Which picks this phone is pinged for: sportsbook picks, prediction app
+  // picks, or both. Kept on this device and sent with the subscription; the
+  // first time, prediction pings follow the home view.
+  const KINDS='btg-alert-kinds';
+  function alertKinds(){let k=null;try{k=JSON.parse(localStorage.getItem(KINDS)||'null')}catch{}return k&&typeof k==='object'?{alertSportsbook:k.sb!==false,alertPredictions:!!k.pm}:{alertSportsbook:true,alertPredictions:window.BTGPriceView?.view?.()==='predictions'}}
+  function paintKinds(){const k=alertKinds(),sb=$('#alertSportsbook'),pm=$('#alertPredictions');if(sb)sb.checked=k.alertSportsbook;if(pm)pm.checked=k.alertPredictions}
+  ['#alertSportsbook','#alertPredictions'].forEach(sel=>$(sel)?.addEventListener('change',()=>{const sb=$('#alertSportsbook'),pm=$('#alertPredictions');if(!sb.checked&&!pm.checked){(sel==='#alertSportsbook'?pm:sb).checked=true}try{localStorage.setItem(KINDS,JSON.stringify({sb:sb.checked,pm:pm.checked}))}catch{}window.BTGSyncAlertBooks?.()}));
+  $('#settingsBtn')?.addEventListener('click',paintKinds);paintKinds();
   const buttons=()=>$$('[data-alerts-toggle]');
   const supported=()=>'serviceWorker' in navigator&&'PushManager' in window&&'Notification' in window;
   const ios=/iPhone|iPad|iPod/.test(navigator.userAgent||'');
@@ -1645,12 +1653,12 @@ if(typeof fetch==='function')window.btgCountVisit?.('view:home');
     const reg=await navigator.serviceWorker.register('/sw.js');await navigator.serviceWorker.ready;
     const {publicKey}=await (await fetch('/api/alerts/key')).json();
     const sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:keyBytes(publicKey)});
-    const response=await fetch('/api/alerts/subscribe',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...sub.toJSON(),books:preferences.books||[],follows:(window.BTGFollow?.read().players||[]).map(f=>f.name),priceView:window.BTGPriceView?.view?.()||'odds',state:window.BTGPriceView?.state?.()||''})});
+    const response=await fetch('/api/alerts/subscribe',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...sub.toJSON(),books:preferences.books||[],follows:(window.BTGFollow?.read().players||[]).map(f=>f.name),priceView:window.BTGPriceView?.view?.()||'odds',state:window.BTGPriceView?.state?.()||'',...alertKinds()})});
     if(!response.ok){await sub.unsubscribe().catch(()=>{});note('Couldn’t turn alerts on right now. Try again in a minute.');return}
     show(true);note(window.BTGPriceView?.view?.()==='predictions'?'Alerts are on, with prediction-market prices. We’ll ping you when a new official pick drops. Switch to sportsbook odds at the top of the home screen.':preferences.books?.length?`Alerts are on. We’ll ping you when a new official pick drops, and when ${preferences.books.length===1?preferences.books[0]:'one of your sportsbooks'} has a good-value price.`:'Alerts are on. We’ll ping you when a new official pick drops.');window.btgCount?.('alerts:on');
   }
   // Saving Settings keeps the books stored with this phone's alerts up to date.
-  window.BTGSyncAlertBooks=async()=>{try{if(!('serviceWorker' in navigator))return;const reg=await navigator.serviceWorker.getRegistration('/sw.js');const sub=await reg?.pushManager?.getSubscription();if(sub)await fetch('/api/alerts/subscribe',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...sub.toJSON(),books:preferences.books||[],follows:(window.BTGFollow?.read().players||[]).map(f=>f.name),priceView:window.BTGPriceView?.view?.()||'odds',state:window.BTGPriceView?.state?.()||''})})}catch{}};
+  window.BTGSyncAlertBooks=async()=>{try{if(!('serviceWorker' in navigator))return;const reg=await navigator.serviceWorker.getRegistration('/sw.js');const sub=await reg?.pushManager?.getSubscription();if(sub)await fetch('/api/alerts/subscribe',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...sub.toJSON(),books:preferences.books||[],follows:(window.BTGFollow?.read().players||[]).map(f=>f.name),priceView:window.BTGPriceView?.view?.()||'odds',state:window.BTGPriceView?.state?.()||'',...alertKinds()})})}catch{}};
   async function turnOff(sub){
     await fetch('/api/alerts/unsubscribe',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({endpoint:sub.endpoint})}).catch(()=>{});
     await sub.unsubscribe().catch(()=>{});show(false);note('Alerts are off.');window.btgCount?.('alerts:off');
