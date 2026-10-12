@@ -1603,3 +1603,6 @@ html body .on-row .on-pm[hidden]{display:none}
 body[data-price-view="predictions"] #leansNow{display:none!important}
 html body .on-row .on-price.pm-price{color:#9db4ff}
 body[data-price-view="predictions"] #officialNowList .on-why{display:none}
+html body .on-row .on-pm.pm-ok{color:#2ee6a8}
+html body .on-row .on-pm.pm-bad{color:#f59e0b}
+html body .on-row .on-price.pm-skip{color:var(--muted);text-decoration:line-through;opacity:.75}

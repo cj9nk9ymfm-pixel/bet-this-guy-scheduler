@@ -2474,9 +2474,16 @@ function statsProp(l){
     const pm=view()==='predictions';
     document.querySelectorAll('[data-pm]').forEach(el=>{
       const prices=data?.picks?.[el.dataset.pm]||[],posted=Number(el.dataset.pmOdds),price=el.closest('.on-row')?.querySelector('.on-price');let text='';
-      if(price){if(!price.dataset.odds)price.dataset.odds=price.textContent;price.textContent=pm?(prices.length?pct(prices[0].odds):'—'):price.dataset.odds;price.classList.toggle('pm-price',pm);price.title=pm?(prices.length?`${prices[0].exchange}: ${pct(prices[0].odds)} chance`:'Not on prediction markets yet'):''}
-      if(pm)text=prices.length?prices.slice(0,3).map(p=>`${p.exchange} ${pct(p.odds)}`).join(' · '):(data?'Not on prediction markets yet':'');
-      else if(data?.mode==='sportsbooks'&&prices.length&&Number.isFinite(posted)&&dec(prices[0].odds)>dec(posted))text=`Better on ${prices[0].exchange}: ${pct(prices[0].odds)}`;
+      // good: still 1+ point under the pick's fair chance at that market.
+      const good=prices.filter(p=>p.good),best=prices[0],fair=data?.fairs?.[el.dataset.pm],ok=Boolean(best?.good);
+      if(price){if(!price.dataset.odds)price.dataset.odds=price.textContent;price.textContent=pm?(best?pct(best.odds):'—'):price.dataset.odds;price.classList.toggle('pm-price',pm);price.classList.toggle('pm-skip',pm&&Boolean(best)&&!ok);price.title=pm?(best?`${best.exchange}: ${pct(best.odds)} chance${fair!=null?`; fair chance ${Math.round(fair)}%`:''}`:'Not on prediction markets yet'):''}
+      el.classList.remove('pm-ok','pm-bad');
+      if(pm){
+        if(!best)text=data?'Not on prediction markets yet':'';
+        else if(ok){text=`✓ Good value: ${good.slice(0,3).map(p=>`${p.exchange} ${pct(p.odds)}`).join(' · ')}`;el.classList.add('pm-ok')}
+        else{text=`Worse than fair here, skip: ${best.exchange} ${pct(best.odds)}${fair!=null?` vs fair ${Math.round(fair)}%`:''}`;el.classList.add('pm-bad')}
+      }
+      else if(data?.mode==='sportsbooks'&&best&&ok&&Number.isFinite(posted)&&dec(best.odds)>dec(posted))text=`Better on ${best.exchange}: ${pct(best.odds)}`;
       el.hidden=!text;el.textContent=text;
     });
   }

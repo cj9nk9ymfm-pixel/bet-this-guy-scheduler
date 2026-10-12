@@ -36,11 +36,12 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
   // Saved prices feed /api/predictions, filtered to the visitor's state.
   const saved=JSON.parse(db.prepare("SELECT prices_json FROM exchange_prices WHERE event_id='NFL--g1'").get().prices_json);
   assert.deepEqual(saved.map(p=>p[0]).sort(),['kalshi','kalshi','novig','novig'],'exchanges only, both sides');
-  db.prepare("INSERT INTO public_recommendations(id,kind,player,market,side,line,odds,game_id,game_time,legs_json,posted_at,status,source) VALUES('official|x|prop|1','prop','Tre Tucker','Receptions','Under',3.5,105,'NFL--g1',?,?,?,'pending','market-verified-v2')").run(kick,JSON.stringify([{player:'Tre Tucker'}]),new Date(now).toISOString());
+  db.prepare("INSERT INTO public_recommendations(id,kind,player,market,side,line,odds,game_id,game_time,legs_json,posted_at,status,source) VALUES('official|x|prop|1','prop','Tre Tucker','Receptions','Under',3.5,105,'NFL--g1',?,?,?,'pending','market-verified-v2')").run(kick,JSON.stringify([{player:'Tre Tucker',edge:3.5}]),new Date(now).toISOString());
   const pred=async(state,cf)=>J(await (await run(`predictionsResponse(${JSON.stringify({url:'https://x/api/predictions'+(state?'?state='+state:''),cf})},env,${now+60000})`)).json());
   let p=await pred(null,{country:'US',regionCode:'TX'});
   assert.equal(p.mode,'predictions');assert.equal(p.stateName,'Texas');assert.ok(!('exchangeKeys' in p));
-  assert.deepEqual(p.picks['official|x|prop|1'],[{exchange:'Kalshi',odds:-104},{exchange:'Novig',odds:-125}],'every exchange price on the pick, best first');
+  assert.deepEqual(p.picks['official|x|prop|1'],[{exchange:'Kalshi',odds:-104,good:true},{exchange:'Novig',odds:-125,good:false}],'every exchange price on the pick, best first, marked good when 1+ point under the fair chance');
+  assert.equal(p.fairs['official|x|prop|1'],52.3);
   assert.equal(p.value.length,0,'no value row for a player with an official pick');
   // The pick gets the prediction-market prices saved when it locks (once).
   assert.deepEqual(J(await run(`stampExchangePrices(env,${now+60000})`)),{stamped:1});
@@ -49,9 +50,9 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
   assert.deepEqual(J(await run(`stampExchangePrices(env,${now+120000})`)),{stamped:0},'never re-stamped');
   db.prepare("UPDATE public_recommendations SET legs_json=json_set(legs_json,'$[0].exchanges[1].odds',-140)").run();
   const pickRow=db.prepare('SELECT * FROM public_recommendations').get();
-  assert.equal(run(`exchangeLine(${JSON.stringify(pickRow)})`),'Kalshi 51% · Novig 58%','chances, best first');
+  assert.equal(run(`exchangeLine(${JSON.stringify(pickRow)})`),'Kalshi 51%','only good-value prices');assert.equal(run(`exchangeLine(${JSON.stringify(pickRow)},null,3,true)`),'Kalshi 51% · Novig 58%','chances, best first');
   assert.ok(run(`xPickText(${JSON.stringify(pickRow)})`).includes('\n📈 Also on Kalshi at 51%'));
-  assert.ok(run(`emailPickText(${JSON.stringify(pickRow)})`).endsWith('; prediction markets: Kalshi 51% · Novig 58%'));
+  assert.ok(run(`emailPickText(${JSON.stringify(pickRow)})`).endsWith('; prediction markets: Kalshi 51%'));
   // Push alerts: a phone set to prediction markets gets chances for its state.
   const ep='https://fcm.googleapis.com/fcm/send/abc';
   const sub=async body=>(await run(`alertsApi(new Request('https://x/api/alerts/subscribe',{method:'POST',body:${JSON.stringify(JSON.stringify(body))}}),env)`)).status;
@@ -60,7 +61,10 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
   assert.deepEqual({...db.prepare('SELECT price_view,state FROM push_subscriptions').get()},{price_view:'predictions',state:'CT'});
   db.prepare("UPDATE public_recommendations SET posted_at=?").run(new Date(now).toISOString());
   let alert=J(await run(`latestAlert(env,${now+60000},${JSON.stringify(ep)})`));
-  assert.equal(alert.body,'Tre Tucker Under 3.5 receptions: Kalshi 51%','Novig is out in Connecticut');
+  assert.equal(alert.body,'Tre Tucker Under 3.5 receptions: good value on Kalshi 51%','Novig is out in Connecticut');
+  db.prepare("UPDATE public_recommendations SET legs_json=json_set(legs_json,'$[0].edge',1.5)").run();
+  alert=J(await run(`latestAlert(env,${now+60000},${JSON.stringify(ep)})`));assert.equal(alert.body,'Tre Tucker Under 3.5 receptions: Kalshi 51% is worse than fair, skip on prediction markets (+105 at sportsbooks)');
+  assert.ok(!run(`xPickText(${JSON.stringify(db.prepare('SELECT * FROM public_recommendations').get())})`).includes('Also on'),'X only names good-value prices');
   await sub({endpoint:ep,keys,priceView:'odds',state:'CT'});
   alert=J(await run(`latestAlert(env,${now+60000},${JSON.stringify(ep)})`));assert.equal(alert.body,'Tre Tucker Under 3.5 receptions (+105)');
   await sub({endpoint:ep,keys,priceView:'predictions',state:'XX'});

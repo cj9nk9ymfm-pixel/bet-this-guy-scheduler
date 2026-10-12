@@ -1308,11 +1308,18 @@ async function stampExchangePrices(env,now=Date.now()){
 }
 // Chance (percent) from American odds, as prediction markets list prices.
 const exchangePct=odds=>Math.round(100/recordDecimal(odds));
+// A pick's fair chance (percent): its edge is fair chance minus the chance in
+// its locked price, both in points.
+const EXCHANGE_VALUE_MIN=1;
+function pickFairPct(r){const edge=Number(recordLegs(r)[0]?.edge),odds=Number(r.odds);return Number.isFinite(edge)&&Number.isFinite(odds)&&odds!==0?edge+100/recordDecimal(odds):null}
+const exchangeGood=(r,p)=>{const fair=pickFairPct(r);return fair!==null&&fair-100/recordDecimal(p.odds)>=EXCHANGE_VALUE_MIN};
 // "Novig 48% · Kalshi 49%" from a pick's saved exchange prices, limited to
 // the exchanges open in a state (all when the state isn't known).
-function exchangeLine(r,state=null,max=3){
+// Only prices that are still good value (1+ point under the pick's fair
+// chance) unless all is set.
+function exchangeLine(r,state=null,max=3,all=false){
   const leg=recordLegs(r)[0]||{},open=state?new Set(bettingOptionsFor(state).exchangeKeys||[]):null;
-  return (Array.isArray(leg.exchanges)?leg.exchanges:[]).filter(p=>!open||open.has(p.key)).slice(0,max).map(p=>`${p.exchange} ${exchangePct(p.odds)}%`).join(' · ');
+  return (Array.isArray(leg.exchanges)?leg.exchanges:[]).filter(p=>(!open||open.has(p.key))&&(all||exchangeGood(r,p))).slice(0,max).map(p=>`${p.exchange} ${exchangePct(p.odds)}%`).join(' · ');
 }
 // Prediction-market prices for the visitor's state: every exchange price on
 // each upcoming official prop (best first), and exchange props still priced
@@ -1325,9 +1332,11 @@ async function predictionsResponse(request,env,now=Date.now()){
   const stamp=new Date(now).toISOString(),allowed=new Set(exchangeKeys);
   const boards=new Map((((await env.DB.prepare('SELECT event_id,prices_json,updated_at FROM exchange_prices WHERE game_time>?').bind(stamp).all()).results)||[]).filter(r=>now-Date.parse(r.updated_at)<3*3600000).map(r=>{let list=[];try{list=JSON.parse(r.prices_json)}catch{}return [r.event_id,list.filter(p=>allowed.has(p[0]))]}));
   const find=(eventId,player,market,side,line)=>(boards.get(eventId)||[]).filter(p=>normalizedName(p[1])===normalizedName(player)&&p[2]===market&&p[3]===side&&Number(p[4])===Number(line));
-  const official=(await env.DB.prepare("SELECT id,game_id,player,market,side,line FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND kind='prop' AND game_time>?").bind(stamp).all()).results||[];
-  const picks={};
-  for(const r of official){const list=find(r.game_id,r.player,r.market,r.side,r.line).sort((a,b)=>recordDecimal(b[5])-recordDecimal(a[5]));if(list.length)picks[r.id]=list.map(p=>({exchange:EXCHANGES[p[0]],odds:p[5]}))}
+  const official=(await env.DB.prepare("SELECT id,game_id,player,market,side,line,odds,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND kind='prop' AND game_time>?").bind(stamp).all()).results||[];
+  // Each price also says whether it's still good value: its chance at least
+  // 1 point under the pick's fair chance (the official bar).
+  const picks={},fairs={};
+  for(const r of official){const fair=pickFairPct(r);if(fair!==null)fairs[r.id]=+fair.toFixed(1);const list=find(r.game_id,r.player,r.market,r.side,r.line).sort((a,b)=>recordDecimal(b[5])-recordDecimal(a[5]));if(list.length)picks[r.id]=list.map(p=>({exchange:EXCHANGES[p[0]],odds:p[5],...(fair!==null?{good:fair-100/recordDecimal(p[5])>=EXCHANGE_VALUE_MIN}:{})}))}
   const taken=new Set(official.map(r=>`${r.game_id}|${normalizedName(r.player)}`)),value=[];
   const rows=(await env.DB.prepare("SELECT exchange,event_id,player,team,market,side,line,fair_pct,game_time FROM exchange_shadow WHERE kind='prop' AND game_time>?").bind(new Date(now+5*60000).toISOString()).all()).results||[];
   for(const r of rows){
@@ -1337,7 +1346,7 @@ async function predictionsResponse(request,env,now=Date.now()){
     value.push({exchange:r.exchange,fair:+Number(r.fair_pct).toFixed(1),eventId:r.event_id,player:r.player,team:r.team||'',market:r.market,side:r.side,line:r.line,odds:cur[5],edge:+edge.toFixed(1),gameTime:r.game_time});
   }
   value.sort((a,b)=>b.edge-a.edge);
-  return new Response(JSON.stringify({success:true,...pub,picks,value:value.slice(0,8)}),{headers:head});
+  return new Response(JSON.stringify({success:true,...pub,picks,fairs,value:value.slice(0,8)}),{headers:head});
 }
 function bettingOptionsResponse(request){
   const {exchangeKeys,...where}=bettingOptions(request);
@@ -1886,7 +1895,7 @@ async function latestAlert(env,now=Date.now(),endpoint=null){
   const sub=endpoint&&validPushEndpoint(endpoint)?await env.DB.prepare('SELECT price_view,state FROM push_subscriptions WHERE endpoint=?').bind(endpoint).first().catch(()=>null):null;
   const pm=sub?.price_view==='predictions';
   const line=r=>{if(r.kind==='parlay')return `${recordLegs(r).length}-leg parlay (${weeklyOdds(r.combined_odds)}): ${recordLegs(r).map(l=>l.player).join(' + ')}`;
-    if(pm){const ex=exchangeLine(r,sub.state||null);return `${r.player} ${weeklyLegText(r)}: ${ex||`not on prediction markets yet (${weeklyOdds(r.odds)} at sportsbooks)`}`}
+    if(pm){const ex=exchangeLine(r,sub.state||null),any=exchangeLine(r,sub.state||null,1,true);return `${r.player} ${weeklyLegText(r)}: ${ex?`good value on ${ex}`:any?`${any} is worse than fair, skip on prediction markets (${weeklyOdds(r.odds)} at sportsbooks)`:`not on prediction markets yet (${weeklyOdds(r.odds)} at sportsbooks)`}`}
     return `${r.player} ${weeklyLegText(r)} (${weeklyOdds(r.odds)})`};
   return {title:picks.length===1?'✅ New Bet This Guy pick':`✅ ${picks.length} new Bet This Guy picks`,body:picks.map(line).join('\n'),url:'/'};
 }
