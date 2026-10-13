@@ -2973,16 +2973,20 @@ async function postCardRecapToX(env,now=Date.now()){
   const pmp=((await env.DB.prepare('SELECT * FROM prediction_parlays WHERE game_time>? AND game_time<? ORDER BY game_time,posted_at').bind(from,to).all().catch(()=>({results:[]}))).results||[]).filter(onDay);
   const done=r=>['won','lost','push','void'].includes(r.result);
   if(!official.length&&!pm.length&&!pmp.length)return {posted:0,empty:true};
-  if(![...official,...pm,...pmp].every(done))return {posted:0,waiting:true};
+  // '#now' in the request posts before every stat is in: plays still waiting
+  // on official stats are listed as pending and left out of the totals.
+  const partial=/#now/.test(req),pending=[...official,...pm,...pmp].filter(r=>!done(r));
+  if(pending.length&&!partial)return {posted:0,waiting:true};
   if(!(await xClaim(env,key,now)))return {posted:0,done:true};
   const P='#c4b5fd',legsOf=r=>{try{return JSON.parse(r.legs_json)}catch{return []}};
   const sbMoney=official.reduce((t,r)=>t+xPayout(r),0),pmMoney=pm.reduce((t,r)=>t+(r.result==='won'?100*(recordDecimal(r.net_odds??r.odds)-1):r.result==='lost'?-100:0),0)+pmp.reduce((t,r)=>t+predictionParlayPay(r),0);
   const all=[...official,...pm,...pmp].filter(r=>r.result!=='void'),wins=all.filter(r=>r.result==='won').length,losses=all.filter(r=>r.result==='lost').length,total=sbMoney+pmMoney;
   const picks=[...official.flatMap(r=>{const legs=recordLegs(r);return r.kind==='parlay'?[{res:r.result,text:`${legs.length}-leg parlay`,odds:weeklyMoney(xPayout(r)),sub:`Sportsbook · ${weeklyOdds(r.combined_odds)} · ¼ unit`},...legs.map(l=>({leg:true,text:`${l.result==='won'?'✓':l.result==='lost'?'✗':'·'} ${l.player} · ${weeklyLegText(l)}`}))]:[{res:r.result,text:`${r.player} · ${weeklyLegText(r)}`,odds:weeklyMoney(xPayout(r)),sub:`Sportsbook · ${weeklyOdds(r.odds)}${legs[0]?.book?` · ${legs[0].book}`:''}`}]}),
-    ...pm.map(r=>({res:r.result,color:r.result==='won'?P:undefined,text:`${r.player} · ${weeklyLegText(r)}`,odds:weeklyMoney(r.result==='won'?100*(recordDecimal(r.net_odds??r.odds)-1):r.result==='lost'?-100:0),sub:`Prediction app · ${r.exchange} · ${exchangePct(r.odds)}%`})),
+    ...pm.map(r=>!done(r)?{text:`${r.player} · ${weeklyLegText(r)}`,odds:'Pending',color:'#9fb0cc',sub:`Prediction app · ${r.exchange} · ${exchangePct(r.odds)}% · waiting on official stats`}:({res:r.result,color:r.result==='won'?P:undefined,text:`${r.player} · ${weeklyLegText(r)}`,odds:weeklyMoney(r.result==='won'?100*(recordDecimal(r.net_odds??r.odds)-1):r.result==='lost'?-100:0),sub:`Prediction app · ${r.exchange} · ${exchangePct(r.odds)}%`})),
     ...pmp.flatMap(r=>{const legs=legsOf(r);return [{res:r.result,color:r.result==='won'?P:undefined,text:`${legs.length}-leg parlay`,odds:weeklyMoney(predictionParlayPay(r)),sub:`${r.exchange} · ${exchangePct(r.odds)}% · ¼ unit`},...legs.map(l=>({leg:true,color:P,text:`${l.result==='won'?'✓':l.result==='lost'?'✗':'·'} ${l.player} · ${weeklyLegText(l)}`}))]})];
   const games=[...new Set([...official.map(r=>xMatchup(recordLegs(r)[0]?.team)),...pm.map(r=>xMatchup(r.team))].filter(Boolean))],matchup=games.length===1?games[0]:etDate(Date.parse(all[0]?.game_time||from),{weekday:'long'});
-  const text=xShort(`🧾 Final: ${wins}–${losses} on the full card${games.length===1?`, ${matchup}`:''}. ${weeklyMoney(total)} on the night.\n\n🏈 Sportsbook: ${weeklyMoney(sbMoney)}\n📈 Prediction apps: ${weeklyMoney(pmMoney)}\n\n$100 singles, $25 parlays, locked before kickoff, every result graded in public. Link in bio. 21+`);
+  const waitNote=pending.length?`\n⏳ ${pending.map(r=>r.player||'1 parlay').join(', ')} grades when official stats post.`:'';
+  const text=xShort(`🧾 Final: ${wins}–${losses} on the full card${games.length===1?`, ${matchup}`:''}. ${weeklyMoney(total)} on the night.\n\n🏈 Sportsbook: ${weeklyMoney(sbMoney)}\n📈 Prediction apps: ${weeklyMoney(pmMoney)}${waitNote}\n\n$100 singles, $25 parlays, locked before kickoff, graded in public. Link in bio. 21+`);
   let mediaId=null;
   try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(xSlateSvg({final:true,kicker:'FULL CARD RESULTS',day:`${wins}–${losses}`,dayColor:total>=0?'#2ee6a8':'#f87171',dateLine:`${matchup} · ${weeklyMoney(total)}`,note:`Sportsbook ${weeklyMoney(sbMoney)} · Apps ${weeklyMoney(pmMoney)}`,note2:'$100 singles · $25 parlays',picks,cta:'Graded in public'})))}
   catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} card recap graphic: ${error.message}`).catch(()=>{})}
