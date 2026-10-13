@@ -2150,8 +2150,31 @@ async function weeklyPage(request,env){
   const body=`<p class="eyebrow">OFFICIAL PICKS · ${season}</p><h1>NFL Week ${week} player prop picks</h1><p class="lead">${weeklyEscape(weeklyRange(start))} · ${singles.length} single${singles.length===1?'':'s'}, ${parlays.length} parlay${parlays.length===1?'':'s'}${s.pending?` · ${s.pending} still to play`:''}. Every pick was posted before kickoff at the best price we found.</p>${stats}<p><a class="cta" href="/">Open this week’s board →</a><a href="/trust#official" style="white-space:nowrap">All results →</a></p><h2>Singles</h2><ul class="picks">${singles.map(weeklyPickItem).join('')||'<li>No singles this week.</li>'}</ul>${parlays.length?`<h2>Parlays</h2><ul class="picks">${parlays.map(weeklyPickItem).join('')}</ul>`:''}${pmSection}<nav class="pager">${prev}${next}</nav>`;
   return new Response(weeklyShell({title,description,path:`/picks/${season}/week-${week}`,body}),{headers});
 }
+// NBA pages for search (/nba and /nba/<night>): every official NBA pick by
+// night, server-rendered like the NFL weekly pages, with the NBA record.
+const nbaNightLabel=night=>new Date(`${night}T12:00:00Z`).toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric',timeZone:'UTC'});
+const nbaPickItem=r=>{const html=weeklyPickItem(r);return r.result==='push'&&recordLegs(r).every(l=>l.voided)?html.replace('>Push</span>','>No action</span>'):html};
+async function nbaPage(request,env){
+  if(!env.DB)return null;
+  const url=new URL(request.url),headers={'content-type':'text/html; charset=utf-8','cache-control':'public, max-age=300'};
+  const all=(await env.DB.prepare("SELECT * FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'nba|%' ORDER BY game_time,posted_at").all()).results||[];
+  const season=weeklySummary(all),graded=season.wins+season.losses+season.pushes,record=`${season.wins}–${season.losses}${season.pushes?`–${season.pushes}`:''}`;
+  const stats=s=>{const g=s.wins+s.losses+s.pushes;return g?`<div class="stats"><div class="stat"><strong>${s.wins}–${s.losses}${s.pushes?`–${s.pushes}`:''}</strong><span>singles record</span></div><div class="stat ${s.profit>=0?'up':'down'}"><strong>${weeklyMoney(s.profit)}</strong><span>betting $100 a pick</span></div>${s.tracked?`<div class="stat"><strong>${s.beat} of ${s.tracked}</strong><span>beat the closing price</span></div>`:''}${s.parlayWins+s.parlayLosses?`<div class="stat ${s.parlayProfit>=0?'up':'down'}"><strong>${s.parlayWins}–${s.parlayLosses}</strong><span>parlays · ${weeklyMoney(s.parlayProfit)}</span></div>`:''}</div>`:''};
+  const nights=[...new Set(all.map(r=>String(r.id).split('|')[1]))].sort().reverse();
+  if(url.pathname==='/nba'||url.pathname==='/nba/'){
+    const items=nights.map(n=>{const rows=all.filter(r=>String(r.id).startsWith(`nba|${n}|`)),s=weeklySummary(rows),g=s.wins+s.losses+s.pushes;return `<li><a href="/nba/${n}"><span><strong>${weeklyEscape(nbaNightLabel(n).replace(/, \d{4}$/,''))}</strong> <small>${rows.length} pick${rows.length===1?'':'s'}</small></span><small>${g?`${s.wins}–${s.losses}${s.pushes?`–${s.pushes}`:''} · ${weeklyMoney(s.profit)}`:'To play'}</small></a></li>`}).join('');
+    const body=`<p class="eyebrow">OFFICIAL NBA PICKS</p><h1>NBA player prop picks tonight</h1><p class="lead">Free NBA player prop picks, posted the moment a sportsbook price beats the fair line across the big books. Up to 6 picks a night, one per game, each locked before tip-off and graded from the box score, losses included.${graded?` NBA record: ${record}, ${weeklyMoney(season.profit)} at $100 a pick.`:' The first picks post for opening night, Tuesday, October 20.'}</p>${stats(season)}<p><a class="cta" href="/?league=NBA">Tonight’s NBA board →</a><a href="/trust#nba" style="white-space:nowrap">NBA results →</a></p>${items?`<h2>Every night</h2><ul class="weeks">${items}</ul>`:''}`;
+    return new Response(weeklyShell({title:'NBA Player Prop Picks Tonight: Free, Graded in Public | Bet This Guy',description:graded?`Free NBA player prop picks every night, locked before tip-off and graded in public: ${record} on singles, ${weeklyMoney(season.profit)} at $100 a pick.`:'Free NBA player prop picks every night from opening night, Oct 20: priced against the fair line across the big books, locked before tip-off, graded in public.',path:'/nba',body}),{headers});
+  }
+  const m=url.pathname.match(/^\/nba\/(\d{4}-\d{2}-\d{2})\/?$/);if(!m||!nights.includes(m[1]))return null;
+  const night=m[1],rows=all.filter(r=>String(r.id).startsWith(`nba|${night}|`)),s=weeklySummary(rows),singles=rows.filter(r=>r.kind==='prop'),parlays=rows.filter(r=>r.kind==='parlay'),g=s.wins+s.losses+s.pushes;
+  const i=nights.indexOf(night),newer=nights[i-1],older=nights[i+1],label=nbaNightLabel(night);
+  const body=`<p class="eyebrow">OFFICIAL NBA PICKS</p><h1>NBA player prop picks: ${weeklyEscape(label.replace(/, \d{4}$/,''))}</h1><p class="lead">${singles.length} single${singles.length===1?'':'s'}, ${parlays.length} parlay${parlays.length===1?'':'s'}${s.pending?` · ${s.pending} still to play`:''}. Every pick was posted before tip-off at the best price we found. A player who doesn’t play is no action, like at the sportsbook.</p>${stats(s)}<p><a class="cta" href="/?league=NBA">Tonight’s NBA board →</a><a href="/nba" style="white-space:nowrap">Every night →</a></p><h2>Singles</h2><ul class="picks">${singles.map(nbaPickItem).join('')||'<li>No singles this night.</li>'}</ul>${parlays.length?`<h2>Parlays</h2><ul class="picks">${parlays.map(nbaPickItem).join('')}</ul>`:''}<nav class="pager">${older?`<a href="/nba/${older}">← Earlier night</a>`:'<span></span>'}${newer?`<a href="/nba/${newer}">Later night →</a>`:'<span></span>'}</nav>`;
+  return new Response(weeklyShell({title:`NBA Player Prop Picks ${label.replace(/^\w+, /,'')} | Bet This Guy`,description:g?`Every official NBA player prop pick for ${label}: ${s.wins}–${s.losses} on singles, ${weeklyMoney(s.profit)} at $100 a pick. Prices, books and results.`:`Official NBA player prop picks for ${label}, locked before tip-off, with prices and books. Results post as games finish.`,path:`/nba/${night}`,body}),{headers});
+}
 async function weeklySitemap(env){
-  const paths=['/','/about','/trust','/legal','/picks','/where'];
+  const paths=['/','/about','/trust','/legal','/picks','/where','/nba'];
+  try{const nights=await env.DB.prepare("SELECT DISTINCT substr(id,5,10) AS night FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'nba|%' ORDER BY night").all();for(const n of nights.results||[])if(/^\d{4}-\d{2}-\d{2}$/.test(n.night))paths.push(`/nba/${n.night}`)}catch{}
   try{const weeks=await env.DB.prepare("SELECT DISTINCT substr(id,10,10) AS week FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' ORDER BY week").all();for(const w of weeks.results||[]){const nfl=nflWeekOf(w.week);if(nfl)paths.push(`/picks/${nfl.season}/week-${nfl.week}`)}}catch{}
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${paths.map(path=>`  <url><loc>${SITE_URL}${path}</loc></url>`).join('\n')}\n</urlset>\n`;
 }
@@ -2363,7 +2386,7 @@ async function trustSnapshot(env,now=Date.now()){
 
 // Anonymous usage counts: daily totals per metric. No cookies, IP addresses or
 // per-person identifiers are stored; unknown metric names are ignored.
-const USAGE_METRICS=new Set(['sheet:alerts','sheet:email','sheet:xproof','email:subscribe','email:open','reply:copy','reply:image','partner:novig:copy','app:novig','app:prophetx','app:kalshi','app:polymarket','app:betopenly','welcome:shown','welcome:alerts','welcome:account','welcome:skip','welcome:close','welcome:reopen','view:home','view:trust','view:picks','view:week','visit:new','visit:return','card:open','slip:add','parlay:add','share','hit:open','profile:open','affiliate:click','alerts:on','alerts:off','gate:shown','gate:signup','gate:login','nudge:shown','nudge:alerts','nudge:signup','alerts:email','view:post','post:copy','post:open','post:image','src:reddit','src:x','src:google','src:social','src:other','src:direct']);
+const USAGE_METRICS=new Set(['view:nba','sheet:alerts','sheet:email','sheet:xproof','email:subscribe','email:open','reply:copy','reply:image','partner:novig:copy','app:novig','app:prophetx','app:kalshi','app:polymarket','app:betopenly','welcome:shown','welcome:alerts','welcome:account','welcome:skip','welcome:close','welcome:reopen','view:home','view:trust','view:picks','view:week','visit:new','visit:return','card:open','slip:add','parlay:add','share','hit:open','profile:open','affiliate:click','alerts:on','alerts:off','gate:shown','gate:signup','gate:login','nudge:shown','nudge:alerts','nudge:signup','alerts:email','view:post','post:copy','post:open','post:image','src:reddit','src:x','src:google','src:social','src:other','src:direct']);
 const USAGE_BOTS=/bot|crawl|spider|slurp|preview|facebookexternalhit|curl|wget|python|headless|lighthouse/i;
 async function countUsage(env,metrics,request){
   // The owner's own devices (opted out with /?me=1) are never counted.
@@ -3254,6 +3277,31 @@ const nbaRecordSummary=async env=>weeklySummary((await env.DB.prepare("SELECT ki
 const nbaLine=r=>{const legs=recordLegs(r),f=legs[0]||{};return r.kind==='parlay'?`• ${legs.length}-leg parlay (${weeklyOdds(r.combined_odds)}): ${legs.map(l=>`${l.player} ${weeklyLegText(l)}`).join(' + ')}`:`• ${r.player} ${weeklyLegText(r)} (${weeklyOdds(r.odds)}${f.book?`, ${f.book}`:''})`};
 const nbaSlatePicks=rows=>rows.flatMap(r=>{const legs=recordLegs(r),f=legs[0]||{},res=['won','lost','push'].includes(r.result)?r.result:null;return r.kind==='parlay'?[{text:`${legs.length}-leg parlay`,odds:weeklyOdds(r.combined_odds),sub:'¼ unit',res},...legs.map(l=>({leg:true,text:`${l.player} · ${weeklyLegText(l)}`}))]:[{text:`${r.player} · ${weeklyLegText(r)}`,odds:weeklyOdds(r.odds),sub:[xMatchup(f.team),f.book].filter(Boolean).join(' · '),res}]});
 const nbaDecided=r=>['won','lost','push'].includes(r.result)&&(r.status==='final'||recordLegs(r).some(l=>l.decidedEarly));
+// NBA launch post: one X post once the first regular-season game's player
+// props are on our board. The watch reads that one game's board every 30
+// minutes from 4 days out until it sees props; x-nba=hold stops the post.
+const NBA_LAUNCH_TEXT='🏀 NBA player props are live on Bet This Guy.\n\nEvery night: up to 6 picks, each priced better than the fair line across the big books, locked before tip-off and graded in public, losses included.\n\nSame deal as our NFL picks: free, no paywall, every result on the record. Free alerts: link in bio. 21+';
+async function watchNbaLaunch(request,env,ctx,now=Date.now()){
+  if(!env.DB||await appSetting(env,'nba-props-live'))return {done:true};
+  if(now<NBA_START-4*86400000)return {waiting:true};
+  const last=Number(await appSetting(env,'nba-launch-check')||0);if(now-last<29*60000)return {skipped:true};
+  await setAppSetting(env,'nba-launch-check',String(now));
+  const schedule=await futureSchedule(new Request(new URL('/api/schedule?sport=NBA',request.url)),env,ctx);if(!schedule.ok)return {error:'schedule'};
+  const first=((await schedule.json()).data||[]).filter(e=>Date.parse(e.status?.startsAt)>=NBA_START).sort((a,b)=>Date.parse(a.status.startsAt)-Date.parse(b.status.startsAt))[0];
+  if(!first)return {games:0};
+  const u=new URL('/api/event',request.url);u.searchParams.set('eventID',first.eventID);
+  const r=await eventProps(new Request(u),env,ctx);if(!r.ok)return {error:'board'};
+  const board=((await r.json()).data||[])[0]||{},props=(board.bookmakers||[]).reduce((n,b)=>n+(b.markets||[]).filter(m=>recordLabels[m.key]).reduce((x,m)=>x+(m.outcomes||[]).filter(o=>o.description).length,0),0);
+  if(props>0)await setAppSetting(env,'nba-props-live',new Date(now).toISOString());
+  return {props};
+}
+async function postNbaLaunchToX(env,now=Date.now()){
+  if(!env.DB||!xReady(env)||await appSetting(env,'x-nba')==='hold')return {posted:0,disabled:true};
+  if(!(await appSetting(env,'nba-props-live')))return {posted:0,due:false};
+  const key='x-nba-launch';if(!(await xClaimable(env,key,now))||!(await xClaim(env,key,now)))return {posted:0,done:true};
+  try{const sent=await xPost(env,NBA_LAUNCH_TEXT);await xDone(env,key,now);if(sent?.data?.id)await setAppSetting(env,`xid:${key}`,String(sent.data.id)).catch(()=>{});await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} nba launch ${sent?.data?.id||''}`).catch(()=>{});return {posted:1}}
+  catch(error){await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
+}
 async function postNbaCardToX(env,now=Date.now()){
   if(!env.DB||!xReady(env)||await appSetting(env,'x-nba')==='hold')return {posted:0,disabled:true};
   const night=nbaNight(now),key=`x-nba-card:${night}`,rows=await nbaRows(env,night);
@@ -3445,12 +3493,13 @@ async function runXPosts(env,now=Date.now()){
   const pin=picks.posted||combo.posted||weekly.posted||final.posted||slate.posted?{posted:0,waiting:true}:await postAlertsPinToX(env,now);
   const recap=picks.posted||combo.posted||weekly.posted||final.posted||slate.posted||pin.posted?{posted:0,waiting:true}:await postDayRecapToX(env,now);
   const proof=await postProofToX(env,now);
+  const nbaLaunch=await postNbaLaunchToX(env,now).catch(error=>({posted:0,error:error.message}));
   const nba=picks.posted||combo.posted||weekly.posted||final.posted||slate.posted?{posted:0,waiting:true}:await postNbaCardToX(env,now).catch(error=>({posted:0,error:error.message}));
   const predictions=picks.posted?{posted:0,waiting:true}:await postPredictionPicksToX(env,now).catch(error=>({posted:0,error:error.message}));
   const results=picks.posted||combo.posted||weekly.posted||final.posted||slate.posted||pin.posted||recap.posted?{posted:0,waiting:true}:await postResultsToX(env,now);
   // The pinned summary waits for a run with nothing else heavy.
   const summary=picks.posted||combo.posted||weekly.posted||final.posted||slate.posted||pin.posted||recap.posted||results.posted?{posted:0,waiting:true}:await postSummaryToX(env,now);
-  return {picks,weekly,closing,combo,final,slate,pin,recap,proof,nba,predictions,results,summary};
+  return {picks,weekly,closing,combo,final,slate,pin,recap,proof,nbaLaunch,nba,predictions,results,summary};
 }
 // "My book" alerts: a good-value price at one of someone's own sportsbooks.
 // The fair price always comes from every book (3+ pricing both sides, the same

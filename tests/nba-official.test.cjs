@@ -109,6 +109,19 @@ const run=c=>vm.runInContext(c,context),req='new Request("https://betthisguy.com
   const body=await res.json();
   assert.equal(body.sport,'NBA');assert.deepEqual([body.season.wins,body.season.losses,body.season.pushes],[1,0,1]);
   assert.equal(body.recent.length,rows.length);assert.equal(body.tonight,'2026-10-27');
+  // NBA pages: the index with the record, each night's page, the sitemap.
+  {const page=await run(`nbaPage(new Request('https://betthisguy.com/nba'),env)`);assert.equal(page.status,200);const html=await page.text();
+   assert.match(html,/NBA player prop picks tonight/);assert.match(html,/href="\/nba\/2026-10-27"/);assert.match(html,/1–0–1/);
+   const night=await (await run(`nbaPage(new Request('https://betthisguy.com/nba/2026-10-27'),env)`)).text();
+   assert.match(night,/Jayson Tatum/);assert.match(night,/>No action</,'a player who sat shows as no action');
+   assert.equal(await run(`nbaPage(new Request('https://betthisguy.com/nba/2026-10-01'),env)`),null,'a night with no picks is not a page');
+   assert.match(await run('weeklySitemap(env)'),/\/nba\/2026-10-27/)}
+  // Launch post: once the first regular-season game has props, one post (a hold stops it).
+  run('runtimeFeedCache.clear()');
+  assert.equal((await run(`watchNbaLaunch(${req},env,{waitUntil(){}},${Date.parse('2026-10-14T12:00:00Z')})`)).waiting,true,'not before 4 days out');
+  assert.ok((await run(`watchNbaLaunch(${req},env,{waitUntil(){}},${now})`)).props>0);
+  const before=posts.length;assert.equal((await run(`postNbaLaunchToX(env,${now})`)).posted,1);assert.equal((await run(`postNbaLaunchToX(env,${now+600000})`)).posted,0,'once');
+  assert.match(posts[before].text,/^🏀 NBA player props are live on Bet This Guy/);
   // Nights: a 10:30 PM ET tip is after midnight UTC but stays on its night.
   assert.equal(run(`nbaNight(Date.parse('${late}'))`),'2026-10-27');
   // Cron: NBA nights grade every publish run.
