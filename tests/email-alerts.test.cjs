@@ -13,7 +13,7 @@ const context=vm.createContext({URL,URLSearchParams,Request,Response,Headers,Abo
 const template=read('worker/index.template.js');
 vm.runInContext(template.slice(template.indexOf('const API_BASE')).replace('__MOVEMENT_SERVER__',read('worker/movement.js')).replace('__LIVE_SERVER__',read('worker/live.js')).replace('__STATS_SHARED__',read('dist/stats.js')).replace('__RECORDS_SERVER__',read('worker/records.js')).replace('__ACCOUNTS_SERVER__',read('worker/accounts.js')).replace('export default {','this.worker={'),context);
 const db=new DatabaseSync(':memory:');db.exec('PRAGMA foreign_keys=ON');
-for(const f of ['0000_public_record.sql','0001_record_settlement.sql','0002_historical_replays.sql','0004_user_accounts.sql','0006_push_alerts.sql','0007_email_alerts.sql','0029_email_predictions.sql','0028_prediction_picks.sql','0008_book_alerts.sql','0013_follow_alerts.sql','0027_alert_price_view.sql','0031_alert_kinds.sql','0033_alert_nba.sql'])db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''));
+for(const f of ['0000_public_record.sql','0001_record_settlement.sql','0002_historical_replays.sql','0004_user_accounts.sql','0006_push_alerts.sql','0007_email_alerts.sql','0029_email_predictions.sql','0034_email_nba.sql','0028_prediction_picks.sql','0008_book_alerts.sql','0013_follow_alerts.sql','0027_alert_price_view.sql','0031_alert_kinds.sql','0033_alert_nba.sql'])db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''));
 // Shaped like D1: run() reports changes under meta.
 const wrap=(sql,args=[])=>({bind(...values){return wrap(sql,values)},async first(){return db.prepare(sql).get(...args)||null},async all(){return{results:db.prepare(sql).all(...args)}},async run(){const r=db.prepare(sql).run(...args);return{success:true,meta:{changes:Number(r.changes)}}}});
 const DB={prepare:sql=>wrap(sql),async batch(list){const out=[];for(const s of list)out.push(await s.run());return out}};
@@ -36,6 +36,12 @@ const pick=(id,player,gameTime,postedAt,extra={})=>db.prepare("INSERT INTO publi
   assert.equal((await request('/api/me/email-alerts',{method:'PUT',body:'{"enabled":true}'})).status,401,'changing alerts needs a session');
   await request('/api/me/email-alerts',authed('PUT',{enabled:true}));
   assert.equal(db.prepare('SELECT token FROM email_alerts').get().token,token,'the unsubscribe token stays the same');
+  // NBA pick emails: on by default, off sticks, and turning them on turns emails on.
+  assert.equal((await (await request('/api/me',authed())).json()).emailNba,true,'NBA emails are on by default');
+  assert.equal((await request('/api/me/email-alerts',authed('PUT',{nba:false}))).status,200);
+  assert.equal((await (await request('/api/me',authed())).json()).emailNba,false,'turning NBA emails off sticks');
+  await request('/api/me/email-alerts',authed('PUT',{nba:true}));
+  assert.equal((await (await request('/api/me',authed())).json()).emailNba,true);
 
   const now=Date.parse('2026-10-04T12:00:00Z'),iso=t=>new Date(t).toISOString();
   // Without the Resend key nothing is sent.

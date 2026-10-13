@@ -36,7 +36,7 @@ const context=vm.createContext({Date:Clock,URL,URLSearchParams,Request,Response,
   }});
 const template=read('worker/index.template.js');
 vm.runInContext(template.slice(template.indexOf('const API_BASE')).replace('__MOVEMENT_SERVER__',read('worker/movement.js')).replace('__LIVE_SERVER__',read('worker/live.js')).replace('__STATS_SHARED__',read('dist/stats.js')).replace('__RECORDS_SERVER__',read('worker/records.js')).replace('__ACCOUNTS_SERVER__',read('worker/accounts.js')).replace('export default {','this.worker={'),context);
-const db=new DatabaseSync(':memory:');for(const f of ['0000_public_record.sql','0001_record_settlement.sql','0002_historical_replays.sql','0012_nba_shadow.sql','0018_player_form.sql','0021_injuries.sql','0006_push_alerts.sql','0008_book_alerts.sql','0013_follow_alerts.sql','0027_alert_price_view.sql','0031_alert_kinds.sql','0033_alert_nba.sql'])db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''));db.exec('CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT)');
+const db=new DatabaseSync(':memory:');for(const f of ['0000_public_record.sql','0001_record_settlement.sql','0002_historical_replays.sql','0012_nba_shadow.sql','0018_player_form.sql','0021_injuries.sql','0006_push_alerts.sql','0008_book_alerts.sql','0013_follow_alerts.sql','0027_alert_price_view.sql','0031_alert_kinds.sql','0033_alert_nba.sql','0004_user_accounts.sql','0007_email_alerts.sql','0029_email_predictions.sql','0034_email_nba.sql'])db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''));db.exec('CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT)');
 const wrap=(sql,args=[])=>({bind(...v){return wrap(sql,v)},async first(){return db.prepare(sql).get(...args)||null},async all(){return{results:db.prepare(sql).all(...args)}},async run(){const r=db.prepare(sql).run(...args);return{success:true,meta:{changes:Number(r.changes)}}}});
 const env={DB:{prepare:sql=>wrap(sql),async batch(l){const out=[];for(const s of l)out.push(await s.run());return out}},THE_ODDS_API_KEY:'k',BALLDONTLIE_API_KEY:'k',X_API_KEY:'a',X_API_SECRET:'b',X_ACCESS_TOKEN:'1-c',X_ACCESS_SECRET:'d'};context.env=env;
 const run=c=>vm.runInContext(c,context),req='new Request("https://betthisguy.com/api/maintenance")';
@@ -63,6 +63,13 @@ const run=c=>vm.runInContext(c,context),req='new Request("https://betthisguy.com
   const alert=await run(`latestAlert(env,${now},'https://fcm.googleapis.com/fcm/send/a')`);
   assert.equal(alert.title,'🏀 2 new NBA picks');assert.match(alert.body,/Jayson Tatum Over 27.5 points \(\+115, DraftKings\)/);assert.equal(alert.url,'/?league=NBA');
   assert.notEqual((await run(`latestAlert(env,${now},'https://fcm.googleapis.com/fcm/send/b')`)).title,'🏀 2 new NBA picks','NBA alerts off');
+  // Email: one batched NBA email to accounts with email alerts and NBA on.
+  for(const [id,nba] of [['u1',1],['u2',0]]){db.prepare("INSERT INTO user_profiles (auth_user_id,email,created_at,updated_at) VALUES (?,?,'2026-10-01','2026-10-01')").run(id,id+'@example.com');db.prepare("INSERT INTO email_alerts (auth_user_id,enabled,token,created_at,updated_at,nba) VALUES (?,1,?,'2026-10-01','2026-10-01',?)").run(id,'t'+id,nba)}
+  {const sentMail=[];const before=context.fetch;context.fetch=async(url,init)=>{if(String(url).includes('api.resend.com')){sentMail.push(...JSON.parse(init.body));return Response.json({data:[]})}return before(url,init)};run('fetch=globalThis.fetch');env.RESEND_API_KEY='r';
+   const out=await run(`sendNbaEmails(env,${now})`);assert.deepEqual([out.sent,out.picks],[1,2]);
+   assert.deepEqual(sentMail.map(m=>m.to[0]),['u1@example.com'],'NBA off: no email');assert.equal(sentMail[0].subject,'🏀 2 new NBA picks');assert.match(sentMail[0].text,/league=NBA/);
+   assert.equal((await run(`sendNbaEmails(env,${now+600000})`)).sent,0,'the same picks never email twice');
+   context.fetch=before;run('fetch=globalThis.fetch');delete env.RESEND_API_KEY}
   // X: no card until 35 minutes before the first tip; then one card with every pick.
   assert.equal((await run(`postNbaCardToX(env,${now})`)).due,false);
   const cardAt=Date.parse(tip1)-30*60000;

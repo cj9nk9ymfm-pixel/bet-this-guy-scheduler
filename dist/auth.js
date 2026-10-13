@@ -45,7 +45,7 @@ function watchSession(next){
   next.auth.onAuthStateChange((event,value)=>{if(event==='PASSWORD_RECOVERY')setTimeout(()=>{session=value;open('reset')},0);else setTimeout(()=>handleSession(value),0)});
   next.auth.getSession().then(({data})=>handleSession(data.session));
 }
-let session=null,profile=null,bets=[],accountMessage='',emailAlerts=false,emailPredictions=false;
+let session=null,profile=null,bets=[],accountMessage='',emailAlerts=false,emailPredictions=false,emailNba=true;
 const $=selector=>document.querySelector(selector);
 const money=cents=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format((Number(cents)||0)/100);
 const odds=value=>Number(value)>0?`+${Math.round(value)}`:`${Math.round(value)}`;
@@ -90,7 +90,7 @@ async function api(path,options={}){
 async function loadAccount(){
   if(!signedIn())return;
   const [account,settings,saved]=await Promise.all([api('/api/me'),api('/api/me/preferences'),api('/api/me/saved')]);
-  profile=account.profile;emailAlerts=Boolean(account.emailAlerts);emailPredictions=Boolean(account.emailPredictions);
+  profile=account.profile;emailAlerts=Boolean(account.emailAlerts);emailPredictions=Boolean(account.emailPredictions);emailNba=account.emailNba!==false;
   if(settings.preferences&&Object.keys(settings.preferences).length)window.dispatchEvent(new CustomEvent('btg:preferences-loaded',{detail:settings.preferences}));
   else{
     try{const local=JSON.parse(localStorage.getItem('bet-this-guy-preferences')||'{}');if(Object.keys(local).length)await savePreferences(local)}catch{}
@@ -112,6 +112,7 @@ function renderAccount(){
   $('#accountPlan').textContent=(profile?.plan||'free').toUpperCase();
   if($('#emailAlertsToggle'))$('#emailAlertsToggle').checked=emailAlerts;
   if($('#emailPredictionsToggle'))$('#emailPredictionsToggle').checked=emailPredictions;
+  if($('#emailNbaToggle'))$('#emailNbaToggle').checked=emailNba;
   const legacy=legacyRecords();$('#importLegacyBets').hidden=!legacy.length;$('#importLegacyBets').textContent=legacy.length?`Import ${legacy.length} pick${legacy.length===1?'':'s'} saved on this device`:'';
 }
 function legacyRecords(){try{const items=JSON.parse(localStorage.getItem('bet-this-guy-tracked')||'[]');return Array.isArray(items)?items:[]}catch{return[]}}
@@ -215,6 +216,7 @@ function init(){
   $('#authLoginForm').onsubmit=submitLogin;$('#authSignupForm').onsubmit=submitSignup;$('#authForgotForm').onsubmit=submitForgot;$('#authResetForm').onsubmit=submitReset;
   $('#accountSignOut').onclick=async()=>{await (await auth()).signOut();dialog().close()};
   $('#sendTestEmail')&&($('#sendTestEmail').onclick=async event=>{const button=event.currentTarget;button.disabled=true;setStatus('');try{const result=await api('/api/me/test-email',{method:'POST'});setStatus(`Sent to ${result.sentTo}. It can take a minute; check spam if it isn’t there.`,'success')}catch(error){setStatus(friendly(error),'error')}finally{button.disabled=false}});
+  $('#emailNbaToggle')&&($('#emailNbaToggle').onchange=async event=>{const toggle=event.currentTarget,on=toggle.checked;toggle.disabled=true;setStatus('');try{await api('/api/me/email-alerts',{method:'PUT',body:JSON.stringify({nba:on})});emailNba=on;if(on){emailAlerts=true;if($('#emailAlertsToggle'))$('#emailAlertsToggle').checked=true}setStatus(on?'We’ll also email you NBA picks.':'NBA pick emails are off.','success')}catch(error){toggle.checked=!on;setStatus(friendly(error),'error')}finally{toggle.disabled=false}});
   $('#emailPredictionsToggle')&&($('#emailPredictionsToggle').onchange=async event=>{const toggle=event.currentTarget,on=toggle.checked;toggle.disabled=true;setStatus('');try{await api('/api/me/email-alerts',{method:'PUT',body:JSON.stringify({predictions:on})});emailPredictions=on;if(on){emailAlerts=true;if($('#emailAlertsToggle'))$('#emailAlertsToggle').checked=true}setStatus(on?'We’ll also email you prediction market picks.':'Prediction pick emails are off.','success')}catch(error){toggle.checked=!on;setStatus(friendly(error),'error')}finally{toggle.disabled=false}});
   $('#emailAlertsToggle')&&($('#emailAlertsToggle').onchange=async event=>{const toggle=event.currentTarget,enabled=toggle.checked;toggle.disabled=true;setStatus('');try{await api('/api/me/email-alerts',{method:'PUT',body:JSON.stringify({enabled})});emailAlerts=enabled;setStatus(enabled?'We’ll email you when new picks post.':'Pick emails are off.','success')}catch(error){toggle.checked=!enabled;setStatus(friendly(error),'error')}finally{toggle.disabled=false}});
   $('#openMyRecord').onclick=()=>show('record');$('#recordBack').onclick=()=>show('account');$('#importLegacyBets').onclick=importLegacy;
