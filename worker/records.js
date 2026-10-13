@@ -714,17 +714,48 @@ async function gradeTdShadow(env,now=Date.now(),limit=40){
   return {graded:statements.length,checked:rows.length};
 }
 
+// Live grading for prediction picks and parlays, with the same grader as
+// official picks (box score, play-by-play when a player is missing, and early
+// decisions): an Over that clears its line or an Under it passes is decided
+// the moment it happens, mid-game; everything else when the game is final.
+async function gradePredictionNow(env,now=Date.now()){
+  if(!env.DB||!env.BALLDONTLIE_API_KEY||typeof gradePublicRecord!=='function')return {graded:0};
+  const live=new Date(now).toISOString(),old=new Date(now-36*3600000).toISOString(),cache=new Map(),statements=[],stamp=live;let graded=0;
+  const picks=(await env.DB.prepare('SELECT * FROM prediction_picks WHERE result IS NULL AND game_time<=? AND game_time>? ORDER BY game_time LIMIT 20').bind(live,old).all()).results||[];
+  for(const r of picks){
+    const rec={kind:'prop',sport:'NFL',player:r.player,market:r.market,side:r.side,line:r.line,odds:r.odds,game_time:r.game_time,legs_json:JSON.stringify([{player:r.player,market:r.market,side:r.side,line:r.line,team:r.team,gameTime:r.game_time,sport:'NFL'}])};
+    const final=await gradePublicRecord(rec,env,cache).catch(()=>null),leg=rec.gradedLegs?.[0]||{},early=!final&&leg.decidedEarly&&['won','lost'].includes(rec.provisionalResult);
+    const result=final||(early?rec.provisionalResult:null);if(!result)continue;
+    statements.push(env.DB.prepare('UPDATE prediction_picks SET actual=?,result=?,graded_at=?,early=? WHERE id=? AND result IS NULL').bind(leg.actualValue??null,result,stamp,early?1:0,r.id));graded++;
+  }
+  const parlays=(await env.DB.prepare('SELECT * FROM prediction_parlays WHERE result IS NULL AND game_time>? ORDER BY game_time LIMIT 15').bind(old).all().catch(()=>({results:[]}))).results||[];
+  for(const r of parlays){
+    let legs=[];try{legs=JSON.parse(r.legs_json)}catch{continue}
+    if(!legs.some(l=>Date.parse(l.gameTime)<=now))continue;
+    const rec={kind:'parlay',sport:'NFL',legs_json:JSON.stringify(legs.map(l=>({player:l.player,market:l.market,side:l.side,line:l.line,team:l.team,gameTime:l.gameTime,sport:'NFL'})))};
+    const final=await gradePublicRecord(rec,env,cache).catch(()=>null),out=rec.gradedLegs||[];let changed=false;
+    legs.forEach((l,i)=>{const g=out[i];if(!l.result&&g&&['won','lost','push'].includes(g.result)&&(g.boxScoreFinal||g.decidedEarly)){l.result=g.result;l.actual=g.actualValue??null;if(g.decidedEarly)l.decidedEarly=true;changed=true}});
+    const result=final||(legs.some(l=>l.result==='lost')?'lost':legs.every(l=>l.result==='won')?'won':null);
+    if(changed||result){statements.push(env.DB.prepare('UPDATE prediction_parlays SET legs_json=?,result=?,graded_at=? WHERE id=? AND result IS NULL').bind(JSON.stringify(legs),result,result?stamp:null,r.id));if(result)graded++}
+  }
+  if(statements.length)await env.DB.batch(statements);
+  return {graded,checked:picks.length+parlays.length};
+}
 // Prediction result replies and the full-card recap run in their own
 // invocation (SELF binding), so their reads, uploads and posts get their own
 // request allowance instead of crowding out the main X run.
 async function runXResults(env,now=Date.now()){
-  const results=await postPredictionResultsToX(env,now).catch(error=>({posted:0,error:error.message}));
+  const grading=await gradePredictionNow(env,now).catch(error=>({error:error.message}));
+  const results=await postPredictionResultsToX(env,now,2).catch(error=>({posted:0,error:error.message}));
   const recap=await postCardRecapToX(env,now).catch(error=>({posted:0,error:error.message}));
-  return {results,recap};
+  return {grading,results,recap};
 }
 async function runXResultsNow(env){
   if(!xReady(env))return {disabled:true};
-  const due=await appSetting(env,'x-card-recap-request')||(await env.DB.prepare("SELECT 1 AS n FROM prediction_picks WHERE result IS NOT NULL AND game_time>? LIMIT 1").bind(new Date(Date.now()-3*86400000).toISOString()).first().catch(()=>null));
+  // Due while any prediction pick or parlay is in play or waiting on a grade,
+  // a result is waiting to post, or a full card is waiting on its recap.
+  const t=new Date(Date.now()).toISOString(),old=new Date(Date.now()-36*3600000).toISOString(),q=sql=>env.DB.prepare(sql).bind(t,old).first().catch(()=>null);
+  const due=await appSetting(env,'x-card-recap-request')||await q('SELECT 1 AS n FROM prediction_picks WHERE game_time<=? AND game_time>? LIMIT 1')||await q('SELECT 1 AS n FROM prediction_parlays WHERE game_time<=? AND game_time>? LIMIT 1');
   if(!due)return {waiting:0};
   if(!env.SELF?.fetch||!env.MAINTENANCE_TOKEN)return runXResults(env);
   const r=await env.SELF.fetch(new Request(`${SITE_URL}/api/maintenance?job=xresults`,{method:'POST',headers:{authorization:`Bearer ${env.MAINTENANCE_TOKEN}`},signal:AbortSignal.timeout(60000)}));
@@ -2947,7 +2978,7 @@ async function postPredictionResultsToX(env,now=Date.now(),limit=3){
   const recLine=rec.wins+rec.losses>=3?`\nPrediction record: ${rec.wins}–${rec.losses}${rec.pushes?`–${rec.pushes}`:''}, ${weeklyMoney(rec.profit)} at $100 a pick after fees.`:'';
   const look={won:['✅','HIT'],lost:['❌','MISS'],push:['➖','PUSH']};
   const jobs=[...picks.map(r=>({id:r.id,posted:`xpm:${r.id}`,match:pmPickMatch(r),text:()=>{const [e,w]=look[r.result],win=r.result==='won'?100*(recordDecimal(r.net_odds??r.odds)-1):r.result==='lost'?-100:0,unit=String(r.market||'').toLowerCase();
-      return `${e} ${w}: ${r.player} ${weeklyLegText(r)} (${exchangePct(r.odds)}% on ${r.exchange})${r.actual!=null?`\nFinal: ${r.actual} ${Number(r.actual)===1?unit.replace(/s$/,''):unit}.`:''}\n${r.result==='push'?'Stake back.':`${weeklyMoney(win)} on a $100 pick after fees.`}${recLine}\n\nEvery pick graded in public. 18+/21+ by app.`}})),
+      return `${e} ${w}: ${r.player} ${weeklyLegText(r)} (${exchangePct(r.odds)}% on ${r.exchange})${r.actual!=null?(r.early?`\n${r.player} already has ${r.actual} ${Number(r.actual)===1?unit.replace(/s$/,''):unit}, with the game still on.`:`\nFinal: ${r.actual} ${Number(r.actual)===1?unit.replace(/s$/,''):unit}.`):''}\n${r.result==='push'?'Stake back.':`${weeklyMoney(win)} on a $100 pick after fees.`}${recLine}\n\nEvery pick graded in public. 18+/21+ by app.`}})),
     ...parlays.map(r=>{let legs=[];try{legs=JSON.parse(r.legs_json)}catch{}return {id:r.id,posted:`xpmp:${r.id}`,match:pmParlayMatch(legs),text:()=>{const [e,w]=look[r.result];
       return `${e} ${w}: ${legs.length}-leg parlay on ${r.exchange} (${exchangePct(r.odds)}%)\n${legs.map(l=>`${l.result==='won'?'✅':l.result==='lost'?'❌':'➖'} ${l.player} ${weeklyLegText(l)}`).join('\n')}\n${r.result==='push'?'Stake back.':`${weeklyMoney(predictionParlayPay(r))} on a $25 ticket.`}\n\nEvery pick graded in public. 18+/21+ by app.`}}})];
   for(const j of jobs){
@@ -2964,7 +2995,14 @@ async function postPredictionResultsToX(env,now=Date.now(),limit=3){
 // to the full-card post. Posts once per value of x-card-recap-request.
 async function postCardRecapToX(env,now=Date.now()){
   if(!env.DB||!xReady(env))return {posted:0,disabled:true};
-  const req=String((await appSetting(env,'x-card-recap-request'))||'');if(!/^\d{4}-\d{2}-\d{2}(#\w{1,8})?$/.test(req))return {posted:0,none:true};
+  // A requested day (x-card-recap-request), or else each full card posted in
+  // the last two days that has no recap yet.
+  let req=String((await appSetting(env,'x-card-recap-request'))||'');
+  if(!/^\d{4}-\d{2}-\d{2}(#\w{1,8})?$/.test(req)){
+    const cards=((await env.DB.prepare("SELECT key FROM app_settings WHERE key LIKE 'x-combo:%' AND value NOT LIKE 'pending %' AND value>?").bind(new Date(now-2*86400000).toISOString()).all()).results||[]).map(r=>r.key.slice(8,18));
+    for(const d of [...new Set(cards)])if(!(await env.DB.prepare("SELECT 1 AS n FROM app_settings WHERE key LIKE ?").bind(`x-card-recap:${d}%`).first())){req=d;break}
+    if(!req)return {posted:0,none:true};
+  }
   const day=req.slice(0,10),key=`x-card-recap:${req}`;if(!(await xClaimable(env,key,now)))return {posted:0,done:true};
   const etDay=`${day.slice(5,7)}/${day.slice(8,10)}/${day.slice(0,4)}`,onDay=r=>etDate(Date.parse(r.game_time),{year:'numeric',month:'2-digit',day:'2-digit'})===etDay;
   const from=`${day}T00:00:00Z`,to=new Date(Date.parse(from)+2*86400000).toISOString();
