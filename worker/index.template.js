@@ -1337,6 +1337,7 @@ async function routeRequest(request, env, ctx) {
     if (url.pathname === "/api/affiliate") return affiliateApi(request, env);
     if (url.pathname.startsWith("/api/alerts/")) return alertsApi(request, env);
     if (url.pathname === "/api/email-alerts/unsubscribe") return emailUnsubscribe(request, env);
+    if (url.pathname === "/api/email-subscribe" || url.pathname === "/api/email-subscribe/confirm") return emailSubscribeApi(request, env, ctx);
     if (url.pathname === "/sw.js") return new Response(SERVICE_WORKER_JS, { headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-cache" } });
     if (url.pathname === "/manifest.webmanifest") return new Response(WEB_MANIFEST, { headers: { "content-type": "application/manifest+json", "cache-control": "public, max-age=3600" } });
     if (typeof ICONS !== "undefined" && ICONS[url.pathname]) return new Response(Uint8Array.from(atob(ICONS[url.pathname]), char => char.charCodeAt(0)), { headers: { "content-type": url.pathname.endsWith(".jpg") ? "image/jpeg" : "image/png", "cache-control": "public, max-age=86400" } });

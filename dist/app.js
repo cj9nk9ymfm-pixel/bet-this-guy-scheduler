@@ -682,14 +682,16 @@ let settingsDirty=false,savedFlash=null;
 function updateBookCount(){const picked=[...($('#bookPreferences')?.querySelectorAll('input:checked')||[])].map(i=>i.value),el=$('#bookCount');if(el)el.textContent=picked.length?(picked.length<=2?picked.join(', '):`${picked.slice(0,2).join(', ')} +${picked.length-2} more`):'All books'}
 function syncWeeklyLimitControl(){const on=$('#weeklyLimitOn')?.checked,row=$('#weeklyBudgetRow');if(row)row.hidden=!on}
 function paintSegments(){const v=window.BTGPriceView?.view?.()||'odds',t=themeMode();$$('#stView [data-st-view]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.stView===v)));$$('#stTheme [data-st-theme]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.stTheme===t)))}
-function paintAccount(){const signed=window.BTGAuth?.isSignedIn?.(),email=window.BTGAuth?.email?.()||'';$('#stAccountLabel').textContent=signed?(email||'Your account'):'Sign in or create a free account';$('#stAccountSub').textContent=signed?'Signed in. Your settings follow you.':'Sync your picks and settings across devices';$('#stEmailSub').textContent=signed?'Set in your account':'Free account, one tap to turn on'}
+function paintAccount(){const signed=window.BTGAuth?.isSignedIn?.(),email=window.BTGAuth?.email?.()||'';$('#stAccountLabel').textContent=signed?(email||'Your account'):'Sign in or create a free account';$('#stAccountSub').textContent=signed?'Signed in. Your settings follow you.':'Sync your picks and settings across devices';$('#stEmailSub').textContent=signed?'Set in your account':'No account needed'}
 function openSettings(){$('#bookPreferences').innerHTML=SETTINGS_BOOKS.map(([book,color])=>`<label class="st-row st-book"><span class="st-text"><span class="st-label"><i class="st-dot" style="background:${color}" aria-hidden="true"></i>${book}</span></span><input class="st-switch" type="checkbox" role="switch" value="${book}" ${preferences.books.some(saved=>normalizeBookName(saved)===normalizeBookName(book))?'checked':''}/></label>`).join('');$('#riskPreference').value=preferences.risk;$('#typicalWager').value=preferences.typicalWager;$('#maxParlayLegs').value=String([4,6,8,10].reduce((a,b)=>Math.abs(b-preferences.maxParlayLegs)<Math.abs(a-preferences.maxParlayLegs)?b:a));$('#weeklyBudget').value=preferences.weeklyBudget||100;$('#weeklyLimitOn').checked=!preferences.noWeeklyLimit;$('#bookPings').checked=preferences.bookPings!==false;syncWeeklyLimitControl();updateBookCount();paintSegments();paintAccount();$('#settingsSaveStatus').textContent='Changes save automatically';$('#settingsSaveStatus').classList.remove('st-saved');$('.st-body')?.scrollTo({top:0});$('#settingsDialog').showModal()}
 async function commitSettings(){preferences={...preferences,books:[...$('#bookPreferences').querySelectorAll('input:checked')].map(input=>input.value),risk:$('#riskPreference').value,typicalWager:Math.max(0,+$('#typicalWager').value||0),maxParlayLegs:Math.max(2,Math.min(10,+$('#maxParlayLegs').value||8)),weeklyBudget:Math.max(0,+$('#weeklyBudget').value||0),noWeeklyLimit:!$('#weeklyLimitOn').checked,bookPings:$('#bookPings').checked};try{localStorage.setItem('bet-this-guy-preferences',JSON.stringify(preferences))}catch{}settingsDirty=true;window.BTGSyncAlertBooks?.();const status=$('#settingsSaveStatus');status.textContent=window.BTGAuth?.isSignedIn()?'Saved to your account ✓':'Saved on this device ✓';status.classList.add('st-saved');clearTimeout(savedFlash);savedFlash=setTimeout(()=>status.classList.remove('st-saved'),1800);if(window.BTGAuth?.isSignedIn())await savePreferences()?.catch?.(()=>{})}
 $('#settingsBtn').onclick=openSettings;
 $('#settingsDialog').addEventListener('change',event=>{const t=event.target;if(t.closest('#alertKinds')&&t.id!=='bookPings')return;if(t.closest('[data-pm-state]')||t.matches('[data-pm-state]'))return;if(t.id==='weeklyLimitOn')syncWeeklyLimitControl();if(t.closest('#bookPreferences'))updateBookCount();commitSettings()});
 $('#stView')?.addEventListener('click',e=>{const b=e.target.closest('[data-st-view]');if(!b)return;window.BTGPriceView?.set?.(b.dataset.stView);paintSegments()});
 $('#stTheme')?.addEventListener('click',e=>{const b=e.target.closest('[data-st-theme]');if(!b)return;setTheme(b.dataset.stTheme);paintSegments()});
-$('#stEmail').onclick=$('#stAccount').onclick=()=>{$('#settingsDialog').close();window.BTGAuth?.open?.(window.BTGAuth?.hasAccount?.()?'account':'signup')};
+$('#stAccount').onclick=()=>{$('#settingsDialog').close();window.BTGAuth?.open?.(window.BTGAuth?.hasAccount?.()?'account':'signup')};
+// Email alerts: signed-in people manage them in the account; everyone else signs up with just an address.
+$('#stEmail').onclick=()=>{$('#settingsDialog').close();if(window.BTGAuth?.isSignedIn?.()||!window.BTGEmailSub)window.BTGAuth?.open?.(window.BTGAuth?.hasAccount?.()?'account':'signup');else window.BTGEmailSub.open('settings')};
 $('#stRecord').onclick=()=>{$('#settingsDialog').close();window.BTGAuth?.open?.(window.BTGAuth?.isSignedIn?.()?'record':'signup')};
 $('#settingsDone').onclick=()=>$('#settingsDialog').close();
 $('#settingsDialog').addEventListener('close',async()=>{if(!settingsDirty)return;settingsDirty=false;$('#wager').value=preferences.typicalWager;$('#legsSlider').max=preferences.maxParlayLegs;$('#legsSlider').value=Math.min(+$('#legsSlider').value,preferences.maxParlayLegs);$('#maxLegLabel').textContent=`${preferences.maxParlayLegs} legs`;mixerCandidateCache.clear();parlayFeeds.forEach(feed=>feed.length=0);calcParlay();await loadLiveProps(true);render()});
@@ -1693,7 +1695,7 @@ if(typeof fetch==='function')window.btgCountVisit?.('view:home');
   async function turnOn(){
     // iPhones only allow web notifications from the Home Screen, so offer
     // email alerts first: one step in a free account.
-    if(ios&&!standalone()){window.btgCount?.('alerts:email');const auth=window.BTGAuth;auth?.open?.(auth.hasAccount?.()?'account':'signup');note('On iPhone, email alerts are the easy way: tick “Email me when new picks post” in your free account. Prefer phone notifications? Add Bet This Guy to your Home Screen (Share → Add to Home Screen) and turn on pick alerts there.');return}
+    if(ios&&!standalone()){window.btgCount?.('alerts:email');if(window.BTGEmailSub&&!window.BTGAuth?.isSignedIn?.()){window.BTGEmailSub.open('iphone');return}const auth=window.BTGAuth;auth?.open?.(auth.hasAccount?.()?'account':'signup');note('On iPhone, email alerts are the easy way: tick “Email me when new picks post” in your free account. Prefer phone notifications? Add Bet This Guy to your Home Screen (Share → Add to Home Screen) and turn on pick alerts there.');return}
     if(!supported()){note('This browser can’t show notifications. Try Chrome, Edge, Firefox or Safari.');return}
     const permission=await Notification.requestPermission();
     if(permission!=='granted'){note('Notifications are blocked for this site. Allow them in your browser settings, then tap Get pick alerts again.');return}
@@ -2554,6 +2556,7 @@ function statsProp(l){
   dlg.addEventListener('click',e=>{if(e.target===dlg)close('close')});
   // The alerts button is also a pick-alerts toggle (handled with the others); this just closes the sheet.
   document.getElementById('wdAlerts').addEventListener('click',()=>close('alerts'));
+  document.getElementById('wdEmail')?.addEventListener('click',()=>{close('email');window.BTGEmailSub?.open('welcome')});
   document.getElementById('wdAccount').onclick=()=>{close('account');window.BTGAuth?.open?.(window.BTGAuth?.hasAccount?.()?'account':'signup')};
   if(seen()){strip.hidden=false;return}
   setTimeout(()=>{if(seen()||document.querySelector('dialog[open]'))return;open();window.btgCount?.('welcome:shown')},900);
@@ -2801,4 +2804,23 @@ function statsProp(l){
   const load=async()=>{try{const r=await fetch('/api/weather');const body=await r.json();if(r.ok&&body?.games){games=body.games;paint()}}catch{}};
   for(const id of ['officialNowList','leansList']){const el=document.getElementById(id);if(el)new MutationObserver(paint).observe(el,{childList:true})}
   load();setInterval(load,15*60000);
+})();
+
+// Email alerts without an account: an address and a confirm link
+// (/api/email-subscribe). Opened from the welcome sheet, Settings and the
+// iPhone alerts button (iPhones only allow web notifications from the Home Screen).
+(()=>{
+  if(typeof document.getElementById!=='function')return;
+  const dlg=document.getElementById('emailDialog');if(!dlg||typeof fetch!=='function')return;
+  const $=id=>document.getElementById(id),status=(t,cls='')=>{const el=$('emailSubStatus');el.textContent=t;el.className=`email-status ${cls}`};
+  const ios=/iPhone|iPad|iPod/.test(navigator.userAgent||'');
+  window.BTGEmailSub={open(source){window.btgCount?.('email:open');$('emailIphoneNote').hidden=!(ios||source==='iphone');status('');$('emailSubSend').disabled=false;if(typeof dlg.showModal==='function')dlg.showModal();else dlg.setAttribute('open','');setTimeout(()=>{try{$('emailSubInput').focus()}catch{}},60)}};
+  const close=()=>dlg.close?.();$('emailDialogX').onclick=close;dlg.addEventListener('click',e=>{if(e.target===dlg)close()});
+  $('emailSubForm').addEventListener('submit',async e=>{e.preventDefault();const email=$('emailSubInput').value.trim();
+    if(!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(email)){status('Enter a full email address, like you@example.com.','err');return}
+    $('emailSubSend').disabled=true;status('Sending…');
+    try{const r=await fetch('/api/email-subscribe',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email,nba:$('emailSubNba').checked})}),d=await r.json().catch(()=>({}));
+      if(!r.ok||!d.success)throw new Error(d.error||'We couldn’t sign you up. Try again in a minute.');
+      status(d.active?'You’re already on the list. New picks will land in your inbox.':'Check your inbox and tap the confirm link. If it’s not there in a minute, check spam.','ok');try{localStorage.setItem('btg-email-sub','1')}catch{}}
+    catch(error){status(error.message,'err');$('emailSubSend').disabled=false}});
 })();
