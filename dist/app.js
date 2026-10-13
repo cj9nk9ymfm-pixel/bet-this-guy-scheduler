@@ -1431,7 +1431,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     return {chip,title:isParlay?`${legs.length}-leg ${legs.some(l=>l.sameGame)?'same-game ':''}parlay`:r.player,bet,game,price:r.pm?`${r.pm.pct}%`:formatOdds(odds),stake:share(r)<1?`$${(heroStake*share(r)).toLocaleString('en-US',{maximumFractionDigits:2})} (¼ unit)`:stakeText(),
       money:done?money(payout(r)):d?`wins $${Math.round(heroStake*share(r)*(d-1)).toLocaleString('en-US')}`:'—',moneyCls:done?(r.result==='won'?'pos':r.result==='lost'?'neg':''):'pos',
       rows,legs:legRows,chart:points.length>=2?{label:done?'Price posted → kickoff':'Price since posted',points}:null,
-      actions:r.pm?[...(!done&&window.BTGApps?.link(r.pm.exchange)?[{label:`Open ${r.pm.exchange}`,icon:'external',primary:true,wide:true,onClick:()=>{window.btgCount?.(`app:${String(r.pm.exchange).toLowerCase()}`);window.open(window.BTGApps.link(r.pm.exchange),'_blank','noopener')}}]:[]),{...pmShare,label:'Share'}]:[...betAction(r,legs,done),...bookAction(r,legs,done),{label:done&&r.result==='won'?'Share this hit':'Share',icon:'share',primary:false,wide:true,share:`${done&&r.result==='won'?'✅ Hit':'Bet This Guy pick'}: ${isParlay?`${legs.length}-leg parlay (${formatOdds(odds)})`:`${r.player} ${bet} (${formatOdds(odds)})`} · ${location.origin}`}],
+      actions:r.pm?[...betAction(r,legs,done),...(!done&&window.BTGApps?.link(r.pm.exchange)?[{label:`Open ${r.pm.exchange}`,icon:'external',wide:true,onClick:()=>{window.btgCount?.(`app:${String(r.pm.exchange).toLowerCase()}`);window.open(window.BTGApps.link(r.pm.exchange),'_blank','noopener')}}]:[]),{...pmShare,label:'Share'}]:[...betAction(r,legs,done),...bookAction(r,legs,done),{label:done&&r.result==='won'?'Share this hit':'Share',icon:'share',primary:false,wide:true,share:`${done&&r.result==='won'?'✅ Hit':'Bet This Guy pick'}: ${isParlay?`${legs.length}-leg parlay (${formatOdds(odds)})`:`${r.player} ${bet} (${formatOdds(odds)})`} · ${location.origin}`}],
       links:[...(isParlay?[]:[{text:`${String(r.player||'').split(' ').slice(-1)[0]}’s stats & game log ›`,onClick:()=>openPlayerProfile(statsProp({...first,player:r.player,market:r.market,line:r.line,side:r.side,odds:r.odds,gameTime:r.game_time||first.gameTime}))}]),{text:'See every pick on Results ›',href:'/trust#official'}]};
   }
   const hitDetails=r=>window.BTGSheet.render(recordModel(r)),pickDetails=hitDetails;
@@ -1525,7 +1525,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     $$('#officialNowList [data-on-live], #parlaysList [data-on-live]').forEach(el=>{const line=liveLine(officialLiveList[+el.dataset.onLive]||{});el.hidden=!line;if(el.previousElementSibling)el.previousElementSibling.hidden=!!line;el.className=`on-live${line?.cls?' '+line.cls:''}`;el.innerHTML=line?line.html:''});
   }
   (window.btgLiveHooks||=[]).push(updateOfficialLive);
-  window.BTGOfficialLive=liveLine;window.BTGOpenPick=openPick;
+  window.BTGOfficialLive=liveLine;window.BTGOpenPick=openPick;window.BTGOfficialRows=()=>officialLiveList;
   function renderOfficialNow(rows){
     const host=$('#officialNow');if(!host||!Array.isArray(rows))return;
     const list=officialNow(rows),indexed=list.map((r,i)=>[r,i]);
@@ -2626,6 +2626,18 @@ function statsProp(l){
   const pmLiveSpan=i=>`<span class="on-live" data-pm-live="${i}" hidden></span>`;
   function updatePmLive(){document.querySelectorAll('[data-pm-live]').forEach(el=>{const line=window.BTGOfficialLive?.(pmRows[+el.dataset.pmLive]||{});el.hidden=!line;if(el.previousElementSibling)el.previousElementSibling.hidden=!!line;el.className=`on-live${line?.cls?' '+line.cls:''}`;el.innerHTML=line?line.html:''})}
   (window.btgLiveHooks||=[]).push(updatePmLive);
+  // Live tab: our picks in the selected game (sportsbook and prediction), each with its live line; tap for the sheet.
+  window.btgRenderLivePicks=game=>{
+    const panel=document.getElementById('livePicksPanel'),host=document.getElementById('livePicksList');if(!panel||!host||!window.BTGLive?.gameOf)return;
+    const inGame=rec=>{let legs=[];try{legs=JSON.parse(rec.legs_json||'[]')}catch{}return legs.some(l=>String(window.BTGLive.gameOf({team:l.team,startsAt:l.gameTime||rec.game_time})?.id)===String(game.id))};
+    const official=(window.BTGOfficialRows?.()||[]).filter(inGame),pm=[...(data?.pmPicks||[]),...(data?.pmParlays||[])].map(pmRecord).filter(inGame);
+    const seen=new Set(),list=[...official,...pm].filter(r=>!seen.has(r.id)&&seen.add(r.id));
+    panel.hidden=!list.length;if(!list.length){host.innerHTML='';return}
+    host.innerHTML=list.map((r,i)=>{let legs=[];try{legs=JSON.parse(r.legs_json||'[]')}catch{}const parlay=r.kind==='parlay',title=parlay?`${legs.length}-leg parlay`:r.player,bet=parlay?legs.map(l=>l.player).join(' + '):`${r.side} ${r.line} ${String(r.market||'').toLowerCase()}`;
+      const where=r.pm?chip(r.pm.exchange):htmlEscape(legs[0]?.book||'Sportsbook'),price=r.pm?`${r.pm.pct}%`:htmlEscape(typeof formatOdds==='function'?formatOdds(parlay?r.combined_odds:r.odds):''),line=window.BTGOfficialLive?.(r);
+      return `<button type="button" class="live-pick" data-live-pick="${i}"><span><b>${htmlEscape(title)}</b><small>${htmlEscape(bet)} · ${where}</small>${line?`<em class="on-live ${line.cls||''}">${line.html}</em>`:''}</span><strong>${price}</strong></button>`}).join('');
+    host.querySelectorAll('[data-live-pick]').forEach(b=>b.onclick=()=>window.BTGOpenPick?.(list[+b.dataset.livePick]));
+  };
   function bindPmRows(){document.querySelectorAll('[data-pm-i]').forEach(el=>{el.onclick=()=>window.BTGOpenPick?.(pmRows[+el.dataset.pmI]);el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();el.click()}}});updatePmLive()}
   function pickRow(r){
     const initials=String(r.player||'').split(' ').map(x=>x[0]||'').join('').slice(0,3),bet=`${r.side} ${r.line} ${String(r.market||'').toLowerCase()}`;

@@ -242,7 +242,7 @@ function renderLiveCenter(){
   const game=games.find(item=>String(item.id)===String(liveBoard.selectedGameID)),empty=$('#liveCenterEmpty'),grid=$('#livePropGrid'),summary=$('#liveCenterSummary'),stamp=$('#liveUpdatedAt');
   const snapshot=game?liveBoard.gameStats.get(String(game.id)):null;stamp.textContent=liveBoard.error?'Feed reconnecting…':liveSnapshotStale()?'Update delayed':liveBoard.updatedAt?`Updated ${Math.max(0,Math.floor((Date.now()-Date.parse(liveBoard.updatedAt))/1000))} sec ago`:'Connecting…';stamp.parentElement.classList.toggle('stale',liveSnapshotStale());
   if(!game){empty.hidden=false;grid.innerHTML='';summary.textContent='Waiting for an NFL game to go live.';$('#liveParlayPanel').hidden=true;return}
-  const gameProps=props.filter(prop=>liveGameFor(gameName(prop),prop.startsAt)?.id===game.id&&!prop.teamMarket),cards=gameProps.map(prop=>livePropCard(prop,game));empty.hidden=!!cards.length;empty.innerHTML=cards.length?'':'<strong>Live game found. Player markets are loading.</strong><span>Stats and prop progress will appear as soon as the connected feed reports them.</span>';grid.innerHTML=cards.join('');summary.textContent=`${liveScoreLabel(game)} · ${liveStatusLabel(game)} · ${gameProps.length} live player props${snapshot?.stale?' · stats delayed':''}`;renderLiveParlay(game);
+  const gameProps=props.filter(prop=>liveGameFor(gameName(prop),prop.startsAt)?.id===game.id&&!prop.teamMarket),cards=gameProps.map(prop=>livePropCard(prop,game));empty.hidden=!!cards.length;empty.innerHTML=cards.length?'':'<strong>Live game found. Player markets are loading.</strong><span>Stats and prop progress will appear as soon as the connected feed reports them.</span>';grid.innerHTML=cards.join('');summary.textContent=`${liveScoreLabel(game)} · ${liveStatusLabel(game)} · ${gameProps.length} live player props${snapshot?.stale?' · stats delayed':''}`;renderLiveParlay(game);try{window.btgRenderLivePicks?.(game)}catch{}
   grid.querySelectorAll('[data-live-odds]').forEach(button=>button.onclick=()=>{const prop=props.find(item=>item.id===Number(button.dataset.liveOdds));if(prop){toggleLeg(prop,prop.side);renderLiveCenter()}});
 }
 function livePollDelay() {
@@ -295,7 +295,7 @@ function legStatus(prop){
   const snap=liveBoard.gameStats.get(String(game.id));
   return {...liveLegState(prop,game,livePlayerRow(game.id,prop.player)),clock:liveStatusLabel(game),final:game.state==='final',loaded:Array.isArray(snap?.stats),stale:!!snap?.stale};
 }
-window.BTGLive={attachProfile:attachLiveProfile,updateLabels:()=>{updateLiveLabels();updateBoardProgress()},renderCenter:renderLiveCenter,boardProgress,legStatus};
+window.BTGLive={attachProfile:attachLiveProfile,updateLabels:()=>{updateLiveLabels();updateBoardProgress()},renderCenter:renderLiveCenter,boardProgress,legStatus,gameOf:prop=>liveGameFor(gameName(prop),prop.startsAt)};
 document.addEventListener('visibilitychange',()=>{if(document.hidden)clearTimeout(liveBoard.timer);else tickLiveBoard()});
 window.addEventListener('online',tickLiveBoard);
 window.addEventListener('offline',()=>{clearTimeout(liveBoard.timer);liveBoard.error='Offline';updateLiveLabels();renderCurrentGame()});
