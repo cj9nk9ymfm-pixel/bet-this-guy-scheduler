@@ -525,10 +525,12 @@ async function xCardPreview(request, env) {
     if (!rows.length) return new Response("", { status: 404 });
     svg = xWeekSvg(xWeekData(rows, weeklySummary(rows), weeklySummary(seasonRows), info ? `Week ${info.week}` : "Last week", weeklyRange(week)));
   } else {
-    if (!/^official\|[\w|.-]{8,200}$/.test(id)) return new Response("", { status: 404 });
+    if (!/^(official|nba)\|[\w|.-]{8,200}$/.test(id)) return new Response("", { status: 404 });
     const row = await env.DB.prepare("SELECT * FROM public_recommendations WHERE id = ? AND source = 'market-verified-v2'").bind(id).first();
     if (!row) return new Response("", { status: 404 });
-    const season = weeklySummary(seasonRows), graded = XRESULT[row.result] && params.get("result") === "1";
+    // An NBA pick's graphic carries the NBA record, not the NFL one.
+    const nbaRows = id.startsWith("nba|") ? (await env.DB.prepare("SELECT kind,posted_at,line,odds,combined_odds,status,result,closing_line,closing_odds,closing_captured_at FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'nba|%'").all()).results || [] : null;
+    const season = weeklySummary(nbaRows || seasonRows), graded = XRESULT[row.result] && params.get("result") === "1";
     svg = xCardSvg(graded ? await xResultData(env, row, season) : await xCardData(env, row, season));
   }
   const png = await renderCardPng(svg);
