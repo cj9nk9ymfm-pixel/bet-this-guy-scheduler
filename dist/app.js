@@ -2635,6 +2635,9 @@ function statsProp(l){
     try{const st=stored(KEY),r=await fetch(`/api/predictions/board?event=${encodeURIComponent(id)}${st?`&state=${encodeURIComponent(st)}`:''}`);const body=await r.json();const m=new Map();for(const p of body?.prices||[])m.set(`${String(p[0]).toLowerCase().replace(/[^a-z]/g,'')}|${p[1]}|${p[2]}|${p[3]}`,{exchange:p[4],odds:p[5]});boardPrices.set(id,m)}catch{boardPrices.set(id,new Map())}
     paintBoard();
   }
+  // Games in progress: prediction prices move with the game, so reload them every 2 minutes (kept on screen while reloading).
+  setInterval(()=>{if(view()!=='predictions'||typeof props==='undefined')return;const now=Date.now();
+    for(const id of [...boardPrices.keys()]){const kick=Date.parse(props.find(p=>p.eventID===id)?.startsAt||'');if(kick<=now&&now-kick<4.5*3600000){boardWanted.delete(id);loadBoard(id)}}},120000);
   function paintBoard(){
     const pm=view()==='predictions';
     document.querySelectorAll('#propList .prop-card[data-id]').forEach(cardEl=>{
