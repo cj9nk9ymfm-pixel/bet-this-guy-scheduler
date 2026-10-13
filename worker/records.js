@@ -2465,12 +2465,27 @@ async function sendNbaAlerts(env,now=Date.now()){
   if(!only.length)return {sent:0,picks:fresh.length};
   return {...await sendPickAlerts(env,now,only),picks:fresh.length};
 }
+// One-off email (partner outreach): the app_settings key email-custom holds
+// JSON {id,to,subject,text,from?}. Sent once per id, plain text, from a
+// betthisguy.com address with replies to support. Nothing is sent without it.
+async function sendCustomEmail(env,now=Date.now()){
+  if(!env.DB||!env.RESEND_API_KEY)return {none:true};
+  let m=null;try{m=JSON.parse(await appSetting(env,'email-custom')||'null')}catch{}
+  if(!m||!/^[\w-]{1,40}$/.test(String(m.id||''))||!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(String(m.to||''))||!m.subject||!m.text)return {none:true};
+  const key=`email-custom-sent:${m.id}`;if(!(await xClaim(env,key,now)))return {done:true};
+  const from=/^[^<>]{0,60}<[\w.+-]+@betthisguy\.com>$/.test(String(m.from||''))?m.from:EMAIL_ALERT_FROM;
+  const r=await fetch('https://api.resend.com/emails',{method:'POST',headers:{authorization:`Bearer ${env.RESEND_API_KEY}`,'content-type':'application/json'},body:JSON.stringify({from,to:[m.to],reply_to:env.EMAIL_REPLY_TO||'support@betthisguy.com',subject:String(m.subject).slice(0,200),text:String(m.text).slice(0,8000)}),signal:AbortSignal.timeout(15000)}).catch(error=>({ok:false,status:0,json:async()=>({message:error.message})}));
+  if(!r.ok){const why=String((await r.json().catch(()=>({})))?.message||'').slice(0,160);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});await setAppSetting(env,'email-custom-error',`${new Date(now).toISOString()} ${r.status} ${why}`).catch(()=>{});return {sent:0,error:r.status}}
+  const id=(await r.json().catch(()=>({})))?.id||'';await xDone(env,key,now);await setAppSetting(env,'email-custom-result',`${new Date(now).toISOString()} sent ${m.id} ${id}`).catch(()=>{});
+  return {sent:1};
+}
 async function sendDueAlerts(env,now=Date.now()){
   if(!env.DB)return {sent:0};
+  const custom=await sendCustomEmail(env,now).catch(error=>({error:error.message}));
   const nba=await sendNbaAlerts(env,now).catch(error=>({error:error.message}));
   const predictions=await sendPredictionAlerts(env,now).catch(error=>({error:error.message}));
   const predictionEmails=await sendPredictionEmails(env,now).catch(error=>({error:error.message}));
-  return {...await sendOfficialAlerts(env,now),nba,predictions,predictionEmails};
+  return {...await sendOfficialAlerts(env,now),nba,predictions,predictionEmails,...(custom.none?{}:{custom})};
 }
 async function sendOfficialAlerts(env,now=Date.now()){
   if(!env.DB)return {sent:0};
