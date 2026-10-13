@@ -34,6 +34,11 @@ add(week,'s',{player:'Started Guy',market:'Receptions',side:'Over',line:3.5,odds
   assert.ok(texts.today.threads.includes('Puka Nacua Over 6.5 receptions (+120)'));
   assert.ok(texts.today.reddit.includes('| Puka Nacua | Over 6.5 receptions | +120 |'));
   assert.ok(texts.today.reddit.includes('| Book |')&&texts.today.reddit.includes('How we pick:'),'the Reddit post names the book and explains the method');
+  // Replies: one card per upcoming pick, with its graphic and captions that fit a reply.
+  assert.equal(texts.replies.ready,true);
+  assert.ok(texts.replies.items.every(r=>r.captions.length===3&&r.captions.every(c=>c.length<=280&&!/https?:/.test(c))),'reply captions fit and carry no link');
+  assert.ok(texts.replies.items.some(r=>r.image.startsWith('/api/x-card.png?id=official')&&r.search.startsWith('https://x.com/search?q=')));
+  assert.ok(!texts.replies.items.some(r=>r.title.startsWith('Started Guy')),'started games are left out');
   const last=texts.previous;
   assert.equal(last.record,'2–1');assert.equal(Math.round(last.profit),Math.round(110+100/1.1-100));
   assert.ok(last.x.startsWith('📊 Week')&&last.x.includes('2–1 on player props, +$101 betting $100 a pick'),last.x.split('\n')[0]);
