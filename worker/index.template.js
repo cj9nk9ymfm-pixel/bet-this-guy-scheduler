@@ -781,7 +781,7 @@ function gradeRecordSide(side, line, value) {
   return BTGStats.grade(side, line, value);
 }
 
-const EARLY_MARKETS=/^(receptions|rush attempts|pass attempts|pass completions|interceptions thrown|passing touchdowns|rushing touchdowns|receiving touchdowns|rush \+ receiving touchdowns|pass \+ rush \+ receiving tds|longest reception|longest rush|longest pass completion|sacks|solo tackles|tackles \+ assists|assists|defensive interceptions|field goals made|field goals|extra points|kicking points)$/i;
+const EARLY_MARKETS=/^(points|rebounds|3-pointers made|blocks|steals|turnovers|blocks \+ steals|points \+ rebounds \+ assists|points \+ rebounds|points \+ assists|rebounds \+ assists|receptions|rush attempts|pass attempts|pass completions|interceptions thrown|passing touchdowns|rushing touchdowns|receiving touchdowns|rush \+ receiving touchdowns|pass \+ rush \+ receiving tds|longest reception|longest rush|longest pass completion|sacks|solo tackles|tackles \+ assists|assists|defensive interceptions|field goals made|field goals|extra points|kicking points)$/i;
 async function gradePublicRecord(record, env, statsCache, signal) {
   const selections=record.kind === 'parlay'?recordLegs(record):[{...recordLegs(record)[0],player:record.player,market:record.market,side:record.side,line:record.line,odds:record.odds,sport:record.sport,gameTime:record.gameTime||record.game_time}];
   const rawLegs = selections.map(leg => {const {legs_json,legs,...selection}=leg;return {...selection,gameTime:leg.gameTime||leg.game_time||record.game_time}});
@@ -798,9 +798,12 @@ async function gradePublicRecord(record, env, statsCache, signal) {
       row = await statsCache.get(sharedKey);
       statsCache.set(cacheKey, row || null);
     }
-    let finished = row && (row.scoreboardFinal||nflGameState(row.game||{}) === 'final');
+    const nba=String(leg.sport||record.sport||'').toUpperCase()==='NBA';
+    // Final per the league's own scoreboard format.
+    const gameFinal=r=>Boolean(r&&(r.scoreboardFinal||(nba?nbaGameState(r.game||{}):nflGameState(r.game||{}))==='final'));
+    let finished = gameFinal(row);
     // The scoreboard can finish before the game embedded in player stats.
-    if(row && !finished && row.game?.id && env.BALLDONTLIE_API_KEY){
+    if(row && !nba && !finished && row.game?.id && env.BALLDONTLIE_API_KEY){
       const day=String(recordGameDate(row)||'').slice(0,10),gameKey=`scoreboard|${day}`;
       if(/^\d{4}-\d{2}-\d{2}$/.test(day)){
         if(!statsCache.has(gameKey))statsCache.set(gameKey,bdlRequest(`/nfl/v1/games?${new URLSearchParams({'dates[]':day,per_page:'100'})}`,env.BALLDONTLIE_API_KEY,signal).catch(()=>null));
@@ -809,6 +812,10 @@ async function gradePublicRecord(record, env, statsCache, signal) {
       }
     }
     let observedValue = finished ? recordMarketValue(leg,row) : null;
+    // NBA: a player who didn't play (no minutes, or missing from the final
+    // box score a day later) is no action at the books, so the leg is a push.
+    let voided=false;
+    if(nba&&finished&&(row.missingPlayerStats?Date.now()-Date.parse(leg.gameTime)>24*3600000:!BTGStats.nbaPlayed(row))){voided=true;observedValue=null}
     if(finished&&/^(anytime touchdown|touchdowns|first touchdown|last touchdown)$/i.test(leg.market)){
       const playValue=await touchdownMarketValue(leg,row,env,signal,statsCache);
       if(playValue!==null)observedValue=playValue;
@@ -833,15 +840,15 @@ async function gradePublicRecord(record, env, statsCache, signal) {
       const minimum=components.reduce((sum,value)=>sum+value,0);
       if(components.length&&minimum>Number(leg.line)){observedValue=minimum;minimumOnly=true}
     }
-    const value = row && nflGameState(row.game||{}) === 'final' ? observedValue : null;
-    const result = gradeRecordSide(leg.side, leg.line, value);
+    const value = gameFinal(row) ? observedValue : null;
+    const result = voided?'push':gradeRecordSide(leg.side, leg.line, value);
     results.push(result);
-    const provisional=gradeRecordSide(leg.side,leg.line,observedValue);
+    const provisional=voided?'push':gradeRecordSide(leg.side,leg.line,observedValue);
     provisionalResults.push(provisional);
     const pendingReason=!provisional?(Date.parse(leg.gameTime)>Date.now()?'Game not started':!row?'Player stats not available':!finished?'Game in progress':!BTGStats.supports(leg)?'Market needs play-by-play verification':'Required stat not reported'):null;
     // A short, stat-free note on why a finished leg could not be graded.
     const evidence=pendingReason&&row?{box:row.missingPlayerStats?`no unique row (${row.boxMatches??'?'} of ${row.boxRowCount??'?'})`:'matched',playerId:row.player_id??row.player?.id??null,statFields:Object.keys(row).filter(key=>/field_goal|extra_point|recept|kicking|total_points/.test(key)).map(key=>`${key}=${row[key]}`).slice(0,8),plays:row.game?.id?(await recordGamePlays(row,env,signal,statsCache))?.length??null:null}:undefined;
-    record.gradedLegs.push({...leg, result:provisional||'pending', actualValue:observedValue, minimumOnly,...(decidedEarly?{decidedEarly}:{}),pendingReason,...(evidence?{evidence}:{}),boxScoreFinal:Boolean(row&&nflGameState(row.game||{})==='final')});
+    record.gradedLegs.push({...leg, result:provisional||'pending', actualValue:observedValue, minimumOnly,...(decidedEarly?{decidedEarly}:{}),pendingReason,...(evidence?{evidence}:{}),...(voided?{voided}:{}),boxScoreFinal:gameFinal(row)});
   }
   const aggregate=values=>values.includes('lost')?'lost':values.every(value=>value==='push')?'push':values.every(value=>value==='won'||value==='push')?'won':null;
   record.provisionalResult=record.kind==='parlay'?aggregate(provisionalResults):provisionalResults[0];
@@ -957,7 +964,7 @@ async function captureClosingLines(env) {
     for (const leg of legs) {
       const eventId = leg.gameId || record.game_id;
       if (!eventId || events.has(eventId)) continue;
-      try { events.set(eventId, await fetchEventOdds(SPORTS_BY_LABEL.NFL, oddsEventId(eventId), env.THE_ODDS_API_KEY, true)); } catch { events.set(eventId, null); }
+      try { events.set(eventId, await fetchEventOdds(record.sport === "NBA" ? NBA_SPORT : SPORTS_BY_LABEL.NFL, oddsEventId(eventId), env.THE_ODDS_API_KEY, true)); } catch { events.set(eventId, null); }
     }
   }
   for (const record of candidates) {
@@ -1099,6 +1106,13 @@ async function engineStatus(env) {
 
 async function publicRecord(request, env, ctx) {
   if (!env.DB) return json({ success: false, error: "The public record database is not connected yet." }, 503);
+  if (request.method === "GET" && new URL(request.url).searchParams.get("view") === "home" && new URL(request.url).searchParams.get("sport") === "NBA") {
+    try {
+      return json({ success: true, sport: "NBA", ...(await nbaHomeData(env, Date.now(), new URL(request.url).searchParams.get("all") === "1")), updatedAt: new Date().toISOString() }, 200, { "cache-control": "public, max-age=120" });
+    } catch (error) {
+      return json({ success: false, error: "The NBA record is temporarily unavailable." }, 503);
+    }
+  }
   if (request.method === "GET" && new URL(request.url).searchParams.get("view") === "home") {
     // The home page banner needs only recent official picks, so it stays small
     // and edge-cacheable instead of pulling the whole record.
@@ -1182,6 +1196,7 @@ function nflActiveWindow(date){
   const weekday=(date.getUTCDay()+6)%7,hour=date.getUTCHours();
   return (weekday===2&&hour>=12)||weekday===3||(weekday===4&&hour<8)||(weekday===5&&hour>=12)||weekday===6||weekday===0||(weekday===1&&hour<8);
 }
+function nbaActiveWindow(date){const hour=date.getUTCHours();return date.getTime()>=Date.parse('2026-10-20T14:00:00Z')&&(hour>=16||hour<9)}
 function cronJobs(date){
   const minute=date.getUTCMinutes();
   // The in-between run (minute 5 of each 10) posts to X and grades
@@ -1192,13 +1207,15 @@ function cronJobs(date){
   if(minute%10>=5){const grade=nflActiveWindow(date)||(date.getUTCHours()%6===0&&minute<10);return ['xpost',...(grade?['lineGrade']:[]),'form','leans',...(LIVE_SHADOW_ON&&nflActiveWindow(date)?['live']:[])]}
   const publish=['publish'];
   if(nflActiveWindow(date))return [...publish,'grade',...(LIVE_SHADOW_ON?['live']:[])];
+  // NBA nights (about noon ET to 5 AM ET): official NBA picks grade live too.
+  if(nbaActiveWindow(date))return [...publish,'grade','form'];
   return [...publish,...(date.getUTCHours()%6===0&&minute<5?['grade']:[]),'form'];
 }
 async function runCron(controller,env,ctx){
   const due=cronJobs(new Date(controller.scheduledTime));
   if(!due.length||!env.DB||!env.BALLDONTLIE_API_KEY)return;
   if(!env.THE_ODDS_API_KEY)due.splice(0,due.length,...due.filter(job=>['xpost','lineGrade','form','leans','live'].includes(job)));
-  const request=new Request(`${SITE_URL}/api/maintenance`),jobs={publish:()=>publishOfficialPicks(request,env,ctx),grade:async()=>({settle:await settlePublicRecords(env),xresults:await runXResultsNow(env).catch(error=>({error:error.message}))}),nbaShadow:async()=>({season:await recordNbaShadow(request,env,ctx).catch(error=>({error:error.message})),preseason:await recordNbaPreseason(env).catch(error=>({error:error.message}))}),nbaGrade:()=>gradeNbaShadow(env),digest:()=>sendWeeklyDigest(env),alerts:()=>sendDueAlerts(env),xpost:()=>runXPosts(env),form:()=>fillFormBurst(env,ctx),live:()=>recordLiveShadow(env,ctx),leans:async()=>({injuries:await refreshInjuries(env).catch(error=>({error:error.message})),leans:await backfillLeans(env),td:TD_SHADOW_ON?await backfillTdShadow(env).catch(error=>({error:error.message})):{off:true},tdGrade:await gradeTdShadowNow(env).catch(error=>({error:error.message})),xresults:await runXResultsNow(env).catch(error=>({error:error.message})),games:await recordGameShadow(env).catch(error=>({error:error.message})),weather:await refreshWeatherFromSchedule(env,ctx).catch(error=>({error:error.message}))}),
+  const request=new Request(`${SITE_URL}/api/maintenance`),jobs={publish:()=>publishOfficialPicks(request,env,ctx),grade:async()=>({settle:await settlePublicRecords(env),xresults:await runXResultsNow(env).catch(error=>({error:error.message}))}),nbaShadow:async()=>({official:await publishNbaPicks(request,env,ctx).catch(error=>({error:error.message})),season:await recordNbaShadow(request,env,ctx).catch(error=>({error:error.message})),preseason:await recordNbaPreseason(env).catch(error=>({error:error.message}))}),nbaGrade:()=>gradeNbaShadow(env),digest:()=>sendWeeklyDigest(env),alerts:()=>sendDueAlerts(env),xpost:()=>runXPosts(env),form:()=>fillFormBurst(env,ctx),live:()=>recordLiveShadow(env,ctx),leans:async()=>({injuries:await refreshInjuries(env).catch(error=>({error:error.message})),leans:await backfillLeans(env),td:TD_SHADOW_ON?await backfillTdShadow(env).catch(error=>({error:error.message})):{off:true},tdGrade:await gradeTdShadowNow(env).catch(error=>({error:error.message})),xresults:await runXResultsNow(env).catch(error=>({error:error.message})),games:await recordGameShadow(env).catch(error=>({error:error.message})),weather:await refreshWeatherFromSchedule(env,ctx).catch(error=>({error:error.message}))}),
     // Line-value grading, near-miss grading and the stats check take turns
     // (minutes 15/45, 25/55 and 5/35) so each run stays inside the request limit.
     // While games kick off within 4 hours, the 15/45 and 25/55 slots check
