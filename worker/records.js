@@ -1283,12 +1283,22 @@ function exchangePriceList(exchangeBoard){
 const exchangeInsert=(env,p,stamp)=>env.DB.prepare('INSERT OR IGNORE INTO exchange_shadow (id,kind,exchange,event_id,home,away,player,team,market,side,line,odds,fair_pct,edge,game_time,logged_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(p.kind==='prop'?`prop|${p.eventId}|${normalizedName(p.player)}`:`game|${p.eventId}|${p.market}`,p.kind,p.exchange,p.eventId,p.home||null,p.away||null,p.player||null,p.team||null,p.market,p.side,p.line,p.odds,+(100*p.fair).toFixed(2),+p.edge.toFixed(2),p.gameTime,stamp);
 // Prediction-market picks (their own record). Estimated fee per exchange, in
 // chance points on a price with chance p (0-1): Kalshi's taker fee is
-// 0.07*p*(1-p) per contract; Polymarket is assumed the same; ProphetX and
-// BetOpenly about 1 point; Novig none. A price qualifies when its chance plus
+// 0.07*p*(1-p) per contract; Polymarket is assumed the same; ProphetX 2% of
+// net winnings; BetOpenly about 1 point; Novig none (pre-game). A price qualifies when its chance plus
 // the fee is 1-12 points under the sportsbooks' fair chance.
-const PREDICTION_FEES={kalshi:p=>7*p*(1-p),polymarket:p=>7*p*(1-p),prophetx:()=>1,betopenly:()=>1,novig:()=>0};
+// From each app's published fee pages (Oct 2026): Novig charges nothing on
+// pre-game straight trades and 0.10 x P x (1 - P) per contract on parlays;
+// ProphetX takes 2% of net winnings on straight trades and nothing on
+// parlays. Kalshi and Polymarket: their standard taker schedule (about
+// 7 x P x (1 - P) points). Points fees add to the price; win fees come off
+// the winnings.
+const PREDICTION_FEES={kalshi:p=>7*p*(1-p),polymarket:p=>7*p*(1-p),prophetx:()=>0,betopenly:()=>1,novig:()=>0};
+const PREDICTION_WIN_FEES={prophetx:.02};
+const PREDICTION_PARLAY_FEES={novig:p=>10*p*(1-p)};
+// A parlay's after-fee price on its app, from its combined decimal price.
+function predictionParlayNet(key,decimal){const p=1/decimal,fee=(PREDICTION_PARLAY_FEES[key]||(()=>0))(p)/100;return 1/Math.min(.99,p+fee)}
 const PREDICTION_MIN=1,PREDICTION_MAX=12,PREDICTION_PER_GAME=2;
-function predictionNet(key,odds){const p=1/recordDecimal(odds),cost=Math.min(.99,p+(PREDICTION_FEES[key]||(()=>1))(p)/100);return {chance:100*p,netChance:100*cost,netOdds:recordAmerican(1/cost)}}
+function predictionNet(key,odds){const d=recordDecimal(odds),p=1/d,win=PREDICTION_WIN_FEES[key],cost=Math.min(.99,win?1/(1+(d-1)*(1-win)):p+(PREDICTION_FEES[key]||(()=>1))(p)/100);return {chance:100*p,netChance:100*cost,netOdds:recordAmerican(1/cost)}}
 function predictionCandidates(board,exchangeBoard,fairs,now=Date.now(),opts={}){
   const min=opts.min??PREDICTION_MIN,max=opts.max??PREDICTION_MAX;
   const gameId=board.eventID||`NFL--${board.id}`,kick=Date.parse(board.commence_time),best=new Map();
@@ -1427,7 +1437,7 @@ function predictionParlayPlan(pool,existing,week,now=Date.now()){
           legs.push(p);
         }
         if(legs.length!==size)continue;
-        const priced=legs.map(l=>({gameId:l.eventId,odds:l.netOdds})),odds=recordAmerican(parlayDecimal(priced)),keys=legs.map(key);
+        const exKey=Object.keys(EXCHANGES).find(k=>EXCHANGES[k]===exName),priced=legs.map(l=>({gameId:l.eventId,odds:l.netOdds})),odds=recordAmerican(predictionParlayNet(exKey,parlayDecimal(priced))),keys=legs.map(key);
         if(odds<low||odds>high||prior.some(p=>p.filter(k=>keys.includes(k)).length>1))continue;
         const same=new Set(legs.map(l=>l.eventId)).size<legs.length;
         legs.forEach(l=>sides.set(sideKey(l.eventId,l.player,l.market),l.side));new Set(legs.map(l=>l.eventId)).forEach(g=>perGame.set(g,(perGame.get(g)||0)+1));
@@ -1476,7 +1486,7 @@ async function gradePredictionParlays(env,now=Date.now(),limit=15){
 function predictionParlayPay(r){
   if(r.result==='lost')return -25;if(r.result!=='won')return 0;
   let legs=[];try{legs=JSON.parse(r.legs_json)}catch{}
-  const live=legs.filter(l=>l.result!=='push'),d=live.length&&live.length<legs.length?parlayDecimal(live.map(l=>({gameId:l.eventId,odds:l.netOdds??l.odds}))):recordDecimal(Number(r.odds));
+  const exKey=Object.keys(EXCHANGES).find(k=>EXCHANGES[k]===r.exchange),live=legs.filter(l=>l.result!=='push'),d=live.length&&live.length<legs.length?predictionParlayNet(exKey,parlayDecimal(live.map(l=>({gameId:l.eventId,odds:l.netOdds??l.odds})))):recordDecimal(Number(r.odds));
   return 25*(d-1);
 }
 function predictionParlayRecord(rows){const g=rows.filter(r=>['won','lost','push'].includes(r.result));return {wins:g.filter(r=>r.result==='won').length,losses:g.filter(r=>r.result==='lost').length,pushes:g.filter(r=>r.result==='push').length,profit:Math.round(g.reduce((s,r)=>s+predictionParlayPay(r),0)),pending:rows.length-g.length}}
