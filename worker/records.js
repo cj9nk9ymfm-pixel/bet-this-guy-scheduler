@@ -2534,13 +2534,44 @@ async function sendCustomEmail(env,now=Date.now()){
   const id=(await r.json().catch(()=>({})))?.id||'';await xDone(env,key,now);await setAppSetting(env,'email-custom-result',`${new Date(now).toISOString()} sent ${m.id} ${id}`).catch(()=>{});
   return {sent:1};
 }
+// Official NBA picks by email, to accounts with email alerts and NBA on.
+// NBA picks post one game at a time across the day, so they're batched: one
+// email at most every 3 hours, or after 10 minutes when a new pick tips off
+// within 90 minutes.
+const NBA_EMAIL_GAP=3*3600000;
+async function sendNbaEmails(env,now=Date.now()){
+  if(!env.DB||!env.RESEND_API_KEY)return {sent:0,disabled:true};
+  const last=await appSetting(env,'nba-email-for'),lastTime=Date.parse(String(last||'').split('|')[1]||'');
+  const since=String(last||'').split('|')[0]||new Date(now-3*3600000).toISOString();
+  const picks=(await env.DB.prepare("SELECT kind,player,market,side,line,odds,combined_odds,legs_json,game_time,posted_at FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'nba|%' AND posted_at>? AND game_time>? ORDER BY game_time,posted_at LIMIT 12").bind(since,new Date(now).toISOString()).all()).results||[];
+  if(!picks.length)return {sent:0};
+  const soonest=Math.min(...picks.map(r=>Date.parse(r.game_time)||Infinity));
+  if(Number.isFinite(lastTime)&&now-lastTime<(soonest-now<90*60000?10*60000:NBA_EMAIL_GAP))return {sent:0,waiting:picks.length};
+  // Claim: newest posted time and send time, so two instances can't send twice.
+  const newest=picks.reduce((m,r)=>r.posted_at>m?r.posted_at:m,''),value=`${newest}|${new Date(now).toISOString()}`;
+  const claim=last==null?await env.DB.prepare('INSERT OR IGNORE INTO app_settings (key,value) VALUES (?,?)').bind('nba-email-for',value).run():await env.DB.prepare('UPDATE app_settings SET value=? WHERE key=? AND value=?').bind(value,'nba-email-for',last).run();
+  if(!Number(claim?.meta?.changes??claim?.changes))return {sent:0,claimed:false};
+  const people=(await env.DB.prepare('SELECT a.token,p.email FROM email_alerts a JOIN user_profiles p ON p.auth_user_id=a.auth_user_id WHERE a.enabled=1 AND COALESCE(a.nba,1)=1 ORDER BY a.created_at LIMIT 2000').all()).results||[];
+  if(!people.length)return {sent:0,picks:picks.length};
+  const subject=picks.length===1?(picks[0].kind==='parlay'?`🏀 New NBA ${recordLegs(picks[0]).length}-leg parlay (${weeklyOdds(picks[0].combined_odds)})`:`🏀 New NBA pick: ${picks[0].player} ${weeklyLegText(picks[0])}`):`🏀 ${picks.length} new NBA picks`;
+  const heading=picks.length===1?'A new NBA pick just posted':`${picks.length} new NBA picks just posted`;
+  const from=env.EMAIL_FROM||EMAIL_ALERT_FROM,postal=String(env.EMAIL_POSTAL_ADDRESS||'').trim(),opts={subject,heading:weeklyEscape(heading),eyebrow:'NBA PICK',lede:'Locked before tip-off and graded in public, with its own NBA record.',rowsHtml:picks.map(emailPickRow).join(''),ctaUrl:`${SITE_URL}/?league=NBA`};
+  let sent=0;
+  for(let i=0;i<people.length;i+=100){
+    const batch=people.slice(i,i+100).map(person=>{const unsubscribe=`${SITE_URL}/api/email-alerts/unsubscribe?token=${person.token}`;return {from,to:[person.email],reply_to:env.EMAIL_REPLY_TO||'support@betthisguy.com',subject,html:emailAlertHtml(picks,unsubscribe,postal,opts),text:emailAlertText(picks,unsubscribe,postal,{heading}).replace(`See the picks: ${SITE_URL}/`,`See the picks: ${SITE_URL}/?league=NBA`),headers:{'List-Unsubscribe':`<${unsubscribe}>`,'List-Unsubscribe-Post':'List-Unsubscribe=One-Click'}}});
+    try{const response=await fetch('https://api.resend.com/emails/batch',{method:'POST',headers:{authorization:`Bearer ${env.RESEND_API_KEY}`,'content-type':'application/json'},body:JSON.stringify(batch),signal:AbortSignal.timeout(15000)});if(response.ok)sent+=batch.length;else console.warn('nba_emails_failed',response.status)}
+    catch(error){console.warn('nba_emails_failed',error.message)}
+  }
+  return {sent,total:people.length,picks:picks.length};
+}
 async function sendDueAlerts(env,now=Date.now()){
   if(!env.DB)return {sent:0};
   const custom=await sendCustomEmail(env,now).catch(error=>({error:error.message}));
   const nba=await sendNbaAlerts(env,now).catch(error=>({error:error.message}));
+  const nbaEmails=await sendNbaEmails(env,now).catch(error=>({error:error.message}));
   const predictions=await sendPredictionAlerts(env,now).catch(error=>({error:error.message}));
   const predictionEmails=await sendPredictionEmails(env,now).catch(error=>({error:error.message}));
-  return {...await sendOfficialAlerts(env,now),nba,predictions,predictionEmails,...(custom.none?{}:{custom})};
+  return {...await sendOfficialAlerts(env,now),nba,nbaEmails,predictions,predictionEmails,...(custom.none?{}:{custom})};
 }
 async function sendOfficialAlerts(env,now=Date.now()){
   if(!env.DB)return {sent:0};
