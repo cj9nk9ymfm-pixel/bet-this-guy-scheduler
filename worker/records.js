@@ -718,8 +718,8 @@ async function gradeTdShadow(env,now=Date.now(),limit=40){
 // its own invocation (SELF binding) with its own request allowance.
 async function gradeTdShadowNow(env){
   if(!env.SELF?.fetch||!env.MAINTENANCE_TOKEN)return gradeTdShadow(env,Date.now(),10);
-  const cut=new Date(Date.now()-4*3600000).toISOString();
-  let waiting=0;for(const t of ['td_shadow','bump_shadow','live_shadow','game_shadow','book_shadow','exchange_shadow'])waiting+=((await env.DB.prepare(`SELECT COUNT(*) AS n FROM ${t} WHERE result IS NULL AND game_time<?`).bind(cut).first().catch(()=>null))?.n||0);
+  const cut=new Date(Date.now()-3*3600000).toISOString();
+  let waiting=0;for(const t of ['td_shadow','bump_shadow','live_shadow','game_shadow','book_shadow','exchange_shadow','prediction_picks','prediction_parlays'])waiting+=((await env.DB.prepare(`SELECT COUNT(*) AS n FROM ${t} WHERE result IS NULL AND game_time<?`).bind(cut).first().catch(()=>null))?.n||0);
   if(!waiting)return {waiting:0};
   const r=await env.SELF.fetch(new Request(`${SITE_URL}/api/maintenance?job=tdGrade`,{method:'POST',headers:{authorization:`Bearer ${env.MAINTENANCE_TOKEN}`},signal:AbortSignal.timeout(60000)}));
   return {waiting,status:r.status};
@@ -1267,7 +1267,7 @@ async function recordPredictionPicks(env,board,exchangeBoard,fairs,now=Date.now(
 }
 async function gradePredictionPicks(env,now=Date.now(),limit=30){
   if(!env.DB||!env.BALLDONTLIE_API_KEY)return {graded:0};
-  const rows=(await env.DB.prepare('SELECT * FROM prediction_picks WHERE result IS NULL AND game_time<? AND game_time>? ORDER BY game_time LIMIT ?').bind(new Date(now-4*3600000).toISOString(),new Date(now-14*86400000).toISOString(),limit).all()).results||[];
+  const rows=(await env.DB.prepare('SELECT * FROM prediction_picks WHERE result IS NULL AND game_time<? AND game_time>? ORDER BY game_time LIMIT ?').bind(new Date(now-3*3600000).toISOString(),new Date(now-14*86400000).toISOString(),limit).all()).results||[];
   const cache=new Map(),statements=[],stamp=new Date(now).toISOString();
   for(const r of rows){
     const record={sport:'NFL',player:r.player,team:r.team,gameTime:r.game_time,market:r.market,side:r.side,line:r.line};
@@ -1334,7 +1334,7 @@ async function postPredictionPicksToX(env,now=Date.now()){
     const same=legs.some(l=>l.sameGame);
     const text=xShort(`📈 Prediction market parlay · ${r.exchange} · ¼ unit\n${legs.map(l=>`• ${l.player} ${weeklyLegText(l)}`).join('\n')}\nPriced at ${exchangePct(r.odds)}% after fees${same?' (same-game)':''}: take it at that chance or lower in ${r.exchange}’s parlay builder.\n\nOwn record. Link in bio. 18+/21+ by app.`);
     const mediaId=await xPredictionMedia(env,r,true);
-    try{const sent=await xPost(env,text,mediaId);await xDone(env,key,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} prediction-parlay ${mediaId?'graphic':'text'} ${r.id} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,parlay:true,graphic:Boolean(mediaId)}}
+    try{const sent=await xPost(env,text,mediaId);await xDone(env,key,now);if(sent?.data?.id)await setAppSetting(env,`xid:${r.id}`,String(sent.data.id)).catch(()=>{});await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} prediction-parlay ${mediaId?'graphic':'text'} ${r.id} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,parlay:true,graphic:Boolean(mediaId)}}
     catch(error){await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});return {posted:0,error:error.message}}
   }
   const rows=(await env.DB.prepare('SELECT * FROM prediction_picks WHERE posted_at>? AND game_time>? ORDER BY posted_at LIMIT 6').bind(new Date(now-24*3600000).toISOString(),new Date(now).toISOString()).all()).results||[];
@@ -1346,7 +1346,7 @@ async function postPredictionPicksToX(env,now=Date.now()){
     const record=games>=3?`\nPrediction record: ${rec.wins}–${rec.losses}${rec.pushes?`–${rec.pushes}`:''}, ${weeklyMoney(rec.profit)} at $100 a pick after fees.`:'';
     const text=xShort(`📈 Prediction market pick: ${r.player} ${weeklyLegText(r)}\n${r.exchange} at ${exchangePct(r.odds)}% · fair chance ${Math.round(r.fair_pct)}%, after fees\n${matchup}${matchup&&when?' · ':''}${when}${record}\n\nOwn record, separate from our sportsbook picks. Link in bio. 18+/21+ by app.`);
     const mediaId=await xPredictionMedia(env,r,false);
-    try{const sent=await xPost(env,text,mediaId);await xDone(env,key,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} prediction ${mediaId?'graphic':'text'} ${r.id} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,graphic:Boolean(mediaId)}}
+    try{const sent=await xPost(env,text,mediaId);await xDone(env,key,now);if(sent?.data?.id)await setAppSetting(env,`xid:${r.id}`,String(sent.data.id)).catch(()=>{});await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} prediction ${mediaId?'graphic':'text'} ${r.id} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,graphic:Boolean(mediaId)}}
     catch(error){console.warn('x_prediction_failed',error.message);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
   }
   return {posted:0};
@@ -2898,8 +2898,81 @@ async function postComboToX(env,now=Date.now()){
   let mediaId=null;
   try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(xSlateSvg({final:true,kicker:matchup?'TONIGHT’S CARD':'THE FULL CARD',day:matchup||dayName,date:etDate(first,{month:'short',day:'numeric'}),dateLine:`${etDate(first,{month:'short',day:'numeric'})} · ${total} play${total===1?'':'s'}`,note:'Sportsbooks + prediction apps',note2:`Kickoff ${etDate(first,{hour:'numeric',minute:'2-digit'})} ET`,picks,cta:'Wherever you bet',season:season.wins+season.losses>=5?`${season.wins}–${season.losses} · ${weeklyMoney(season.profit)}`:''})))}
   catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} combo graphic: ${error.message}`).catch(()=>{})}
-  try{const sent=await xPost(env,text,mediaId);await xDone(env,key,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} combo ${day} ${mediaId?'graphic':'text'} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,plays:total,graphic:Boolean(mediaId)}}
+  try{const sent=await xPost(env,text,mediaId);await xDone(env,key,now);if(sent?.data?.id)await setAppSetting(env,`xid:x-combo:${day}`,String(sent.data.id)).catch(()=>{});await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} combo ${day} ${mediaId?'graphic':'text'} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,plays:total,graphic:Boolean(mediaId)}}
   catch(error){console.warn('x_combo_failed',error.message);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
+}
+// Our own recent posts (originals, no replies), to find a post to reply under
+// when its id wasn't saved. One read, cached 10 minutes. The account id is the
+// first part of the access token.
+async function xOwnPosts(env,now=Date.now()){
+  const cached=await appSetting(env,'x-own-recent');try{const c=JSON.parse(cached||'null');if(c&&now-c.at<10*60000)return c.posts}catch{}
+  const user=String(env.X_ACCESS_TOKEN||'').split('-')[0];if(!/^\d+$/.test(user))return [];
+  const base=`https://api.twitter.com/2/users/${user}/tweets`,params={max_results:'60',exclude:'replies,retweets'};
+  const r=await fetch(`${base}?${new URLSearchParams(params)}`,{headers:{authorization:await xOAuthHeader(env,'GET',base,params)},signal:AbortSignal.timeout(15000)});
+  if(!r.ok)throw new Error(`X read failed (${r.status})`);
+  const posts=((await r.json().catch(()=>({})))?.data||[]).map(t=>({id:String(t.id),text:String(t.text||'')}));
+  await setAppSetting(env,'x-own-recent',JSON.stringify({at:now,posts})).catch(()=>{});return posts;
+}
+async function xFindPost(env,key,match,now){
+  const saved=await appSetting(env,`xid:${key}`);if(saved)return saved;
+  const hit=(await xOwnPosts(env,now).catch(()=>[])).find(p=>match(p.text));
+  if(hit)await setAppSetting(env,`xid:${key}`,hit.id).catch(()=>{});return hit?.id||null;
+}
+const pmPickMatch=r=>t=>t.startsWith('📈 Prediction market pick:')&&t.includes(r.player)&&t.includes(weeklyLegText(r));
+const pmParlayMatch=legs=>t=>t.startsWith('📈 Prediction market parlay')&&legs.every(l=>t.includes(l.player));
+// Prediction picks and parlays we posted: a result reply under each post once
+// it's graded (text, so a few fit in one run).
+async function postPredictionResultsToX(env,now=Date.now(),limit=3){
+  if(!env.DB||!xReady(env))return {posted:0,disabled:true};
+  const since=new Date(now-3*86400000).toISOString();let posted=0;
+  const picks=(await env.DB.prepare("SELECT * FROM prediction_picks WHERE result IN ('won','lost','push') AND game_time>? ORDER BY game_time").bind(since).all()).results||[];
+  const parlays=(await env.DB.prepare("SELECT * FROM prediction_parlays WHERE result IN ('won','lost','push') AND game_time>? ORDER BY game_time").bind(since).all().catch(()=>({results:[]}))).results||[];
+  const rec=predictionRecord((await env.DB.prepare('SELECT result,odds,net_odds,close_odds FROM prediction_picks').all()).results||[]);
+  const recLine=rec.wins+rec.losses>=3?`\nPrediction record: ${rec.wins}–${rec.losses}${rec.pushes?`–${rec.pushes}`:''}, ${weeklyMoney(rec.profit)} at $100 a pick after fees.`:'';
+  const look={won:['✅','HIT'],lost:['❌','MISS'],push:['➖','PUSH']};
+  const jobs=[...picks.map(r=>({id:r.id,posted:`xpm:${r.id}`,match:pmPickMatch(r),text:()=>{const [e,w]=look[r.result],win=r.result==='won'?100*(recordDecimal(r.net_odds??r.odds)-1):r.result==='lost'?-100:0,unit=String(r.market||'').toLowerCase();
+      return `${e} ${w}: ${r.player} ${weeklyLegText(r)} (${exchangePct(r.odds)}% on ${r.exchange})${r.actual!=null?`\nFinal: ${r.actual} ${Number(r.actual)===1?unit.replace(/s$/,''):unit}.`:''}\n${r.result==='push'?'Stake back.':`${weeklyMoney(win)} on a $100 pick after fees.`}${recLine}\n\nEvery pick graded in public. 18+/21+ by app.`}})),
+    ...parlays.map(r=>{let legs=[];try{legs=JSON.parse(r.legs_json)}catch{}return {id:r.id,posted:`xpmp:${r.id}`,match:pmParlayMatch(legs),text:()=>{const [e,w]=look[r.result];
+      return `${e} ${w}: ${legs.length}-leg parlay on ${r.exchange} (${exchangePct(r.odds)}%)\n${legs.map(l=>`${l.result==='won'?'✅':l.result==='lost'?'❌':'➖'} ${l.player} ${weeklyLegText(l)}`).join('\n')}\n${r.result==='push'?'Stake back.':`${weeklyMoney(predictionParlayPay(r))} on a $25 ticket.`}\n\nEvery pick graded in public. 18+/21+ by app.`}}})];
+  for(const j of jobs){
+    if(posted>=limit)break;
+    if(!(await appSetting(env,j.posted))||!(await xClaimable(env,`xpr:${j.id}`,now))||!(await xClaim(env,`xpr:${j.id}`,now)))continue;
+    try{const to=await xFindPost(env,j.id,j.match,now),sent=await xPost(env,xShort(j.text()),null,to);await xDone(env,`xpr:${j.id}`,now);posted++;
+      await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} prediction-result ${to?'reply':'post'} ${sent?.data?.id||''} ${j.id}`).catch(()=>{})}
+    catch(error){await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(`xpr:${j.id}`).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});break}
+  }
+  return {posted};
+}
+// Full-card recap: once every play on a full card (x-combo-request day) is
+// graded, one graphic with every result and the night's money, as a reply
+// to the full-card post. Posts once per value of x-card-recap-request.
+async function postCardRecapToX(env,now=Date.now()){
+  if(!env.DB||!xReady(env))return {posted:0,disabled:true};
+  const req=String((await appSetting(env,'x-card-recap-request'))||'');if(!/^\d{4}-\d{2}-\d{2}(#\w{1,8})?$/.test(req))return {posted:0,none:true};
+  const day=req.slice(0,10),key=`x-card-recap:${req}`;if(!(await xClaimable(env,key,now)))return {posted:0,done:true};
+  const etDay=`${day.slice(5,7)}/${day.slice(8,10)}/${day.slice(0,4)}`,onDay=r=>etDate(Date.parse(r.game_time),{year:'numeric',month:'2-digit',day:'2-digit'})===etDay;
+  const from=`${day}T00:00:00Z`,to=new Date(Date.parse(from)+2*86400000).toISOString();
+  const official=((await env.DB.prepare("SELECT * FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND game_time>? AND game_time<? ORDER BY game_time,posted_at").bind(from,to).all()).results||[]).filter(onDay);
+  const pm=((await env.DB.prepare('SELECT * FROM prediction_picks WHERE game_time>? AND game_time<? ORDER BY game_time,posted_at').bind(from,to).all()).results||[]).filter(onDay);
+  const pmp=((await env.DB.prepare('SELECT * FROM prediction_parlays WHERE game_time>? AND game_time<? ORDER BY game_time,posted_at').bind(from,to).all().catch(()=>({results:[]}))).results||[]).filter(onDay);
+  const done=r=>['won','lost','push','void'].includes(r.result);
+  if(!official.length&&!pm.length&&!pmp.length)return {posted:0,empty:true};
+  if(![...official,...pm,...pmp].every(done))return {posted:0,waiting:true};
+  if(!(await xClaim(env,key,now)))return {posted:0,done:true};
+  const P='#c4b5fd',legsOf=r=>{try{return JSON.parse(r.legs_json)}catch{return []}};
+  const sbMoney=official.reduce((t,r)=>t+xPayout(r),0),pmMoney=pm.reduce((t,r)=>t+(r.result==='won'?100*(recordDecimal(r.net_odds??r.odds)-1):r.result==='lost'?-100:0),0)+pmp.reduce((t,r)=>t+predictionParlayPay(r),0);
+  const all=[...official,...pm,...pmp].filter(r=>r.result!=='void'),wins=all.filter(r=>r.result==='won').length,losses=all.filter(r=>r.result==='lost').length,total=sbMoney+pmMoney;
+  const picks=[...official.flatMap(r=>{const legs=recordLegs(r);return r.kind==='parlay'?[{res:r.result,text:`${legs.length}-leg parlay`,odds:weeklyMoney(xPayout(r)),sub:`Sportsbook · ${weeklyOdds(r.combined_odds)} · ¼ unit`},...legs.map(l=>({leg:true,text:`${l.result==='won'?'✓':l.result==='lost'?'✗':'·'} ${l.player} · ${weeklyLegText(l)}`}))]:[{res:r.result,text:`${r.player} · ${weeklyLegText(r)}`,odds:weeklyMoney(xPayout(r)),sub:`Sportsbook · ${weeklyOdds(r.odds)}${legs[0]?.book?` · ${legs[0].book}`:''}`}]}),
+    ...pm.map(r=>({res:r.result,color:r.result==='won'?P:undefined,text:`${r.player} · ${weeklyLegText(r)}`,odds:weeklyMoney(r.result==='won'?100*(recordDecimal(r.net_odds??r.odds)-1):r.result==='lost'?-100:0),sub:`Prediction app · ${r.exchange} · ${exchangePct(r.odds)}%`})),
+    ...pmp.flatMap(r=>{const legs=legsOf(r);return [{res:r.result,color:r.result==='won'?P:undefined,text:`${legs.length}-leg parlay`,odds:weeklyMoney(predictionParlayPay(r)),sub:`${r.exchange} · ${exchangePct(r.odds)}% · ¼ unit`},...legs.map(l=>({leg:true,color:P,text:`${l.result==='won'?'✓':l.result==='lost'?'✗':'·'} ${l.player} · ${weeklyLegText(l)}`}))]})];
+  const games=[...new Set([...official.map(r=>xMatchup(recordLegs(r)[0]?.team)),...pm.map(r=>xMatchup(r.team))].filter(Boolean))],matchup=games.length===1?games[0]:etDate(Date.parse(all[0]?.game_time||from),{weekday:'long'});
+  const text=xShort(`🧾 Final: ${wins}–${losses} on the full card${games.length===1?`, ${matchup}`:''}. ${weeklyMoney(total)} on the night.\n\n🏈 Sportsbook: ${weeklyMoney(sbMoney)}\n📈 Prediction apps: ${weeklyMoney(pmMoney)}\n\n$100 singles, $25 parlays, locked before kickoff, every result graded in public. Link in bio. 21+`);
+  let mediaId=null;
+  try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(xSlateSvg({final:true,kicker:'FULL CARD RESULTS',day:`${wins}–${losses}`,dayColor:total>=0?'#2ee6a8':'#f87171',dateLine:`${matchup} · ${weeklyMoney(total)}`,note:`Sportsbook ${weeklyMoney(sbMoney)} · Apps ${weeklyMoney(pmMoney)}`,note2:'$100 singles · $25 parlays',picks,cta:'Graded in public'})))}
+  catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} card recap graphic: ${error.message}`).catch(()=>{})}
+  try{const comboReq=String((await appSetting(env,'x-combo-request'))||day);const reply=await appSetting(env,`xid:x-combo:${comboReq.slice(0,10)}`)||await xFindPost(env,`x-combo:${day}`,t=>/full card/i.test(t)&&/Wherever you are/.test(t),now);
+    const sent=await xPost(env,text,mediaId,reply);await xDone(env,key,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} card-recap ${reply?'reply':'post'} ${mediaId?'graphic':'text'} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,graphic:Boolean(mediaId),reply:Boolean(reply)}}
+  catch(error){await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
 }
 // Day recap: a game day's graded card (record, $100-a-pick money, closing
 // lines) on one graphic. Posts once per value of app_settings x-recap-request,
@@ -2962,11 +3035,13 @@ async function runXPosts(env,now=Date.now()){
   const pin=picks.posted||combo.posted||weekly.posted||final.posted||slate.posted?{posted:0,waiting:true}:await postAlertsPinToX(env,now);
   const recap=picks.posted||combo.posted||weekly.posted||final.posted||slate.posted||pin.posted?{posted:0,waiting:true}:await postDayRecapToX(env,now);
   const proof=await postProofToX(env,now);
+  const pmResults=await postPredictionResultsToX(env,now).catch(error=>({posted:0,error:error.message}));
+  const cardRecap=picks.posted||weekly.posted||combo.posted||final.posted||slate.posted||pin.posted||recap.posted?{posted:0,waiting:true}:await postCardRecapToX(env,now).catch(error=>({posted:0,error:error.message}));
   const predictions=picks.posted?{posted:0,waiting:true}:await postPredictionPicksToX(env,now).catch(error=>({posted:0,error:error.message}));
   const results=picks.posted||combo.posted||weekly.posted||final.posted||slate.posted||pin.posted||recap.posted?{posted:0,waiting:true}:await postResultsToX(env,now);
   // The pinned summary waits for a run with nothing else heavy.
   const summary=picks.posted||combo.posted||weekly.posted||final.posted||slate.posted||pin.posted||recap.posted||results.posted?{posted:0,waiting:true}:await postSummaryToX(env,now);
-  return {picks,weekly,closing,combo,final,slate,pin,recap,proof,predictions,results,summary};
+  return {picks,weekly,closing,combo,final,slate,pin,recap,proof,pmResults,cardRecap,predictions,results,summary};
 }
 // "My book" alerts: a good-value price at one of someone's own sportsbooks.
 // The fair price always comes from every book (3+ pricing both sides, the same
