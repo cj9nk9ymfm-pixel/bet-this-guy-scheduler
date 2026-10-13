@@ -93,9 +93,9 @@ const run=c=>vm.runInContext(c,context),req='new Request("https://betthisguy.com
   // One-off email: sent once per id, from a betthisguy.com address, nothing without the setting.
   const mails=[];const realFetch=context.fetch;context.fetch=async(url,init)=>{if(String(url).includes('api.resend.com')){mails.push(JSON.parse(init.body));return Response.json({id:'e1'})}return realFetch(url,init)};run('fetch=globalThis.fetch');env.RESEND_API_KEY='r';
   assert.equal((await run('sendCustomEmail(env)')).none,true);
-  db.prepare("INSERT INTO app_settings (key,value) VALUES ('email-custom',?)").run(JSON.stringify({id:'novig-1',to:'affiliates@novig.co',from:'Bet This Guy <partners@betthisguy.com>',subject:'Hi',text:'Hello'}));
+  db.prepare("INSERT INTO app_settings (key,value) VALUES ('email-custom',?)").run(JSON.stringify({id:'novig-1',to:'affiliates@novig.co',from:'Bet This Guy <partners@betthisguy.com>',bcc:'support@betthisguy.com',subject:'Hi',text:'Hello'}));
   assert.equal((await run('sendCustomEmail(env)')).sent,1);assert.equal((await run('sendCustomEmail(env)')).done,true,'once');
-  assert.deepEqual([mails.length,mails[0].from,mails[0].to[0],mails[0].reply_to],[1,'Bet This Guy <partners@betthisguy.com>','affiliates@novig.co','support@betthisguy.com']);
+  assert.deepEqual([mails.length,mails[0].from,mails[0].to[0],mails[0].reply_to,mails[0].bcc[0]],[1,'Bet This Guy <partners@betthisguy.com>','affiliates@novig.co','support@betthisguy.com','support@betthisguy.com']);
   context.fetch=realFetch;run('fetch=globalThis.fetch');
   // The NBA record endpoint.
   const res=await run(`worker.fetch(new Request('https://betthisguy.com/api/record?view=home&sport=NBA'),env,{waitUntil(){}})`);
