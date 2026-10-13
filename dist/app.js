@@ -1442,6 +1442,8 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     const pmShare={text:'Share',icon:'share',primary:false,wide:true,share:`Bet This Guy prediction pick: ${isParlay?`${legs.length}-leg parlay`:`${r.player} ${bet}`} (${r.pm?.pct}% on ${r.pm?.exchange}) · ${location.origin}`};
     const pmOffer=r.pm&&!done?window.BTGApps?.offer?.(r.pm.exchange):null;
     return {chip,title:isParlay?`${legs.length}-leg ${legs.some(l=>l.sameGame)?'same-game ':''}parlay`:r.player,bet,game,price:r.pm?`${r.pm.pct}%`:formatOdds(odds),
+      // Alerts prompt for anyone without alerts or pick emails: right after a hit, or on an open pick.
+      alert:document.documentElement.classList.contains('alerts-on')||(()=>{try{return localStorage.getItem('btg-email-sub')==='1'}catch{return false}})()?null:done&&r.result==='won'?{title:'This one hit. Get the next one first.',text:'Picks lock at a price, and the price moves. Alerts get you the next pick the second it posts.'}:!done?{title:'Get the next pick the second it locks',text:'Prices move fast after we post. Free alerts by phone or email, about 3–6 a week.'}:null,
       note:pmOffer?`Partner offer: new to ${r.pm.exchange}? Use code ${pmOffer.code}${pmOffer.offer?`: ${pmOffer.offer}`:''}. Open ${r.pm.exchange} copies the code for you. Age limits and terms apply. We earn a commission on sign-ups; it never changes our picks.`:'',stake:share(r)<1?`$${(heroStake*share(r)).toLocaleString('en-US',{maximumFractionDigits:2})} (¼ unit)`:stakeText(),
       money:done?money(payout(r)):d?`wins $${Math.round(heroStake*share(r)*(d-1)).toLocaleString('en-US')}`:'—',moneyCls:done?(r.result==='won'?'pos':r.result==='lost'?'neg':''):'pos',
       rows,legs:legRows,chart:points.length>=2?{label:done?'Price posted → kickoff':'Price since posted',points}:null,
@@ -1449,7 +1451,8 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
         // With a partner code, the tap also copies the code for the app's sign-up screen.
         if(pmOffer){try{navigator.clipboard?.writeText(pmOffer.code).then(()=>window.btgCount?.(`partner:${app}:copy`)).catch(()=>{})}catch{}}
         window.open(window.BTGApps.link(r.pm.exchange),'_blank','noopener')}}]:[]),{...pmShare,label:'Share'}]:[...betAction(r,legs,done),...bookAction(r,legs,done),{label:done&&r.result==='won'?'Share this hit':'Share',icon:'share',primary:false,wide:true,share:`${done&&r.result==='won'?'✅ Hit':'Bet This Guy pick'}: ${isParlay?`${legs.length}-leg parlay (${formatOdds(odds)})`:`${r.player} ${bet} (${formatOdds(odds)})`} · ${location.origin}`}],
-      links:[...(isParlay?[]:[{text:`${String(r.player||'').split(' ').slice(-1)[0]}’s stats & game log ›`,onClick:()=>openPlayerProfile(statsProp({...first,player:r.player,market:r.market,line:r.line,side:r.side,odds:r.odds,gameTime:r.game_time||first.gameTime}))}]),{text:'See every pick on Results ›',href:'/trust#official'}]};
+      // Timestamp proof: the pick's own X post (NBA: the night's card), posted before the game.
+      links:[...(/^\d{5,25}$/.test(String(r.x_id||''))&&!r.pm?[{text:`Posted on X before ${r.sport==='NBA'||String(r.id||'').startsWith('nba|')?'tip-off':'kickoff'} ›`,href:`https://x.com/i/web/status/${r.x_id}`,external:true,onClick:()=>window.btgCount?.('sheet:xproof')}]:[]),...(isParlay?[]:[{text:`${String(r.player||'').split(' ').slice(-1)[0]}’s stats & game log ›`,onClick:()=>openPlayerProfile(statsProp({...first,player:r.player,market:r.market,line:r.line,side:r.side,odds:r.odds,gameTime:r.game_time||first.gameTime}))}]),{text:'See every pick on Results ›',href:'/trust#official'}]};
   }
   const hitDetails=r=>window.BTGSheet.render(recordModel(r)),pickDetails=hitDetails;
   function openPick(r){if(!r)return;window.btgCount?.('hit:open');window.BTGSheet.open(recordModel(r))}
@@ -1874,7 +1877,7 @@ if(typeof fetch==='function')window.btgCountVisit?.('view:home');
     const rows=m.rows?.length?`<div class="bs-rows">${m.rows.map(([a,b,c],i)=>`<div><span>${esc(a)}</span><b class="${c||''}" data-bs-row="${i}">${esc(b)}</b></div>`).join('')}</div>`:'';
     const acts=m.actions?.length?`<div class="bs-acts">${m.actions.map((a,i)=>`<button type="button" class="bs-btn ${a.primary?'p':''} ${a.wide||a.primary?'wide':''}" data-bs-act="${i}" ${a.label?'':`aria-label="${esc(a.aria||'')}"`}>${a.icon?icon(a.icon):''}${a.label?esc(a.label):''}</button>`).join('')}</div>`:'';
     return `<div class="bsheet"><span class="bs-chip bs-${m.chip.cls}">${m.chip.icon?icon(m.chip.icon):''}${esc(m.chip.text)}</span><h2>${esc(m.title)}</h2>${m.bet?`<p class="bs-bet">${esc(m.bet)}</p>`:''}${m.game?`<p class="bs-game">${esc(m.game)}</p>`:''}
-      <div class="bs-money"><div><small>Price</small><b>${esc(m.price)}</b></div><div><small>${esc(m.moneyLabel||`${m.stake} bet`)}</small><b class="${m.moneyCls||''}">${esc(m.money)}</b></div></div>${legs}${rows}${chart(m.chart)}${m.note?`<p class="bs-note">${esc(m.note)}</p>`:''}${acts}${(m.links||(m.link?[m.link]:[])).map((l,i)=>`<a class="bs-link" ${l.href?`href="${esc(l.href)}"`:`href="#" data-bs-link="${i}"`}>${esc(l.text)}</a>`).join('')}</div>`;
+      <div class="bs-money"><div><small>Price</small><b>${esc(m.price)}</b></div><div><small>${esc(m.moneyLabel||`${m.stake} bet`)}</small><b class="${m.moneyCls||''}">${esc(m.money)}</b></div></div>${legs}${rows}${chart(m.chart)}${m.note?`<p class="bs-note">${esc(m.note)}</p>`:''}${acts}${m.alert?`<div class="bs-alert"><p><b>${icon('bell')} ${esc(m.alert.title)}</b><span>${esc(m.alert.text)}</span></p><div class="bs-alert-acts"><button type="button" class="bs-btn p" data-bs-alert>Turn on alerts</button>${window.BTGEmailSub?'<button type="button" class="bs-btn" data-bs-email>Email me instead</button>':''}</div></div>`:''}${(m.links||(m.link?[m.link]:[])).map((l,i)=>`<a class="bs-link" ${l.href?`href="${esc(l.href)}"${l.external?' target="_blank" rel="noopener"':''} data-bs-href="${i}"`:`href="#" data-bs-link="${i}"`}>${esc(l.text)}</a>`).join('')}</div>`;
   }
   function bind(host,m,dialog){
     host.querySelectorAll('[data-bs-gate]').forEach(b=>b.onclick=()=>{dialog?.close?.();window.btgCount?.('gate:signup');window.BTGAuth?.open?.('signup')});
@@ -1884,6 +1887,9 @@ if(typeof fetch==='function')window.btgCountVisit?.('view:home');
       a.onClick?.(b,dialog)});
     host.querySelectorAll('[data-bs-leg]').forEach(b=>{const l=m.legs?.[+b.dataset.bsLeg];if(l?.onClick)b.onclick=()=>l.onClick(dialog)});
     host.querySelectorAll('[data-bs-link]').forEach(a=>a.addEventListener('click',e=>{e.preventDefault();dialog?.close?.();(m.links||[m.link])[+a.dataset.bsLink]?.onClick?.()}));
+    host.querySelectorAll('[data-bs-href]').forEach(a=>a.addEventListener('click',()=>(m.links||[m.link])[+a.dataset.bsHref]?.onClick?.()));
+    host.querySelector('[data-bs-alert]')?.addEventListener('click',()=>{window.btgCount?.('sheet:alerts');dialog?.close?.();(document.querySelector('[data-alerts-banner]')||document.querySelector('[data-alerts-toggle]'))?.click()});
+    host.querySelector('[data-bs-email]')?.addEventListener('click',()=>{window.btgCount?.('sheet:email');dialog?.close?.();window.BTGEmailSub?.open('sheet')});
   }
   function open(m,dialogSel='#hitDialog',bodySel='#hitDialogBody'){
     const dialog=$(dialogSel),host=$(bodySel);if(!dialog||!host)return;
@@ -2689,7 +2695,7 @@ function statsProp(l){
     const rec=data.pmRecord||{wins:0,losses:0,pushes:0,profit:0},pr=data.pmParlayRecord||{wins:0,losses:0,pushes:0,profit:0};
     const w=rec.wins+pr.wins,l=rec.losses+pr.losses,pu=(rec.pushes||0)+(pr.pushes||0),net=(rec.profit||0)+(pr.profit||0);
     const title=document.getElementById('pmHeroTitle'),panel=document.getElementById('pmHeroPicks');
-    if(!w&&!l){title.innerHTML='Prediction record <b>New</b>';panel.hidden=true;hero.classList.remove('open');return}
+    if(!w&&!l){title.innerHTML='Prediction record <b>First picks grading now</b>';panel.hidden=true;hero.classList.remove('open');return}
     title.innerHTML=`<button type="button" class="hero-toggle" id="pmHeroToggle" aria-expanded="${!panel.hidden}" aria-controls="pmHeroPicks">Prediction record <b>${w}–${l}${pu?`–${pu}`:''}</b> <span class="hero-profit ${net>=0?'up':'down'}">${htmlEscape(money(net))}</span><i aria-hidden="true"><svg class="ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></i></button>`;
     const stat=(value,label,tone='')=>`<div><strong class="${tone}">${htmlEscape(value)}</strong><span>${htmlEscape(label)}</span></div>`;
     const graded=[...(data.pmPicks||[]),...(data.pmParlays||[])].filter(r=>['won','lost','push'].includes(r.result)).sort((a,b)=>String(b.gameTime).localeCompare(String(a.gameTime)));

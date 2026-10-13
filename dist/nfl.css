@@ -1972,3 +1972,9 @@ body.light .email-status.ok{color:#15803d}
 
 /* Room for the close button beside the eyebrow line */
 .wd-shell .wd-eyebrow{padding-right:44px}
+
+/* Pick sheet: alerts prompt */
+.bs-alert{margin:14px 0 4px;padding:14px;border:1px solid rgba(47,123,245,.45);border-radius:14px;background:rgba(47,123,245,.08)}
+.bs-alert p{margin:0 0 10px;display:grid;gap:4px}.bs-alert b{display:flex;align-items:center;gap:6px;font-size:15px}.bs-alert span{color:var(--muted);font-size:13px;line-height:1.45}
+.bs-alert-acts{display:flex;flex-wrap:wrap;gap:8px}.bs-alert-acts .bs-btn{flex:1 1 140px}
+body.light .bs-alert{background:#eef4ff;border-color:#bfd3fb}

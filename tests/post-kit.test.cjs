@@ -1,6 +1,6 @@
 const assert=require('node:assert/strict'),vm=require('node:vm'),{webcrypto}=require('node:crypto'),{DatabaseSync}=require('node:sqlite');
 const {read}=require('./helpers/client.cjs');
-const db=new DatabaseSync(':memory:');for(const f of ['0000_public_record.sql','0001_record_settlement.sql','0002_historical_replays.sql','0005_usage_counts.sql'])db.exec(read('drizzle/'+f));
+const db=new DatabaseSync(':memory:');for(const f of ['0000_public_record.sql','0001_record_settlement.sql','0002_historical_replays.sql','0005_usage_counts.sql','0006_push_alerts.sql'])db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''));
 const DB={prepare(sql){return{sql,args:[],bind(...args){return{sql,args,all:async()=>({results:db.prepare(sql).all(...args)}),run:async()=>db.prepare(sql).run(...args)}},all:async()=>({results:db.prepare(sql).all()})}},batch:async s=>s.map(x=>db.prepare(x.sql).run(...x.args))};
 const context=vm.createContext({URL,URLSearchParams,Request,Response,Headers,AbortSignal,Date,console,setTimeout,clearTimeout,crypto:webcrypto,TextEncoder,btoa,atob,fetch:async()=>new Response(null,{status:404})});
 const template=read('worker/index.template.js');
@@ -39,6 +39,9 @@ add(week,'s',{player:'Started Guy',market:'Receptions',side:'Over',line:3.5,odds
   assert.ok(texts.replies.items.every(r=>r.captions.length===3&&r.captions.every(c=>c.length<=280&&!/https?:/.test(c))),'reply captions fit and carry no link');
   assert.ok(texts.replies.items.some(r=>r.image.startsWith('/api/x-card.png?id=official')&&r.search.startsWith('https://x.com/search?q=')));
   assert.ok(!texts.replies.items.some(r=>r.title.startsWith('Started Guy')),'started games are left out');
+  // Home rows carry each pick's X post id for the "Posted on X" proof link.
+  {const id=db.prepare("SELECT id FROM public_recommendations ORDER BY posted_at DESC LIMIT 1").get().id;db.prepare("INSERT INTO app_settings (key,value) VALUES (?,?)").run('xid:'+id,'1845000000000000001');run('homeRowsCache={at:0,rows:null}');
+   const rows=await run('homeRecentRows(env)');assert.equal(rows.find(r=>r.id===id).x_id,'1845000000000000001');assert.ok(rows.filter(r=>r.id!==id).every(r=>r.x_id==null))}
   const last=texts.previous;
   assert.equal(last.record,'2–1');assert.equal(Math.round(last.profit),Math.round(110+100/1.1-100));
   assert.ok(last.x.startsWith('📊 Week')&&last.x.includes('2–1 on player props, +$101 betting $100 a pick'),last.x.split('\n')[0]);

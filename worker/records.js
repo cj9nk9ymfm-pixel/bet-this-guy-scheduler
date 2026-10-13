@@ -396,7 +396,7 @@ async function publishNbaPicks(request,env,ctx,now=Date.now()){
 let nbaHomeCache={at:0,data:null,all:null};
 async function nbaHomeData(env,now=Date.now(),wantAll=false){
   if(nbaHomeCache.data&&now-nbaHomeCache.at<60000)return wantAll?{...nbaHomeCache.data,recent:nbaHomeCache.all}:nbaHomeCache.data;
-  const all=(await env.DB.prepare("SELECT id,kind,player,market,side,line,odds,combined_odds,game_id,game_time,posted_at,status,result,closing_line,closing_odds,closing_captured_at,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'nba|%' AND kind IN ('prop','parlay') ORDER BY game_time DESC,posted_at DESC").all()).results||[];
+  const all=(await env.DB.prepare("SELECT id,kind,player,market,side,line,odds,combined_odds,game_id,game_time,posted_at,status,result,closing_line,closing_odds,closing_captured_at,legs_json,(SELECT value FROM app_settings s WHERE s.key='xid:x-nba-card:'||substr(r.id,5,10)) AS x_id FROM public_recommendations r WHERE source='market-verified-v2' AND id LIKE 'nba|%' AND kind IN ('prop','parlay') ORDER BY game_time DESC,posted_at DESC").all()).results||[];
   const s=weeklySummary(all),since=new Date(now-21*86400000).toISOString();
   const season={wins:s.wins,losses:s.losses,pushes:s.pushes,profit:Math.round(s.profit),parlayWins:s.parlayWins,parlayLosses:s.parlayLosses,parlayProfit:Math.round(s.parlayProfit),beat:s.beat,tracked:s.tracked,picks:all.length};
   const data={season,tonight:nbaNight(now),recent:all.filter(r=>r.game_time>=since).slice(0,300)};
@@ -2363,7 +2363,7 @@ async function trustSnapshot(env,now=Date.now()){
 
 // Anonymous usage counts: daily totals per metric. No cookies, IP addresses or
 // per-person identifiers are stored; unknown metric names are ignored.
-const USAGE_METRICS=new Set(['email:subscribe','email:open','reply:copy','reply:image','partner:novig:copy','app:novig','app:prophetx','app:kalshi','app:polymarket','app:betopenly','welcome:shown','welcome:alerts','welcome:account','welcome:skip','welcome:close','welcome:reopen','view:home','view:trust','view:picks','view:week','visit:new','visit:return','card:open','slip:add','parlay:add','share','hit:open','profile:open','affiliate:click','alerts:on','alerts:off','gate:shown','gate:signup','gate:login','nudge:shown','nudge:alerts','nudge:signup','alerts:email','view:post','post:copy','post:open','post:image','src:reddit','src:x','src:google','src:social','src:other','src:direct']);
+const USAGE_METRICS=new Set(['sheet:alerts','sheet:email','sheet:xproof','email:subscribe','email:open','reply:copy','reply:image','partner:novig:copy','app:novig','app:prophetx','app:kalshi','app:polymarket','app:betopenly','welcome:shown','welcome:alerts','welcome:account','welcome:skip','welcome:close','welcome:reopen','view:home','view:trust','view:picks','view:week','visit:new','visit:return','card:open','slip:add','parlay:add','share','hit:open','profile:open','affiliate:click','alerts:on','alerts:off','gate:shown','gate:signup','gate:login','nudge:shown','nudge:alerts','nudge:signup','alerts:email','view:post','post:copy','post:open','post:image','src:reddit','src:x','src:google','src:social','src:other','src:direct']);
 const USAGE_BOTS=/bot|crawl|spider|slurp|preview|facebookexternalhit|curl|wget|python|headless|lighthouse/i;
 async function countUsage(env,metrics,request){
   // The owner's own devices (opted out with /?me=1) are never counted.
