@@ -17,10 +17,14 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
     {status:'Out',date:'2026-10-10T20:00Z',athlete:{displayName:'DK Metcalf',position:{abbreviation:'WR'},team:{displayName:'Pittsburgh Steelers'}},details:{type:'Hamstring',side:'Not Specified'}},
     {status:'Questionable',athlete:{displayName:'Jaylen Warren',position:{abbreviation:'RB'}},details:{type:'Ankle'}},
     {status:'Doubtful',athlete:{displayName:'Pat Freiermuth',position:{abbreviation:'TE'}}}]}]};
-  let calls=0;context.fetch=async url=>{calls++;assert.ok(String(url).includes('espn.com'));return Response.json(feed)};run('fetch=globalThis.fetch');
-  assert.deepEqual(J(await run(`refreshInjuries(env,${now})`)),{rows:3});
+  // The NBA report comes from the same feed shape and keeps its own rows.
+  const nbaFeed={injuries:[{displayName:'Boston Celtics',injuries:[{status:'Out',athlete:{displayName:'Jayson Tatum',position:{abbreviation:'F'},team:{displayName:'Boston Celtics'}},details:{type:'Achilles'}}]}]};
+  let calls=0;context.fetch=async url=>{calls++;assert.ok(String(url).includes('espn.com'));return Response.json(String(url).includes('/basketball/nba/')?nbaFeed:feed)};run('fetch=globalThis.fetch');
+  assert.deepEqual(J(await run(`refreshInjuries(env,${now})`)),{rows:3,nba:1});
   assert.deepEqual(J(await run(`refreshInjuries(env,${now+5*60000})`)),{skipped:true},'not again within the refresh gap');
-  assert.equal(calls,1);
+  assert.equal(calls,2,'one call per league');
+  assert.deepEqual([...(await run("injuryMap(env,'NBA')")).keys()],['jaysontatum'],'NBA rows stay separate');
+  assert.ok(!(await run('injuryMap(env)')).has('jaysontatum'),'the NFL map leaves NBA players out');
   const metcalf=db.prepare("SELECT * FROM injuries WHERE id='NFL|dkmetcalf'").get();
   assert.deepEqual([metcalf.status,metcalf.team,metcalf.position,metcalf.detail],['Out','Pittsburgh Steelers','WR','Hamstring']);
   assert.deepEqual(['Out','Injured Reserve','Doubtful','Questionable','Active'].map(x=>run(`injuryClass(${JSON.stringify(x)})`)),['out','out','doubtful','questionable',null]);

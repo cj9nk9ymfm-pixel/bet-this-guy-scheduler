@@ -172,11 +172,13 @@ function parlayDecimal(legs){const d=legs.reduce((p,l)=>p*recordDecimal(l.odds),
 // Singles are the top tier (1%+ edge). Parlays are built from the next tier
 // down (pool: props 0.5% to just under 1%), one leg per game, and never use
 // a player who is an official single: a bad single can't also sink a parlay.
-function officialPlan(candidates,existing,week,now=Date.now(),pool=candidates){
-  const saved=existing.map(r=>({...r,legs:recordLegs(r)})),counts=Object.fromEntries(Object.keys(OFFICIAL_CAPS).map(t=>[t,saved.filter(r=>r.id.startsWith(`official|${week}|${t}|`)).length]));
+// cfg (NBA): its own id prefix, caps and per-game limit; NFL uses the defaults.
+function officialPlan(candidates,existing,week,now=Date.now(),pool=candidates,cfg={}){
+  const CAPS=cfg.caps||OFFICIAL_CAPS,PER_GAME=cfg.perGame||OFFICIAL_PER_GAME,prefix=cfg.prefix||`official|${week}|`;
+  const saved=existing.map(r=>({...r,legs:recordLegs(r)})),counts=Object.fromEntries(Object.keys(CAPS).map(t=>[t,saved.filter(r=>r.id.startsWith(`${prefix}${t}|`)).length]));
   const plan=[],singles=saved.filter(r=>r.kind==='prop'),games=new Map(),used=new Set(singles.flatMap(r=>r.legs.map(officialPlayer)));
   singles.forEach(r=>games.set(r.game_id,(games.get(r.game_id)||0)+1));
-  for(const p of candidates){if(counts.props>=100)break;if(used.has(p.playerKey)||(games.get(p.gameId)||0)>=OFFICIAL_PER_GAME)continue;plan.push({tier:'props',legs:[p]});counts.props++;used.add(p.playerKey);games.set(p.gameId,(games.get(p.gameId)||0)+1)}
+  for(const p of candidates){if(counts.props>=CAPS.props)break;if(used.has(p.playerKey)||(games.get(p.gameId)||0)>=PER_GAME)continue;plan.push({tier:'props',legs:[p]});counts.props++;used.add(p.playerKey);games.set(p.gameId,(games.get(p.gameId)||0)+1)}
   const prior=saved.filter(r=>r.kind==='parlay').map(r=>r.legs.map(officialPlayer)),exposure=new Map();prior.flat().forEach(k=>exposure.set(k,(exposure.get(k)||0)+1));
   const sides=new Map(),perGame=new Map();
   saved.forEach(r=>r.legs.forEach(l=>sides.set(sideKey(l.gameId,l.player,l.market),l.side)));
@@ -187,7 +189,7 @@ function officialPlan(candidates,existing,week,now=Date.now(),pool=candidates){
   const legPool=pool.filter(p=>!used.has(p.playerKey));
   if(legPool.length<2)return plan;
   for(const [tier,min,max,low,high] of tiers){
-    for(let attempt=0;attempt<500&&counts[tier]<OFFICIAL_CAPS[tier];attempt++){
+    for(let attempt=0;attempt<500&&counts[tier]<(CAPS[tier]||0);attempt++){
       const size=min+attempt%(max-min+1),legs=[],gameIds=new Map(),markets=new Map();
       const pool=[...legPool].sort((a,b)=>(exposure.get(a.playerKey)||0)-(exposure.get(b.playerKey)||0)||b.edge-a.edge);
       if(!pool.length)break;
@@ -210,8 +212,8 @@ function officialPlan(candidates,existing,week,now=Date.now(),pool=candidates){
   }
   return plan;
 }
-async function writeOfficialPlan(plan,week,env){
-  const prefix=`official|${week}|`,statements=[];
+async function writeOfficialPlan(plan,week,env,cfg={}){
+  const prefix=cfg.prefix||`official|${week}|`,statements=[],CAPS=cfg.caps||OFFICIAL_CAPS,PER_GAME=cfg.perGame||OFFICIAL_PER_GAME,sport=cfg.sport==='NBA'?'NBA':'NFL';
   for(const pick of plan){
     const now=Date.now();if(pick.legs.some(p=>Date.parse(p.gameTime)<=now+5*60000))continue;
     const kind=pick.tier==='props'?'prop':'parlay',legs=pick.legs.map(p=>({...p,officialWeek:week,officialTier:pick.tier})),first=legs[0],id=prefix+pick.tier+'|'+await boundedRecordId(kind,legs);
@@ -220,14 +222,14 @@ async function writeOfficialPlan(plan,week,env){
     // cannot exceed caps, repeat a player as a single, or bypass overlap limits.
     statements.push(env.DB.prepare(`INSERT OR IGNORE INTO public_recommendations
       (id,kind,sport,player,market,side,line,odds,combined_odds,game_id,game_time,legs_json,posted_at,status,source,verification_note)
-      SELECT ?,?,'NFL',?,?,?,?,?,?,?,?,?,?,'pending',?,?
+      SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,'pending',?,?
       WHERE (SELECT COUNT(*) FROM public_recommendations WHERE id>=? AND id<?)< ?
-      AND (?='parlay' OR ((SELECT COUNT(*) FROM public_recommendations WHERE id>=? AND id<? AND game_id=?)<${OFFICIAL_PER_GAME}
+      AND (?='parlay' OR ((SELECT COUNT(*) FROM public_recommendations WHERE id>=? AND id<? AND game_id=?)<${PER_GAME}
         AND NOT EXISTS(SELECT 1 FROM public_recommendations r,json_each(r.legs_json) l WHERE r.id>=? AND r.id<? AND json_extract(l.value,'$.playerKey')=?)))
       AND (?='prop' OR (NOT EXISTS(SELECT 1 FROM public_recommendations r WHERE r.id>=? AND r.id<? AND r.kind='parlay'
         AND (SELECT COUNT(*) FROM json_each(r.legs_json) l WHERE json_extract(l.value,'$.playerKey') IN (SELECT json_extract(value,'$.playerKey') FROM json_each(?)))>1)
         AND NOT EXISTS(SELECT 1 FROM json_each(?) n WHERE (SELECT COUNT(*) FROM public_recommendations r,json_each(r.legs_json) l WHERE r.id>=? AND r.id<? AND r.kind='parlay' AND json_extract(l.value,'$.playerKey')=json_extract(n.value,'$.playerKey'))>=3)))`)
-      .bind(id,kind,kind==='prop'?first.player:null,kind==='prop'?first.market:null,kind==='prop'?first.side:null,kind==='prop'?first.line:null,kind==='prop'?first.odds:null,combined,first.gameId,legs.map(p=>p.gameTime).sort().at(-1),JSON.stringify(legs),new Date(now).toISOString(),VERIFIED_RECORD_SOURCE,'Official weekly selection. Pregame odds locked; multi-book price signal, not a player projection. Parlay payout is an estimate.',prefix+pick.tier+'|',prefix+pick.tier+'|\uffff',OFFICIAL_CAPS[pick.tier],kind,prefix+'props|',prefix+'props|\uffff',first.gameId,prefix+'props|',prefix+'props|\uffff',first.playerKey,kind,prefix,prefix+'\uffff',JSON.stringify(legs),JSON.stringify(legs),prefix,prefix+'\uffff'));
+      .bind(id,kind,sport,kind==='prop'?first.player:null,kind==='prop'?first.market:null,kind==='prop'?first.side:null,kind==='prop'?first.line:null,kind==='prop'?first.odds:null,combined,first.gameId,legs.map(p=>p.gameTime).sort().at(-1),JSON.stringify(legs),new Date(now).toISOString(),VERIFIED_RECORD_SOURCE,cfg.note||'Official weekly selection. Pregame odds locked; multi-book price signal, not a player projection. Parlay payout is an estimate.',prefix+pick.tier+'|',prefix+pick.tier+'|\uffff',CAPS[pick.tier]||0,kind,prefix+'props|',prefix+'props|\uffff',first.gameId,prefix+'props|',prefix+'props|\uffff',first.playerKey,kind,prefix,prefix+'\uffff',JSON.stringify(legs),JSON.stringify(legs),prefix,prefix+'\uffff'));
   }
   if(!statements.length)return 0;
   // Returns how many picks were actually inserted (the rest were duplicates or over a cap).
@@ -344,6 +346,60 @@ async function recordNbaShadow(request,env,ctx,now=Date.now()){
   if(statements.length)await env.DB.batch(statements);
   return {games:games.length,boards:boards.length,logged:picks.length,tracked:open.length};
 }
+// Official NBA picks, from opening night (Oct 20, 2026). The price rules are
+// the NFL's (big-5 book, 1-12% edge, 3+ books pricing both sides), sized for
+// a nightly sport: one single per game, NBA_CAPS a night, and only the core
+// markets. A game's picks can post from NBA_WINDOW before tip-off, once most
+// injury news is out, until 5 minutes before. Ids are nba|<night>|<tier>|...,
+// so every NFL query (id LIKE 'official|%') leaves them out.
+const NBA_START=Date.parse('2026-10-20T14:00:00Z');
+const NBA_CAPS={props:6,reasonable:1,swing:1,moonshot:0},NBA_PER_GAME=1,NBA_WINDOW=3*3600000;
+const NBA_OFFICIAL_MARKETS=new Set(['Points','Rebounds','Assists','3-Pointers Made','Points + Rebounds + Assists']);
+// The night a game belongs to: its US Eastern date (a 10:30 PM ET tip is
+// after midnight UTC, so 6 hours back keeps it on the same night).
+const nbaNight=time=>new Date(Number(time)-6*3600000).toISOString().slice(0,10);
+const nbaConfig=night=>({prefix:`nba|${night}|`,caps:NBA_CAPS,perGame:NBA_PER_GAME,sport:'NBA',note:'Official nightly NBA selection. Pregame odds locked; multi-book price signal, not a player projection. Parlay payout is an estimate.'});
+async function publishNbaPicks(request,env,ctx,now=Date.now()){
+  if(!env.DB||now<NBA_START-NBA_WINDOW)return {state:'not_started'};
+  const schedule=await futureSchedule(new Request(new URL('/api/schedule?sport=NBA',request.url)),env,ctx);
+  if(!schedule.ok)throw new Error('NBA schedule unavailable');
+  const games=((await schedule.json()).data||[]).filter(e=>{const t=Date.parse(e.status?.startsAt);return t>=NBA_START&&t>now+5*60000&&t<=now+NBA_WINDOW}).slice(0,12);
+  if(!games.length)return {state:'no_games'};
+  const boards=[];let failed=0;
+  for(let i=0;i<games.length;i+=4){const results=await Promise.allSettled(games.slice(i,i+4).map(async e=>{const url=new URL('/api/event',request.url);url.searchParams.set('eventID',e.eventID);const r=await eventProps(new Request(url),env,ctx,{maxAge:SOON_MAX_AGE});if(!r.ok||r.headers.get('x-feed-cache')==='stale')throw new Error('NBA board unavailable');return (await r.json()).data||[]}));for(const r of results)if(r.status==='fulfilled')boards.push(...r.value);else failed++}
+  const injuries=await injuryMap(env,'NBA').catch(()=>new Map());boards.splice(0,boards.length,...withoutInjured(boards,injuries));
+  const core=list=>list.filter(p=>NBA_OFFICIAL_MARKETS.has(p.market));
+  let posted=0;const leans=[],nights=[...new Set(boards.map(b=>nbaNight(Date.parse(b.commence_time))))];
+  for(const night of nights){
+    const cfg=nbaConfig(night),tonight=boards.filter(b=>nbaNight(Date.parse(b.commence_time))===night);
+    const existing=(await env.DB.prepare('SELECT * FROM public_recommendations WHERE id>=? AND id<?').bind(cfg.prefix,cfg.prefix+'\uffff').all()).results||[];
+    const stats={},candidates=core(officialCandidates(tonight,Date.now(),stats));
+    const nextTier=withTeams(core(officialCandidates(tonight,Date.now(),{},{min:.5,below:1})),await playerTeams(env));
+    const plan=officialPlan(candidates,existing,night,Date.now(),nextTier,cfg);
+    posted+=Number(await writeOfficialPlan(plan,night,env,cfg))||0;
+    const trail=officialTrailStatements(tonight,existing,env,Date.now());if(trail.length)await env.DB.batch(trail);
+    // Worth a look: props from 0.5% up that aren't a pick or a parlay leg
+    // tonight, two a game, ten at most. Shown only, never graded or counted.
+    const taken=new Set(((await env.DB.prepare('SELECT legs_json FROM public_recommendations WHERE id>=? AND id<?').bind(cfg.prefix,cfg.prefix+'\uffff').all()).results||[]).flatMap(r=>recordLegs(r).map(officialPlayer)));
+    const perGame=new Map();
+    for(const p of core(officialCandidates(tonight,Date.now(),{},{min:.5}))){if(taken.has(p.playerKey)||(perGame.get(p.gameId)||0)>=2||leans.length>=10)continue;perGame.set(p.gameId,(perGame.get(p.gameId)||0)+1);leans.push({eventId:p.gameId,player:p.player,team:p.team||'',market:p.market,side:p.side,line:p.line,odds:p.odds,flagged:p.odds,book:p.book,edge:+Number(p.edge).toFixed(1),gameTime:p.gameTime})}
+  }
+  await setAppSetting(env,'nba-leans',JSON.stringify({at:new Date(now).toISOString(),leans})).catch(()=>{});
+  if(failed)throw new Error('Some NBA boards were unavailable; retry required');
+  return {state:'completed',games:games.length,boards:boards.length,posted};
+}
+// GET /api/record?view=home&sport=NBA: the NBA record and its recent picks
+// (last 21 nights), for the NBA home, Results tab and live tab.
+// wantAll: every NBA pick (the Results page), not just the last 21 nights.
+let nbaHomeCache={at:0,data:null,all:null};
+async function nbaHomeData(env,now=Date.now(),wantAll=false){
+  if(nbaHomeCache.data&&now-nbaHomeCache.at<60000)return wantAll?{...nbaHomeCache.data,recent:nbaHomeCache.all}:nbaHomeCache.data;
+  const all=(await env.DB.prepare("SELECT id,kind,player,market,side,line,odds,combined_odds,game_id,game_time,posted_at,status,result,closing_line,closing_odds,closing_captured_at,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'nba|%' AND kind IN ('prop','parlay') ORDER BY game_time DESC,posted_at DESC").all()).results||[];
+  const s=weeklySummary(all),since=new Date(now-21*86400000).toISOString();
+  const season={wins:s.wins,losses:s.losses,pushes:s.pushes,profit:Math.round(s.profit),parlayWins:s.parlayWins,parlayLosses:s.parlayLosses,parlayProfit:Math.round(s.parlayProfit),beat:s.beat,tracked:s.tracked,picks:all.length};
+  const data={season,tonight:nbaNight(now),recent:all.filter(r=>r.game_time>=since).slice(0,300)};
+  nbaHomeCache={at:now,data,all};return wantAll?{...data,recent:all}:data;
+}
 // NBA preseason (a plumbing test before the season): the preseason feed is
 // read here only, never by the public board, at most once an hour. Rows go
 // in nba_shadow with event ids starting NBAPRE-- so they stay out of the NBA
@@ -389,6 +445,8 @@ function bigFivePrice(event,r){
 // official pick is left out.
 async function leansResponse(request,env,ctx,now=Date.now()){
   if(!env.DB)return json({success:true,leans:[]});
+  // NBA: the latest list saved by the NBA pick run (games tipping within 3 hours).
+  if(new URL(request.url).searchParams.get('sport')==='NBA'){let saved={};try{saved=JSON.parse(await appSetting(env,'nba-leans')||'{}')}catch{}return json({success:true,leans:(saved.leans||[]).filter(l=>Date.parse(l.gameTime)>now).sort((a,b)=>a.gameTime.localeCompare(b.gameTime)||b.edge-a.edge),updatedAt:saved.at||null},200,{'cache-control':'public, max-age=120'})}
   const saved=await readFeedCache(request,'leans-v2-NFL');
   if(saved.response&&cacheAge(saved.response)<300000)return cachedForClient(saved.response,'fresh');
   const rows=(await env.DB.prepare('SELECT event_id,player,team,market,side,line,odds,book,edge,close_odds,game_time FROM near_shadow n WHERE game_time>? AND game_time<? AND NOT EXISTS(SELECT 1 FROM public_recommendations r WHERE r.id LIKE \'official|%\' AND r.kind=\'prop\' AND r.game_id=n.event_id AND r.player=n.player) AND NOT EXISTS(SELECT 1 FROM public_recommendations r,json_each(r.legs_json) l WHERE r.id LIKE \'official|%\' AND r.kind=\'parlay\' AND r.game_time>? AND json_extract(l.value,\'$.gameId\')=n.event_id AND json_extract(l.value,\'$.player\')=n.player) ORDER BY edge DESC').bind(new Date(now+5*60000).toISOString(),new Date(now+8*86400000).toISOString(),new Date(now).toISOString()).all().catch(()=>({results:[]}))).results||[];
@@ -539,7 +597,7 @@ async function recordFormWanted(env,boards,now=Date.now()){
   // Receivers and backs listed Out are often off the board entirely; the
   // usage-bump test still needs their recent role, so they're wanted too.
   const onBoard=new Map(boards.flatMap(b=>{const kick=Date.parse(b.commence_time);return kick>now?[b.home_team,b.away_team].map(t=>[normalizedName(t),{until:new Date(kick).toISOString(),teams:`${b.away_team} @ ${b.home_team}`}]):[]}));
-  for(const r of (((await env.DB.prepare('SELECT player,team,position,status FROM injuries').all().catch(()=>({results:[]}))).results)||[])){
+  for(const r of (((await env.DB.prepare("SELECT player,team,position,status FROM injuries WHERE id LIKE 'NFL|%'").all().catch(()=>({results:[]}))).results)||[])){
     const g=onBoard.get(normalizedName(r.team));if(!g||injuryClass(r.status)!=='out'||!BUMP_MARKETS[r.position])continue;
     const id=`NFL|${normalizedName(r.player)}`;if(!want.has(id))want.set(id,{player:r.player,teams:g.teams,until:g.until,markets:new Set(FORM_ROLE)});
   }
@@ -760,17 +818,18 @@ async function postCustomToX(env,now=Date.now()){
 async function runXResults(env,now=Date.now()){
   const grading=await gradePredictionNow(env,now).catch(error=>({error:error.message}));
   const results=await postPredictionResultsToX(env,now,2).catch(error=>({posted:0,error:error.message}));
+  const nba=await postNbaRepliesToX(env,now,2).catch(error=>({posted:0,error:error.message}));
   const recap=await postCardRecapToX(env,now).catch(error=>({posted:0,error:error.message}));
   const week=recap.posted?{posted:0,waiting:true}:await postPredictionWeekToX(env,now).catch(error=>({posted:0,error:error.message}));
   const custom=week.posted?{posted:0,waiting:true}:await postCustomToX(env,now).catch(error=>({posted:0,error:error.message}));
-  return {grading,results,recap,week,custom};
+  return {grading,results,nba,recap,week,custom};
 }
 async function runXResultsNow(env){
   if(!xReady(env))return {disabled:true};
   // Due while any prediction pick or parlay is in play or waiting on a grade,
   // a result is waiting to post, or a full card is waiting on its recap.
   const t=new Date(Date.now()).toISOString(),old=new Date(Date.now()-36*3600000).toISOString(),q=sql=>env.DB.prepare(sql).bind(t,old).first().catch(()=>null);
-  const due=new Date().getUTCDay()===2||await appSetting(env,'x-custom-post')||await appSetting(env,'x-card-recap-request')||await q('SELECT 1 AS n FROM prediction_picks WHERE game_time<=? AND game_time>? LIMIT 1')||await q('SELECT 1 AS n FROM prediction_parlays WHERE game_time<=? AND game_time>? LIMIT 1');
+  const due=new Date().getUTCDay()===2||await appSetting(env,`xid:x-nba-card:${nbaNight(Date.now())}`)||await appSetting(env,`xid:x-nba-card:${nbaNight(Date.now()-86400000)}`)||await appSetting(env,'x-custom-post')||await appSetting(env,'x-card-recap-request')||await q('SELECT 1 AS n FROM prediction_picks WHERE game_time<=? AND game_time>? LIMIT 1')||await q('SELECT 1 AS n FROM prediction_parlays WHERE game_time<=? AND game_time>? LIMIT 1');
   if(!due)return {waiting:0};
   if(!env.SELF?.fetch||!env.MAINTENANCE_TOKEN)return runXResults(env);
   const r=await env.SELF.fetch(new Request(`${SITE_URL}/api/maintenance?job=xresults`,{method:'POST',headers:{authorization:`Bearer ${env.MAINTENANCE_TOKEN}`},signal:AbortSignal.timeout(60000)}));
@@ -790,6 +849,7 @@ async function gradeTdShadowNow(env){
 // Injuries: ESPN's league-wide NFL injury report, one request, refreshed
 // every 25 minutes (every 10 in Thursday, Sunday and Monday game windows).
 const INJURY_URL='https://site.api.espn.com/apis/site/v2/sports/football/nfl/injuries';
+const NBA_INJURY_URL='https://site.api.espn.com/apis/site/v2/sports/basketball/nba/injuries';
 const injuryClass=status=>{const s=String(status||'').toLowerCase();return /\bout\b|injured reserve|\bir\b|suspen|physically unable|\bpup\b|non-football|reserve/.test(s)?'out':/doubtful/.test(s)?'doubtful':/questionable|day-to-day|game-time/.test(s)?'questionable':null};
 function parseInjuries(payload){
   const out=[];
@@ -804,25 +864,32 @@ function parseInjuries(payload){
   }
   return out;
 }
-function injuryFast(now){const d=new Date(now),day=d.getUTCDay(),h=d.getUTCHours();return (day===0&&h>=15)||(day===1&&(h<5||h>=22))||(day===2&&h<5)||(day===4&&h>=22)||(day===5&&h<5)}
+// NFL game windows, plus every NBA evening (about 5 PM to 11 PM ET).
+function injuryFast(now){const d=new Date(now),day=d.getUTCDay(),h=d.getUTCHours();return h>=21||h<3||(day===0&&h>=15)||(day===1&&(h<5||h>=22))||(day===2&&h<5)||(day===4&&h>=22)||(day===5&&h<5)}
 async function refreshInjuries(env,now=Date.now()){
   if(!env.DB)return {};
   const last=Number(await appSetting(env,'injuries-at')||0);
   if(now-last<(injuryFast(now)?9:25)*60000)return {skipped:true};
   await setAppSetting(env,'injuries-at',String(now));
-  const r=await fetch(INJURY_URL,{headers:{accept:'application/json'},signal:AbortSignal.timeout(15000)});
-  if(!r.ok)throw new Error(`injury report ${r.status}`);
-  const payload=await r.json(),rows=parseInjuries(payload);
-  // What the feed looked like, for checking its shape.
-  await setAppSetting(env,'injuries-sample',JSON.stringify({teams:Array.isArray(payload?.injuries)?payload.injuries.length:0,rows:rows.length,first:payload?.injuries?.[0]?.injuries?.[0]||null}).slice(0,3000));
-  if(!rows.length)return {rows:0};
-  const statements=[env.DB.prepare('DELETE FROM injuries')];
-  for(const x of rows)statements.push(env.DB.prepare('INSERT OR REPLACE INTO injuries (id,player,team,position,status,detail,reported_at,fetched_at) VALUES (?,?,?,?,?,?,?,?)').bind(`NFL|${normalizedName(x.player)}`,x.player,x.team||null,x.position||null,x.status,String(x.detail||'').slice(0,120)||null,x.date||null,now));
-  await env.DB.batch(statements);
-  return {rows:rows.length};
+  const out={};
+  // Each league's report replaces only its own rows (ids start NFL| or NBA|).
+  for(const [sport,url] of [['NFL',INJURY_URL],['NBA',NBA_INJURY_URL]]){
+    try{
+      const r=await fetch(url,{headers:{accept:'application/json'},signal:AbortSignal.timeout(15000)});
+      if(!r.ok)throw new Error(`injury report ${r.status}`);
+      const payload=await r.json(),rows=parseInjuries(payload);
+      // What the feed looked like, for checking its shape.
+      if(sport==='NFL')await setAppSetting(env,'injuries-sample',JSON.stringify({teams:Array.isArray(payload?.injuries)?payload.injuries.length:0,rows:rows.length,first:payload?.injuries?.[0]?.injuries?.[0]||null}).slice(0,3000));
+      if(!rows.length){out[sport]=0;continue}
+      const statements=[env.DB.prepare('DELETE FROM injuries WHERE id LIKE ?').bind(`${sport}|%`)];
+      for(const x of rows)statements.push(env.DB.prepare('INSERT OR REPLACE INTO injuries (id,player,team,position,status,detail,reported_at,fetched_at) VALUES (?,?,?,?,?,?,?,?)').bind(`${sport}|${normalizedName(x.player)}`,x.player,x.team||null,x.position||null,x.status,String(x.detail||'').slice(0,120)||null,x.date||null,now));
+      await env.DB.batch(statements);out[sport]=rows.length;
+    }catch(error){if(sport==='NFL')throw error;out[sport]={error:error.message}}
+  }
+  return {rows:out.NFL??0,nba:out.NBA};
 }
-async function injuryMap(env){
-  const rows=(await env.DB.prepare('SELECT player,team,position,status,detail,reported_at FROM injuries').all().catch(()=>({results:[]}))).results||[];
+async function injuryMap(env,sport='NFL'){
+  const rows=(await env.DB.prepare('SELECT player,team,position,status,detail,reported_at FROM injuries WHERE id LIKE ?').bind(`${sport}|%`).all().catch(()=>({results:[]}))).results||[];
   return new Map(rows.map(r=>[normalizedName(r.player),r]));
 }
 // Boards without the props of players listed Out or Doubtful, so no pick,
@@ -835,9 +902,10 @@ function withoutInjured(boards,injuries){
 // GET /api/injuries: status for every listed player (cached 10 minutes).
 async function injuriesResponse(request,env,ctx){
   if(!env.DB)return json({success:true,players:{}});
-  const saved=await readFeedCache(request,'injuries-v1-NFL');
+  const sport=new URL(request.url).searchParams.get('sport')==='NBA'?'NBA':'NFL';
+  const saved=await readFeedCache(request,`injuries-v1-${sport}`);
   if(saved.response&&cacheAge(saved.response)<600000)return cachedForClient(saved.response,'fresh');
-  const players={};for(const [k,r] of await injuryMap(env)){const c=injuryClass(r.status);if(c)players[k]={s:r.status,c,d:r.detail||'',t:r.team||'',p:r.position||'',at:r.reported_at||''}}
+  const players={};for(const [k,r] of await injuryMap(env,sport)){const c=injuryClass(r.status);if(c)players[k]={s:r.status,c,d:r.detail||'',t:r.team||'',p:r.position||'',at:r.reported_at||''}}
   const stored=storedResponse(JSON.stringify({success:true,players,updatedAt:new Date().toISOString()}),600);
   if(saved.cache&&saved.key)ctx?.waitUntil?.(saved.cache.put(saved.key,stored.clone()));
   return cachedForClient(stored,'miss');
@@ -2307,8 +2375,14 @@ async function latestAlert(env,now=Date.now(),endpoint=null){
     if(mine&&(!official||mine.sent_at>official.posted_at)){try{const m=JSON.parse(mine.message_json);return {title:m.title,body:m.body,url:m.url||'/'}}catch{}}
   }
   // What this phone is pinged for: sportsbook picks and/or prediction app picks.
-  const sub=endpoint&&validPushEndpoint(endpoint)?await env.DB.prepare('SELECT price_view,state,alert_sportsbook,alert_predictions FROM push_subscriptions WHERE endpoint=?').bind(endpoint).first().catch(()=>null):null;
+  const sub=endpoint&&validPushEndpoint(endpoint)?await env.DB.prepare('SELECT price_view,state,alert_sportsbook,alert_predictions,alert_nba FROM push_subscriptions WHERE endpoint=?').bind(endpoint).first().catch(()=>null):null;
   const wantSb=!sub||sub.alert_sportsbook!==0,wantPm=Boolean(sub&&(sub.alert_predictions??(sub.price_view==='predictions'?1:0)));
+  // NBA picks newer than any NFL pick (posted in the last 3 hours): that's what this phone was pinged for.
+  if(!sub||sub.alert_nba!==0){
+    const nfl=(await env.DB.prepare("SELECT MAX(posted_at) AS at FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%'").all()).results?.[0]?.at||'';
+    const nba=(await env.DB.prepare("SELECT kind,player,market,side,line,odds,combined_odds,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'nba|%' AND posted_at>=? AND posted_at>? ORDER BY posted_at DESC LIMIT 3").bind(new Date(now-3*3600000).toISOString(),nfl).all()).results||[];
+    if(nba.length)return {title:nba.length===1?'🏀 New NBA pick':`🏀 ${nba.length} new NBA picks`,body:nba.map(r=>{const legs=recordLegs(r),f=legs[0]||{};return r.kind==='parlay'?`${legs.length}-leg parlay (${weeklyOdds(r.combined_odds)}): ${legs.map(l=>l.player).join(' + ')}`:`${r.player} ${weeklyLegText(r)} (${weeklyOdds(r.odds)}${f.book?`, ${f.book}`:''})`}).join('\n'),url:'/?league=NBA'};
+  }
   const picks=wantSb?((await env.DB.prepare("SELECT kind,player,market,side,line,odds,combined_odds,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND posted_at>=? ORDER BY posted_at DESC LIMIT 3").bind(new Date(now-3*3600000).toISOString()).all()).results||[]):[];
   // A newer prediction pick or parlay than any official pick: that's what this phone was pinged for.
   if(wantPm){
@@ -2377,11 +2451,24 @@ async function sendPredictionAlerts(env,now=Date.now()){
   if(!only.length)return {sent:0,picks:fresh.length};
   return {...await sendPickAlerts(env,now,only),picks:fresh.length};
 }
+// Official NBA picks: one push per new batch to phones with NBA alerts on
+// (the phone then reads /api/alerts/latest for the text).
+async function sendNbaAlerts(env,now=Date.now()){
+  if(!env.DB)return {sent:0};
+  const done=await appSetting(env,'nba-alert-for')||new Date(now-3*3600000).toISOString();
+  const fresh=(await env.DB.prepare("SELECT posted_at FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'nba|%' AND posted_at>? AND game_time>? ORDER BY posted_at").bind(done,new Date(now).toISOString()).all()).results||[];
+  if(!fresh.length)return {sent:0};
+  await setAppSetting(env,'nba-alert-for',fresh.at(-1).posted_at);
+  const only=((await env.DB.prepare('SELECT endpoint FROM push_subscriptions WHERE COALESCE(alert_nba,1)=1').all().catch(()=>({results:[]}))).results||[]).map(r=>r.endpoint);
+  if(!only.length)return {sent:0,picks:fresh.length};
+  return {...await sendPickAlerts(env,now,only),picks:fresh.length};
+}
 async function sendDueAlerts(env,now=Date.now()){
   if(!env.DB)return {sent:0};
+  const nba=await sendNbaAlerts(env,now).catch(error=>({error:error.message}));
   const predictions=await sendPredictionAlerts(env,now).catch(error=>({error:error.message}));
   const predictionEmails=await sendPredictionEmails(env,now).catch(error=>({error:error.message}));
-  return {...await sendOfficialAlerts(env,now),predictions,predictionEmails};
+  return {...await sendOfficialAlerts(env,now),nba,predictions,predictionEmails};
 }
 async function sendOfficialAlerts(env,now=Date.now()){
   if(!env.DB)return {sent:0};
@@ -2413,8 +2500,8 @@ async function alertsApi(request,env){
     const p256dh=String(body?.keys?.p256dh||''),auth=String(body?.keys?.auth||'');
     if(!/^[A-Za-z0-9_-]{40,200}$/.test(p256dh)||!/^[A-Za-z0-9_-]{8,60}$/.test(auth))return reply({success:false,error:'Invalid subscription.'},400);
     // Which picks to ping for; older pages send neither, so prediction pings follow the view.
-    const view=body?.priceView==='predictions'?'predictions':'odds',pm=typeof body?.alertPredictions==='boolean'?Number(body.alertPredictions):Number(view==='predictions'),sb=typeof body?.alertSportsbook==='boolean'?Number(body.alertSportsbook||!pm):1;
-    await env.DB.prepare('INSERT INTO push_subscriptions (endpoint,p256dh,auth,created_at,failures,books_json,follows_json,price_view,state,alert_sportsbook,alert_predictions) VALUES (?,?,?,?,0,?,?,?,?,?,?) ON CONFLICT(endpoint) DO UPDATE SET p256dh=excluded.p256dh,auth=excluded.auth,failures=0,books_json=excluded.books_json,follows_json=excluded.follows_json,price_view=excluded.price_view,state=excluded.state,alert_sportsbook=excluded.alert_sportsbook,alert_predictions=excluded.alert_predictions').bind(endpoint,p256dh,auth,new Date().toISOString(),JSON.stringify(cleanBooks(body?.books)),JSON.stringify(cleanFollows(body?.follows)),view,US_STATES[String(body?.state||'').toUpperCase()]?String(body.state).toUpperCase():null,sb,pm).run();
+    const view=body?.priceView==='predictions'?'predictions':'odds',pm=typeof body?.alertPredictions==='boolean'?Number(body.alertPredictions):Number(view==='predictions'),nba=typeof body?.alertNba==='boolean'?Number(body.alertNba):1,sb=typeof body?.alertSportsbook==='boolean'?Number(body.alertSportsbook||(!pm&&!(body?.alertNba===true))):1;
+    await env.DB.prepare('INSERT INTO push_subscriptions (endpoint,p256dh,auth,created_at,failures,books_json,follows_json,price_view,state,alert_sportsbook,alert_predictions,alert_nba) VALUES (?,?,?,?,0,?,?,?,?,?,?,?) ON CONFLICT(endpoint) DO UPDATE SET p256dh=excluded.p256dh,auth=excluded.auth,failures=0,books_json=excluded.books_json,follows_json=excluded.follows_json,price_view=excluded.price_view,state=excluded.state,alert_sportsbook=excluded.alert_sportsbook,alert_predictions=excluded.alert_predictions,alert_nba=excluded.alert_nba').bind(endpoint,p256dh,auth,new Date().toISOString(),JSON.stringify(cleanBooks(body?.books)),JSON.stringify(cleanFollows(body?.follows)),view,US_STATES[String(body?.state||'').toUpperCase()]?String(body.state).toUpperCase():null,sb,pm,nba).run();
     return reply({success:true});
   }
   return reply({success:false},404);
@@ -2958,7 +3045,7 @@ function xSlateSvg(d){
 <text x="56" y="352" font-family="${F.sb}" font-size="22" fill="#ffffff" fill-opacity=".6">${xEsc(d.note||(d.final?`All locked · kickoff ${d.kick}`:'More can drop up to kickoff'))}</text>${d.note2?`<text x="56" y="384" font-family="${F.sb}" font-size="22" fill="#ffffff" fill-opacity=".6">${xEsc(d.note2)}</text>`:''}
 ${d.season?`<text x="56" y="${d.note2?446:430}" font-family="${F.sb}" font-size="24" fill="#ffffff" fill-opacity=".75">Season <tspan font-family="${F.xb}" fill="#ffffff" fill-opacity="1">${xEsc(d.season)}</tspan></text>`:''}
 ${xLogo(56,520+B,56)}<text x="128" y="${558+B}" font-family="${F.g}" font-size="30" fill="#ffffff">Bet This Guy</text>
-<text x="56" y="${643+B}" font-family="${F.xb}" font-size="20" letter-spacing="2.5" fill="#ffffff" fill-opacity=".85">LOCKED BEFORE KICKOFF · 21+</text>
+<text x="56" y="${643+B}" font-family="${F.xb}" font-size="20" letter-spacing="2.5" fill="#ffffff" fill-opacity=".85">${xEsc(d.foot||"LOCKED BEFORE KICKOFF · 21+")}</text>
 ${heads}${rows}${more>0?`<text x="${X+30}" y="${end}" font-family="${F.sb}" font-size="22" fill="#9fb0cc">+ ${more} more</text>`:''}
 <rect x="470" y="${589+B}" width="730" height="86" fill="${M}"/>
 <text x="${X}" y="${643+B}" font-family="${F.g}" font-size="29" fill="#06231a">${xEsc(d.cta||"Graded in public")}</text>
@@ -3044,6 +3131,61 @@ async function postComboToX(env,now=Date.now()){
   catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} combo graphic: ${error.message}`).catch(()=>{})}
   try{const sent=await xPost(env,text,mediaId);await xDone(env,key,now);if(sent?.data?.id)await setAppSetting(env,`xid:x-combo:${day}`,String(sent.data.id)).catch(()=>{});await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} combo ${day} ${mediaId?'graphic':'text'} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,plays:total,graphic:Boolean(mediaId)}}
   catch(error){console.warn('x_combo_failed',error.message);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
+}
+// NBA on X: one card a night about 30 minutes before the first tip (every
+// pick and parlay on one graphic), a reply under it for any pick that posts
+// later, a reply as each pick is graded, and a recap reply once the night is
+// done. app_settings x-nba = 'hold' stops all of it.
+const nbaRows=async(env,night)=>(await env.DB.prepare("SELECT * FROM public_recommendations WHERE source='market-verified-v2' AND id>=? AND id<? ORDER BY game_time,posted_at").bind(`nba|${night}|`,`nba|${night}|￿`).all()).results||[];
+const nbaRecordSummary=async env=>weeklySummary((await env.DB.prepare("SELECT kind,posted_at,line,odds,combined_odds,status,result,closing_line,closing_odds,closing_captured_at FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'nba|%'").all()).results||[]);
+const nbaLine=r=>{const legs=recordLegs(r),f=legs[0]||{};return r.kind==='parlay'?`• ${legs.length}-leg parlay (${weeklyOdds(r.combined_odds)}): ${legs.map(l=>`${l.player} ${weeklyLegText(l)}`).join(' + ')}`:`• ${r.player} ${weeklyLegText(r)} (${weeklyOdds(r.odds)}${f.book?`, ${f.book}`:''})`};
+const nbaSlatePicks=rows=>rows.flatMap(r=>{const legs=recordLegs(r),f=legs[0]||{},res=['won','lost','push'].includes(r.result)?r.result:null;return r.kind==='parlay'?[{text:`${legs.length}-leg parlay`,odds:weeklyOdds(r.combined_odds),sub:'¼ unit',res},...legs.map(l=>({leg:true,text:`${l.player} · ${weeklyLegText(l)}`}))]:[{text:`${r.player} · ${weeklyLegText(r)}`,odds:weeklyOdds(r.odds),sub:[xMatchup(f.team),f.book].filter(Boolean).join(' · '),res}]});
+const nbaDecided=r=>['won','lost','push'].includes(r.result)&&(r.status==='final'||recordLegs(r).some(l=>l.decidedEarly));
+async function postNbaCardToX(env,now=Date.now()){
+  if(!env.DB||!xReady(env)||await appSetting(env,'x-nba')==='hold')return {posted:0,disabled:true};
+  const night=nbaNight(now),key=`x-nba-card:${night}`,rows=await nbaRows(env,night);
+  if(!rows.length)return {posted:0,empty:true};
+  const first=Math.min(...rows.map(r=>Date.parse(recordLegs(r).map(l=>l.gameTime).sort()[0]||r.game_time)));
+  if(first-now>35*60000||first-now<0)return {posted:0,due:false};
+  if(!(await xClaimable(env,key,now))||!(await xClaim(env,key,now)))return {posted:0,done:true};
+  const season=await nbaRecordSummary(env),singles=rows.filter(r=>r.kind==='prop').length,parlays=rows.length-singles;
+  const rec=season.wins+season.losses>=1?`\nNBA record: ${season.wins}–${season.losses}${season.pushes?`–${season.pushes}`:''}, ${weeklyMoney(season.profit)}.`:'';
+  // Every pick in the text when it fits; otherwise the counts, with the full list on the graphic.
+  const tail=`${rec}\nLate games can add more. Every pick graded in public, link in bio. 21+`,full=`🏀 Tonight’s NBA picks\n${rows.map(nbaLine).join('\n')}\n${tail}`;
+  const text=full.length<=280?full:xShort(`🏀 Tonight’s NBA picks: ${singles} pick${singles===1?'':'s'}${parlays?` + ${parlays} parlay${parlays===1?'':'s'}`:''}, all on the card 👇\n${tail}`);
+  let mediaId=null;
+  try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(xSlateSvg({final:true,kicker:'NBA · OFFICIAL PICKS',day:etDate(first,{weekday:'long'}),date:etDate(first,{month:'short',day:'numeric'}),dateLine:`${etDate(first,{month:'short',day:'numeric'})} · ${singles} pick${singles===1?'':'s'}${parlays?` + ${parlays} parlay${parlays===1?'':'s'}`:''}`,note:`First tip ${etDate(first,{hour:'numeric',minute:'2-digit'})} ET`,note2:'Late games can add more',foot:'LOCKED BEFORE TIP-OFF · 21+',picks:nbaSlatePicks(rows),season:season.wins+season.losses>=1?`${season.wins}–${season.losses} · ${weeklyMoney(season.profit)}`:''})))}
+  catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} nba card graphic: ${error.message}`).catch(()=>{})}
+  try{const sent=await xPost(env,text,mediaId);await xDone(env,key,now);if(sent?.data?.id)await setAppSetting(env,`xid:${key}`,String(sent.data.id)).catch(()=>{});
+    // Picks on the card count as announced, so only later ones get an "added" reply.
+    await env.DB.batch(rows.map(r=>env.DB.prepare('INSERT OR IGNORE INTO app_settings (key,value) VALUES (?,?)').bind(`x-nba-pick:${r.id}`,new Date(now).toISOString())));
+    await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} nba card ${night} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,picks:rows.length,graphic:Boolean(mediaId)}}
+  catch(error){console.warn('x_nba_card_failed',error.message);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
+}
+// Replies under the night's card: picks added after it, then results as they
+// land, then the recap once every pick is graded. Text only, limit per run.
+async function postNbaRepliesToX(env,now=Date.now(),limit=2){
+  if(!env.DB||!xReady(env)||await appSetting(env,'x-nba')==='hold')return {posted:0,disabled:true};
+  let posted=0;const out={added:0,results:0,recap:0};
+  for(const night of [...new Set([nbaNight(now),nbaNight(now-86400000)])]){
+    const card=await appSetting(env,`xid:x-nba-card:${night}`);if(!card)continue;
+    const rows=await nbaRows(env,night),look={won:['✅','HIT'],lost:['❌','MISS'],push:['➖','NO ACTION']};
+    const jobs=[
+      ...rows.filter(r=>Date.parse(r.game_time)>now).map(r=>({key:`x-nba-pick:${r.id}`,kind:'added',text:()=>`🔒 Added for the late games:\n${nbaLine(r)}\n\nLocked before tip-off. 21+`})),
+      ...rows.filter(nbaDecided).map(r=>({key:`x-nba-r:${r.id}`,kind:'results',text:()=>{const legs=recordLegs(r),f=legs[0]||{},[e,w]=r.result==='push'&&legs.every(l=>l.voided)?['➖','NO ACTION']:look[r.result],stake=r.kind==='parlay'?25:100,d=recordDecimal(r.kind==='parlay'?r.combined_odds:r.odds),win=r.result==='won'?stake*(d-1):r.result==='lost'?-stake:0,unit=String(r.market||'').toLowerCase();
+        if(r.kind==='parlay')return `${e} ${w}: ${legs.length}-leg parlay (${weeklyOdds(r.combined_odds)})\n${legs.map(l=>`${l.result==='won'?'✅':l.result==='lost'?'❌':'➖'} ${l.player} ${weeklyLegText(l)}`).join('\n')}\n${r.result==='push'?'Stake back.':`${weeklyMoney(win)} on a $25 ticket.`}`;
+        return `${e} ${w}: ${r.player} ${weeklyLegText(r)} (${weeklyOdds(r.odds)})${f.voided?`\n${r.player} didn’t play: no action, stake back.`:f.actualValue!=null?`\n${r.status!=='final'&&f.decidedEarly?'Already':'Final:'} ${f.actualValue} ${Number(f.actualValue)===1?unit.replace(/s$/,''):unit}${r.status!=='final'&&f.decidedEarly?', with the game still on.':'.'}`:''}${r.result==='push'?'':`\n${weeklyMoney(win)} on a $100 pick.`}`}}))
+    ];
+    if(rows.length&&rows.every(r=>r.status==='final'))jobs.push({key:`x-nba-recap:${night}`,kind:'recap',text:async()=>{const s=weeklySummary(rows),season=await nbaRecordSummary(env),net=s.profit+s.parlayProfit;
+      return `🏀 NBA ${night===nbaNight(now)?'tonight':'last night'}: ${s.wins}–${s.losses}${s.pushes?`–${s.pushes}`:''}${s.parlayWins+s.parlayLosses?`, parlays ${s.parlayWins}–${s.parlayLosses}`:''}, ${weeklyMoney(net)}.\nNBA season: ${season.wins}–${season.losses}${season.pushes?`–${season.pushes}`:''}, ${weeklyMoney(season.profit+season.parlayProfit)}.\n\nEvery pick graded in public, losses included. Link in bio. 21+`}});
+    for(const j of jobs){
+      if(posted>=limit)break;
+      if(!(await xClaimable(env,j.key,now))||!(await xClaim(env,j.key,now)))continue;
+      try{const sent=await xPost(env,xShort(await j.text()),null,card);await xDone(env,j.key,now);posted++;out[j.kind]++;await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} nba ${j.kind} ${sent?.data?.id||''} ${j.key}`).catch(()=>{})}
+      catch(error){await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(j.key).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {posted,...out,error:error.message}}
+    }
+  }
+  return {posted,...out};
 }
 // Our own recent posts (originals, no replies), to find a post to reply under
 // when its id wasn't saved. One read, cached 10 minutes. The account id is the
@@ -3190,11 +3332,12 @@ async function runXPosts(env,now=Date.now()){
   const pin=picks.posted||combo.posted||weekly.posted||final.posted||slate.posted?{posted:0,waiting:true}:await postAlertsPinToX(env,now);
   const recap=picks.posted||combo.posted||weekly.posted||final.posted||slate.posted||pin.posted?{posted:0,waiting:true}:await postDayRecapToX(env,now);
   const proof=await postProofToX(env,now);
+  const nba=picks.posted||combo.posted||weekly.posted||final.posted||slate.posted?{posted:0,waiting:true}:await postNbaCardToX(env,now).catch(error=>({posted:0,error:error.message}));
   const predictions=picks.posted?{posted:0,waiting:true}:await postPredictionPicksToX(env,now).catch(error=>({posted:0,error:error.message}));
   const results=picks.posted||combo.posted||weekly.posted||final.posted||slate.posted||pin.posted||recap.posted?{posted:0,waiting:true}:await postResultsToX(env,now);
   // The pinned summary waits for a run with nothing else heavy.
   const summary=picks.posted||combo.posted||weekly.posted||final.posted||slate.posted||pin.posted||recap.posted||results.posted?{posted:0,waiting:true}:await postSummaryToX(env,now);
-  return {picks,weekly,closing,combo,final,slate,pin,recap,proof,predictions,results,summary};
+  return {picks,weekly,closing,combo,final,slate,pin,recap,proof,nba,predictions,results,summary};
 }
 // "My book" alerts: a good-value price at one of someone's own sportsbooks.
 // The fair price always comes from every book (3+ pricing both sides, the same
