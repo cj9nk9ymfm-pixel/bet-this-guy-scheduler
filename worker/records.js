@@ -1565,12 +1565,22 @@ function exchangeLine(r,state=null,max=3,all=false){
 // Reads saved prices only: no provider calls on page load.
 // Every prediction-market price for one game, best per prop, at the exchanges
 // open in the visitor's state: [player, market, side, line, exchange, odds].
+const EXCHANGE_LIVE_GAP=3*60000,EXCHANGE_LIVE_FOR=4.5*3600000;
 async function predictionBoardResponse(request,env,now=Date.now()){
   const head={'content-type':'application/json; charset=utf-8','cache-control':'private, max-age=120'};
   const where=bettingOptions(request),id=String(new URL(request.url).searchParams.get('event')||'');
   if(!env.DB||where.mode==='unknown'||!/^NFL--[A-Za-z0-9_-]{2,100}$/.test(id))return new Response(JSON.stringify({success:true,prices:[]}),{headers:head});
-  const row=await env.DB.prepare('SELECT prices_json,updated_at FROM exchange_prices WHERE event_id=?').bind(id).first();
-  if(!row||now-Date.parse(row.updated_at)>3*3600000)return new Response(JSON.stringify({success:true,prices:[]}),{headers:head});
+  let row=await env.DB.prepare('SELECT game_time,prices_json,updated_at FROM exchange_prices WHERE event_id=?').bind(id).first();
+  // In-game: the 30-minute pregame snapshot stops at kickoff, so a live game's
+  // prices are fetched on request, at most once every EXCHANGE_LIVE_GAP per game
+  // (the first request after that claims the refresh; others get the last one).
+  const kick=row?Date.parse(row.game_time):NaN,live=kick<=now&&now-kick<EXCHANGE_LIVE_FOR;
+  if(live&&env.THE_ODDS_API_KEY&&now-Date.parse(row.updated_at)>EXCHANGE_LIVE_GAP){
+    const stamp=new Date(now).toISOString(),claim=await env.DB.prepare('UPDATE exchange_prices SET updated_at=? WHERE event_id=? AND updated_at=?').bind(stamp,id,row.updated_at).run().catch(()=>null);
+    if(Number(claim?.meta?.changes??claim?.changes)){try{const ex=await fetchExchangeOdds(id.slice(5),env.THE_ODDS_API_KEY),list=exchangePriceList(ex);await env.DB.prepare('UPDATE exchange_prices SET prices_json=?,updated_at=? WHERE event_id=?').bind(JSON.stringify(list),stamp,id).run();row={...row,prices_json:JSON.stringify(list),updated_at:stamp}}catch(error){console.warn('exchange_live_failed',error.message)}}
+  }
+  if(live)head['cache-control']='private, max-age=60';
+  if(!row||(!live&&now-Date.parse(row.updated_at)>3*3600000))return new Response(JSON.stringify({success:true,prices:[]}),{headers:head});
   let list=[];try{list=JSON.parse(row.prices_json)}catch{}
   const allowed=new Set(where.exchangeKeys),best=new Map();
   for(const p of list){if(!allowed.has(p[0]))continue;const k=`${normalizedName(p[1])}|${p[2]}|${p[3]}|${p[4]}`,b=best.get(k);if(!b||recordDecimal(p[5])>recordDecimal(b[5]))best.set(k,p)}

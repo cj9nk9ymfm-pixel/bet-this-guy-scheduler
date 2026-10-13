@@ -124,6 +124,11 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
   const board=async(state)=>J(await (await run(`predictionBoardResponse(${JSON.stringify({url:'https://x/api/predictions/board?event=NFL--g1&state='+state,cf:{}})},env,${now+60000})`)).json());
   let bp=await board('TX');assert.deepEqual(bp.prices.find(p=>p[2]==='Over'),['Tre Tucker','Receptions','Over',3.5,'Novig',115],'best price per prop');
   bp=await board('CT');assert.deepEqual(bp.prices.find(p=>p[2]==='Over'),['Tre Tucker','Receptions','Over',3.5,'Kalshi',-102],'Novig is out in Connecticut');
+  // In-game: the board fetches live prices (at most every 3 minutes), not the pregame snapshot.
+  exchange.bookmakers[0]=book('novig',130,-150);const live=Date.parse(kick)+20*60000,liveBoard=async t=>J(await (await run(`predictionBoardResponse(${JSON.stringify({url:'https://x/api/predictions/board?event=NFL--g1&state=TX',cf:{}})},env,${t})`)).json());
+  const before=urls.length;bp=await liveBoard(live);
+  assert.deepEqual(bp.prices.find(p=>p[2]==='Over'),['Tre Tucker','Receptions','Over',3.5,'Novig',130],'live price after kickoff');
+  bp=await liveBoard(live+60000);assert.equal(urls.length-before,1,'one live fetch per 3 minutes');
   assert.equal((await pred(null,{country:'US',regionCode:'TX'})).predictions.draftkings,true);assert.equal((await pred('DE',{})).predictions.draftkings,false);
   console.log('PASS: exchange prices are compared with the sportsbook fair price, logged and throttled; the visitor\'s state picks sportsbooks or prediction markets');
 })().catch(error=>{console.error(error);process.exit(1)});
