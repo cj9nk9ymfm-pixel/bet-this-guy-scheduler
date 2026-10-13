@@ -60,6 +60,9 @@ preferences.avoidSameGame=false;
 preferences.maxParlayLegs=Math.max(2,Math.min(10,Number(preferences.maxParlayLegs)||8));
 preferences.books=Array.isArray(preferences.books)?preferences.books:[];
 let trackedParlays=readStored('bet-this-guy-tracked',[]);
+// First visit: the welcome sheet is the one ask. For the rest of that visit the
+// alerts banner and the board's alerts card stay hidden; later visits show them.
+window.btgWelcomeVisit=()=>{try{if(sessionStorage.getItem('btg-welcome-visit')==='1')return true;if(localStorage.getItem('btg-welcomed')!=='1'){sessionStorage.setItem('btg-welcome-visit','1');return true}}catch{}return false};
 // Theme: Dark (default), Light, or Auto (follows the phone). The other pages
 // read the same btg-theme key.
 function themeMode(){try{const t=localStorage.getItem('btg-theme');return t==='light'||t==='auto'?t:'dark'}catch{return 'dark'}}
@@ -1764,7 +1767,7 @@ if(typeof fetch==='function')window.btgCountVisit?.('view:home');
   const seasonLine=()=>{const s=window.BTG_SEASON;if(!s||s.wins+s.losses<5)return 'Every official pick is locked before kickoff and graded in public, wins and losses.';const m=Math.round(Number(s.profit)||0);return `This season: ${s.wins}–${s.losses}, ${m<0?'−':'+'}$${Math.abs(m).toLocaleString('en-US')} at $100 a pick. Every pick graded in public, wins and losses.`};
   function nudgeList(list){
     list.querySelector('.board-nudge')?.remove();
-    if(selectedPlayer||state.view!=='board'||document.documentElement.classList.contains('alerts-on'))return;
+    if(selectedPlayer||state.view!=='board'||document.documentElement.classList.contains('alerts-on')||window.btgWelcomeVisit?.())return;
     const cards=[...list.querySelectorAll(':scope>.prop-card')];if(cards.length<=NUDGE_AFTER)return;
     const card=document.createElement('div');card.className='board-nudge';
     card.innerHTML=`<p class="gate-eyebrow">${icon('bell')} FREE PICK ALERTS</p><h3>Get the next pick the second it locks</h3><p>${htmlEscape(seasonLine())}</p><div class="gate-actions"><button type="button" class="gate-primary" data-nudge-alerts>Turn on alerts</button>${hasAccount()?'':'<button type="button" class="gate-link" data-gate="signup">or create a free account</button>'}</div>`;
@@ -2217,7 +2220,7 @@ function statsProp(l){
   const store={get:k=>{try{return localStorage.getItem(k)}catch{return null}},set:(k,v)=>{try{localStorage.setItem(k,v)}catch{}}};
   const days=n=>n*86400000,recent=(k,n)=>{const t=Number(store.get(k));return Number.isFinite(t)&&Date.now()-t<days(n)};
   const hero=document.getElementById('alertsHero');
-  if(hero&&!recent('btg-alerts-hero-hidden',14)){hero.hidden=false;document.getElementById('alertsHeroClose')?.addEventListener('click',()=>{hero.hidden=true;store.set('btg-alerts-hero-hidden',String(Date.now()));window.btgCount?.('alerts:banner-hide')})}
+  if(hero&&!recent('btg-alerts-hero-hidden',14)&&!window.btgWelcomeVisit?.()){hero.hidden=false;document.getElementById('alertsHeroClose')?.addEventListener('click',()=>{hero.hidden=true;store.set('btg-alerts-hero-hidden',String(Date.now()));window.btgCount?.('alerts:banner-hide')})}
   // Add to Home Screen: iPhone needs it for phone alerts; Android can install directly.
   const standalone=window.matchMedia?.('(display-mode: standalone)').matches||navigator.standalone===true;
   if(standalone)return;
