@@ -1650,7 +1650,7 @@ const predictionWeekLine=w=>w.graded?`Prediction apps: ${w.wins}–${w.losses}, 
 // Tuesday: last week's prediction-app record as its own graphic post.
 async function postPredictionWeekToX(env,now=Date.now()){
   if(!env.DB||!xReady(env))return {posted:0,disabled:true};
-  const day=new Date(now);if(day.getUTCDay()!==2||day.getUTCHours()<16)return {posted:0,due:false};
+  const day=new Date(now);if(day.getUTCDay()!==2||day.getUTCHours()<14)return {posted:0,due:false};
   const week=new Date(Date.parse(`${officialWeek(now)}T00:00:00Z`)-7*86400000).toISOString().slice(0,10),key=`x-pm-week:${week}`;
   if(!(await xClaimable(env,key,now)))return {posted:0,done:true};
   const w=await predictionWeek(env,week);if(!w.graded)return {posted:0,empty:true};
