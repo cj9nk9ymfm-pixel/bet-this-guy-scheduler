@@ -36,5 +36,13 @@ db.prepare("INSERT INTO prediction_parlays(id,week,tier,exchange,legs_json,odds,
   assert.equal(net('prophetx',100).netOdds,-102,'ProphetX: 2% off the winnings (an even-money bet pays 98 cents per dollar, -102)');
   const pd=vm.runInContext('predictionParlayNet("novig",2.61)',context);assert.ok(Math.abs(1/pd-(1/2.61+0.1*(1/2.61)*(1-1/2.61)))<1e-9,'Novig parlay fee on the combined price');
   assert.equal(vm.runInContext('predictionParlayNet("prophetx",2.61)',context),2.61,'ProphetX parlays: no fee');
+  // One-off owner post: waits for the post it quotes, posts once, then clears.
+  context.env.X_API_KEY='k';context.env.X_API_SECRET='s';context.env.X_ACCESS_TOKEN='1-t';context.env.X_ACCESS_SECRET='a';
+  const sentX=[];context.xPost=async(env,text,m,r,q)=>{sentX.push([text,q]);return {data:{id:'55'}}};
+  db.prepare("INSERT INTO app_settings(key,value) VALUES('x-custom-post',?)").run(JSON.stringify({text:'Hello @novig',quoteKey:'xid:x-pm-week:w'}));
+  assert.equal(JSON.parse(JSON.stringify(await vm.runInContext('postCustomToX(env)',context))).waiting,true,'waits for the quoted post');
+  db.prepare("INSERT INTO app_settings(key,value) VALUES('xid:x-pm-week:w','777')").run();
+  assert.equal((await vm.runInContext('postCustomToX(env)',context)).posted,1);assert.deepEqual(sentX,[['Hello @novig','777']]);
+  assert.equal((await vm.runInContext('postCustomToX(env)',context)).posted,0,'posts once');
   console.log('PASS: prediction picks and parlays are decided mid-game when an Over clears or an Under is passed; Unders that hold wait for the final');
 })().catch(e=>{console.error(e);process.exit(1)});
