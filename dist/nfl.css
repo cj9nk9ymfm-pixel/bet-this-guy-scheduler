@@ -1884,3 +1884,69 @@ body.light .wd-how li span{background:#eef1f6;color:#475569}
 body.light .wd-primary{background:#16a34a;color:#fff}
 body.light .wd-secondary{border-color:#cbd5e1;color:#0f172a}
 body.light .wd-close{background:#eef1f6;color:#475569}
+
+/* Prediction view: its own record bar, styled like the sportsbook one. */
+html body:not(.light) #pmHero.hero{background:#16191e!important;background-image:none!important;border:1px solid #272c35!important;box-shadow:none!important}
+then this week's official picks ---- */
+#pmHero.hero{padding:16px 18px!important;border-radius:14px!important}
+#pmHero .hero-eyebrow{font-size:11.5px!important;margin:0 0 4px!important}
+#pmHero .hero-title{font-size:24px!important;line-height:1.15!important;margin:0 0 10px!important}
+#pmHero .hero-stats{gap:8px!important;margin:0 0 12px!important}
+#pmHero .hero-stat{padding:9px 11px!important;border-radius:10px!important}
+#pmHero .hero-stat strong{font-size:18px!important}
+#pmHero .hero-stat span{font-size:12px!important}
+#pmHero #heroCta{display:none!important}
+#pmHero .hero-actions{gap:10px!important;margin:0!important;align-items:center}
+#pmHero .alerts-btn{height:36px!important;min-height:36px!important;padding:0 14px!important;font-size:14px!important}
+#pmHero .hero-note{font-size:12px!important;margin:10px 0 0!important}
+details behind taps ---- */
+#pmHero.hero{display:flex!important;align-items:center!important;justify-content:space-between!important;flex-wrap:wrap;gap:8px 14px;padding:12px 16px!important}
+#pmHero #heroEyebrow,#pmHero #heroStats,#pmHero .hero-note,#pmHero .alerts-btn,#pmHero #heroCta,#pmHero .alerts-note{display:none!important}
+#pmHero .hero-title{margin:0!important;font:600 16px/1.3 "DM Sans",sans-serif!important;color:var(--muted)!important;letter-spacing:0!important}
+#pmHero .hero-title b{color:var(--text);font:700 18px "Space Grotesk",sans-serif;margin:0 4px}
+#pmHero .hero-profit{font:700 18px "Space Grotesk",sans-serif}
+#pmHero .hero-profit.up{color:#22c55e}
+#pmHero .hero-profit.down{color:#f06060}
+#pmHero .hero-actions{display:block!important;margin:0!important}
+#pmHero .hero-link{font-size:14px!important;font-weight:600!important;white-space:nowrap}
+html body.light #pmHero{background:#fff!important;background-image:none!important;border:1px solid #e2e6ec!important;box-shadow:none!important}
+/* Record bar opens to last week's picks */
+#pmHero .hero-title{flex:1;min-width:0}
+#pmHero .hero-toggle{display:inline-flex;align-items:center;gap:0;padding:0;margin:0;border:0;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
+#pmHero .hero-toggle i{display:inline-grid;place-items:center;width:26px;height:26px;margin-left:6px;border-radius:50%;background:#1e222a;color:#98a1ad;font-style:normal;transition:transform .2s}
+#pmHero.open .hero-toggle i{transform:rotate(180deg)}
+#pmHero .hero-picks{flex:0 0 100%;margin:4px 0 0;border-top:1px solid #272c35}
+#pmHero .hero-picks[hidden]{display:none}
+#pmHero .hero-picks ul{list-style:none;margin:0;padding:0}
+#pmHero .hero-picks li+li{border-top:1px solid #272c35}
+#pmHero .hero-picks button{display:flex;align-items:center;gap:12px;width:100%;padding:11px 0;border:0;background:none;color:#f2f4f7;text-align:left;cursor:pointer;font:inherit}
+#pmHero .hp-all{display:block;padding:10px 0 2px;border-top:1px solid #272c35;font-size:14px;font-weight:600;color:#6aa8ff;text-decoration:none}
+body.light #pmHero .hero-toggle i{background:#f0f2f5;color:#5b6472}
+body.light #pmHero .hero-picks,body.light #pmHero .hero-picks li+li,body.light #pmHero .hp-all{border-color:#e2e6ec}
+body.light #pmHero .hero-picks button{color:#0f172a}
+body.light #pmHero .hp-all{color:#1d4ed8}
+html body[data-mobile-page]:not([data-mobile-page="props"]) #pmHero{display:none!important}
+html body[data-desktop-page]:not([data-desktop-page="props"]) #pmHero{display:none!important}
+html[data-league="NBA"] #pmHero{display:none!important}
+.desk-rail #pmHero{margin:0!important}
+.desk-rail #pmHero #heroTitle{white-space:normal}
+#pmHero .hp-week{margin:4px 2px 8px;font-size:13.5px;color:var(--muted)}
+#pmHero .hp-week b{color:var(--text)}
+html body #pmHero.hero{margin-bottom:8px}
+html body[data-price-view="predictions"] #heroBanner.hero,html body:not([data-price-view="predictions"]) #pmHero.hero{display:none!important}
+#pmHero .pm-hero-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:12px 0 8px}
+#pmHero .pm-hero-stats div{padding:9px 11px;border-radius:10px;background:#1a1d23;border:1px solid #262a31}
+#pmHero .pm-hero-stats strong{display:block;font:700 17px 'Space Grotesk',sans-serif;color:var(--text)}
+#pmHero .pm-hero-stats strong.up{color:#22c55e}#pmHero .pm-hero-stats strong.down{color:#f06060}
+#pmHero .pm-hero-stats span{font-size:12px;color:var(--muted)}
+#pmHero .pm-hero-note{margin:4px 0 8px;font-size:12px;line-height:1.45;color:var(--muted)}
+#pmHero .pm-hero-links{display:flex;flex-wrap:wrap;gap:6px 18px;margin:6px 0 2px}
+#pmHero .pm-hero-links a,#pmHero .pm-hero-links button{padding:6px 0;border:0;background:none;color:#6aa8ff;font:600 13.5px 'DM Sans',sans-serif;text-decoration:none;cursor:pointer}
+body.light #pmHero .pm-hero-stats div{background:#f6f8fb;border-color:#e6ebf2}
+.app-chip{display:inline-flex;align-items:center;gap:5px}.app-chip i{width:8px;height:8px;border-radius:2px;flex:none;background:var(--app,#8a93a0)}
+.pm-app-filter{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 10px}.pm-app-filter>span{font-size:12.5px;color:var(--muted);margin-right:2px}
+.pm-app-filter button{min-height:32px;padding:0 12px;border-radius:999px;border:1px solid #2c323c;background:transparent;color:var(--text);font:600 13px 'DM Sans',sans-serif;cursor:pointer}
+.pm-app-filter button[aria-pressed="true"]{border-color:#6aa8ff;background:rgba(106,168,255,.12)}
+body.light .pm-app-filter button{border-color:#cbd5e1}
+
+#pmHero .on-who .app-chip,.on-who small .app-chip{display:inline-flex!important;font:inherit!important;color:inherit!important;margin:0!important}
