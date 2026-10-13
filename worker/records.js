@@ -748,14 +748,15 @@ async function runXResults(env,now=Date.now()){
   const grading=await gradePredictionNow(env,now).catch(error=>({error:error.message}));
   const results=await postPredictionResultsToX(env,now,2).catch(error=>({posted:0,error:error.message}));
   const recap=await postCardRecapToX(env,now).catch(error=>({posted:0,error:error.message}));
-  return {grading,results,recap};
+  const week=recap.posted?{posted:0,waiting:true}:await postPredictionWeekToX(env,now).catch(error=>({posted:0,error:error.message}));
+  return {grading,results,recap,week};
 }
 async function runXResultsNow(env){
   if(!xReady(env))return {disabled:true};
   // Due while any prediction pick or parlay is in play or waiting on a grade,
   // a result is waiting to post, or a full card is waiting on its recap.
   const t=new Date(Date.now()).toISOString(),old=new Date(Date.now()-36*3600000).toISOString(),q=sql=>env.DB.prepare(sql).bind(t,old).first().catch(()=>null);
-  const due=await appSetting(env,'x-card-recap-request')||await q('SELECT 1 AS n FROM prediction_picks WHERE game_time<=? AND game_time>? LIMIT 1')||await q('SELECT 1 AS n FROM prediction_parlays WHERE game_time<=? AND game_time>? LIMIT 1');
+  const due=new Date().getUTCDay()===2||await appSetting(env,'x-card-recap-request')||await q('SELECT 1 AS n FROM prediction_picks WHERE game_time<=? AND game_time>? LIMIT 1')||await q('SELECT 1 AS n FROM prediction_parlays WHERE game_time<=? AND game_time>? LIMIT 1');
   if(!due)return {waiting:0};
   if(!env.SELF?.fetch||!env.MAINTENANCE_TOKEN)return runXResults(env);
   const r=await env.SELF.fetch(new Request(`${SITE_URL}/api/maintenance?job=xresults`,{method:'POST',headers:{authorization:`Bearer ${env.MAINTENANCE_TOKEN}`},signal:AbortSignal.timeout(60000)}));
@@ -1612,6 +1613,35 @@ function exchangeLine(r,state=null,max=3,all=false){
 // Reads saved prices only: no provider calls on page load.
 // Every prediction-market price for one game, best per prop, at the exchanges
 // open in the visitor's state: [player, market, side, line, exchange, odds].
+// One week's prediction picks and parlays (games from the week's Tuesday
+// noon UTC) with their records, for the digest, X and the weekly page.
+async function predictionWeek(env,start){
+  const from=`${start}T12:00:00.000Z`,to=new Date(Date.parse(from)+7*86400000).toISOString();
+  const picks=(await env.DB.prepare('SELECT * FROM prediction_picks WHERE game_time>=? AND game_time<? ORDER BY game_time,posted_at').bind(from,to).all().catch(()=>({results:[]}))).results||[];
+  const parlays=(await env.DB.prepare('SELECT * FROM prediction_parlays WHERE game_time>=? AND game_time<? ORDER BY game_time,posted_at').bind(from,to).all().catch(()=>({results:[]}))).results||[];
+  const rec=predictionRecord(picks),pr=predictionParlayRecord(parlays);
+  return {picks,parlays,rec,pr,graded:rec.wins+rec.losses+pr.wins+pr.losses,wins:rec.wins+pr.wins,losses:rec.losses+pr.losses,profit:(rec.profit||0)+(pr.profit||0)};
+}
+const predictionWeekLine=w=>w.graded?`Prediction apps: ${w.wins}–${w.losses}, ${weeklyMoney(w.profit)} after fees (singles ${w.rec.wins}–${w.rec.losses}, parlays ${w.pr.wins}–${w.pr.losses}).`:'';
+// Tuesday: last week's prediction-app record as its own graphic post.
+async function postPredictionWeekToX(env,now=Date.now()){
+  if(!env.DB||!xReady(env))return {posted:0,disabled:true};
+  const day=new Date(now);if(day.getUTCDay()!==2||day.getUTCHours()<16)return {posted:0,due:false};
+  const week=new Date(Date.parse(`${officialWeek(now)}T00:00:00Z`)-7*86400000).toISOString().slice(0,10),key=`x-pm-week:${week}`;
+  if(!(await xClaimable(env,key,now)))return {posted:0,done:true};
+  const w=await predictionWeek(env,week);if(!w.graded)return {posted:0,empty:true};
+  if(!(await xClaim(env,key,now)))return {posted:0,done:true};
+  const m=v=>Math.round(v)===0?'$0':weeklyMoney(v),info=nflWeekOf(week),name=info?`Week ${info.week}`:'Last week',P='#c4b5fd';
+  const pay=r=>r.result==='won'?100*(recordDecimal(r.net_odds??r.odds)-1):r.result==='lost'?-100:0,legsOf=r=>{try{return JSON.parse(r.legs_json)}catch{return []}};
+  const picks=[...w.picks.filter(r=>r.result&&r.result!=='void').map(r=>({res:r.result,color:r.result==='won'?P:undefined,text:`${r.player} · ${weeklyLegText(r)}`,odds:m(pay(r)),sub:`${r.exchange} · ${exchangePct(r.odds)}%`})),
+    ...w.parlays.filter(r=>r.result).flatMap(r=>{const legs=legsOf(r);return [{res:r.result,color:r.result==='won'?P:undefined,text:`${legs.length}-leg parlay`,odds:m(predictionParlayPay(r)),sub:`${r.exchange} · ${exchangePct(r.odds)}% · $25`},...legs.map(l=>({leg:true,color:P,text:`${l.result==='won'?'✓':l.result==='lost'?'✗':'·'} ${l.player} · ${weeklyLegText(l)}`}))]})];
+  const text=xShort(`📈 ${name} on prediction apps: ${w.wins}–${w.losses}, ${m(w.profit)} after fees.\n\nSingles ${w.rec.wins}–${w.rec.losses} (${m(w.rec.profit)} at $100) · Parlays ${w.pr.wins}–${w.pr.losses} (${m(w.pr.profit)} at $25)\n\nIts own record, every pick graded in public. Link in bio. 18+/21+ by app.`);
+  let mediaId=null;
+  try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(xSlateSvg({final:true,kicker:'PREDICTION APPS',day:`${w.wins}–${w.losses}`,dayColor:w.profit>=0?'#c4b5fd':'#f87171',dateLine:`${name} · ${m(w.profit)} after fees`,note:`Singles ${w.rec.wins}–${w.rec.losses} · Parlays ${w.pr.wins}–${w.pr.losses}`,note2:'$100 singles · $25 parlays',picks,cta:'Wherever you bet'})))}
+  catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} pm week graphic: ${error.message}`).catch(()=>{})}
+  try{const sent=await xPost(env,text,mediaId);await xDone(env,key,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} pm-week ${week} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,graphic:Boolean(mediaId)}}
+  catch(error){await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});return {posted:0,error:error.message}}
+}
 // The prediction-app record for the Results page and weekly pages: every
 // prediction pick and parlay (not limited to a state), singles and parlays
 // apart, after each app's fee, plus a split by app.
@@ -1962,6 +1992,16 @@ function weeklyPickItem(r){
   const leg=legs[0]||{},close=r.closing_odds!=null&&(r.closing_line==null||Math.abs(Number(r.closing_line)-Number(r.line))<=.01)?` · final price ${weeklyOdds(r.closing_odds)}`:'';
   return `<li class="pick"><div><strong>${weeklyEscape(r.player)}</strong> <span class="res ${res}">${label}</span></div><div class="price">${weeklyOdds(r.odds)}</div><div class="bet">${weeklyEscape(weeklyLegText({...leg,side:r.side,line:r.line,market:r.market}))}${leg.actualValue!=null?` · had ${weeklyEscape(leg.actualValue)}`:''}</div><div class="meta">${weeklyEscape(String(leg.team||'').replace(' · ',' '))} · ${weeklyEscape(weeklyDay(r.game_time))}${leg.book?` · ${weeklyEscape(leg.book)}`:''}${close}</div></li>`;
 }
+// Where can I bet? Every state: sportsbooks or not, and the prediction apps
+// listed there (those with NFL player props marked). From the same tables the
+// board uses; availability changes often, so the page says so.
+const PROP_APPS=new Set(['Novig','ProphetX']);
+function wherePage(){
+  const rows=Object.entries(US_STATES).sort((a,b)=>a[1].localeCompare(b[1])).map(([code,name])=>{const o=bettingOptionsFor(code),apps=[...o.exchanges,...(o.predictions.fanduel?['FanDuel Predicts']:[]),...(o.predictions.draftkings?['DraftKings Predictions']:[])];
+    return `<li class="pick"><div><strong>${weeklyEscape(name)}</strong> <span class="res ${o.sportsbooks?'won':'pending'}">${o.sportsbooks?'Sportsbooks':'Prediction apps only'}</span></div><div class="meta">${apps.length?apps.map(a=>PROP_APPS.has(a)?`<b>${weeklyEscape(a)}</b>`:weeklyEscape(a)).join(', '):'No prediction apps listed'}</div></li>`}).join('');
+  const body=`<p class="eyebrow">WHERE YOU CAN BET</p><h1>Sportsbooks and prediction apps by state</h1><p class="lead">Where there are legal sportsbooks, we post sportsbook picks. Everywhere, we also price prediction apps, where a bet is a contract priced as a chance (60% means you pay 60¢ to win $1). Apps in <b>bold</b> list NFL player props, so our prediction picks run on them.</p><p class="lead">Availability changes often and each app checks your location; some are 18+, some 21+. Always check the app before you sign up. <a href="/trust#predictions">See the prediction record →</a></p><ul class="picks">${rows}</ul><p><a class="cta" href="/">Open the board →</a></p>`;
+  return weeklyShell({title:'Where Can I Bet on NFL Props? Sportsbooks and Prediction Apps by State | Bet This Guy',description:'State by state: where legal sportsbooks operate and which prediction apps (Novig, ProphetX, Kalshi, Polymarket) are listed, for NFL player props.',path:'/where',body});
+}
 async function weeklyPage(request,env){
   if(!env.DB)return null;
   const url=new URL(request.url),headers={'content-type':'text/html; charset=utf-8','cache-control':'public, max-age=300'};
@@ -1997,7 +2037,7 @@ async function weeklyPage(request,env){
   return new Response(weeklyShell({title,description,path:`/picks/${season}/week-${week}`,body}),{headers});
 }
 async function weeklySitemap(env){
-  const paths=['/','/about','/trust','/legal','/picks'];
+  const paths=['/','/about','/trust','/legal','/picks','/where'];
   try{const weeks=await env.DB.prepare("SELECT DISTINCT substr(id,10,10) AS week FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' ORDER BY week").all();for(const w of weeks.results||[]){const nfl=nflWeekOf(w.week);if(nfl)paths.push(`/picks/${nfl.season}/week-${nfl.week}`)}}catch{}
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${paths.map(path=>`  <url><loc>${SITE_URL}${path}</loc></url>`).join('\n')}\n</urlset>\n`;
 }
@@ -2464,7 +2504,8 @@ async function sendWeeklyDigest(env,now=Date.now()){
   const s=weeklySummary(rows),season=weeklySummary(all),info=nflWeekOf(week),name=info?`Week ${info.week}`:'Last week';
   const headline=s.wins+s.losses+s.pushes?`${name}: ${digestRecord(s)} on props, ${weeklyMoney(s.profit)}`:`${name} results`;
   const parlays=s.parlayWins+s.parlayLosses?` Parlays ${s.parlayWins}–${s.parlayLosses} (${weeklyMoney(s.parlayProfit)}).`:'';
-  const lede=`Betting \u0024100 a pick.${parlays} Season: ${digestRecord(season)} on props, ${weeklyMoney(season.profit)}. This week's picks post the moment a price qualifies, any day before kickoff, and we'll email you when they do.`;
+  const pmLine=predictionWeekLine(await predictionWeek(env,week).catch(()=>({graded:0})));
+  const lede=`Betting \u0024100 a pick.${parlays}${pmLine?` ${pmLine}`:''} Season: ${digestRecord(season)} on props, ${weeklyMoney(season.profit)}. This week's picks post the moment a price qualifies, any day before kickoff, and we'll email you when they do.`;
   const subject=`📊 ${headline}`,page=info?`${SITE_URL}/picks/${info.season}/week-${info.week}`:`${SITE_URL}/trust`;
   const people=(await env.DB.prepare('SELECT a.token,p.email FROM email_alerts a JOIN user_profiles p ON p.auth_user_id=a.auth_user_id WHERE a.enabled=1 ORDER BY a.created_at LIMIT 2000').all()).results||[];
   const from=env.EMAIL_FROM||EMAIL_ALERT_FROM,postal=String(env.EMAIL_POSTAL_ADDRESS||'').trim(),opts={subject,heading:weeklyEscape(headline),eyebrow:'WEEKLY RESULTS',lede,rowsHtml:rows.map(digestRow).join(''),ctaLabel:`See ${name}`,ctaUrl:page};
