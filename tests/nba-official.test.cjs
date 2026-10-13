@@ -1,18 +1,18 @@
 const {webcrypto}=require('node:crypto'),fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict'),path=require('node:path'),{DatabaseSync}=require('node:sqlite');
 const root=path.resolve(__dirname,'..'),read=f=>fs.readFileSync(path.join(root,f),'utf8');
-// Official NBA picks: the NFL price rules on games tipping within 3 hours,
+// Official NBA picks: the NFL price rules on games tipping within 36 hours,
 // one single per game, only the core markets, ids under nba|<night>|, graded
 // from the box score (a player who didn't play is a push), and kept out of
 // every NFL query.
 let now=Date.parse('2026-10-27T21:00:00Z');
 class Clock extends Date{constructor(...a){super(...(a.length?a:[now]))}static now(){return now}}
-const tip1='2026-10-27T23:30:00Z',tip2='2026-10-28T00:00:00Z',late='2026-10-28T02:30:00Z';let final=false;const posts=[];
+const tip1='2026-10-27T23:30:00Z',tip2='2026-10-28T00:00:00Z',late='2026-10-28T02:30:00Z',far='2026-10-29T10:00:00Z';let final=false;const posts=[];
 const out=(player,point,over,under=-110)=>[{name:'Over',description:player,point,price:over},{name:'Under',description:player,point,price:under}];
 // DraftKings hangs a good Over on each listed player; the other books agree on -110.
 const games={
   nba1:{tip:tip1,home:'Boston Celtics',away:'New York Knicks',markets:dk=>[{key:'player_points',outcomes:[...out('Jayson Tatum',27.5,dk?115:-110),...out('Jaylen Brown',22.5,dk?112:-110)]},{key:'player_blocks',outcomes:out('Kristaps Porzingis',1.5,dk?130:-110)}]},
   nba2:{tip:tip2,home:'San Antonio Spurs',away:'Oklahoma City Thunder',markets:dk=>[{key:'player_rebounds',outcomes:out('Victor Wembanyama',11.5,dk?114:-110)}]},
-  nba3:{tip:late,home:'Los Angeles Lakers',away:'Golden State Warriors',markets:dk=>[{key:'player_points',outcomes:out('Stephen Curry',26.5,dk?118:-110)}]}
+  nba3:{tip:far,home:'Los Angeles Lakers',away:'Golden State Warriors',markets:dk=>[{key:'player_points',outcomes:out('Stephen Curry',26.5,dk?118:-110)}]}
 };
 const book=(key,title,id)=>({key,title,last_update:new Date(now-60000).toISOString(),markets:games[id].markets(key==='draftkings').map(m=>({...m,last_update:new Date(now-60000).toISOString()}))});
 const team=(id,full_name)=>({id,full_name});
@@ -42,9 +42,9 @@ const env={DB:{prepare:sql=>wrap(sql),async batch(l){const out=[];for(const s of
 const run=c=>vm.runInContext(c,context),req='new Request("https://betthisguy.com/api/maintenance")';
 (async()=>{
   // Before opening night nothing posts.
-  assert.equal((await run(`publishNbaPicks(${req},env,{waitUntil(){}},${Date.parse('2026-10-19T21:00:00Z')})`)).state,'not_started');
+  assert.equal((await run(`publishNbaPicks(${req},env,{waitUntil(){}},${Date.parse('2026-10-18T21:00:00Z')})`)).state,'not_started');
   const first=await run(`publishNbaPicks(${req},env,{waitUntil(){}},${now})`);
-  assert.equal(first.state,'completed');assert.equal(first.games,2,'only games tipping within 3 hours');
+  assert.equal(first.state,'completed');assert.equal(first.games,2,'only games tipping within 36 hours');
   const rows=db.prepare('SELECT * FROM public_recommendations ORDER BY id').all()
   const singles=rows.filter(r=>r.kind==='prop').sort((a,b)=>a.player.localeCompare(b.player));
   assert.deepEqual(singles.map(r=>[r.player,r.market,r.side,r.line,r.odds]),[['Jayson Tatum','Points','Over',27.5,115],['Victor Wembanyama','Rebounds','Over',11.5,114]],'one single per game, best edge, no blocks');
@@ -99,5 +99,5 @@ const run=c=>vm.runInContext(c,context),req='new Request("https://betthisguy.com
   assert.equal(run(`nbaNight(Date.parse('${late}'))`),'2026-10-27');
   // Cron: NBA nights grade every publish run.
   assert.deepEqual(run(`cronJobs(new Date('2026-10-28T01:00:00Z'))`).includes('grade'),true);
-  console.log('PASS: official NBA picks post one per game on the core markets within 3 hours of tip-off, stay out of NFL queries, grade from the box score with no-plays as pushes, and serve their own record');
+  console.log('PASS: official NBA picks post one per game on the core markets as soon as props are listed (up to 36 hours before tip-off), stay out of NFL queries, grade from the box score with no-plays as pushes, and serve their own record');
 })().catch(e=>{console.error(e);process.exit(1)});

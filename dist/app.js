@@ -1500,7 +1500,8 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     // In play first, then upcoming by kickoff; graded picks go last (newest
     // first) under a "Final" label, still in the list and in the record.
     const group=r=>officialDone(r)?2:Date.parse(r.game_time||'')<=now?0:1,t=r=>String(r.game_time||'');
-    return rows.filter(r=>weekOf(r)===current&&(r.kind==='prop'||r.kind==='parlay')).sort((a,b)=>group(a)-group(b)||(group(a)===2?t(b).localeCompare(t(a)):t(a).localeCompare(t(b)))||String(a.posted_at||'').localeCompare(String(b.posted_at||'')));
+    // NBA: tonight plus any later night already posted (picks can lock a day early).
+    return rows.filter(r=>(NBA?weekOf(r)>=current:weekOf(r)===current)&&(r.kind==='prop'||r.kind==='parlay')).sort((a,b)=>group(a)-group(b)||(group(a)===2?t(b).localeCompare(t(a)):t(a).localeCompare(t(b)))||String(a.posted_at||'').localeCompare(String(b.posted_at||'')));
   }
   const kickoff=iso=>{const d=new Date(iso);return Number.isFinite(d.getTime())?d.toLocaleString([],{weekday:'short',hour:'numeric',minute:'2-digit'}):''};
   function officialRow(r,i){
@@ -1556,7 +1557,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     const singles=indexed.filter(([r])=>r.kind!=='parlay'),parlays=indexed.filter(([r])=>r.kind==='parlay');
     $('#officialNowCount').textContent=singles.length?String(singles.length):'';
     if($('#parlaysCount'))$('#parlaysCount').textContent=parlays.length?String(parlays.length):'';
-    fill('#officialNowList',singles,'pick',NBA?'<div class="on-empty"><strong>No NBA picks yet tonight.</strong><span>Each game’s pick can post from 3 hours before tip-off, one per game, up to 6 a night.</span></div>':'<div class="on-empty"><strong>No picks yet this week.</strong><span>They post the moment a price qualifies, any day before kickoff.</span></div>');
+    fill('#officialNowList',singles,'pick',NBA?'<div class="on-empty"><strong>No NBA picks yet tonight.</strong><span>They post as soon as a price qualifies, often the day before: one per game, up to 6 a night.</span></div>':'<div class="on-empty"><strong>No picks yet this week.</strong><span>They post the moment a price qualifies, any day before kickoff.</span></div>');
     fill('#parlaysList',parlays,'parlay',NBA?'<div class="on-empty"><strong>No NBA parlays yet tonight.</strong><span>Up to 2 a night, when two or more Worth a look props line up.</span></div>':'<div class="on-empty"><strong>No parlays yet this week.</strong><span>They post when two or more Worth a look props line up.</span></div>');
     $$('#officialNowList button[data-on], #parlaysList button[data-on]').forEach(b=>b.onclick=()=>openPick(list[+b.dataset.on]));
     officialLiveList=list;updateOfficialLive();window.btgOfficialForm?.(list);

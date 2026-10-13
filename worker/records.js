@@ -349,11 +349,13 @@ async function recordNbaShadow(request,env,ctx,now=Date.now()){
 // Official NBA picks, from opening night (Oct 20, 2026). The price rules are
 // the NFL's (big-5 book, 1-12% edge, 3+ books pricing both sides), sized for
 // a nightly sport: one single per game, NBA_CAPS a night, and only the core
-// markets. A game's picks can post from NBA_WINDOW before tip-off, once most
-// injury news is out, until 5 minutes before. Ids are nba|<night>|<tier>|...,
+// markets. A game's picks can post as soon as its props are listed (from
+// NBA_WINDOW before tip-off, when 3+ books price both sides) until 5 minutes
+// before: early prices are the softest. A player ruled out later is no
+// action, never a loss. Ids are nba|<night>|<tier>|...,
 // so every NFL query (id LIKE 'official|%') leaves them out.
 const NBA_START=Date.parse('2026-10-20T14:00:00Z');
-const NBA_CAPS={props:6,reasonable:1,swing:1,moonshot:0},NBA_PER_GAME=1,NBA_WINDOW=3*3600000;
+const NBA_CAPS={props:6,reasonable:1,swing:1,moonshot:0},NBA_PER_GAME=1,NBA_WINDOW=36*3600000;
 const NBA_OFFICIAL_MARKETS=new Set(['Points','Rebounds','Assists','3-Pointers Made','Points + Rebounds + Assists']);
 // The night a game belongs to: its US Eastern date (a 10:30 PM ET tip is
 // after midnight UTC, so 6 hours back keeps it on the same night).
@@ -363,7 +365,7 @@ async function publishNbaPicks(request,env,ctx,now=Date.now()){
   if(!env.DB||now<NBA_START-NBA_WINDOW)return {state:'not_started'};
   const schedule=await futureSchedule(new Request(new URL('/api/schedule?sport=NBA',request.url)),env,ctx);
   if(!schedule.ok)throw new Error('NBA schedule unavailable');
-  const games=((await schedule.json()).data||[]).filter(e=>{const t=Date.parse(e.status?.startsAt);return t>=NBA_START&&t>now+5*60000&&t<=now+NBA_WINDOW}).slice(0,12);
+  const games=((await schedule.json()).data||[]).filter(e=>{const t=Date.parse(e.status?.startsAt);return t>=NBA_START&&t>now+5*60000&&t<=now+NBA_WINDOW}).sort((a,b)=>Date.parse(a.status.startsAt)-Date.parse(b.status.startsAt)).slice(0,16);
   if(!games.length)return {state:'no_games'};
   const boards=[];let failed=0;
   for(let i=0;i<games.length;i+=4){const results=await Promise.allSettled(games.slice(i,i+4).map(async e=>{const url=new URL('/api/event',request.url);url.searchParams.set('eventID',e.eventID);const r=await eventProps(new Request(url),env,ctx,{maxAge:SOON_MAX_AGE});if(!r.ok||r.headers.get('x-feed-cache')==='stale')throw new Error('NBA board unavailable');return (await r.json()).data||[]}));for(const r of results)if(r.status==='fulfilled')boards.push(...r.value);else failed++}
