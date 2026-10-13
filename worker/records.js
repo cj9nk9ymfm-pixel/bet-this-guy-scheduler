@@ -744,19 +744,33 @@ async function gradePredictionNow(env,now=Date.now()){
 // Prediction result replies and the full-card recap run in their own
 // invocation (SELF binding), so their reads, uploads and posts get their own
 // request allowance instead of crowding out the main X run.
+// One-off post set by the owner: app_settings x-custom-post holds JSON
+// {"text":"…","quoteKey":"xid:…"} (quoteKey optional). It posts once, after
+// the post it quotes exists, then the request is cleared.
+async function postCustomToX(env,now=Date.now()){
+  if(!env.DB||!xReady(env))return {posted:0,disabled:true};
+  const raw=await appSetting(env,'x-custom-post');if(!raw)return {posted:0,none:true};
+  let req;try{req=JSON.parse(raw)}catch{return {posted:0,invalid:true}}
+  const text=String(req.text||'').trim();if(!text||[...text].length>280)return {posted:0,invalid:true};
+  const quote=req.quoteKey?await appSetting(env,String(req.quoteKey)):null;if(req.quoteKey&&!quote)return {posted:0,waiting:true};
+  const claim=await env.DB.prepare('DELETE FROM app_settings WHERE key=? AND value=?').bind('x-custom-post',raw).run();if(!Number(claim?.meta?.changes??claim?.changes))return {posted:0,claimed:false};
+  try{const sent=await xPost(env,text,null,null,quote);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} custom ${sent?.data?.id||''}`).catch(()=>{});return {posted:1}}
+  catch(error){await setAppSetting(env,'x-custom-post',raw).catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} custom: ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
+}
 async function runXResults(env,now=Date.now()){
   const grading=await gradePredictionNow(env,now).catch(error=>({error:error.message}));
   const results=await postPredictionResultsToX(env,now,2).catch(error=>({posted:0,error:error.message}));
   const recap=await postCardRecapToX(env,now).catch(error=>({posted:0,error:error.message}));
   const week=recap.posted?{posted:0,waiting:true}:await postPredictionWeekToX(env,now).catch(error=>({posted:0,error:error.message}));
-  return {grading,results,recap,week};
+  const custom=week.posted?{posted:0,waiting:true}:await postCustomToX(env,now).catch(error=>({posted:0,error:error.message}));
+  return {grading,results,recap,week,custom};
 }
 async function runXResultsNow(env){
   if(!xReady(env))return {disabled:true};
   // Due while any prediction pick or parlay is in play or waiting on a grade,
   // a result is waiting to post, or a full card is waiting on its recap.
   const t=new Date(Date.now()).toISOString(),old=new Date(Date.now()-36*3600000).toISOString(),q=sql=>env.DB.prepare(sql).bind(t,old).first().catch(()=>null);
-  const due=new Date().getUTCDay()===2||await appSetting(env,'x-card-recap-request')||await q('SELECT 1 AS n FROM prediction_picks WHERE game_time<=? AND game_time>? LIMIT 1')||await q('SELECT 1 AS n FROM prediction_parlays WHERE game_time<=? AND game_time>? LIMIT 1');
+  const due=new Date().getUTCDay()===2||await appSetting(env,'x-custom-post')||await appSetting(env,'x-card-recap-request')||await q('SELECT 1 AS n FROM prediction_picks WHERE game_time<=? AND game_time>? LIMIT 1')||await q('SELECT 1 AS n FROM prediction_parlays WHERE game_time<=? AND game_time>? LIMIT 1');
   if(!due)return {waiting:0};
   if(!env.SELF?.fetch||!env.MAINTENANCE_TOKEN)return runXResults(env);
   const r=await env.SELF.fetch(new Request(`${SITE_URL}/api/maintenance?job=xresults`,{method:'POST',headers:{authorization:`Bearer ${env.MAINTENANCE_TOKEN}`},signal:AbortSignal.timeout(60000)}));
@@ -1649,7 +1663,7 @@ async function postPredictionWeekToX(env,now=Date.now()){
   let mediaId=null;
   try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(xSlateSvg({final:true,kicker:'PREDICTION APPS',day:`${w.wins}–${w.losses}`,dayColor:w.profit>=0?'#c4b5fd':'#f87171',dateLine:`${name} · ${m(w.profit)} after fees`,note:`Singles ${w.rec.wins}–${w.rec.losses} · Parlays ${w.pr.wins}–${w.pr.losses}`,note2:'$100 singles · $25 parlays',picks,cta:'Wherever you bet'})))}
   catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} pm week graphic: ${error.message}`).catch(()=>{})}
-  try{const sent=await xPost(env,text,mediaId);await xDone(env,key,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} pm-week ${week} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,graphic:Boolean(mediaId)}}
+  try{const sent=await xPost(env,text,mediaId);await xDone(env,key,now);if(sent?.data?.id)await setAppSetting(env,`xid:${key}`,String(sent.data.id)).catch(()=>{});await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} pm-week ${week} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,graphic:Boolean(mediaId)}}
   catch(error){await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});return {posted:0,error:error.message}}
 }
 // The prediction-app record for the Results page and weekly pages: every
@@ -2548,8 +2562,9 @@ async function xOAuthHeader(env,method,url,extra={},nonce=crypto.randomUUID().re
   return 'OAuth '+Object.entries({...oauth,oauth_signature:sig}).sort(([a],[b])=>a.localeCompare(b)).map(([k,v])=>`${xEnc(k)}="${xEnc(v)}"`).join(', ');
 }
 const xReady=env=>Boolean(env.X_API_KEY&&env.X_API_SECRET&&env.X_ACCESS_TOKEN&&env.X_ACCESS_SECRET);
-async function xPost(env,text,mediaId=null,replyTo=null){
+async function xPost(env,text,mediaId=null,replyTo=null,quote=null){
   const url='https://api.twitter.com/2/tweets',body={text};
+  if(quote)body.quote_tweet_id=String(quote);
   if(mediaId)body.media={media_ids:[mediaId]};
   if(replyTo)body.reply={in_reply_to_tweet_id:String(replyTo)};
   const response=await fetch(url,{method:'POST',headers:{authorization:await xOAuthHeader(env,'POST',url),'content-type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(15000)});
