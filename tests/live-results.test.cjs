@@ -25,5 +25,10 @@ db.prepare("INSERT INTO prediction_parlays(id,week,tier,exchange,legs_json,odds,
   assert.equal(pp.result,'lost','a parlay loses the moment one leg is lost');
   assert.deepEqual(JSON.parse(pp.legs_json).map(l=>l.result||null),[null,'lost']);
   assert.equal(out.graded,2);
+  // Results page data: singles and parlays apart, by app, every play listed.
+  const rec=JSON.parse(JSON.stringify(await vm.runInContext('predictionRecordData(env)',context)));
+  assert.deepEqual([rec.singles.wins,rec.singles.losses,rec.parlays.wins,rec.parlays.losses],[1,0,0,1]);
+  assert.deepEqual([rec.apps.Novig.wins,rec.apps.Novig.losses,rec.apps.Novig.plays],[1,1,3]);
+  assert.equal(rec.plays.length,3);assert.equal(rec.plays.find(p=>p.kind==='parlay').money,-25);
   console.log('PASS: prediction picks and parlays are decided mid-game when an Over clears or an Under is passed; Unders that hold wait for the final');
 })().catch(e=>{console.error(e);process.exit(1)});
