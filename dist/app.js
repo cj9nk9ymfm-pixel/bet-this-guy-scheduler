@@ -1438,10 +1438,15 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     const close=done&&!isParlay&&r.closing_odds!=null&&!moveOf(r.line,r.closing_line,r.side)?[r.closing_odds]:[];
     const points=[odds,...trail,...close].filter(o=>o!=null);
     const pmShare={text:'Share',icon:'share',primary:false,wide:true,share:`Bet This Guy prediction pick: ${isParlay?`${legs.length}-leg parlay`:`${r.player} ${bet}`} (${r.pm?.pct}% on ${r.pm?.exchange}) · ${location.origin}`};
-    return {chip,title:isParlay?`${legs.length}-leg ${legs.some(l=>l.sameGame)?'same-game ':''}parlay`:r.player,bet,game,price:r.pm?`${r.pm.pct}%`:formatOdds(odds),stake:share(r)<1?`$${(heroStake*share(r)).toLocaleString('en-US',{maximumFractionDigits:2})} (¼ unit)`:stakeText(),
+    const pmOffer=r.pm&&!done?window.BTGApps?.offer?.(r.pm.exchange):null;
+    return {chip,title:isParlay?`${legs.length}-leg ${legs.some(l=>l.sameGame)?'same-game ':''}parlay`:r.player,bet,game,price:r.pm?`${r.pm.pct}%`:formatOdds(odds),
+      note:pmOffer?`Partner offer: new to ${r.pm.exchange}? Use code ${pmOffer.code}${pmOffer.offer?`: ${pmOffer.offer}`:''}. Open ${r.pm.exchange} copies the code for you. Age limits and terms apply. We earn a commission on sign-ups; it never changes our picks.`:'',stake:share(r)<1?`$${(heroStake*share(r)).toLocaleString('en-US',{maximumFractionDigits:2})} (¼ unit)`:stakeText(),
       money:done?money(payout(r)):d?`wins $${Math.round(heroStake*share(r)*(d-1)).toLocaleString('en-US')}`:'—',moneyCls:done?(r.result==='won'?'pos':r.result==='lost'?'neg':''):'pos',
       rows,legs:legRows,chart:points.length>=2?{label:done?'Price posted → kickoff':'Price since posted',points}:null,
-      actions:r.pm?[...betAction(r,legs,done),...(!done&&window.BTGApps?.link(r.pm.exchange)?[{label:`Open ${r.pm.exchange}`,icon:'external',wide:true,onClick:()=>{window.btgCount?.(`app:${String(r.pm.exchange).toLowerCase()}`);window.open(window.BTGApps.link(r.pm.exchange),'_blank','noopener')}}]:[]),{...pmShare,label:'Share'}]:[...betAction(r,legs,done),...bookAction(r,legs,done),{label:done&&r.result==='won'?'Share this hit':'Share',icon:'share',primary:false,wide:true,share:`${done&&r.result==='won'?'✅ Hit':'Bet This Guy pick'}: ${isParlay?`${legs.length}-leg parlay (${formatOdds(odds)})`:`${r.player} ${bet} (${formatOdds(odds)})`} · ${location.origin}`}],
+      actions:r.pm?[...betAction(r,legs,done),...(!done&&window.BTGApps?.link(r.pm.exchange)?[{label:`Open ${r.pm.exchange}`,icon:'external',wide:true,onClick:()=>{const app=String(r.pm.exchange).toLowerCase();window.btgCount?.(`app:${app}`);
+        // With a partner code, the tap also copies the code for the app's sign-up screen.
+        if(pmOffer){try{navigator.clipboard?.writeText(pmOffer.code).then(()=>window.btgCount?.(`partner:${app}:copy`)).catch(()=>{})}catch{}}
+        window.open(window.BTGApps.link(r.pm.exchange),'_blank','noopener')}}]:[]),{...pmShare,label:'Share'}]:[...betAction(r,legs,done),...bookAction(r,legs,done),{label:done&&r.result==='won'?'Share this hit':'Share',icon:'share',primary:false,wide:true,share:`${done&&r.result==='won'?'✅ Hit':'Bet This Guy pick'}: ${isParlay?`${legs.length}-leg parlay (${formatOdds(odds)})`:`${r.player} ${bet} (${formatOdds(odds)})`} · ${location.origin}`}],
       links:[...(isParlay?[]:[{text:`${String(r.player||'').split(' ').slice(-1)[0]}’s stats & game log ›`,onClick:()=>openPlayerProfile(statsProp({...first,player:r.player,market:r.market,line:r.line,side:r.side,odds:r.odds,gameTime:r.game_time||first.gameTime}))}]),{text:'See every pick on Results ›',href:'/trust#official'}]};
   }
   const hitDetails=r=>window.BTGSheet.render(recordModel(r)),pickDetails=hitDetails;
@@ -1867,7 +1872,7 @@ if(typeof fetch==='function')window.btgCountVisit?.('view:home');
     const rows=m.rows?.length?`<div class="bs-rows">${m.rows.map(([a,b,c],i)=>`<div><span>${esc(a)}</span><b class="${c||''}" data-bs-row="${i}">${esc(b)}</b></div>`).join('')}</div>`:'';
     const acts=m.actions?.length?`<div class="bs-acts">${m.actions.map((a,i)=>`<button type="button" class="bs-btn ${a.primary?'p':''} ${a.wide||a.primary?'wide':''}" data-bs-act="${i}" ${a.label?'':`aria-label="${esc(a.aria||'')}"`}>${a.icon?icon(a.icon):''}${a.label?esc(a.label):''}</button>`).join('')}</div>`:'';
     return `<div class="bsheet"><span class="bs-chip bs-${m.chip.cls}">${m.chip.icon?icon(m.chip.icon):''}${esc(m.chip.text)}</span><h2>${esc(m.title)}</h2>${m.bet?`<p class="bs-bet">${esc(m.bet)}</p>`:''}${m.game?`<p class="bs-game">${esc(m.game)}</p>`:''}
-      <div class="bs-money"><div><small>Price</small><b>${esc(m.price)}</b></div><div><small>${esc(m.moneyLabel||`${m.stake} bet`)}</small><b class="${m.moneyCls||''}">${esc(m.money)}</b></div></div>${legs}${rows}${chart(m.chart)}${acts}${(m.links||(m.link?[m.link]:[])).map((l,i)=>`<a class="bs-link" ${l.href?`href="${esc(l.href)}"`:`href="#" data-bs-link="${i}"`}>${esc(l.text)}</a>`).join('')}</div>`;
+      <div class="bs-money"><div><small>Price</small><b>${esc(m.price)}</b></div><div><small>${esc(m.moneyLabel||`${m.stake} bet`)}</small><b class="${m.moneyCls||''}">${esc(m.money)}</b></div></div>${legs}${rows}${chart(m.chart)}${m.note?`<p class="bs-note">${esc(m.note)}</p>`:''}${acts}${(m.links||(m.link?[m.link]:[])).map((l,i)=>`<a class="bs-link" ${l.href?`href="${esc(l.href)}"`:`href="#" data-bs-link="${i}"`}>${esc(l.text)}</a>`).join('')}</div>`;
   }
   function bind(host,m,dialog){
     host.querySelectorAll('[data-bs-gate]').forEach(b=>b.onclick=()=>{dialog?.close?.();window.btgCount?.('gate:signup');window.BTGAuth?.open?.('signup')});
@@ -2580,7 +2585,10 @@ function statsProp(l){
   const LINKS={Kalshi:'https://kalshi.com',Polymarket:'https://polymarket.com',Novig:'https://novig.us',ProphetX:'https://www.prophetx.co',BetOpenly:'https://www.betopenly.com'};
   const APP_COLORS={Kalshi:'#10b981',Polymarket:'#3b82f6',Novig:'#8b5cf6',ProphetX:'#f97316',BetOpenly:'#eab308'};
   const chip=name=>`<span class="app-chip" style="--app:${APP_COLORS[name]||'#8a93a0'}"><i aria-hidden="true"></i>${htmlEscape(name||'')}</span>`;
-  window.BTGApps={link:name=>LINKS[name]||null,color:name=>APP_COLORS[name]||null};
+  // Partner offers (/api/partners): an app's partner link and promo code, once one is live.
+  let PARTNERS={};
+  window.BTGApps={link:name=>PARTNERS[name]?.link||LINKS[name]||null,color:name=>APP_COLORS[name]||null,offer:name=>PARTNERS[name]||null};
+  fetch('/api/partners').then(r=>r.ok?r.json():null).then(d=>{if(d?.success&&d.partners&&Object.keys(d.partners).length){PARTNERS=d.partners;try{render()}catch{}}}).catch(()=>{});
   const STATES={AL:'Alabama',AK:'Alaska',AZ:'Arizona',AR:'Arkansas',CA:'California',CO:'Colorado',CT:'Connecticut',DE:'Delaware',DC:'Washington, DC',FL:'Florida',GA:'Georgia',HI:'Hawaii',ID:'Idaho',IL:'Illinois',IN:'Indiana',IA:'Iowa',KS:'Kansas',KY:'Kentucky',LA:'Louisiana',ME:'Maine',MD:'Maryland',MA:'Massachusetts',MI:'Michigan',MN:'Minnesota',MS:'Mississippi',MO:'Missouri',MT:'Montana',NE:'Nebraska',NV:'Nevada',NH:'New Hampshire',NJ:'New Jersey',NM:'New Mexico',NY:'New York',NC:'North Carolina',ND:'North Dakota',OH:'Ohio',OK:'Oklahoma',OR:'Oregon',PA:'Pennsylvania',RI:'Rhode Island',SC:'South Carolina',SD:'South Dakota',TN:'Tennessee',TX:'Texas',UT:'Utah',VT:'Vermont',VA:'Virginia',WA:'Washington',WV:'West Virginia',WI:'Wisconsin',WY:'Wyoming'};
   const KEY='btg-state',VIEW='btg-price-view',dec=o=>o>0?1+o/100:1+100/-o,pct=o=>`${Math.round(100/dec(o))}%`;
   const stored=k=>{try{return localStorage.getItem(k)||''}catch{return ''}},store=(k,v)=>{try{v?localStorage.setItem(k,v):localStorage.removeItem(k)}catch{}};
@@ -2619,7 +2627,7 @@ function statsProp(l){
   }
   function row(v){
     const initials=String(v.player||'').split(' ').map(x=>x[0]||'').join('').slice(0,3),bet=`${v.side} ${v.line} ${String(v.market||'').toLowerCase()}`;
-    const game=String(v.team||'').replace(' · @ ',' @ ').replace(' · vs ',' vs '),matchup=game&&typeof compactGameName==='function'?compactGameName(game):game,url=LINKS[v.exchange];
+    const game=String(v.team||'').replace(' · @ ',' @ ').replace(' · vs ',' vs '),matchup=game&&typeof compactGameName==='function'?compactGameName(game):game,url=window.BTGApps.link(v.exchange);
     const price=url?`<a class="on-price lean-book pm-price" href="${url}" target="_blank" rel="noopener" aria-label="Open ${htmlEscape(v.exchange)}">${htmlEscape(pct(v.odds))}</a>`:`<span class="on-price pm-price">${htmlEscape(pct(v.odds))}</span>`;
     const why=Number.isFinite(Number(v.fair))?`Fair chance ${Math.round(v.fair)}%`:`${Number(v.edge).toFixed(1)}% better than fair`;
     return `<div class="on-row lean-row"><span class="on-avatar"><span>${htmlEscape(initials)}</span><img loading="lazy" decoding="async" src="/api/player-photo?name=${encodeURIComponent(v.player||'')}" alt="" onerror="this.remove()"></span><span class="on-who"><span class="on-kicker lean-kicker">${htmlEscape(v.exchange)}</span><b>${htmlEscape(v.player)}</b><span>${htmlEscape(bet.charAt(0).toUpperCase()+bet.slice(1))}</span><small>${htmlEscape([matchup,when(v.gameTime)].filter(Boolean).join(' · '))}</small><i class="on-why">${htmlEscape(why)}</i></span><span class="on-end">${price}</span></div>`;
@@ -2629,7 +2637,7 @@ function statsProp(l){
   // Prediction picks and parlays use the official pick card: avatar, name, bet,
   // a meta line (matchup · time · app), one note line, and price over status.
   const pmStatus=r=>r.result==='won'?['won','Won']:r.result==='lost'?['lost','Lost']:r.result==='push'?['push','Push']:r.result==='void'?['push','Void']:Date.parse(r.gameTime)<=Date.now()?['live','Live']:['locked',`${typeof icon==='function'?icon('lock'):''} Locked`];
-  const pmEnd=(r,st)=>{const url=LINKS[r.exchange],t=pct(r.odds);return `<span class="on-end">${url&&!r.result?`<a class="on-price" href="${url}" target="_blank" rel="noopener" aria-label="Open ${htmlEscape(r.exchange)}">${htmlEscape(t)}</a>`:`<b class="on-price">${htmlEscape(t)}</b>`}<span class="on-tag on-${st[0]}">${st[1]}</span></span>`};
+  const pmEnd=(r,st)=>{const url=window.BTGApps.link(r.exchange),t=pct(r.odds);return `<span class="on-end">${url&&!r.result?`<a class="on-price" href="${url}" target="_blank" rel="noopener" aria-label="Open ${htmlEscape(r.exchange)}">${htmlEscape(t)}</a>`:`<b class="on-price">${htmlEscape(t)}</b>`}<span class="on-tag on-${st[0]}">${st[1]}</span></span>`};
   // Prediction picks and parlays as records, so they open the same pick sheet
   // and show the same live line as sportsbook picks.
   const pctOf=o=>{o=Number(o);const d=o>=100?1+o/100:o<=-100?1+100/-o:null;return d?Math.round(100/d):null};

@@ -72,7 +72,9 @@ html.light img[src^="/logo.png"]{content:url(/logo-dark.png)}html.light{color-sc
     <section id="affiliates">
       <h2>Data providers and affiliate disclosure</h2>
       <p>Odds and market prices are supplied through The Odds API. Player statistics are supplied through BALLDONTLIE. Bet This Guy is not affiliated with, endorsed by, or operated by any sportsbook or prediction app unless explicitly stated.</p>
-      <p>If sportsbook or prediction-app referral links or paid partnerships are added, they will be labeled clearly next to the link. A paid relationship will not change the market data or the ranking methodology.</p>
+      <p id="partnerNone">If sportsbook or prediction-app referral links or paid partnerships are added, they will be labeled clearly next to the link. A paid relationship will not change the market data or the ranking methodology.</p>
+      <div id="partnerLive" hidden><p><b>Partners:</b> <span id="partnerList"></span> When you sign up for one of these apps with our code or link, the app pays us a commission. It costs you nothing, and it never changes our picks, prices or results: a pick names whichever app has the best price, partner or not. Partner offers are labeled where they appear, and the app’s own terms and age limits apply.</p></div>
+      <script>fetch('/api/partners').then(function(r){return r.ok?r.json():null}).then(function(d){var p=d&&d.partners||{},names=Object.keys(p);if(!names.length)return;document.getElementById('partnerList').textContent='We are an affiliate partner of '+names.map(function(n){return n+' (code '+p[n].code+')'}).join(', ')+'.';document.getElementById('partnerLive').hidden=false;document.getElementById('partnerNone').hidden=true}).catch(function(){})</script>
     </section>
     <section id="responsible">
       <h2>Responsible play</h2>

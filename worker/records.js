@@ -1486,7 +1486,11 @@ async function postPredictionPicksToX(env,now=Date.now()){
     const rec=predictionRecord((await env.DB.prepare('SELECT result,odds,net_odds,close_odds FROM prediction_picks').all()).results||[]),games=rec.wins+rec.losses+rec.pushes;
     const when=weeklyDay(r.game_time),matchup=String(r.team||'').replace(' · ',' ');
     const record=games>=3?`\nPrediction record: ${rec.wins}–${rec.losses}${rec.pushes?`–${rec.pushes}`:''}, ${weeklyMoney(rec.profit)} at $100 a pick after fees.`:'';
-    const text=xShort(`📈 Prediction market pick: ${r.player} ${weeklyLegText(r)}\n${r.exchange} at ${exchangePct(r.odds)}% · fair chance ${Math.round(r.fair_pct)}%, after fees\n${matchup}${matchup&&when?' · ':''}${when}${record}\n\nOwn record, separate from our sportsbook picks. Link in bio. 18+/21+ by app.`);
+    // A partner code (its X code if it has one) rides along on that app's picks.
+    const partner=(await partnerOffers(env).catch(()=>({})))[r.exchange],promo=partner?`\nNew to ${r.exchange}? Code ${partner.xCode||partner.code}${partner.offer?`: ${partner.offer}`:''}. Terms apply.`:'';
+    const head=`📈 Prediction market pick: ${r.player} ${weeklyLegText(r)}\n${r.exchange} at ${exchangePct(r.odds)}% · fair chance ${Math.round(r.fair_pct)}%, after fees\n${matchup}${matchup&&when?' · ':''}${when}${record}`,full=`${head}${promo}\n\nOwn record, separate from our sportsbook picks. Link in bio. 18+/21+ by app.`;
+    // With a code, the record-separation line goes first if the post runs long (the age line always stays).
+    const text=xShort(full.length<=280?full:`${head}${promo}\n\nLink in bio. 18+/21+ by app.`);
     const mediaId=await xPredictionMedia(env,r,false);
     try{const sent=await xPost(env,text,mediaId);await xDone(env,key,now);if(sent?.data?.id)await setAppSetting(env,`xid:${r.id}`,String(sent.data.id)).catch(()=>{});await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} prediction ${mediaId?'graphic':'text'} ${r.id} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,graphic:Boolean(mediaId)}}
     catch(error){console.warn('x_prediction_failed',error.message);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
@@ -2090,6 +2094,22 @@ function weeklyPickItem(r){
 // listed there (those with NFL player props marked). From the same tables the
 // board uses; availability changes often, so the page says so.
 const PROP_APPS=new Set(['Novig','ProphetX']);
+// Partner offers (affiliate codes). app_settings partner-novig holds JSON
+// {code, xCode?, link?, offer?}; nothing shows until it's set. The code is
+// 2-15 letters or numbers; a link must be https on the app's own domain.
+const PARTNER_APPS={Novig:{key:'partner-novig',domain:/^https:\/\/([\w-]+\.)*novig\.(us|co|com)(\/|$)/}};
+async function partnerOffers(env){
+  const out={};if(!env.DB)return out;
+  for(const [name,cfg] of Object.entries(PARTNER_APPS)){
+    let p=null;try{p=JSON.parse(await appSetting(env,cfg.key)||'null')}catch{}
+    const code=String(p?.code||'').toUpperCase();if(!/^[A-Z0-9]{2,15}$/.test(code))continue;
+    const xCode=String(p?.xCode||'').toUpperCase(),link=String(p?.link||'');
+    out[name]={code,...(/^[A-Z0-9]{2,15}$/.test(xCode)?{xCode}:{}),...(cfg.domain.test(link)?{link}:{}),offer:String(p?.offer||'').slice(0,120)};
+  }
+  return out;
+}
+// GET /api/partners: the live partner offers, for the pick sheet and app buttons.
+async function partnersResponse(env){return json({success:true,partners:await partnerOffers(env).catch(()=>({}))},200,{'cache-control':'public, max-age=300'})}
 function wherePage(){
   const rows=Object.entries(US_STATES).sort((a,b)=>a[1].localeCompare(b[1])).map(([code,name])=>{const o=bettingOptionsFor(code),apps=[...o.exchanges,...(o.predictions.fanduel?['FanDuel Predicts']:[]),...(o.predictions.draftkings?['DraftKings Predictions']:[])];
     return `<li class="pick"><div><strong>${weeklyEscape(name)}</strong> <span class="res ${o.sportsbooks?'won':'pending'}">${o.sportsbooks?'Sportsbooks':'Prediction apps only'}</span></div><div class="meta">${apps.length?apps.map(a=>PROP_APPS.has(a)?`<b>${weeklyEscape(a)}</b>`:weeklyEscape(a)).join(', '):'No prediction apps listed'}</div></li>`}).join('');
@@ -2309,7 +2329,7 @@ async function trustSnapshot(env,now=Date.now()){
 
 // Anonymous usage counts: daily totals per metric. No cookies, IP addresses or
 // per-person identifiers are stored; unknown metric names are ignored.
-const USAGE_METRICS=new Set(['app:novig','app:prophetx','app:kalshi','app:polymarket','app:betopenly','welcome:shown','welcome:alerts','welcome:account','welcome:skip','welcome:close','welcome:reopen','view:home','view:trust','view:picks','view:week','visit:new','visit:return','card:open','slip:add','parlay:add','share','hit:open','profile:open','affiliate:click','alerts:on','alerts:off','gate:shown','gate:signup','gate:login','nudge:shown','nudge:alerts','nudge:signup','alerts:email','view:post','post:copy','post:open','post:image','src:reddit','src:x','src:google','src:social','src:other','src:direct']);
+const USAGE_METRICS=new Set(['partner:novig:copy','app:novig','app:prophetx','app:kalshi','app:polymarket','app:betopenly','welcome:shown','welcome:alerts','welcome:account','welcome:skip','welcome:close','welcome:reopen','view:home','view:trust','view:picks','view:week','visit:new','visit:return','card:open','slip:add','parlay:add','share','hit:open','profile:open','affiliate:click','alerts:on','alerts:off','gate:shown','gate:signup','gate:login','nudge:shown','nudge:alerts','nudge:signup','alerts:email','view:post','post:copy','post:open','post:image','src:reddit','src:x','src:google','src:social','src:other','src:direct']);
 const USAGE_BOTS=/bot|crawl|spider|slurp|preview|facebookexternalhit|curl|wget|python|headless|lighthouse/i;
 async function countUsage(env,metrics,request){
   // The owner's own devices (opted out with /?me=1) are never counted.
