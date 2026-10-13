@@ -1423,8 +1423,8 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     const close=done&&!isParlay&&r.closing_odds!=null&&!moveOf(r.line,r.closing_line,r.side)?[r.closing_odds]:[];
     const points=[odds,...trail,...close].filter(o=>o!=null);
     const pmShare={text:'Share',icon:'share',primary:false,wide:true,share:`Bet This Guy prediction pick: ${isParlay?`${legs.length}-leg parlay`:`${r.player} ${bet}`} (${r.pm?.pct}% on ${r.pm?.exchange}) · ${location.origin}`};
-    return {chip,title:isParlay?`${legs.length}-leg ${legs.some(l=>l.sameGame)?'same-game ':''}parlay`:r.player,bet,game,price:r.pm?`${r.pm.pct}%`:formatOdds(odds),stake:stakeText(),
-      money:done?money(payout(r)):d?`wins $${Math.round(heroStake*(d-1)).toLocaleString('en-US')}`:'—',moneyCls:done?(r.result==='won'?'pos':r.result==='lost'?'neg':''):'pos',
+    return {chip,title:isParlay?`${legs.length}-leg ${legs.some(l=>l.sameGame)?'same-game ':''}parlay`:r.player,bet,game,price:r.pm?`${r.pm.pct}%`:formatOdds(odds),stake:share(r)<1?`$${(heroStake*share(r)).toLocaleString('en-US',{maximumFractionDigits:2})} (¼ unit)`:stakeText(),
+      money:done?money(payout(r)):d?`wins $${Math.round(heroStake*share(r)*(d-1)).toLocaleString('en-US')}`:'—',moneyCls:done?(r.result==='won'?'pos':r.result==='lost'?'neg':''):'pos',
       rows,legs:legRows,chart:points.length>=2?{label:done?'Price posted → kickoff':'Price since posted',points}:null,
       actions:r.pm?[{...pmShare,label:'Share'}]:[...betAction(r,legs,done),...bookAction(r,legs,done),{label:done&&r.result==='won'?'Share this hit':'Share',icon:'share',primary:false,wide:true,share:`${done&&r.result==='won'?'✅ Hit':'Bet This Guy pick'}: ${isParlay?`${legs.length}-leg parlay (${formatOdds(odds)})`:`${r.player} ${bet} (${formatOdds(odds)})`} · ${location.origin}`}],
       links:[...(isParlay?[]:[{text:`${String(r.player||'').split(' ').slice(-1)[0]}’s stats & game log ›`,onClick:()=>openPlayerProfile(statsProp({...first,player:r.player,market:r.market,line:r.line,side:r.side,odds:r.odds,gameTime:r.game_time||first.gameTime}))}]),{text:'See every pick on Results ›',href:'/trust#official'}]};
