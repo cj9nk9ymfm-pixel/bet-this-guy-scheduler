@@ -30,5 +30,11 @@ db.prepare("INSERT INTO prediction_parlays(id,week,tier,exchange,legs_json,odds,
   assert.deepEqual([rec.singles.wins,rec.singles.losses,rec.parlays.wins,rec.parlays.losses],[1,0,0,1]);
   assert.deepEqual([rec.apps.Novig.wins,rec.apps.Novig.losses,rec.apps.Novig.plays],[1,1,3]);
   assert.equal(rec.plays.length,3);assert.equal(rec.plays.find(p=>p.kind==='parlay').money,-25);
+  // Fees from the apps' own pages: Novig free pre-game, 0.10 x P x (1 - P) on parlays; ProphetX 2% of winnings.
+  const net=(k,o)=>JSON.parse(JSON.stringify(vm.runInContext(`predictionNet(${JSON.stringify(k)},${o})`,context)));
+  assert.equal(net('novig',100).netOdds,100,'Novig pre-game singles: no fee');
+  assert.equal(net('prophetx',100).netOdds,-102,'ProphetX: 2% off the winnings (an even-money bet pays 98 cents per dollar, -102)');
+  const pd=vm.runInContext('predictionParlayNet("novig",2.61)',context);assert.ok(Math.abs(1/pd-(1/2.61+0.1*(1/2.61)*(1-1/2.61)))<1e-9,'Novig parlay fee on the combined price');
+  assert.equal(vm.runInContext('predictionParlayNet("prophetx",2.61)',context),2.61,'ProphetX parlays: no fee');
   console.log('PASS: prediction picks and parlays are decided mid-game when an Over clears or an Under is passed; Unders that hold wait for the final');
 })().catch(e=>{console.error(e);process.exit(1)});
