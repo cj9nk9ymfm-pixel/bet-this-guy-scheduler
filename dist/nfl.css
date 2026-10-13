@@ -1978,3 +1978,11 @@ body.light .email-status.ok{color:#15803d}
 .bs-alert p{margin:0 0 10px;display:grid;gap:4px}.bs-alert b{display:flex;align-items:center;gap:6px;font-size:15px}.bs-alert span{color:var(--muted);font-size:13px;line-height:1.45}
 .bs-alert-acts{display:flex;flex-wrap:wrap;gap:8px}.bs-alert-acts .bs-btn{flex:1 1 140px}
 body.light .bs-alert{background:#eef4ff;border-color:#bfd3fb}
+
+/* Home-screen app on iPhone: the status bar is drawn over the page, so
+   full-screen Settings starts below it, and sheets never reach under it.
+   In a normal browser tab the insets are 0. */
+#settingsDialog .st-top{padding-top:calc(14px + env(safe-area-inset-top))!important}
+#settingsDialog .st-foot{padding-bottom:calc(12px + env(safe-area-inset-bottom))!important}
+.welcome-dialog{max-height:calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom))}
+.hit-dialog{max-height:calc(100dvh - 32px - env(safe-area-inset-top))}
