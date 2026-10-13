@@ -1953,3 +1953,6 @@ body.light .pm-app-filter button{border-color:#cbd5e1}
 .live-pick{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;padding:10px 0;border:0;border-top:1px solid #262a31;background:none;color:var(--text);text-align:left;font:inherit;cursor:pointer}.live-pick:first-child{border-top:0}
 .live-pick span{display:grid;gap:2px;min-width:0}.live-pick small{color:var(--muted);font-size:12.5px}.live-pick em{font-style:normal;font-size:12.5px}.live-pick strong{font:700 16px 'Space Grotesk',sans-serif}
 body.light .live-picks{background:#fff;border-color:#e2e8f0}body.light .live-pick{border-color:#e6ebf2}
+
+/* Partner offer line in the pick sheet */
+.bs-note{margin:12px 0 0;padding:10px 12px;border:1px dashed var(--line);border-radius:10px;color:var(--muted);font-size:12.5px;line-height:1.45}

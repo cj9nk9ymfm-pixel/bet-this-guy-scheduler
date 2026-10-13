@@ -1318,6 +1318,7 @@ async function routeRequest(request, env, ctx) {
     if (url.pathname === "/api/leans") return leansResponse(request, env, ctx);
     if (url.pathname === "/api/weather") return weatherResponse(request, env, ctx);
     if (url.pathname === "/api/where") return bettingOptionsResponse(request);
+    if (url.pathname === "/api/partners") return partnersResponse(env);
     if (url.pathname === "/api/predictions/board") return predictionBoardResponse(request, env);
     if (url.pathname === "/api/predictions/record") return predictionRecordResponse(request, env);
     if (url.pathname === "/api/predictions") return predictionsResponse(request, env);
