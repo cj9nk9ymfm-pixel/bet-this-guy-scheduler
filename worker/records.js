@@ -1612,6 +1612,27 @@ function exchangeLine(r,state=null,max=3,all=false){
 // Reads saved prices only: no provider calls on page load.
 // Every prediction-market price for one game, best per prop, at the exchanges
 // open in the visitor's state: [player, market, side, line, exchange, odds].
+// The prediction-app record for the Results page and weekly pages: every
+// prediction pick and parlay (not limited to a state), singles and parlays
+// apart, after each app's fee, plus a split by app.
+async function predictionRecordData(env){
+  const picks=(await env.DB.prepare('SELECT id,exchange,player,team,market,side,line,odds,net_odds,fair_pct,game_time,posted_at,result,actual,close_odds,early FROM prediction_picks ORDER BY game_time DESC,posted_at DESC LIMIT 500').all()).results||[];
+  const parlays=(await env.DB.prepare('SELECT id,tier,exchange,legs_json,odds,game_time,posted_at,result FROM prediction_parlays ORDER BY game_time DESC,posted_at DESC LIMIT 300').all().catch(()=>({results:[]}))).results||[];
+  const singles=predictionRecord(picks),combos=predictionParlayRecord(parlays),apps={};
+  const pay=r=>r.result==='won'?100*(recordDecimal(r.net_odds??r.odds)-1):r.result==='lost'?-100:0;
+  for(const r of picks){const a=apps[r.exchange]||={wins:0,losses:0,pushes:0,profit:0,plays:0};a.plays++;if(r.result==='won')a.wins++;else if(r.result==='lost')a.losses++;else if(r.result==='push')a.pushes++;a.profit+=pay(r)}
+  for(const r of parlays){const a=apps[r.exchange]||={wins:0,losses:0,pushes:0,profit:0,plays:0};a.plays++;if(r.result==='won')a.wins++;else if(r.result==='lost')a.losses++;else if(r.result==='push')a.pushes++;a.profit+=predictionParlayPay(r)}
+  for(const a of Object.values(apps))a.profit=Math.round(a.profit);
+  const plays=[...picks.map(r=>({id:r.id,kind:'single',exchange:r.exchange,player:r.player,team:r.team||'',market:r.market,side:r.side,line:r.line,odds:r.odds,netOdds:r.net_odds,fair:r.fair_pct,gameTime:r.game_time,postedAt:r.posted_at,result:r.result,actual:r.actual,closeOdds:r.close_odds,early:Boolean(r.early),money:Math.round(pay(r))})),
+    ...parlays.map(r=>{let legs=[];try{legs=JSON.parse(r.legs_json)}catch{}return {id:r.id,kind:'parlay',exchange:r.exchange,odds:r.odds,gameTime:r.game_time,postedAt:r.posted_at,result:r.result,money:Math.round(predictionParlayPay(r)),legs:legs.map(l=>({player:l.player,market:l.market,side:l.side,line:l.line,team:l.team,result:l.result||null,actual:l.actual??null}))}})]
+    .sort((a,b)=>String(b.gameTime).localeCompare(String(a.gameTime))||String(b.postedAt).localeCompare(String(a.postedAt)));
+  return {singles,parlays:combos,apps,plays};
+}
+async function predictionRecordResponse(request,env){
+  const head={'content-type':'application/json; charset=utf-8','cache-control':'public, max-age=60'};
+  if(!env.DB)return new Response(JSON.stringify({success:false}),{status:503,headers:head});
+  return new Response(JSON.stringify({success:true,...await predictionRecordData(env),updatedAt:new Date().toISOString()}),{headers:head});
+}
 const EXCHANGE_LIVE_GAP=3*60000,EXCHANGE_LIVE_FOR=4.5*3600000;
 async function predictionBoardResponse(request,env,now=Date.now()){
   const head={'content-type':'application/json; charset=utf-8','cache-control':'private, max-age=120'};
@@ -1963,7 +1984,16 @@ async function weeklyPage(request,env){
   const hasPicks=async w=>{if(w<1||w>22)return false;const prefix=`official|${weekStartFor(season,w)}|`;return Boolean((await env.DB.prepare("SELECT 1 AS hit FROM public_recommendations WHERE source='market-verified-v2' AND id>=? AND id<? LIMIT 1").bind(prefix,prefix+'\uffff').all()).results?.length)};
   const [hasPrev,hasNext]=await Promise.all([hasPicks(week-1),hasPicks(week+1)]);
   const prev=hasPrev?`<a href="/picks/${season}/week-${week-1}">← Week ${week-1}</a>`:'<span></span>',next=hasNext?`<a href="/picks/${season}/week-${week+1}">Week ${week+1} →</a>`:'<span></span>';
-  const body=`<p class="eyebrow">OFFICIAL PICKS · ${season}</p><h1>NFL Week ${week} player prop picks</h1><p class="lead">${weeklyEscape(weeklyRange(start))} · ${singles.length} single${singles.length===1?'':'s'}, ${parlays.length} parlay${parlays.length===1?'':'s'}${s.pending?` · ${s.pending} still to play`:''}. Every pick was posted before kickoff at the best price we found.</p>${stats}<p><a class="cta" href="/">Open this week’s board →</a><a href="/trust#official" style="white-space:nowrap">All results →</a></p><h2>Singles</h2><ul class="picks">${singles.map(weeklyPickItem).join('')||'<li>No singles this week.</li>'}</ul>${parlays.length?`<h2>Parlays</h2><ul class="picks">${parlays.map(weeklyPickItem).join('')}</ul>`:''}<nav class="pager">${prev}${next}</nav>`;
+  // Prediction app picks and parlays that week (games from the week's Tuesday noon UTC), with their own record.
+  const from=`${start}T12:00:00.000Z`,to=new Date(Date.parse(from)+7*86400000).toISOString();
+  const pmPicks=(await env.DB.prepare('SELECT * FROM prediction_picks WHERE game_time>=? AND game_time<? ORDER BY game_time,posted_at').bind(from,to).all().catch(()=>({results:[]}))).results||[];
+  const pmParlays=(await env.DB.prepare('SELECT * FROM prediction_parlays WHERE game_time>=? AND game_time<? ORDER BY game_time,posted_at').bind(from,to).all().catch(()=>({results:[]}))).results||[];
+  const pmRes=r=>['won','lost','push'].includes(r.result)?r.result:r.result==='void'?'push':'pending',pmLabel={won:'Won',lost:'Lost',push:'Push',pending:'Pending'};
+  const pmItem=r=>`<li class="pick"><div><strong>${weeklyEscape(r.player)}</strong> <span class="res ${pmRes(r)}">${r.result==='void'?'Void':pmLabel[pmRes(r)]}</span></div><div class="price">${exchangePct(r.odds)}%</div><div class="bet">${weeklyEscape(weeklyLegText(r))}${r.actual!=null?` · had ${weeklyEscape(r.actual)}`:''}</div><div class="meta">${weeklyEscape([String(r.team||'').replace(' · ',' '),weeklyDay(r.game_time),`${r.exchange}, fair chance ${Math.round(r.fair_pct)}%`].filter(Boolean).join(' · '))}</div></li>`;
+  const pmParlayItem=r=>{let legs=[];try{legs=JSON.parse(r.legs_json)}catch{}return `<li class="pick"><div><strong>${legs.length}-leg parlay</strong> <span class="res ${pmRes(r)}">${pmLabel[pmRes(r)]}</span></div><div class="price">${exchangePct(r.odds)}%</div><ul class="legs">${legs.map(l=>`<li>${weeklyEscape(l.player)} — ${weeklyEscape(weeklyLegText(l))}${l.actual!=null?` · had ${weeklyEscape(l.actual)}`:''}</li>`).join('')}</ul><div class="meta">${weeklyEscape(`${r.exchange} · $25 ticket`)}</div></li>`};
+  const pmRec=predictionRecord(pmPicks),pmPr=predictionParlayRecord(pmParlays),pmGraded=pmRec.wins+pmRec.losses+pmPr.wins+pmPr.losses;
+  const pmSection=pmPicks.length||pmParlays.length?`<h2>Prediction app picks</h2><p class="lead">Its own record, after each app’s fee${pmGraded?`: singles ${pmRec.wins}–${pmRec.losses} (${weeklyMoney(pmRec.profit)} at $100), parlays ${pmPr.wins}–${pmPr.losses} (${weeklyMoney(pmPr.profit)} at $25)`:''}. A price like 60% means you pay 60¢ to win $1. <a href="/trust#predictions">Every prediction pick →</a></p>${pmPicks.length?`<ul class="picks">${pmPicks.map(pmItem).join('')}</ul>`:''}${pmParlays.length?`<h2>Prediction app parlays</h2><ul class="picks">${pmParlays.map(pmParlayItem).join('')}</ul>`:''}`:'';
+  const body=`<p class="eyebrow">OFFICIAL PICKS · ${season}</p><h1>NFL Week ${week} player prop picks</h1><p class="lead">${weeklyEscape(weeklyRange(start))} · ${singles.length} single${singles.length===1?'':'s'}, ${parlays.length} parlay${parlays.length===1?'':'s'}${s.pending?` · ${s.pending} still to play`:''}. Every pick was posted before kickoff at the best price we found.</p>${stats}<p><a class="cta" href="/">Open this week’s board →</a><a href="/trust#official" style="white-space:nowrap">All results →</a></p><h2>Singles</h2><ul class="picks">${singles.map(weeklyPickItem).join('')||'<li>No singles this week.</li>'}</ul>${parlays.length?`<h2>Parlays</h2><ul class="picks">${parlays.map(weeklyPickItem).join('')}</ul>`:''}${pmSection}<nav class="pager">${prev}${next}</nav>`;
   return new Response(weeklyShell({title,description,path:`/picks/${season}/week-${week}`,body}),{headers});
 }
 async function weeklySitemap(env){
