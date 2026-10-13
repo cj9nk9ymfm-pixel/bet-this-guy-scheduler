@@ -69,3 +69,8 @@ html.light .lede,html.light .secondary,html.light .inside li,html.light .final-n
 html.light .hero-copy>small,html.light footer small,html.light .window-bar{color:#64748b!important}
 html.light .record-snaps{color:#1e293b!important}html.light .record-snapshot a{color:#1d4ed8!important}html.light .window-bar em{color:#047857!important}
 html.light .step-grid article>span{color:#cbd5e1!important}
+
+/* Founder note */
+.founder{grid-template-columns:1fr!important}
+.founder .inside-card p{margin:0 0 12px;max-width:62ch;line-height:1.6}
+.founder-sign{font-weight:700}

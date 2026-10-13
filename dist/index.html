@@ -287,6 +287,21 @@
     <p class="auth-status" id="authStatus" role="status" hidden></p>
   </div></dialog>
   <dialog id="feedDialog"><button class="dialog-close" aria-label="Close">×</button><p class="eyebrow">LIVE PRICES</p><h2>Where our prices come from</h2><p id="feedDescription">The current NFL board loads first. Additional game prop trees load only when you open that game, keeping startup quick.</p><div class="feed-detail"><span>Prices</span><strong>Licensed U.S. sportsbooks, compared every few minutes</strong><span>Official picks</span><strong>DraftKings, FanDuel, BetMGM, Caesars and Fanatics only</strong><span>Grading</span><strong>Official box scores, wins and losses</strong><span>Live games</span><strong>Scores and stats every few seconds</strong></div><p class="trust-inline"><a href="/trust">See every graded pick →</a></p><div class="dialog-actions"><button id="resetFeed" hidden>View demo board</button><button class="primary" id="saveFeed">Refresh prices</button></div><small id="feedMessage"></small></dialog>
+  <dialog id="emailDialog" class="welcome-dialog email-dialog" aria-labelledby="emailDialogTitle"><div class="wd-shell">
+    <button type="button" class="wd-close" id="emailDialogX" aria-label="Close">×</button>
+    <p class="wd-eyebrow">FREE PICK EMAILS · NO ACCOUNT</p>
+    <h2 id="emailDialogTitle">Get every pick by email</h2>
+    <p class="wd-lede">Each new official pick the moment it locks, with the price and the sportsbook. About 3–6 emails a week, one-click unsubscribe.</p>
+    <form id="emailSubForm" class="email-form" novalidate>
+      <label for="emailSubInput" class="sr-only">Email address</label>
+      <input id="emailSubInput" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com" required />
+      <label class="email-nba"><input type="checkbox" id="emailSubNba" checked /> Include NBA picks</label>
+      <div class="wd-actions"><button type="submit" class="wd-primary" id="emailSubSend">Email me the picks</button></div>
+      <p class="email-status" id="emailSubStatus" role="status" aria-live="polite"></p>
+    </form>
+    <p class="wd-why" id="emailIphoneNote" hidden><b>On iPhone:</b> prefer phone notifications? Add Bet This Guy to your Home Screen (Share → Add to Home Screen), open it from there, and turn on pick alerts.</p>
+    <p class="wd-fine">We only email after you tap the confirm link. 21+ where legal. Gambling problem? Call 1-800-GAMBLER.</p>
+  </div></dialog>
   <dialog id="welcomeDialog" class="welcome-dialog" aria-labelledby="welcomeTitle"><div class="wd-shell">
     <button type="button" class="wd-close" id="welcomeX" aria-label="Close">×</button>
     <p class="wd-eyebrow">BET THIS GUY · FREE NFL &amp; NBA PROP PICKS</p>
@@ -301,10 +316,11 @@
     <ol class="wd-how"><li><span>1</span>We post a pick with the price to take.</li><li><span>2</span>You get an alert and bet before the price moves.</li><li><span>3</span>We grade every pick in public.</li></ol>
     <div class="wd-actions">
       <button type="button" class="wd-primary" id="wdAlerts" data-alerts-toggle data-alerts-keep>Turn on pick alerts</button>
-      <button type="button" class="wd-secondary" id="wdAccount">Create a free account</button>
+      <button type="button" class="wd-secondary" id="wdEmail">Email me the picks instead</button>
+      <button type="button" class="wd-skip" id="wdAccount">Or create a free account</button>
       <button type="button" class="wd-skip" id="wdSkip">Just browse →</button>
     </div>
-    <p class="wd-why"><b>Alerts:</b> prices move within hours, so the alert is how you get our price. <b>Account:</b> email alerts, your own graded record, and your settings on every device.</p>
+    <p class="wd-why"><b>Alerts:</b> prices move within hours, so the alert is how you get our price. <b>Email:</b> no account needed. <b>Account:</b> your own graded record and your settings on every device.</p>
     <p class="wd-fine">Research and entertainment, not a sportsbook. 21+ where legal. Past results don’t guarantee future ones. Gambling problem? Call 1-800-GAMBLER.</p>
   </div></dialog>
   <dialog id="settingsDialog" class="settings-dialog st-dialog" aria-labelledby="settingsTitle"><div class="settings-shell"><header class="settings-head st-top"><h2 id="settingsTitle">Settings</h2><button class="dialog-close" aria-label="Close">×</button></header><div class="settings-body st-body">

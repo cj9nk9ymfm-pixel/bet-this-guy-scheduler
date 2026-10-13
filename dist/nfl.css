@@ -1956,3 +1956,19 @@ body.light .live-picks{background:#fff;border-color:#e2e8f0}body.light .live-pic
 
 /* Partner offer line in the pick sheet */
 .bs-note{margin:12px 0 0;padding:10px 12px;border:1px dashed var(--line);border-radius:10px;color:var(--muted);font-size:12.5px;line-height:1.45}
+
+/* Email alerts without an account */
+.email-form{display:grid;gap:10px;margin:14px 0 6px}
+.email-form input[type=email]{width:100%;box-sizing:border-box;min-height:48px;padding:0 14px;border:1px solid #2f3742;border-radius:12px;background:#0b0e12;color:#e8edf3;font:16px/1.2 inherit}
+.email-form input[type=email]:focus{outline:2px solid #1fd88f;outline-offset:1px}
+.email-nba{display:flex;align-items:center;gap:8px;color:#b8c0ca;font-size:14px}
+.email-nba input{width:18px;height:18px;accent-color:#1fd88f}
+.email-form .wd-actions{margin:0}
+.email-status{min-height:20px;margin:0;font-size:14px;color:#b8c0ca}.email-status.ok{color:#1fd88f}.email-status.err{color:#f06060}
+body.light .email-form input[type=email]{background:#fff;border-color:#cbd5e1;color:#0f172a}
+body.light .email-nba{color:#475569}
+body.light .email-status.ok{color:#15803d}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* Room for the close button beside the eyebrow line */
+.wd-shell .wd-eyebrow{padding-right:44px}

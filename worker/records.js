@@ -1434,7 +1434,7 @@ async function sendPredictionEmails(env,now=Date.now()){
   const newest=rows.reduce((m,r)=>r.posted_at>m?r.posted_at:m,'');
   const claim=last==null?await env.DB.prepare('INSERT OR IGNORE INTO app_settings (key,value) VALUES (?,?)').bind('pm-email-for',newest).run():await env.DB.prepare('UPDATE app_settings SET value=? WHERE key=? AND value=?').bind(newest,'pm-email-for',last).run();
   if(!Number(claim?.meta?.changes??claim?.changes))return {sent:0,claimed:false};
-  const people=(await env.DB.prepare('SELECT a.token,p.email FROM email_alerts a JOIN user_profiles p ON p.auth_user_id=a.auth_user_id WHERE a.enabled=1 AND a.predictions=1 ORDER BY a.created_at LIMIT 2000').all()).results||[];
+  const people=await emailPeople(env,'predictions');
   if(!people.length)return {sent:0,picks:rows.length};
   const cell='padding:14px 16px;border:1px solid #dbe6f2;border-radius:12px;background:#f4f8fd;';
   const rowHtml=r=>`<tr><td style="${cell}"><div style="font-size:16px;font-weight:700;color:#10213d;">${weeklyEscape(r.player)} <span style="float:right;color:#4058c8;">${exchangePct(r.odds)}%</span></div><div style="margin-top:4px;font-size:15px;color:#10213d;">${weeklyEscape(weeklyLegText(r))} <span style="color:#5a6f8c;">on ${weeklyEscape(r.exchange)}</span></div><div style="margin-top:4px;font-size:13px;color:#5a6f8c;">Fair chance ${Math.round(r.fair_pct)}%, after fees · ${weeklyEscape(weeklyDay(r.game_time))}</div></td></tr><tr><td style="height:10px;"></td></tr>`;
@@ -2363,7 +2363,7 @@ async function trustSnapshot(env,now=Date.now()){
 
 // Anonymous usage counts: daily totals per metric. No cookies, IP addresses or
 // per-person identifiers are stored; unknown metric names are ignored.
-const USAGE_METRICS=new Set(['reply:copy','reply:image','partner:novig:copy','app:novig','app:prophetx','app:kalshi','app:polymarket','app:betopenly','welcome:shown','welcome:alerts','welcome:account','welcome:skip','welcome:close','welcome:reopen','view:home','view:trust','view:picks','view:week','visit:new','visit:return','card:open','slip:add','parlay:add','share','hit:open','profile:open','affiliate:click','alerts:on','alerts:off','gate:shown','gate:signup','gate:login','nudge:shown','nudge:alerts','nudge:signup','alerts:email','view:post','post:copy','post:open','post:image','src:reddit','src:x','src:google','src:social','src:other','src:direct']);
+const USAGE_METRICS=new Set(['email:subscribe','email:open','reply:copy','reply:image','partner:novig:copy','app:novig','app:prophetx','app:kalshi','app:polymarket','app:betopenly','welcome:shown','welcome:alerts','welcome:account','welcome:skip','welcome:close','welcome:reopen','view:home','view:trust','view:picks','view:week','visit:new','visit:return','card:open','slip:add','parlay:add','share','hit:open','profile:open','affiliate:click','alerts:on','alerts:off','gate:shown','gate:signup','gate:login','nudge:shown','nudge:alerts','nudge:signup','alerts:email','view:post','post:copy','post:open','post:image','src:reddit','src:x','src:google','src:social','src:other','src:direct']);
 const USAGE_BOTS=/bot|crawl|spider|slurp|preview|facebookexternalhit|curl|wget|python|headless|lighthouse/i;
 async function countUsage(env,metrics,request){
   // The owner's own devices (opted out with /?me=1) are never counted.
@@ -2551,7 +2551,7 @@ async function sendNbaEmails(env,now=Date.now()){
   const newest=picks.reduce((m,r)=>r.posted_at>m?r.posted_at:m,''),value=`${newest}|${new Date(now).toISOString()}`;
   const claim=last==null?await env.DB.prepare('INSERT OR IGNORE INTO app_settings (key,value) VALUES (?,?)').bind('nba-email-for',value).run():await env.DB.prepare('UPDATE app_settings SET value=? WHERE key=? AND value=?').bind(value,'nba-email-for',last).run();
   if(!Number(claim?.meta?.changes??claim?.changes))return {sent:0,claimed:false};
-  const people=(await env.DB.prepare('SELECT a.token,p.email FROM email_alerts a JOIN user_profiles p ON p.auth_user_id=a.auth_user_id WHERE a.enabled=1 AND COALESCE(a.nba,1)=1 ORDER BY a.created_at LIMIT 2000').all()).results||[];
+  const people=await emailPeople(env,'nba');
   if(!people.length)return {sent:0,picks:picks.length};
   const subject=picks.length===1?(picks[0].kind==='parlay'?`🏀 New NBA ${recordLegs(picks[0]).length}-leg parlay (${weeklyOdds(picks[0].combined_odds)})`:`🏀 New NBA pick: ${picks[0].player} ${weeklyLegText(picks[0])}`):`🏀 ${picks.length} new NBA picks`;
   const heading=picks.length===1?'A new NBA pick just posted':`${picks.length} new NBA picks just posted`;
@@ -2667,6 +2667,16 @@ async function sendTestEmail(env,user,profile,now=Date.now()){
   await note('sent');
   return {status:200,body:{success:true,sentTo:to}};
 }
+// Everyone who gets pick emails: accounts with email alerts on, plus
+// confirmed email-only subscribers, one row per address. kind 'nba' or
+// 'predictions' keeps only people who chose those picks.
+async function emailPeople(env,kind=null){
+  const acct=kind==='nba'?' AND COALESCE(a.nba,1)=1':kind==='predictions'?' AND a.predictions=1':'',sub=kind==='nba'?' AND nba=1':kind==='predictions'?' AND predictions=1':'';
+  const accounts=(await env.DB.prepare(`SELECT a.token,p.email FROM email_alerts a JOIN user_profiles p ON p.auth_user_id=a.auth_user_id WHERE a.enabled=1${acct} ORDER BY a.created_at LIMIT 2000`).all()).results||[];
+  let subs=[];try{subs=(await env.DB.prepare(`SELECT token,email FROM email_subscribers WHERE status='active'${sub} ORDER BY created_at LIMIT 2000`).all()).results||[]}catch{}
+  const seen=new Set(),out=[];for(const p of [...accounts,...subs]){const k=String(p.email||'').trim().toLowerCase();if(!k||seen.has(k))continue;seen.add(k);out.push(p)}
+  return out;
+}
 async function sendEmailAlerts(env,now=Date.now()){
   if(!env.DB||!env.RESEND_API_KEY)return {sent:0,disabled:true};
   const last=await appSetting(env,'email-alert-at'),lastTime=Date.parse(last||'');
@@ -2679,7 +2689,7 @@ async function sendEmailAlerts(env,now=Date.now()){
   const stamp=new Date(now).toISOString();
   const claim=last==null?await env.DB.prepare('INSERT OR IGNORE INTO app_settings (key,value) VALUES (?,?)').bind('email-alert-at',stamp).run():await env.DB.prepare('UPDATE app_settings SET value=? WHERE key=? AND value=?').bind(stamp,'email-alert-at',last).run();
   if(!Number(claim?.meta?.changes??claim?.changes))return {sent:0,claimed:false};
-  const people=(await env.DB.prepare('SELECT a.token,p.email FROM email_alerts a JOIN user_profiles p ON p.auth_user_id=a.auth_user_id WHERE a.enabled=1 ORDER BY a.created_at LIMIT 2000').all()).results||[];
+  const people=await emailPeople(env);
   const subject=emailSubject(picks),from=env.EMAIL_FROM||EMAIL_ALERT_FROM,postal=String(env.EMAIL_POSTAL_ADDRESS||'').trim();
   let sent=0;
   for(let i=0;i<people.length;i+=100){
@@ -2721,7 +2731,7 @@ async function sendWeeklyDigest(env,now=Date.now()){
   const pmLine=predictionWeekLine(await predictionWeek(env,week).catch(()=>({graded:0})));
   const lede=`Betting \u0024100 a pick.${parlays}${pmLine?` ${pmLine}`:''} Season: ${digestRecord(season)} on props, ${weeklyMoney(season.profit)}. This week's picks post the moment a price qualifies, any day before kickoff, and we'll email you when they do.`;
   const subject=`📊 ${headline}`,page=info?`${SITE_URL}/picks/${info.season}/week-${info.week}`:`${SITE_URL}/trust`;
-  const people=(await env.DB.prepare('SELECT a.token,p.email FROM email_alerts a JOIN user_profiles p ON p.auth_user_id=a.auth_user_id WHERE a.enabled=1 ORDER BY a.created_at LIMIT 2000').all()).results||[];
+  const people=await emailPeople(env);
   const from=env.EMAIL_FROM||EMAIL_ALERT_FROM,postal=String(env.EMAIL_POSTAL_ADDRESS||'').trim(),opts={subject,heading:weeklyEscape(headline),eyebrow:'WEEKLY RESULTS',lede,rowsHtml:rows.map(digestRow).join(''),ctaLabel:`See ${name}`,ctaUrl:page};
   const text=unsubscribe=>`${headline}\n${lede}\n\n${rows.map(r=>`- ${emailPickText(r)}: ${weeklyGraded(r)?r.result:'pending'}`).join('\n')}\n\nEvery pick: ${page}\n\nUnsubscribe: ${unsubscribe}\n21+ where legal. Gambling problem? Call 1-800-GAMBLER.${postal?`\n${postal}`:''}\n`;
   let sent=0;
@@ -3557,12 +3567,53 @@ async function sendBookAlerts(env,events,now=Date.now()){
 }
 // One-click unsubscribe. A plain visit shows a button (so link scanners can't
 // unsubscribe anyone); mail apps' one-click POST unsubscribes straight away.
+// Email alerts without an account. POST /api/email-subscribe {email, nba?}
+// stores the address as pending and emails a confirm link (at most one every
+// 10 minutes per address, 60 an hour in all); GET
+// /api/email-subscribe/confirm?token= turns it on. Nothing is sent to an
+// address until its owner opens that link.
+const SUB_EMAIL=/^[^\s@<>"]{1,64}@[^\s@<>"]{1,190}\.[a-z]{2,24}$/i;
+async function emailSubscribeApi(request,env,ctx){
+  const url=new URL(request.url),reply=(body,status=200)=>json(body,status,{'cache-control':'no-store'});
+  if(!env.DB)return reply({success:false,error:'Unavailable'},503);
+  if(url.pathname==='/api/email-subscribe/confirm')return emailConfirmPage(url,env);
+  if(request.method!=='POST')return reply({success:false},405);
+  let body={};try{body=JSON.parse((await request.text()).slice(0,2000))}catch{}
+  const email=String(body.email||'').trim().toLowerCase();
+  if(!SUB_EMAIL.test(email)||email.length>254)return reply({success:false,error:'That doesn’t look like an email address.'},400);
+  const now=Date.now(),stamp=new Date(now).toISOString();
+  const row=await env.DB.prepare('SELECT status,token,confirm_sent_at FROM email_subscribers WHERE email=?').bind(email).first();
+  if(row?.status==='active')return reply({success:true,active:true});
+  if(row&&now-Date.parse(row.confirm_sent_at||0)<10*60000)return reply({success:true,pending:true});
+  const hour=`email-sub-hour:${stamp.slice(0,13)}`,sent=Number(await appSetting(env,hour)||0);
+  if(sent>=60)return reply({success:false,error:'Too many sign-ups right now. Try again in an hour.'},429);
+  const token=emailAlertToken(),nba=body.nba===false?0:1;
+  await env.DB.prepare("INSERT INTO email_subscribers (email,token,status,nba,created_at,confirm_sent_at) VALUES (?,?,'pending',?,?,?) ON CONFLICT(email) DO UPDATE SET token=excluded.token,status='pending',nba=excluded.nba,confirm_sent_at=excluded.confirm_sent_at").bind(email,token,nba,stamp,stamp).run();
+  await setAppSetting(env,hour,String(sent+1));
+  if(!env.RESEND_API_KEY)return reply({success:false,error:'Email isn’t connected yet.'},503);
+  const link=`${SITE_URL}/api/email-subscribe/confirm?token=${token}`,postal=String(env.EMAIL_POSTAL_ADDRESS||'').trim();
+  const opts={subject:'Confirm your Bet This Guy pick emails',heading:'One tap to start your pick emails',eyebrow:'CONFIRM YOUR EMAIL',lede:'Tap below and we’ll email you each new official pick, with the price and the sportsbook. About 3–6 emails a week. Didn’t ask for this? Ignore it and you won’t hear from us.',rowsHtml:'',ctaLabel:'Yes, email me picks',ctaUrl:link};
+  const text=`One tap to start your Bet This Guy pick emails:\n${link}\n\nAbout 3–6 emails a week. Didn’t ask for this? Ignore this email and you won’t hear from us.\n21+ where legal. Gambling problem? Call 1-800-GAMBLER.${postal?`\n${postal}`:''}\n`;
+  const r=await fetch('https://api.resend.com/emails',{method:'POST',headers:{authorization:`Bearer ${env.RESEND_API_KEY}`,'content-type':'application/json'},body:JSON.stringify({from:env.EMAIL_FROM||EMAIL_ALERT_FROM,to:[email],reply_to:env.EMAIL_REPLY_TO||'support@betthisguy.com',subject:opts.subject,html:emailAlertHtml([],`${SITE_URL}/`,postal,opts),text}),signal:AbortSignal.timeout(15000)}).catch(()=>null);
+  if(!r?.ok){await env.DB.prepare('UPDATE email_subscribers SET confirm_sent_at=NULL WHERE email=?').bind(email).run().catch(()=>{});return reply({success:false,error:'We couldn’t send the email. Try again in a minute.'},502)}
+  ctx?.waitUntil?.(countUsage(env,['email:subscribe'],request).catch(()=>{}));
+  return reply({success:true,pending:true});
+}
+async function emailConfirmPage(url,env){
+  const token=url.searchParams.get('token')||'';
+  const page=(title,body,status=200)=>new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="robots" content="noindex"><title>${weeklyEscape(title)} · Bet This Guy</title><style>body{margin:0;background:#0e1013;color:#f2f4f7;font:16px/1.55 system-ui,sans-serif}main{max-width:520px;margin:0 auto;padding:48px 20px}h1{font-size:26px;margin:0 0 10px}p{color:#c9d0d9}a{color:#6aa8ff}.btn{display:inline-block;margin-top:14px;padding:12px 18px;border-radius:999px;background:#2563eb;color:#fff;text-decoration:none;font-weight:700}</style></head><body><main><h1>${weeklyEscape(title)}</h1>${body}</main></body></html>`,{status,headers:{'content-type':'text/html; charset=utf-8','cache-control':'no-store'}});
+  if(!/^[0-9a-f]{64}$/.test(token))return page('Link not recognised','<p>This link is incomplete. Sign up again on <a href="/">betthisguy.com</a>.</p>',400);
+  const r=await env.DB.prepare("UPDATE email_subscribers SET status='active',confirmed_at=COALESCE(confirmed_at,?) WHERE token=? AND status!='off'").bind(new Date().toISOString(),token).run();
+  if(!Number(r?.meta?.changes??r?.changes))return page('Link expired','<p>This link is no longer active. Sign up again on <a href="/">betthisguy.com</a>.</p>',404);
+  return page('You’re in','<p>We’ll email you each new official pick the moment it locks, with the price and the sportsbook. Every email has a one-click unsubscribe.</p><a class="btn" href="/">See this week’s picks</a>');
+}
 async function emailUnsubscribe(request,env){
   const url=new URL(request.url),token=url.searchParams.get('token')||'';
   const page=(title,body,status=200)=>new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="robots" content="noindex"><title>${weeklyEscape(title)} · Bet This Guy</title><style>body{margin:0;background:#050b1d;color:#e8f2ff;font:16px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif}main{max-width:440px;margin:12vh auto;padding:0 20px;text-align:center}h1{font-size:24px}p{color:#b8cbe4}button{min-height:46px;padding:0 26px;border:0;border-radius:999px;background:#1fd88f;color:#04121f;font-weight:700;font-size:16px;cursor:pointer}a{color:#5ff0b5}@media (display-mode: standalone){body{padding-top:env(safe-area-inset-top)}}</style></head><body><main><h1>${weeklyEscape(title)}</h1>${body}</main></body></html>`,{status,headers:{'content-type':'text/html; charset=utf-8','cache-control':'no-store'}});
   if(!/^[0-9a-f]{64}$/.test(token)||!env.DB)return page('Link not recognised','<p>This unsubscribe link is incomplete. You can turn email alerts off in your account on <a href="/">betthisguy.com</a>.</p>',400);
   if(request.method==='POST'){
     await env.DB.prepare('UPDATE email_alerts SET enabled=0,updated_at=? WHERE token=?').bind(new Date().toISOString(),token).run();
+    await env.DB.prepare("UPDATE email_subscribers SET status='off' WHERE token=?").bind(token).run().catch(()=>{});
     return page('You’re unsubscribed','<p>We won’t email you about new picks. You can turn alerts back on any time in your account on <a href="/">betthisguy.com</a>.</p>');
   }
   if(request.method!=='GET')return page('Not allowed','<p>Use the link in your email.</p>',405);
