@@ -1420,7 +1420,9 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
         const last=(Array.isArray(first.priceTrail)?first.priceTrail:[]).filter(p=>p&&p.o!=null).at(-1);if(last){const a=oddsDecimal(r.odds),b=oddsDecimal(last.o);rows.push(['Price now',`${formatOdds(last.o)}${a&&b&&b<a-1e-9?' · you got the better price':a&&b&&b>a+1e-9?' · better now':''}`,a&&b&&b<a-1e-9?'pos':''])}}
     }else{const lv=done?null:liveLine(r);if(lv)rows.push(['Live',lv.html.replace(/<[^>]+>/g,''),lv.cls==='hit'?'pos':lv.cls==='miss'?'neg':'']);rows.push(['Posted',when(r.posted_at),''])}
     // Prediction picks: the app and its chance, the fair chance, and the price.
-    if(r.pm){rows.unshift(['App',`${r.pm.exchange} · ${r.pm.pct}% chance${r.pm.fair?` · fair ${Math.round(r.pm.fair)}%`:''}`,'']);for(let i=rows.length-1;i>=0;i--)if(/^(vs fair price|Price now)$/.test(rows[i][0]))rows.splice(i,1)}
+    if(r.pm){rows.unshift(['App',`${r.pm.exchange} · ${r.pm.pct}% chance${r.pm.fair?` · fair ${Math.round(r.pm.fair)}%`:''}`,'']);
+      if(!done&&r.pm.now!=null){const fair=r.pm.fair,gone=fair&&r.pm.now>=fair-1;rows.push(['App price now',`${r.pm.now}% on ${r.pm.exchange}${gone?' · past our price, skip':r.pm.now<=r.pm.pct?' · same or better than we locked':' · still under fair'}`,gone?'neg':'pos'])}
+      if(!isParlay)rows.push(['How to read it',`${r.pm.pct}% means you pay ${r.pm.pct}¢ to win $1. Lower is a better price.`,'']);for(let i=rows.length-1;i>=0;i--)if(/^(vs fair price|Price now)$/.test(rows[i][0]))rows.splice(i,1)}
     const legRows=isParlay?legs.map(l=>({title:l.player,text:legText(l),odds:r.pm?(l.odds!=null?`${Math.round(100/oddsDecimal(l.odds))}%`:''):formatOdds(l.odds),result:done||l.result?l.result:null,onClick:dialog=>{dialog?.close?.();openPlayerProfile(statsProp(l))}})):null;
     const trail=isParlay?[]:(Array.isArray(first.priceTrail)?first.priceTrail:[]).filter(p=>p&&p.o!=null).map(p=>p.o);
     const close=done&&!isParlay&&r.closing_odds!=null&&!moveOf(r.line,r.closing_line,r.side)?[r.closing_odds]:[];
@@ -1429,7 +1431,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     return {chip,title:isParlay?`${legs.length}-leg ${legs.some(l=>l.sameGame)?'same-game ':''}parlay`:r.player,bet,game,price:r.pm?`${r.pm.pct}%`:formatOdds(odds),stake:share(r)<1?`$${(heroStake*share(r)).toLocaleString('en-US',{maximumFractionDigits:2})} (¼ unit)`:stakeText(),
       money:done?money(payout(r)):d?`wins $${Math.round(heroStake*share(r)*(d-1)).toLocaleString('en-US')}`:'—',moneyCls:done?(r.result==='won'?'pos':r.result==='lost'?'neg':''):'pos',
       rows,legs:legRows,chart:points.length>=2?{label:done?'Price posted → kickoff':'Price since posted',points}:null,
-      actions:r.pm?[{...pmShare,label:'Share'}]:[...betAction(r,legs,done),...bookAction(r,legs,done),{label:done&&r.result==='won'?'Share this hit':'Share',icon:'share',primary:false,wide:true,share:`${done&&r.result==='won'?'✅ Hit':'Bet This Guy pick'}: ${isParlay?`${legs.length}-leg parlay (${formatOdds(odds)})`:`${r.player} ${bet} (${formatOdds(odds)})`} · ${location.origin}`}],
+      actions:r.pm?[...(!done&&window.BTGApps?.link(r.pm.exchange)?[{label:`Open ${r.pm.exchange}`,icon:'external',primary:true,wide:true,onClick:()=>{window.btgCount?.(`app:${String(r.pm.exchange).toLowerCase()}`);window.open(window.BTGApps.link(r.pm.exchange),'_blank','noopener')}}]:[]),{...pmShare,label:'Share'}]:[...betAction(r,legs,done),...bookAction(r,legs,done),{label:done&&r.result==='won'?'Share this hit':'Share',icon:'share',primary:false,wide:true,share:`${done&&r.result==='won'?'✅ Hit':'Bet This Guy pick'}: ${isParlay?`${legs.length}-leg parlay (${formatOdds(odds)})`:`${r.player} ${bet} (${formatOdds(odds)})`} · ${location.origin}`}],
       links:[...(isParlay?[]:[{text:`${String(r.player||'').split(' ').slice(-1)[0]}’s stats & game log ›`,onClick:()=>openPlayerProfile(statsProp({...first,player:r.player,market:r.market,line:r.line,side:r.side,odds:r.odds,gameTime:r.game_time||first.gameTime}))}]),{text:'See every pick on Results ›',href:'/trust#official'}]};
   }
   const hitDetails=r=>window.BTGSheet.render(recordModel(r)),pickDetails=hitDetails;
@@ -2299,7 +2301,7 @@ function statsProp(l){
   // Desktop rail: on wide screens the record, your bets, alerts and Following
   // sit in a sticky column beside the picks; on phones they stay in the flow.
   const board=document.querySelector('.workspace .board'),rail=document.createElement('aside');rail.className='desk-rail';rail.setAttribute('aria-label','Your corner');
-  const parts=['heroBanner','myRecord','alertsHero','leansNow','pmNow'].map(id=>document.getElementById(id)).filter(Boolean),marks=parts.map(el=>{const m=document.createComment('rail');el.before(m);return m});
+  const parts=['heroBanner','pmHero','myRecord','alertsHero','leansNow','pmNow'].map(id=>document.getElementById(id)).filter(Boolean),marks=parts.map(el=>{const m=document.createComment('rail');el.before(m);return m});
   const official=document.getElementById('officialNow');
   const wide=window.matchMedia?.('(min-width: 1180px)');
   function place(){if(!board)return;if(wide?.matches){board.classList.add('has-rail');board.prepend(rail);parts.forEach(el=>rail.appendChild(el));rail.appendChild(panel)}else{board.classList.remove('has-rail');parts.forEach((el,i)=>marks[i].after(el));rail.remove();(document.getElementById('alertsHero')||official?.lastElementChild)?.after?.(panel)}}
@@ -2514,7 +2516,7 @@ function statsProp(l){
     if(season.tracked>=10){
       const beat=`${season.beat} of ${season.tracked} picks beat the kickoff price`;
       set('wdBeat',beat+(season.worse!=null&&season.worse<=2?`. Worse on ${season.worse===0?'none':`just ${season.worse}`}.`:''));
-      set('whyBeat',`${season.beat} of ${season.tracked} beat the kickoff price`);
+      {const wb=document.getElementById('whyBeat');if(wb){wb.dataset.sb=`${season.beat} of ${season.tracked} beat the kickoff price`;if(document.body.dataset.priceView!=='predictions')wb.textContent=wb.dataset.sb}}
       const a=dec(season.typicalOdds),c=dec(season.typicalClose),gain=a&&c?Math.round((a-c)*100):0;
       if(gain>=3)set('wdBeatSub',`Typical pick ${fmt(season.typicalOdds)}. Same bet at kickoff ${fmt(season.typicalClose)}. That’s $${gain} more on every $100 winner.`);
     }
@@ -2559,6 +2561,9 @@ function statsProp(l){
 (()=>{
   if(typeof document.getElementById!=='function'||!document.getElementById('pmNow')||typeof fetch!=='function'||typeof MutationObserver!=='function')return;
   const LINKS={Kalshi:'https://kalshi.com',Polymarket:'https://polymarket.com',Novig:'https://novig.us',ProphetX:'https://www.prophetx.co',BetOpenly:'https://www.betopenly.com'};
+  const APP_COLORS={Kalshi:'#10b981',Polymarket:'#3b82f6',Novig:'#8b5cf6',ProphetX:'#f97316',BetOpenly:'#eab308'};
+  const chip=name=>`<span class="app-chip" style="--app:${APP_COLORS[name]||'#8a93a0'}"><i aria-hidden="true"></i>${htmlEscape(name||'')}</span>`;
+  window.BTGApps={link:name=>LINKS[name]||null,color:name=>APP_COLORS[name]||null};
   const STATES={AL:'Alabama',AK:'Alaska',AZ:'Arizona',AR:'Arkansas',CA:'California',CO:'Colorado',CT:'Connecticut',DE:'Delaware',DC:'Washington, DC',FL:'Florida',GA:'Georgia',HI:'Hawaii',ID:'Idaho',IL:'Illinois',IN:'Indiana',IA:'Iowa',KS:'Kansas',KY:'Kentucky',LA:'Louisiana',ME:'Maine',MD:'Maryland',MA:'Massachusetts',MI:'Michigan',MN:'Minnesota',MS:'Mississippi',MO:'Missouri',MT:'Montana',NE:'Nebraska',NV:'Nevada',NH:'New Hampshire',NJ:'New Jersey',NM:'New Mexico',NY:'New York',NC:'North Carolina',ND:'North Dakota',OH:'Ohio',OK:'Oklahoma',OR:'Oregon',PA:'Pennsylvania',RI:'Rhode Island',SC:'South Carolina',SD:'South Dakota',TN:'Tennessee',TX:'Texas',UT:'Utah',VT:'Vermont',VA:'Virginia',WA:'Washington',WV:'West Virginia',WI:'Wisconsin',WY:'Wyoming'};
   const KEY='btg-state',VIEW='btg-price-view',dec=o=>o>0?1+o/100:1+100/-o,pct=o=>`${Math.round(100/dec(o))}%`;
   const stored=k=>{try{return localStorage.getItem(k)||''}catch{return ''}},store=(k,v)=>{try{v?localStorage.setItem(k,v):localStorage.removeItem(k)}catch{}};
@@ -2615,7 +2620,7 @@ function statsProp(l){
     const leg=l=>({player:l.player,market:l.market,side:l.side,line:l.line,odds:l.odds??null,gameId:l.eventId||r.eventId,gameTime:l.gameTime||r.gameTime,team:l.team||r.team||'',book:r.exchange,result:l.result||null});
     const done=['won','lost','push','void'].includes(r.result);
     return r.parlay?{id:r.id,kind:'parlay',sport:'NFL',combined_odds:r.odds,game_time:r.gameTime,posted_at:r.postedAt||r.gameTime,result:r.result||null,status:done?'final':'pending',legs_json:JSON.stringify(r.legs.map(leg)),pm:{exchange:r.exchange,pct:pctOf(r.odds)}}
-      :{id:r.id,kind:'prop',sport:'NFL',player:r.player,market:r.market,side:r.side,line:r.line,odds:r.odds,game_time:r.gameTime,posted_at:r.postedAt,result:r.result||null,status:done?'final':'pending',closing_odds:r.closeOdds??null,closing_captured_at:r.closeOdds!=null?r.gameTime:null,legs_json:JSON.stringify([{...leg(r),actualValue:r.actual??null}]),pm:{exchange:r.exchange,pct:pctOf(r.odds),fair:r.fair}};
+      :{id:r.id,kind:'prop',sport:'NFL',player:r.player,market:r.market,side:r.side,line:r.line,odds:r.odds,game_time:r.gameTime,posted_at:r.postedAt,result:r.result||null,status:done?'final':'pending',closing_odds:r.closeOdds??null,closing_captured_at:r.closeOdds!=null?r.gameTime:null,legs_json:JSON.stringify([{...leg(r),actualValue:r.actual??null}]),pm:{exchange:r.exchange,pct:pctOf(r.odds),fair:r.fair,now:r.nowOdds!=null?pctOf(r.nowOdds):null}};
   }
   let pmRows=[];
   const pmLiveSpan=i=>`<span class="on-live" data-pm-live="${i}" hidden></span>`;
@@ -2627,27 +2632,50 @@ function statsProp(l){
     const game=String(r.team||'').replace(' · @ ',' @ ').replace(' · vs ',' vs '),matchup=game&&typeof compactGameName==='function'?compactGameName(game):game,st=pmStatus(r);
     const note=[`Fair chance ${Math.round(r.fair)}%`,r.open===false?`not offered in ${data?.stateName||'your state'}`:''].filter(Boolean).join(' · ');
     const idx=pmRows.push(pmRecord(r))-1;
-    return `<div class="on-row on-${st[0]}-row pm-pick" role="button" tabindex="0" data-pm-i="${idx}" aria-label="${htmlEscape(`Details for ${r.player}`)}"><span class="on-avatar"><span>${htmlEscape(initials)}</span><img loading="lazy" decoding="async" src="/api/player-photo?name=${encodeURIComponent(r.player||'')}" alt="" onerror="this.remove()"></span><span class="on-who"><b>${htmlEscape(r.player)}</b><span>${htmlEscape(bet.charAt(0).toUpperCase()+bet.slice(1))}</span><small>${htmlEscape([matchup,when(r.gameTime),r.exchange].filter(Boolean).join(' · '))}</small><i class="on-pm pm-ok">${htmlEscape(note)}</i>${pmLiveSpan(idx)}</span>${pmEnd(r,st)}</div>`;
+    return `<div class="on-row on-${st[0]}-row pm-pick" role="button" tabindex="0" data-pm-i="${idx}" aria-label="${htmlEscape(`Details for ${r.player}`)}"><span class="on-avatar"><span>${htmlEscape(initials)}</span><img loading="lazy" decoding="async" src="/api/player-photo?name=${encodeURIComponent(r.player||'')}" alt="" onerror="this.remove()"></span><span class="on-who"><b>${htmlEscape(r.player)}</b><span>${htmlEscape(bet.charAt(0).toUpperCase()+bet.slice(1))}</span><small>${htmlEscape([matchup,when(r.gameTime)].filter(Boolean).join(' · '))} · ${chip(r.exchange)}</small><i class="on-pm pm-ok">${htmlEscape(note)}</i>${pmLiveSpan(idx)}</span>${pmEnd(r,st)}</div>`;
   }
   function parlayRow(r){
     const st=pmStatus(r),same=r.legs.some(l=>l.sameGame);
     const legs=r.legs.map(l=>`${l.result==='won'?'✓ ':l.result==='lost'?'✗ ':''}${l.player} ${l.side} ${l.line} ${String(l.market||'').toLowerCase()}`).join(' + ');
     const note=[`¼ unit${same?' · same game':''}`,r.open===false?`not offered in ${data?.stateName||'your state'}`:''].filter(Boolean).join(' · ');
     const idx=pmRows.push(pmRecord(r))-1;
-    return `<div class="on-row on-${st[0]}-row pm-pick" role="button" tabindex="0" data-pm-i="${idx}" aria-label="Details for this parlay"><span class="on-avatar on-parlay">${typeof icon==='function'?icon('layers'):''}</span><span class="on-who"><b>${r.legs.length}-leg parlay</b><span>${htmlEscape(legs)}</span><small>${htmlEscape([when(r.gameTime),r.exchange].filter(Boolean).join(' · '))}</small><i class="on-pm pm-ok">${htmlEscape(note)}</i>${pmLiveSpan(idx)}</span>${pmEnd(r,st)}</div>`;
+    return `<div class="on-row on-${st[0]}-row pm-pick" role="button" tabindex="0" data-pm-i="${idx}" aria-label="Details for this parlay"><span class="on-avatar on-parlay">${typeof icon==='function'?icon('layers'):''}</span><span class="on-who"><b>${r.legs.length}-leg parlay</b><span>${htmlEscape(legs)}</span><small>${htmlEscape(when(r.gameTime))} · ${chip(r.exchange)}</small><i class="on-pm pm-ok">${htmlEscape(note)}</i>${pmLiveSpan(idx)}</span>${pmEnd(r,st)}</div>`;
   }
+  // Prediction view's record bar: the prediction record (after fees), singles
+  // and parlays apart, tap for every graded pick; the sportsbook record is a tap away.
+  function renderPmHero(v){
+    const hero=document.getElementById('pmHero');if(!hero)return;
+    const money=v=>Math.round(v)===0?'$0':`${v<0?'−':'+'}$${Math.abs(Math.round(v)).toLocaleString('en-US')}`;hero.hidden=v!=='predictions'||!data||data.mode==='unknown';if(hero.hidden)return;
+    const rec=data.pmRecord||{wins:0,losses:0,pushes:0,profit:0},pr=data.pmParlayRecord||{wins:0,losses:0,pushes:0,profit:0};
+    const w=rec.wins+pr.wins,l=rec.losses+pr.losses,pu=(rec.pushes||0)+(pr.pushes||0),net=(rec.profit||0)+(pr.profit||0);
+    const title=document.getElementById('pmHeroTitle'),panel=document.getElementById('pmHeroPicks');
+    if(!w&&!l){title.innerHTML='Prediction record <b>New</b>';panel.hidden=true;hero.classList.remove('open');return}
+    title.innerHTML=`<button type="button" class="hero-toggle" id="pmHeroToggle" aria-expanded="${!panel.hidden}" aria-controls="pmHeroPicks">Prediction record <b>${w}–${l}${pu?`–${pu}`:''}</b> <span class="hero-profit ${net>=0?'up':'down'}">${htmlEscape(money(net))}</span><i aria-hidden="true"><svg class="ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></i></button>`;
+    const stat=(value,label,tone='')=>`<div><strong class="${tone}">${htmlEscape(value)}</strong><span>${htmlEscape(label)}</span></div>`;
+    const graded=[...(data.pmPicks||[]),...(data.pmParlays||[])].filter(r=>['won','lost','push'].includes(r.result)).sort((a,b)=>String(b.gameTime).localeCompare(String(a.gameTime)));
+    const tag={won:['g','check','Hit'],lost:['r','over','Lost'],push:['n','fair','Push']};
+    const items=graded.map((r,i)=>{const [cls,ic,txt]=tag[r.result],title=r.parlay?`${r.legs.length}-leg parlay`:r.player,detail=r.parlay?r.legs.map(x=>x.player).join(' + '):`${r.side} ${r.line} ${String(r.market||'').toLowerCase()}`;
+      return `<li><button type="button" data-pm-hero="${i}"><span class="hp-tag ${cls}">${typeof icon==='function'?icon(ic):''}${txt}</span><span class="hp-name"><strong>${htmlEscape(title)}</strong><small>${htmlEscape(detail)}</small></span><span class="hp-num"><b>${htmlEscape(pct(r.odds))}</b><small>${chip(r.exchange)}</small></span></button></li>`}).join('');
+    panel.innerHTML=`<div class="pm-hero-stats">${stat(`${rec.wins}–${rec.losses}`,`singles · ${money(rec.profit||0)}`,(rec.profit||0)>=0?'up':'down')}${stat(`${pr.wins}–${pr.losses}`,`parlays · ${money(pr.profit||0)}`,(pr.profit||0)>=0?'up':'down')}${rec.tracked?stat(`${rec.beat} of ${rec.tracked}`,'beat the kickoff price'):stat(String(w+l+pu),'plays graded')}</div><p class="pm-hero-note">After each app’s fee. Singles at $100, parlays at $25. Its own record, separate from our sportsbook picks. Past results don’t guarantee future ones.</p>${items?`<ul>${items}</ul>`:''}<p class="pm-hero-links"><a href="/trust#predictions">Every prediction pick →</a><button type="button" data-pm-to-odds>Sportsbook record →</button></p>`;
+    panel.querySelectorAll('[data-pm-hero]').forEach(b=>b.onclick=()=>window.BTGOpenPick?.(pmRecord(graded[+b.dataset.pmHero])));
+    panel.querySelector('[data-pm-to-odds]')?.addEventListener('click',()=>{store(VIEW,'odds');render();resync()});
+    const toggle=document.getElementById('pmHeroToggle');toggle.onclick=()=>{const open=panel.hidden;panel.hidden=!open;toggle.setAttribute('aria-expanded',String(open));hero.classList.toggle('open',open);if(open)window.btgCount?.('hero:picks')};
+  }
+  // Proof strip: in prediction view its first item speaks for the prediction picks.
+  let whyDefault=null;
+  function paintWhy(v){const el=document.getElementById('whyBeat');if(!el)return;if(whyDefault===null)whyDefault=el.textContent;
+    const rec=data?.pmRecord;el.textContent=v==='predictions'?(rec?.tracked>=10?`${rec.beat} of ${rec.tracked} beat the app’s kickoff price`:'Prices after each app’s fee'):(el.dataset.sb||whyDefault)}
   function renderPicks(v){
+    renderPmHero(v);paintWhy(v);
     const host=document.getElementById('pmPicksNow');if(!host)return;pmRows=[];
     const list=data?.pmPicks||[],parlays=data?.pmParlays||[],rec=data?.pmRecord,pr=data?.pmParlayRecord;host.hidden=v!=='predictions'||!data||data.mode==='unknown';
     const ph=document.getElementById('pmParlaysNow');if(ph)ph.hidden=host.hidden;if(host.hidden)return;
     const pl=document.getElementById('pmParlaysList'),pcount=document.getElementById('pmParlaysCount');
     if(pl)pl.innerHTML=parlays.length?parlays.map(parlayRow).join(''):'<div class="on-empty"><strong>No parlays yet this week.</strong><span>They post when two or more Worth a look props line up on one app.</span></div>';
     if(pcount)pcount.textContent=parlays.length?String(parlays.length):'';
-    const games=rec?rec.wins+rec.losses+rec.pushes:0;
-
     const pc=document.getElementById('pmPicksCount');if(pc)pc.textContent=list.length?String(list.length):'';
-    const pg=pr?pr.wins+pr.losses+pr.pushes:0,parlayText=pg?` · Parlays ${pr.wins}–${pr.losses} (${money(pr.profit)})`:'';
-    document.getElementById('pmPicksRecord').textContent=!games&&!pg?'Own record after fees: singles $100, parlays $25.':games?`Record ${rec.wins}–${rec.losses}${rec.pushes?`–${rec.pushes}`:''} · ${money(rec.profit)} at $100 a pick after fees${rec.tracked?` · ${rec.beat} of ${rec.tracked} beat the close`:''}${parlayText}`:`Own record after fees: singles $100, parlays $25. First picks are being graded.${parlayText}`;
+    // The record lives in the bar at the top; this line explains the prices.
+    document.getElementById('pmPicksRecord').textContent='Priced as each app’s chance after its fee: 60% means you pay 60¢ to win $1, so lower is better. Singles $100, parlays $25.';
     document.getElementById('pmPicksList').innerHTML=list.length?list.map(pickRow).join(''):'<div class="on-empty"><strong>No picks yet this week.</strong><span>They post when an app’s price beats the sportsbooks’ fair chance by 1+ point after its fee.</span></div>';
     bindPmRows();
   }
@@ -2661,8 +2689,20 @@ function statsProp(l){
   // Games in progress: prediction prices move with the game, so reload them every 2 minutes (kept on screen while reloading).
   setInterval(()=>{if(view()!=='predictions'||typeof props==='undefined')return;const now=Date.now();
     for(const id of [...boardPrices.keys()]){const kick=Date.parse(props.find(p=>p.eventID===id)?.startsAt||'');if(kick<=now&&now-kick<4.5*3600000){boardWanted.delete(id);loadBoard(id)}}},120000);
+  // Board filter by app ("Best price on"): only in prediction view, only apps on the board.
+  let appFilter=stored('btg-pm-app');
+  function paintAppFilter(pm){
+    const host=document.getElementById('propList');if(!host)return;let bar=document.getElementById('pmAppFilter');
+    const names=[...new Set([...boardPrices.values()].flatMap(m=>[...m.values()].map(h=>h.exchange)))].sort();
+    if(!pm||names.length<2){bar?.remove();return}
+    if(!bar){bar=document.createElement('div');bar.id='pmAppFilter';bar.className='pm-app-filter';bar.setAttribute('role','group');bar.setAttribute('aria-label','Best price on');host.before(bar)}
+    if(appFilter&&!names.includes(appFilter))appFilter='';
+    bar.innerHTML=`<span>Best price on</span>${['',...names].map(n=>`<button type="button" data-pm-app="${htmlEscape(n)}" aria-pressed="${n===appFilter}">${n?chip(n):'All apps'}</button>`).join('')}`;
+    bar.querySelectorAll('[data-pm-app]').forEach(b=>b.onclick=()=>{appFilter=b.dataset.pmApp;store('btg-pm-app',appFilter);paintBoard()});
+  }
   function paintBoard(){
     const pm=view()==='predictions';
+    paintAppFilter(pm);
     document.querySelectorAll('#propList .prop-card[data-id]').forEach(cardEl=>{
       const b=cardEl.querySelector('.mockup-pick b');if(!b)return;if(!b.dataset.odds)b.dataset.odds=b.textContent;
       let note=cardEl.querySelector('.pm-board');
@@ -2671,10 +2711,10 @@ function statsProp(l){
       const id=p.eventID;if(id&&!boardPrices.has(id)){cardEl.classList.add('pm-hide');loadBoard(id);return}
       const hit=boardPrices.get(id)?.get(`${String(p.player).toLowerCase().replace(/[^a-z]/g,'')}|${p.market}|${p.side}|${Number(p.line)}`);
       // No prediction-market price: the prop doesn't show in this view.
-      cardEl.classList.toggle('pm-hide',!hit);if(!hit)return;
+      cardEl.classList.toggle('pm-hide',!hit||Boolean(appFilter&&hit.exchange!==appFilter));if(!hit)return;
       b.textContent=pct(hit.odds);b.classList.add('pm-price');
       if(!note){note=document.createElement('small');note.className='pm-board';cardEl.querySelector('.mockup-pick')?.after(note)}
-      note.textContent=`${hit.exchange} · ${pct(hit.odds)} chance`;
+      note.innerHTML=`${chip(hit.exchange)} · ${pct(hit.odds)} chance`;
     });
   }
   const boardNote=()=>{const host=document.getElementById('propList');if(!host)return;const cards=host.querySelectorAll('.prop-card'),shown=[...cards].filter(c=>!c.classList.contains('pm-hide')).length;let n=document.getElementById('pmBoardEmpty');const want=view()==='predictions'&&cards.length&&!shown&&[...boardPrices.keys()].length;if(want&&!n){n=document.createElement('p');n.id='pmBoardEmpty';n.className='pm-empty';n.textContent='None of these props are on prediction markets right now. Prediction markets list receptions, yards, passing TDs, anytime TDs, rush attempts and completions.';host.after(n)}if(n)n.hidden=!want};

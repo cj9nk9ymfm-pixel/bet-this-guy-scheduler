@@ -1652,8 +1652,9 @@ async function predictionsResponse(request,env,now=Date.now()){
   for(const r of rows){
     if(taken.has(`${r.event_id}|${normalizedName(r.player)}`))continue;
     const key=Object.keys(EXCHANGES).find(k=>EXCHANGES[k]===r.exchange),cur=find(r.event_id,r.player,r.market,r.side,r.line).find(p=>p[0]===key);
-    if(!cur)continue;const edge=Number(r.fair_pct)-100/recordDecimal(cur[5]);if(edge<1)continue;
-    value.push({exchange:r.exchange,fair:+Number(r.fair_pct).toFixed(1),eventId:r.event_id,player:r.player,team:r.team||'',market:r.market,side:r.side,line:r.line,odds:cur[5],edge:+edge.toFixed(1),gameTime:r.game_time});
+    // After the app's fee, like picks: a price whose after-fee chance is at least half a point under fair.
+    if(!cur)continue;const net=predictionNet(key,cur[5]),edge=Number(r.fair_pct)-net.netChance;if(edge<.5)continue;
+    value.push({exchange:r.exchange,fair:+Number(r.fair_pct).toFixed(1),eventId:r.event_id,player:r.player,team:r.team||'',market:r.market,side:r.side,line:r.line,odds:cur[5],netOdds:net.netOdds,edge:+edge.toFixed(1),gameTime:r.game_time});
   }
   value.sort((a,b)=>b.edge-a.edge);
   // Prices saved when each of this week's picks locked (for started and final picks).
@@ -1662,7 +1663,7 @@ async function predictionsResponse(request,env,now=Date.now()){
   for(const r of recent){const ex=recordLegs(r)[0]?.exchanges;if(Array.isArray(ex)&&ex.length){const list=ex.filter(p=>allowed.has(p.key));if(list.length)locked[r.id]=list.map(p=>({exchange:p.exchange,odds:p.odds,good:exchangeGood(r,p)}))}}
   // Prediction-market picks: this week's card and the season record.
   const pmRows=(await env.DB.prepare('SELECT * FROM prediction_picks ORDER BY game_time,posted_at').all()).results||[];
-  const pmPicks=pmRows.filter(r=>Date.parse(r.game_time)>now-5*86400000).slice(-24).map(r=>{const key=Object.keys(EXCHANGES).find(k=>EXCHANGES[k]===r.exchange);return {id:r.id,exchange:r.exchange,open:allowed.has(key),eventId:r.event_id,player:r.player,team:r.team||'',market:r.market,side:r.side,line:r.line,odds:r.odds,netOdds:r.net_odds,fair:r.fair_pct,edge:r.edge,gameTime:r.game_time,postedAt:r.posted_at,closeOdds:r.close_odds,result:r.result,actual:r.actual}});
+  const pmPicks=pmRows.filter(r=>Date.parse(r.game_time)>now-5*86400000).slice(-24).map(r=>{const key=Object.keys(EXCHANGES).find(k=>EXCHANGES[k]===r.exchange);return {id:r.id,exchange:r.exchange,open:allowed.has(key),eventId:r.event_id,player:r.player,team:r.team||'',market:r.market,side:r.side,line:r.line,odds:r.odds,netOdds:r.net_odds,fair:r.fair_pct,edge:r.edge,gameTime:r.game_time,postedAt:r.posted_at,closeOdds:r.close_odds,nowOdds:Date.parse(r.game_time)>now?(find(r.event_id,r.player,r.market,r.side,r.line).find(p=>p[0]===key)?.[5]??null):null,result:r.result,actual:r.actual}});
   const pmParlayRows=(await env.DB.prepare('SELECT * FROM prediction_parlays ORDER BY game_time,posted_at').all().catch(()=>({results:[]}))).results||[];
   const pmParlays=pmParlayRows.filter(r=>Date.parse(r.game_time)>now-5*86400000).slice(-16).map(r=>{let legs=[];try{legs=JSON.parse(r.legs_json)}catch{}const key=Object.keys(EXCHANGES).find(k=>EXCHANGES[k]===r.exchange);return {id:r.id,parlay:true,exchange:r.exchange,open:allowed.has(key),odds:r.odds,gameTime:legs.map(l=>l.gameTime).sort()[0]||r.game_time,postedAt:r.posted_at,result:r.result,legs:legs.map(l=>({player:l.player,market:l.market,side:l.side,line:l.line,odds:l.netOdds??l.odds??null,eventId:l.eventId,gameTime:l.gameTime,team:l.team,sameGame:Boolean(l.sameGame),result:l.result||null}))}});
   return new Response(JSON.stringify({success:true,...pub,picks,fairs,locked,value:value.slice(0,8),pmPicks,pmRecord:predictionRecord(pmRows),pmParlays,pmParlayRecord:predictionParlayRecord(pmParlayRows)}),{headers:head});
@@ -2144,7 +2145,7 @@ async function trustSnapshot(env,now=Date.now()){
 
 // Anonymous usage counts: daily totals per metric. No cookies, IP addresses or
 // per-person identifiers are stored; unknown metric names are ignored.
-const USAGE_METRICS=new Set(['welcome:shown','welcome:alerts','welcome:account','welcome:skip','welcome:close','welcome:reopen','view:home','view:trust','view:picks','view:week','visit:new','visit:return','card:open','slip:add','parlay:add','share','hit:open','profile:open','affiliate:click','alerts:on','alerts:off','gate:shown','gate:signup','gate:login','nudge:shown','nudge:alerts','nudge:signup','alerts:email','view:post','post:copy','post:open','post:image','src:reddit','src:x','src:google','src:social','src:other','src:direct']);
+const USAGE_METRICS=new Set(['app:novig','app:prophetx','app:kalshi','app:polymarket','app:betopenly','welcome:shown','welcome:alerts','welcome:account','welcome:skip','welcome:close','welcome:reopen','view:home','view:trust','view:picks','view:week','visit:new','visit:return','card:open','slip:add','parlay:add','share','hit:open','profile:open','affiliate:click','alerts:on','alerts:off','gate:shown','gate:signup','gate:login','nudge:shown','nudge:alerts','nudge:signup','alerts:email','view:post','post:copy','post:open','post:image','src:reddit','src:x','src:google','src:social','src:other','src:direct']);
 const USAGE_BOTS=/bot|crawl|spider|slurp|preview|facebookexternalhit|curl|wget|python|headless|lighthouse/i;
 async function countUsage(env,metrics,request){
   // The owner's own devices (opted out with /?me=1) are never counted.
