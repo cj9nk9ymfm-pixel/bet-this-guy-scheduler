@@ -714,6 +714,22 @@ async function gradeTdShadow(env,now=Date.now(),limit=40){
   return {graded:statements.length,checked:rows.length};
 }
 
+// Prediction result replies and the full-card recap run in their own
+// invocation (SELF binding), so their reads, uploads and posts get their own
+// request allowance instead of crowding out the main X run.
+async function runXResults(env,now=Date.now()){
+  const results=await postPredictionResultsToX(env,now).catch(error=>({posted:0,error:error.message}));
+  const recap=await postCardRecapToX(env,now).catch(error=>({posted:0,error:error.message}));
+  return {results,recap};
+}
+async function runXResultsNow(env){
+  if(!xReady(env))return {disabled:true};
+  const due=await appSetting(env,'x-card-recap-request')||(await env.DB.prepare("SELECT 1 AS n FROM prediction_picks WHERE result IS NOT NULL AND game_time>? LIMIT 1").bind(new Date(Date.now()-3*86400000).toISOString()).first().catch(()=>null));
+  if(!due)return {waiting:0};
+  if(!env.SELF?.fetch||!env.MAINTENANCE_TOKEN)return runXResults(env);
+  const r=await env.SELF.fetch(new Request(`${SITE_URL}/api/maintenance?job=xresults`,{method:'POST',headers:{authorization:`Bearer ${env.MAINTENANCE_TOKEN}`},signal:AbortSignal.timeout(60000)}));
+  return {status:r.status};
+}
 // TD grading reads box scores and play-by-play for each game, so it runs in
 // its own invocation (SELF binding) with its own request allowance.
 async function gradeTdShadowNow(env){
@@ -2639,7 +2655,7 @@ async function xResultData(env,r,season){
 async function postResultsToX(env,now=Date.now(),limit=1){
   if(!env.DB||!xReady(env))return {posted:0,disabled:true};
   const since=new Date(now-3*86400000).toISOString();
-  const rows=(await env.DB.prepare("SELECT id,kind,sport,player,market,side,line,odds,combined_odds,legs_json,game_time,status,result FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND ((status='final' AND result IN ('won','lost','push') AND settled_at>?) OR (status='provisional' AND result IN ('won','lost') AND game_time>?)) ORDER BY COALESCE(settled_at,game_time) LIMIT 8").bind(since,since).all()).results||[];
+  const rows=(await env.DB.prepare("SELECT id,kind,sport,player,market,side,line,odds,combined_odds,legs_json,game_time,status,result FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND ((status='final' AND result IN ('won','lost','push') AND settled_at>?) OR (status='provisional' AND result IN ('won','lost') AND game_time>?)) AND NOT EXISTS(SELECT 1 FROM app_settings WHERE key='xr:'||public_recommendations.id AND value NOT LIKE 'pending %') ORDER BY COALESCE(settled_at,game_time) LIMIT 8").bind(since,since).all()).results||[];
   let posted=0,season=null;
   for(const r of rows){
     if(posted>=limit)break;
@@ -3035,13 +3051,11 @@ async function runXPosts(env,now=Date.now()){
   const pin=picks.posted||combo.posted||weekly.posted||final.posted||slate.posted?{posted:0,waiting:true}:await postAlertsPinToX(env,now);
   const recap=picks.posted||combo.posted||weekly.posted||final.posted||slate.posted||pin.posted?{posted:0,waiting:true}:await postDayRecapToX(env,now);
   const proof=await postProofToX(env,now);
-  const pmResults=await postPredictionResultsToX(env,now).catch(error=>({posted:0,error:error.message}));
-  const cardRecap=picks.posted||weekly.posted||combo.posted||final.posted||slate.posted||pin.posted||recap.posted?{posted:0,waiting:true}:await postCardRecapToX(env,now).catch(error=>({posted:0,error:error.message}));
   const predictions=picks.posted?{posted:0,waiting:true}:await postPredictionPicksToX(env,now).catch(error=>({posted:0,error:error.message}));
   const results=picks.posted||combo.posted||weekly.posted||final.posted||slate.posted||pin.posted||recap.posted?{posted:0,waiting:true}:await postResultsToX(env,now);
   // The pinned summary waits for a run with nothing else heavy.
   const summary=picks.posted||combo.posted||weekly.posted||final.posted||slate.posted||pin.posted||recap.posted||results.posted?{posted:0,waiting:true}:await postSummaryToX(env,now);
-  return {picks,weekly,closing,combo,final,slate,pin,recap,proof,pmResults,cardRecap,predictions,results,summary};
+  return {picks,weekly,closing,combo,final,slate,pin,recap,proof,predictions,results,summary};
 }
 // "My book" alerts: a good-value price at one of someone's own sportsbooks.
 // The fair price always comes from every book (3+ pricing both sides, the same
