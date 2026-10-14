@@ -2853,3 +2853,74 @@ function statsProp(l){
       status(d.active?'You’re already on the list. New picks will land in your inbox.':'Check your inbox and tap the confirm link. If it’s not there in a minute, check spam.','ok');try{localStorage.setItem('btg-email-sub','1')}catch{}}
     catch(error){status(error.message,'err');$('emailSubSend').disabled=false}});
 })();
+// The bet slip as a placing helper: each leg's best price at the viewer's
+// books with a button to open that book, the whole parlay priced at every
+// book that carries all its legs, a partner code once one is live, and one
+// tap to add this week's official picks.
+(function(){
+  if(typeof document.getElementById!=='function'||!document.getElementById('slip')||typeof renderSlip!=='function')return;
+  const dec=o=>o>0?1+o/100:1+100/-o,amer=d=>d>=2?Math.round((d-1)*100):Math.round(-100/(d-1));
+  const usd=n=>`$${n.toLocaleString('en-US',{maximumFractionDigits:2,minimumFractionDigits:n%1?2:0})}`;
+  const offersFor=leg=>{const p=leg.current||leg.p,list=(p?.books?.[leg.side]||[]).filter(x=>Number(x.o)&&x.b);return list.length?list:(p?.bestBook?[{b:p.bestBook,o:leg.odds}]:[])};
+  const picked=()=>Array.isArray(preferences?.books)&&preferences.books.length>0;
+  const bestAt=leg=>{const all=offersFor(leg),mine=all.filter(x=>bookAllowed(x.b));return (mine.length?mine:all)[0]||null};
+  const openLink=book=>{const url=sportsbookDestination(book);return url?`<a class="slip-open" href="${htmlEscape(url)}" target="_blank" rel="noopener sponsored">Open ${htmlEscape(book)}</a>`:''};
+  function paintLegs(){
+    $$('#slipLegs .slip-leg').forEach(el=>{
+      el.querySelector('.slip-book')?.remove();
+      const leg=state.slip[Number(el.querySelector('[data-remove-slip]')?.dataset.removeSlip)];if(!leg||leg.unavailable||leg.changed)return;
+      const b=bestAt(leg);if(!b)return;
+      const row=document.createElement('div');row.className='slip-book';
+      row.innerHTML=`<span>${picked()?'Best at your books':'Best price'}: <b>${htmlEscape(b.b)} ${htmlEscape(formatOdds(b.o))}</b></span>${state.slip.length===1?openLink(b.b):''}`;
+      el.append(row);
+    });
+  }
+  // A parlay only pays at a book that offers every leg, so price it per book.
+  function paintBooks(){
+    const summary=$('#parlaySummary');if(!summary)return;
+    let box=$('#slipBooks');if(!box){box=document.createElement('div');box.id='slipBooks';box.className='slip-books';($('#shareParlay')||summary.lastChild).before(box)}
+    const legs=state.slip;if(legs.length<2||legs.some(l=>l.unavailable||l.changed)){box.hidden=true;return}
+    const books=new Map();
+    legs.forEach((leg,i)=>offersFor(leg).forEach(x=>{const k=normalizeBookName(x.b);if(!books.has(k))books.set(k,{b:x.b,odds:[]});books.get(k).odds[i]=Number(x.o)}));
+    const full=[...books.values()].filter(v=>legs.every((_,i)=>v.odds[i])).map(v=>({b:v.b,d:v.odds.reduce((d,o)=>d*dec(o),1)})).sort((a,b)=>(bookAllowed(b.b)-bookAllowed(a.b))||b.d-a.d);
+    const wager=Math.max(0,Number(String($('#wager')?.value||'').replace(/[^0-9.]/g,''))||0),same=new Set(legs.map(l=>l.p.eventID)).size<legs.length;
+    if(!full.length){box.hidden=false;box.innerHTML='<p class="slip-books-none">No single book lists every leg at these lines. Try fewer legs.</p>';return}
+    box.hidden=false;
+    box.innerHTML=`<div class="slip-books-head"><span>This parlay at each book</span><small>${wager?`${usd(wager)} pays`:'Odds'}</small></div>${full.slice(0,4).map((v,i)=>`<div class="slip-books-row${i===0?' best':''}"><span>${htmlEscape(v.b)}${bookAllowed(v.b)&&picked()?' <em>your book</em>':''}</span><b>${htmlEscape(formatOdds(amer(v.d)))}${wager?` · ${usd(Math.round(wager*v.d*100)/100)}`:''}</b>${openLink(v.b)}</div>`).join('')}${same?'<small>Same-game legs: books price these lower than the multiplied odds.</small>':''}`;
+  }
+  function paintPartner(){
+    const summary=$('#parlaySummary');if(!summary)return;
+    let row=$('#slipPartner');const offer=window.BTGApps?.offer?.('Novig');
+    if(!offer?.code){if(row)row.hidden=true;return}
+    if(!row){row=document.createElement('p');row.id='slipPartner';row.className='slip-partner';$('#slipBooks')?.after(row)}
+    row.hidden=!state.slip.length;
+    row.innerHTML=`Prefer a prediction app? Novig code <b>${htmlEscape(offer.code)}</b>${offer.offer?`: ${htmlEscape(offer.offer)}`:''}. <a href="${htmlEscape(offer.link||'https://novig.us')}" target="_blank" rel="noopener sponsored">Open Novig</a>`;
+  }
+  // This week's official singles still to play, matched to live props.
+  function weekPicks(){
+    const rows=window.BTGOfficialRows?.()||[],now=Date.now();
+    return rows.filter(r=>r.kind!=='parlay'&&!r.result&&Date.parse(r.game_time)>now).map(r=>{
+      let legs=[];try{legs=JSON.parse(r.legs_json||'[]')}catch{}const game=r.game_id||legs[0]?.gameId,kick=Date.parse(r.game_time);
+      // Same game by id; older rows without one match on kickoff time.
+      const same=props.filter(q=>q.player===r.player&&q.market===r.market&&(game?q.eventID===game:Math.abs(Date.parse(q.startsAt)-kick)<3*3600000));
+      const p=same.find(q=>q.line===Number(r.line))||same[0];return p?{p,side:r.side}:null;
+    }).filter(Boolean);
+  }
+  function addPicks(){
+    const list=weekPicks();let added=0;
+    for(const {p,side} of list){const key=slipSelectionKey(p,side);if(state.slip.some(x=>x.key===key))continue;if(state.slip.length>=preferences.maxParlayLegs)break;state.slip=state.slip.filter(x=>savedPropKey(x.p)!==savedPropKey(p));state.slip.push({key,p,side,odds:side==='Over'?p.over:p.under});added++}
+    window.btgCount?.('slip:addpicks');render();
+    if(innerWidth<=720&&typeof showMobilePage==='function')showMobilePage('slip',true);
+    return added;
+  }
+  function paintAdd(){
+    const n=weekPicks().length;
+    const empty=$('#slipEmpty');if(empty){let b=empty.querySelector('.slip-addall');if(!b&&n){b=document.createElement('button');b.type='button';b.className='slip-addall';b.onclick=addPicks;empty.append(b)}if(b){b.hidden=!n;b.textContent=`Add this week’s ${n} pick${n===1?'':'s'}`}}
+    const head=document.querySelector('#officialNow .on-head');if(head){let b=head.querySelector('.on-addall');if(!b&&n){b=document.createElement('button');b.type='button';b.className='on-addall';b.onclick=addPicks;head.append(b)}if(b){b.hidden=!n;b.textContent='＋ Add all to slip'}}
+  }
+  const base=renderSlip;
+  renderSlip=function(){base.apply(this,arguments);try{paintLegs();paintBooks();paintPartner();paintAdd()}catch(error){console.warn('slip helper',error)}};
+  $('#wager')?.addEventListener('input',()=>{try{paintBooks()}catch{}});
+  window.BTGSlip={weekPicks,addPicks,paintAdd};
+  setTimeout(()=>{try{paintAdd()}catch{}},2500);
+})();
