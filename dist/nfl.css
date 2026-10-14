@@ -2092,3 +2092,9 @@ html body #pmList .on-price{font-size:13.5px;padding:2px 8px}
 html body #pmList>.on-toggle{display:block!important;width:100%;margin:0;border:0;border-top:1px solid var(--line);background:transparent;padding:8px 12px;font:600 13px 'DM Sans',sans-serif;color:var(--muted,#9aa6b2);cursor:pointer}
 html body #pmList .pm-empty{padding:10px 12px;margin:0}
 .lean-win{display:block;margin-left:0;white-space:nowrap;line-height:1.35}.lean-win::before{content:none}
+/* Board heading: "See all" beside the title; even spacing heading -> cards. */
+html body #propsSection{align-items:center;gap:10px;margin-bottom:10px!important}
+html body #propsSection>div{flex:1;min-width:0}
+html body #propsSection>.board-browse{flex:none;width:auto;margin:0;padding:6px 12px;border-radius:999px;font-size:13px;white-space:nowrap}
+html body #propsSection>.board-browse[hidden]{display:none}
+html body #propList>.prop-card{margin-bottom:0!important}

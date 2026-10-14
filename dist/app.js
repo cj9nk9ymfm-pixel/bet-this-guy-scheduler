@@ -2988,14 +2988,15 @@ function statsProp(l){
   if(typeof document.getElementById!=='function'||!document.getElementById('propList'))return;
   const body=document.body,list=document.getElementById('propList'),SHOW=6;
   body.classList.add('board-collapsed');
+  // "See all" sits in the board's heading row, beside the title.
   const btn=document.createElement('button');btn.type='button';btn.className='board-browse';btn.id='boardBrowse';
-  list.after(btn);
+  (document.getElementById('propsSection')||list).append(btn);
   function paint(){
     const cards=[...list.querySelectorAll(':scope>.prop-card')];
     cards.forEach((c,i)=>c.classList.toggle('board-extra',i>=SHOW));
     const total=Math.max(cards.length,Number(typeof visiblePropTotal!=='undefined'?visiblePropTotal:0)||0);
     btn.hidden=!body.classList.contains('board-collapsed')||total<=SHOW;
-    btn.textContent=`Browse every prop (${total})`;
+    btn.textContent=`See all ${total}`;btn.setAttribute('aria-label',`Browse every prop (${total})`);
   }
   btn.onclick=()=>{body.classList.remove('board-collapsed');btn.hidden=true;window.btgCount?.('board:browse')};
   if(typeof MutationObserver==='function')new MutationObserver(paint).observe(list,{childList:true});
