@@ -2098,3 +2098,39 @@ html body #propsSection>div{flex:1;min-width:0}
 html body #propsSection>.board-browse{flex:none;width:auto;margin:0;padding:6px 12px;border-radius:999px;font-size:13px;white-space:nowrap}
 html body #propsSection>.board-browse[hidden]{display:none}
 html body #propList>.prop-card{margin-bottom:0!important}
+/* Audit 4 */
+/* 1: the record title wraps instead of running into "Every pick graded". */
+html body #heroBanner .hero-title{flex:1 1 0;min-width:0;white-space:normal;overflow:visible}
+html body #heroBanner .hero-actions{flex:none}
+/* 3: room between the alerts bar and the Sportsbook / Prediction apps switch. */
+html body #alertsHero:not([hidden]){margin-bottom:10px!important}
+/* 2: desktop header: the Results link lines up with the other tabs. */
+html body .desktop-nav a.nav-link{display:flex;align-items:center;justify-content:center;text-decoration:none;padding:1px 6px}
+/* 4: prediction picks and parlays in the same boxed list as Worth a look (phones, tablets). */
+@media (max-width:1179px){
+  html body #pmPicksList.on-list,html body #pmParlaysList.on-list{display:block!important;overflow:visible!important;scroll-snap-type:none!important;padding:0!important;border:1px solid var(--line)!important;border-radius:14px!important;background:var(--panel)!important}
+  html body #pmPicksList.on-list>.on-row,html body #pmParlaysList.on-list>.on-row{display:flex!important;width:100%!important;flex:none!important;padding:8px 12px!important;border:0!important;border-top:1px solid var(--line)!important;border-radius:0!important;background:transparent!important;box-shadow:none!important}
+  html body #pmPicksList.on-list>.on-row:first-child,html body #pmParlaysList.on-list>.on-row:first-child{border-top:0!important}
+  html body #pmPicksList .on-end{flex-direction:column;align-items:flex-end;gap:3px}
+}
+html body #pmNow{margin-top:14px!important}
+/* 6, 8: an empty board is one short note, not a big dashed box. */
+html body #emptyState.empty:not([hidden]){display:block;padding:12px 14px!important;margin:0 0 6px;min-height:0!important;text-align:left;border:1px solid var(--line);border-style:solid;border-radius:12px}
+html body #emptyState.empty strong{display:block;font-size:14.5px;margin:0 0 2px}
+html body #emptyState.empty span{display:block;font-size:13px;line-height:1.4}
+/* 9: light mode: readable "See all" pill. */
+body.light .board-browse{color:#1d4ed8!important;border-color:#bfd3f5!important}
+/* 10: the board legend is one line on phones. */
+@media (max-width:720px){
+  html body .verdict-guide{padding:8px 10px!important}
+  html body .verdict-guide ul{flex-wrap:nowrap!important;gap:10px!important;padding:0 58px 0 0!important}
+  html body .verdict-guide li{white-space:nowrap}
+  html body .verdict-guide li b{font-size:12.5px!important}
+  html body .verdict-guide li svg{width:14px;height:14px}
+  html body #verdictGuideClose{min-height:28px!important;padding:0 10px!important;font-size:12.5px!important}
+}
+/* 11: each prediction-view card says which app has the price. */
+html body #propList .prop-card.pm-card .pm-board{display:block!important;margin:-2px 0 6px;font-size:12.5px;font-weight:600;color:var(--muted,#9aa6b2)}
+html body #propList .prop-card.pm-card .pm-board .app-chip{color:var(--text)}
+html body #propList .prop-card.pm-card .card-money .pm-board{display:inline!important;margin:0 0 0 2px}
+html body #propList .prop-card.pm-card .card-money .pm-board::before{content:none}
