@@ -39,8 +39,9 @@ const events=Array.from({length:16},(_,g)=>({id:'game'+g,eventID:'NFL--game'+g,c
  context.saturday=[['Borregales','a',110],['Shough','b',120],['Jones','c',200],['JWilliams','d',104],['Slye','e',115],['Lawrence','f',105]].map(([player,game,odds],i)=>({player,gameId:'NFL--'+game,gameTime:'2026-09-27T17:00:00Z',market:['Field Goals Made','Interceptions Thrown','Passing Touchdowns','Longest Reception','Field Goals Made','Passing Touchdowns'][i],side:'Over',line:1.5,odds,edge:2-i/10,playerKey:'NFL--'+game+'|'+player.toLowerCase()}));
  // The next tier down (here, all six) feeds parlays; no singles this run.
  run("var sat=officialPlan([],[],'2026-09-22',Date.parse('2026-09-27T15:30:00Z'),saturday),satTiers=sat.map(p=>p.tier)");
- assert.ok(run('satTiers.includes("swing")&&satTiers.includes("moonshot")'),'a full slate now reaches both bigger tiers');
- assert.ok(run('satTiers.includes("reasonable")'),'2-leg parlays still post alongside them');
+ assert.ok(run('satTiers.includes("moonshot")'),'a bigger tier still forms from unshared legs');
+ assert.ok(run('satTiers.includes("reasonable")'),'2-leg parlays still post alongside it');
+ assert.ok(run('sat.flatMap(p=>p.legs.map(l=>l.playerKey)).every((k,i,all)=>all.indexOf(k)===i)'),'each player rides in one parlay only');
  assert.ok(run('sat.filter(p=>p.tier!=="props").every((a,i,all)=>all.every((b,j)=>i===j||a.legs.filter(x=>b.legs.some(y=>y.playerKey===x.playerKey)).length<=1))'),'no two parlays share more than one leg');
  // Same-game parlays: one standalone game can still make a parlay from two unlinked legs, priced 20% under the multiplied odds.
  context.snf=[['Allen','Passing Yards',110],['Cook','Rushing Yards',105],['Shakir','Receptions',100],['Kupp','Anytime Touchdown',150]].map(([player,market,odds],i)=>({player,gameId:'NFL--snf',gameTime:'2026-09-28T00:20:00Z',market,side:'Over',line:1.5,odds,edge:.8,playerKey:'NFL--snf|'+player}));

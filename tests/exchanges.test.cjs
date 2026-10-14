@@ -50,6 +50,7 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
    const plan=J(run(`predictionParlayPlan(${JSON.stringify(pool)},[],'2026-10-13',${now})`));
    assert.ok(plan.length>0&&plan.every(p=>p.exchange==='Novig'&&p.legs.length>=2&&p.legs.length<=5),'parlays of 2-5 legs on one app');
    assert.ok(plan.every(p=>{const g=new Map();p.legs.forEach(l=>g.set(l.eventId,(g.get(l.eventId)||0)+1));return [...g.values()].every(n=>n<=2)}),'at most two legs a game');
+   assert.ok(plan.flatMap(p=>p.legs.map(l=>l.player)).every((n,i,all)=>all.indexOf(n)===i),'each player rides in one parlay only');
    const sg=plan.find(p=>p.legs.filter(l=>l.eventId==='NFL--g1').length===2);if(sg)assert.ok(sg.legs.filter(l=>l.eventId==='NFL--g1').every(l=>l.sameGame));
    assert.equal(run(`predictionParlayPay({result:'won',odds:300,legs_json:'[]'})`),75,'graded at a quarter unit');}
   // Saved prices feed /api/predictions, filtered to the visitor's state.
