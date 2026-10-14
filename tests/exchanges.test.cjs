@@ -25,7 +25,7 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
   assert.deepEqual([row.kind,row.exchange,row.player,row.side,row.line,row.odds],['prop','Novig','Tre Tucker','Over',3.5,115]);
   assert.ok(row.fair_pct>49&&row.fair_pct<51&&row.edge>2,'fair from the sportsbooks, edge at the exchange price');
   const cov=JSON.parse(db.prepare("SELECT value FROM app_settings WHERE key='exchange-coverage'").get().value);
-  assert.deepEqual(cov.coverage.novig,{lines:2,matched:2});assert.ok(!cov.coverage.bovada,'only prediction markets count');
+  assert.deepEqual(cov.coverage.novig,{lines:2,matched:2,matched2:0});assert.ok(!cov.coverage.bovada,'only prediction markets count');
   out=J(await run(`recordExchangeProps(env,boards,${now+600000})`));assert.deepEqual(out,{skipped:true},'every 30 minutes');
   // Games 48-96 hours out: fetched too, but every 2 hours rather than every 30 minutes.
   {const keep=db.prepare("SELECT value FROM app_settings WHERE key='exchange-props-at'").get().value,saveBoards=context.boards,saveFetch=context.fetch;
@@ -37,13 +37,17 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
    await run(`recordExchangeProps(env,boards,${now+155*60000})`);assert.equal(far(),2,'refreshed after two hours');
    for(const t of ['exchange_prices','exchange_shadow','prediction_picks'])db.prepare(`DELETE FROM ${t} WHERE event_id='NFL--g9'`).run();
    db.prepare("UPDATE app_settings SET value=? WHERE key='exchange-props-at'").run(keep);context.boards=saveBoards;context.fetch=saveFetch}
-  // Early games (2+ days out) need a 2-point edge for a pick, and give no parlay legs.
+  // Picks and parlay legs lock only inside 24 hours of kickoff.
   {const fairs=run(`sportsbookFairs(boards,${now})`),ex={bookmakers:[book('novig',105,-125)]},b=(h)=>({...context.boards[0],commence_time:new Date(now+h*3600000).toISOString()});
    context.fairs=fairs;const cand=(h,o='{}')=>J(run(`predictionCandidates(${JSON.stringify(b(h))},${JSON.stringify(ex)},fairs,${now},${o})`));
    assert.equal(cand(5).length,1,'a 1-2 point edge locks close to the game');
-   assert.equal(cand(72).length,0,'the same edge three days out does not');
-   assert.equal(cand(72,'{min:0,max:5,noEarly:true}').length,0,'no parlay legs from early games');
-   assert.equal(cand(5,'{min:0,max:5,noEarly:true}').length,1);}
+   assert.equal(cand(30).length,0,'nothing locks more than 24 hours out');
+   assert.equal(cand(30,'{min:0,max:5}').length,0,'no parlay legs from games more than 24 hours out');
+   assert.equal(cand(5,'{min:0,max:5}').length,1);
+   // Two-book fair prices: only lines no third book prices, for the two-book test.
+   const two={...context.boards[0],bookmakers:context.boards[0].bookmakers.slice(0,2)};
+   assert.equal(run(`sportsbookFairs([${JSON.stringify(two)}],${now})`).size,0,'two books are not enough for the official fair price');
+   assert.equal(run(`sportsbookFairs([${JSON.stringify(two)}],${now},2)`).size,1,'the two-book test uses them');}
   // Anytime TD: yes/no reads as Over/Under 0.5, and is requested from the exchanges.
   assert.deepEqual(J(run(`exchangePriceList(${JSON.stringify({bookmakers:[{key:'kalshi',markets:[{key:'player_anytime_td',outcomes:[{name:'Yes',description:'Tre Tucker',price:150},{name:'No',description:'Tre Tucker',price:-180}]}]}]})})`)),[['kalshi','Tre Tucker','Anytime Touchdown','Over',0.5,150],['kalshi','Tre Tucker','Anytime Touchdown','Under',0.5,-180]]);
   assert.ok(urls.some(u=>u.includes('player_anytime_td')),'anytime TD is in the exchange request');
