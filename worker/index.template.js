@@ -499,6 +499,41 @@ function espnImageFrom(payload, name, league) {
 }
 // The last lookup's steps, for the headshot-probe owner check.
 let headshotTrace = [];
+// ESPN ids by player name, from Sleeper's player list (ESPN's own search
+// refuses Cloudflare Workers, but its headshot images load fine). Saved in
+// app_settings espn-ids:<league> and refreshed weekly; loadEspnIds fills
+// this before a run draws cards.
+let espnIdMaps = {};
+async function loadEspnIds(env, now = Date.now()) {
+  if (!env?.DB) return espnIdMaps;
+  for (const league of ["nfl", "nba"]) {
+    let saved = null;
+    try { saved = JSON.parse((await env.DB.prepare("SELECT value FROM app_settings WHERE key = ?").bind(`espn-ids:${league}`).first())?.value || "null"); } catch { saved = null; }
+    const tried = Date.parse((await env.DB.prepare("SELECT value FROM app_settings WHERE key = ?").bind(`espn-ids-tried:${league}`).first().catch(() => null))?.value || "");
+    if ((!saved || now - Date.parse(saved.at || "") > 7 * 86400000) && !(now - tried < 6 * 3600000)) {
+      await env.DB.prepare("INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind(`espn-ids-tried:${league}`, new Date(now).toISOString()).run().catch(() => {});
+      const fresh = await refreshEspnIds(env, league, now).catch(() => null);
+      if (fresh) saved = fresh;
+    }
+    if (saved?.ids) espnIdMaps[league] = saved.ids;
+  }
+  return espnIdMaps;
+}
+async function refreshEspnIds(env, league, now = Date.now()) {
+  const response = await fetch(`https://api.sleeper.app/v1/players/${league}`, { signal: AbortSignal.timeout(20000) });
+  if (!response.ok) return null;
+  const players = await response.json(), ids = {};
+  for (const p of Object.values(players || {})) {
+    const id = String(p?.espn_id || "");
+    if (!/^\d+$/.test(id) || !p.team) continue;
+    const key = normalizedName(p.full_name || `${p.first_name || ""} ${p.last_name || ""}`);
+    if (key) ids[key] = Number(id);
+  }
+  if (Object.keys(ids).length < 100) return null;
+  const saved = { at: new Date(now).toISOString(), ids };
+  await env.DB.prepare("INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind(`espn-ids:${league}`, JSON.stringify(saved)).run();
+  return saved;
+}
 // A player's ESPN headshot as raw bytes (for the X pick graphics), or null.
 // ESPN's search can miss hyphenated or punctuated names, so it retries with
 // the punctuation as spaces, then the last name alone.
@@ -509,12 +544,14 @@ async function playerHeadshot(name, sport = "NFL") {
     const queries = [...new Set([name, plain, String(name).trim().split(/\s+/).slice(1).join(" ")].filter(Boolean))];
     let url = null;
     headshotTrace = [];
+    const known = espnIdMaps[league]?.[normalizedName(name)];
+    if (known) { url = `https://a.espncdn.com/i/headshots/${league}/players/full/${known}.png`; headshotTrace.push({ source: "espn-id", id: known }); }
     // ESPN refuses requests with no browser headers (403); two search
     // addresses, and one that refuses is skipped for the rest of the lookup.
     const headers = { accept: "application/json", "user-agent": "BetThisGuy/1.0 (https://betthisguy.com; support@betthisguy.com)" };
     const endpoints = [q => `https://site.web.api.espn.com/apis/search/v2?query=${encodeURIComponent(q)}&limit=8`, q => `https://site.api.espn.com/apis/common/v3/search?query=${encodeURIComponent(q)}&limit=8&type=player`];
     const refused = new Set();
-    for (const query of queries) {
+    for (const query of url ? [] : queries) {
       for (const [index, endpoint] of endpoints.entries()) {
         if (refused.has(index)) continue;
         const response = await fetch(endpoint(query), { headers, signal: AbortSignal.timeout(8000) });

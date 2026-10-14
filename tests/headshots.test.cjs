@@ -32,5 +32,14 @@ context.fetch=async url=>{url=String(url);asked.push(url);
   const probe=await run('runHeadshotProbe(env)');assert.equal(probe[0].found,false);
   const saved=JSON.parse(db.prepare("SELECT value FROM app_settings WHERE key='headshot-probe-result'").get().value);
   assert.ok(saved.out[0].steps.length>=1&&!db.prepare("SELECT 1 FROM app_settings WHERE key='headshot-probe'").get(),'probe saves its steps once');
+  // Sleeper's player list gives ESPN ids; with one, the headshot loads straight from ESPN's images.
+  const sleeper={a:{full_name:'Bo Nix',espn_id:4426338,team:'DEN'},b:{full_name:'Free Agent Guy',espn_id:1,team:null},c:{full_name:'No Id',espn_id:null,team:'SEA'}};
+  for(let i=0;i<120;i++)sleeper['x'+i]={full_name:'Filler '+i,espn_id:9000+i,team:'KC'};
+  const seen=[];context.fetch=async url=>{url=String(url);seen.push(url);if(url.includes('sleeper.app'))return Response.json(sleeper);if(url.includes('espncdn'))return new Response(new Uint8Array([7,7]),{headers:{'content-type':'image/png'}});return new Response('no',{status:403})};
+  await run('loadEspnIds(env)');
+  assert.equal(run("espnIdMaps.nfl.bonix"),4426338,'ESPN id saved by name');assert.equal(run("espnIdMaps.nfl.freeagentguy"),undefined,'players without a team skipped');
+  seen.length=0;const fromId=await run("playerHeadshot('Bo Nix','NFL')");
+  assert.ok(fromId&&fromId.bytes.length===2&&seen.length===1&&seen[0].endsWith('/nfl/players/full/4426338.png'),'one request: the headshot itself');
+  seen.length=0;await run('loadEspnIds(env)');assert.ok(!seen.some(u=>u.includes('sleeper')),'the list refreshes weekly, not every run');
   console.log('PASS: headshots retry punctuated names and fall back to the ESPN id');
 })().catch(e=>{console.error(e);process.exit(1)});
