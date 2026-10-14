@@ -2195,8 +2195,8 @@ function statsProp(l){
   };
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount);else mount();
   if(LEAGUE!=='NBA')return;
-  // NBA mode: nightly official picks with their own record. Prediction-app
-  // prices are NFL-only for now, so the odds view is the only one.
+  // NBA mode: nightly official picks with their own record. The prediction
+  // view shows NBA's status on the apps until NBA prediction picks run.
   document.documentElement.dataset.league='NBA';
   // The NBA record has its own Results tab.
   const relink=()=>document.querySelectorAll('#heroBanner a[href="/trust#overview"], #heroBanner a[href="/trust"]').forEach(a=>a.setAttribute('href','/trust#nba'));
@@ -2609,7 +2609,7 @@ function statsProp(l){
   const stored=k=>{try{return localStorage.getItem(k)||''}catch{return ''}},store=(k,v)=>{try{v?localStorage.setItem(k,v):localStorage.removeItem(k)}catch{}};
   const when=iso=>{const d=new Date(iso);return Number.isFinite(d.getTime())?d.toLocaleString([],{weekday:'short',hour:'numeric',minute:'2-digit'}):''};
   let data=null;
-  const view=()=>{if(LEAGUE==='NBA')return 'odds';const v=stored(VIEW);return v==='odds'||v==='predictions'?v:data?.mode==='predictions'?'predictions':'odds'};
+  const view=()=>{const v=stored(VIEW);return v==='odds'||v==='predictions'?v:data?.mode==='predictions'?'predictions':'odds'};
   const picker=state=>`<label class="pm-where">Betting from <select data-pm-state aria-label="Your state"><option value="">Choose a state</option>${Object.entries(STATES).map(([k,v])=>`<option value="${k}"${k===state?' selected':''}>${htmlEscape(v)}</option>`).join('')}</select></label>`;
   const apps=d=>[...(d.exchanges||[]),...(d.predictions?.fanduel?['FanDuel Predicts']:[]),...(d.predictions?.draftkings?['DraftKings Predictions']:[])];
   const list=names=>names.length<2?names.join(''):`${names.slice(0,-1).join(', ')} and ${names.at(-1)}`;
@@ -2720,7 +2720,10 @@ function statsProp(l){
   function renderPicks(v){
     renderPmHero(v);paintWhy(v);
     const host=document.getElementById('pmPicksNow');if(!host)return;pmRows=[];
-    const list=data?.pmPicks||[],parlays=data?.pmParlays||[],rec=data?.pmRecord,pr=data?.pmParlayRecord;host.hidden=v!=='predictions'||!data||data.mode==='unknown';
+    // This week only, like the sportsbook picks: the pick week starts Tuesday noon UTC
+    // (the server sends five days, so Monday night's picks would linger into Wednesday).
+    const weekStart=(()=>{const d=new Date(Date.now()-12*3600000);d.setUTCHours(0,0,0,0);d.setUTCDate(d.getUTCDate()-(d.getUTCDay()+5)%7);return d.getTime()+12*3600000})(),thisWeek=r=>Date.parse(r.gameTime)>=weekStart;
+    const list=(data?.pmPicks||[]).filter(thisWeek),parlays=(data?.pmParlays||[]).filter(thisWeek),rec=data?.pmRecord,pr=data?.pmParlayRecord;host.hidden=v!=='predictions'||!data||data.mode==='unknown';
     const ph=document.getElementById('pmParlaysNow');if(ph)ph.hidden=host.hidden;if(host.hidden)return;
     const pl=document.getElementById('pmParlaysList'),pcount=document.getElementById('pmParlaysCount');
     if(pl)pl.innerHTML=parlays.length?parlays.map(parlayRow).join(''):'<div class="on-empty"><strong>No parlays yet this week.</strong><span>They post when two or more Worth a look props line up on one app.</span></div>';
@@ -2796,6 +2799,19 @@ function statsProp(l){
     }
     document.querySelectorAll('[data-pm-state]').forEach(sel=>sel.onchange=()=>{store(KEY,sel.value);boardPrices.clear();boardWanted.clear();load().then(resync)});
     paintPicks();renderPicks(v);paintBoard();
+    // NBA: prediction picks are NFL-only so far, so the prediction view shows
+    // where NBA stands on the apps (checked every 6 hours) instead of NFL picks.
+    if(LEAGUE==='NBA'){
+      ['pmHero','pmPicksNow','pmParlaysNow','pmNow'].forEach(id=>{const el=document.getElementById(id);if(el)el.hidden=true});
+      let note=document.getElementById('pmNbaNote');
+      if(v==='predictions'){
+        if(!note){note=document.createElement('section');note.id='pmNbaNote';note.className='official-now pm-nba-note';const anchor=document.getElementById('officialNow');(anchor||document.querySelector('main')).before(note)}
+        const apps=Object.keys(d.nbaApps?.apps||{}),stateApps=apps.filter(a=>!d.state||names.includes(a));
+        note.innerHTML=`<div class="on-head"><h2>NBA on prediction apps</h2></div><div class="on-empty"><strong>${apps.length?`${htmlEscape(list(apps))} ${apps.length===1?'lists':'list'} NBA player props.`:'Prediction apps don’t list NBA player props yet.'}</strong><span>${apps.length?`NBA prediction picks start once we’ve priced them against the sportsbooks${stateApps.length||!d.state?'':`; none of these apps are open in ${htmlEscape(d.stateName||'your state')} yet`}. Until then, our NBA picks are on the Sportsbook side.`:'We check Novig, ProphetX and the rest every few hours. Until they list NBA props, our NBA picks are on the Sportsbook side.'}</span></div><p class="pm-nba-switch"><button type="button" class="on-toggle" data-view-odds>See tonight’s NBA picks</button></p>`;
+        note.querySelector('[data-view-odds]').onclick=()=>{store(VIEW,'odds');render();resync()};
+        note.hidden=false;document.getElementById('officialNow')?.setAttribute('hidden','');document.getElementById('parlaysNow')?.setAttribute('hidden','');
+      }else{if(note)note.hidden=true;const on=document.getElementById('officialNow');if(on&&on.dataset.nbaHidden!=='1')on.removeAttribute('hidden');document.getElementById('parlaysNow')?.removeAttribute('hidden')}
+    }
   }
   // Alerts follow the switch: the phone's alerts are re-saved with the new choice.
   window.BTGPriceView={view,state:()=>stored(KEY)||data?.state||'',set:v=>{store(VIEW,v==='predictions'?'predictions':'odds');render();resync()}};

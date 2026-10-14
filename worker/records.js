@@ -1454,6 +1454,15 @@ async function sendPredictionEmails(env,now=Date.now()){
 // X: one post per prediction pick or parlay, with the same card graphic as
 // official picks (purple pill, the market's chance in place of odds). If the
 // graphic can't be made or uploaded, the text posts on its own.
+// The app's X handle for our own pick posts (not result replies, so it's one
+// tag per pick). app_settings x-tag:<App> overrides the handle; 'off' stops it.
+const X_APP_TAGS={Novig:'@novig'};
+async function xAppTag(env,name){const set=await appSetting(env,`x-tag:${name}`).catch(()=>null);if(set==='off')return name;const h=/^@\w{1,15}$/.test(String(set||''))?set:X_APP_TAGS[name];return h||name}
+// Headshots for a parlay's first three legs (null where none is found).
+async function xLegPhotos(legs,sport='NFL'){
+  if(typeof playerHeadshot!=='function')return [];
+  return Promise.all(legs.slice(0,3).map(l=>playerHeadshot(l.player,sport).then(s=>s?{type:s.type,b64:xBase64(s.bytes)}:null).catch(()=>null)));
+}
 async function xPredictionMedia(env,r,parlay){
   if(typeof renderCardPng!=='function')return null;
   try{
@@ -1461,8 +1470,9 @@ async function xPredictionMedia(env,r,parlay){
     const season=rec.wins+rec.losses>=3?`${rec.wins}–${rec.losses} · ${weeklyMoney(rec.profit)}`:'';
     const pill=label=>({label,fill:'#a78bfa',ink:'#1a0f3d',icon:'lock'}),shortWhen=weeklyDay(r.game_time).replace(/^(\w+), \w+ \d+, /,'$1 ').toUpperCase();
     if(parlay){let legs=[];try{legs=JSON.parse(r.legs_json)}catch{}
-      return await xUploadImage(env,await renderCardPng(xCardSvg({sport:'NFL',parlay:true,pill:pill('PREDICTION PARLAY'),title:`${legs.length}-leg parlay`,legs:legs.map(l=>({text:`${l.player} · ${weeklyLegText(l)}`,odds:`${exchangePct(l.netOdds??l.odds)}%`})),odds:`${exchangePct(r.odds)}%`,oddsColor:'#c4b5fd',oddsNote:`on ${r.exchange} · ¼ unit`,season,footLeft:shortWhen,cta:'Prediction picks, free'})))}
+      return await xUploadImage(env,await renderCardPng(xCardSvg({sport:'NFL',parlay:true,legPhotos:await xLegPhotos(legs),pill:pill('PREDICTION PARLAY'),title:`${legs.length}-leg parlay`,legs:legs.map(l=>({text:`${l.player} · ${weeklyLegText(l)}`,odds:`${exchangePct(l.netOdds??l.odds)}%`})),odds:`${exchangePct(r.odds)}%`,oddsColor:'#c4b5fd',oddsNote:`on ${r.exchange} · ¼ unit`,season,footLeft:shortWhen,cta:'Prediction picks, free'})))}
     const first={team:r.team},[team,shot]=await Promise.all([typeof playerTeamOf==='function'?playerTeamOf(env,'NFL',r.player,r.team).catch(()=>null):null,typeof playerHeadshot==='function'?playerHeadshot(r.player,'NFL').catch(()=>null):null]);
+    if(!shot)await setAppSetting(env,'x-photo-miss',`${new Date().toISOString()} ${r.player}`).catch(()=>{});
     return await xUploadImage(env,await renderCardPng(xCardSvg({sport:'NFL',team,photo:shot?{type:shot.type,b64:xBase64(shot.bytes)}:null,pill:pill('PREDICTION PICK'),title:r.player,bet:weeklyLegText(r).replace(/^./,ch=>ch.toUpperCase()),when:[xMatchup(first.team),weeklyDay(r.game_time)].filter(Boolean).join(' · '),odds:`${exchangePct(r.odds)}%`,oddsColor:'#c4b5fd',oddsNote:`on ${r.exchange} · fair ${Math.round(r.fair_pct)}%`,season,footLeft:[team?.full?xNick(team.full).toUpperCase():'',shortWhen].filter(Boolean).join(' · '),cta:'Prediction picks, free'})))
   }catch(error){await setAppSetting(env,'x-last-error',`${new Date().toISOString()} prediction graphic: ${error.message}`).catch(()=>{});return null}
 }
@@ -1474,7 +1484,8 @@ async function postPredictionPicksToX(env,now=Date.now()){
     const key=`xpmp:${r.id}`;if(!(await xClaimable(env,key,now)))continue;if(!(await xClaim(env,key,now)))continue;
     let legs=[];try{legs=JSON.parse(r.legs_json)}catch{}
     const same=legs.some(l=>l.sameGame);
-    const text=xShort(`📈 Prediction market parlay · ${r.exchange} · ¼ unit\n${legs.map(l=>`• ${l.player} ${weeklyLegText(l)}`).join('\n')}\nPriced at ${exchangePct(r.odds)}% after fees${same?' (same-game)':''}: take it at that chance or lower in ${r.exchange}’s parlay builder.\n\nOwn record. Link in bio. 18+/21+ by app.`);
+    const tag=await xAppTag(env,r.exchange);
+    const text=xShort(`📈 Prediction market parlay · ${tag} · ¼ unit\n${legs.map(l=>`• ${l.player} ${weeklyLegText(l)}`).join('\n')}\nPriced at ${exchangePct(r.odds)}% after fees${same?' (same-game)':''}: take it at that chance or lower in ${r.exchange}’s parlay builder.\n\nOwn record. Link in bio. 18+/21+ by app.`);
     const mediaId=await xPredictionMedia(env,r,true);
     try{const sent=await xPost(env,text,mediaId);await xDone(env,key,now);if(sent?.data?.id)await setAppSetting(env,`xid:${r.id}`,String(sent.data.id)).catch(()=>{});await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} prediction-parlay ${mediaId?'graphic':'text'} ${r.id} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,parlay:true,graphic:Boolean(mediaId)}}
     catch(error){await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});return {posted:0,error:error.message}}
@@ -1488,7 +1499,7 @@ async function postPredictionPicksToX(env,now=Date.now()){
     const record=games>=3?`\nPrediction record: ${rec.wins}–${rec.losses}${rec.pushes?`–${rec.pushes}`:''}, ${weeklyMoney(rec.profit)} at $100 a pick after fees.`:'';
     // A partner code (its X code if it has one) rides along on that app's picks.
     const partner=(await partnerOffers(env).catch(()=>({})))[r.exchange],promo=partner?`\nNew to ${r.exchange}? Code ${partner.xCode||partner.code}${partner.offer?`: ${partner.offer}`:''}. Terms apply.`:'';
-    const head=`📈 Prediction market pick: ${r.player} ${weeklyLegText(r)}\n${r.exchange} at ${exchangePct(r.odds)}% · fair chance ${Math.round(r.fair_pct)}%, after fees\n${matchup}${matchup&&when?' · ':''}${when}${record}`,full=`${head}${promo}\n\nOwn record, separate from our sportsbook picks. Link in bio. 18+/21+ by app.`;
+    const head=`📈 Prediction market pick: ${r.player} ${weeklyLegText(r)}\n${await xAppTag(env,r.exchange)} at ${exchangePct(r.odds)}% · fair chance ${Math.round(r.fair_pct)}%, after fees\n${matchup}${matchup&&when?' · ':''}${when}${record}`,full=`${head}${promo}\n\nOwn record, separate from our sportsbook picks. Link in bio. 18+/21+ by app.`;
     // With a code, the record-separation line goes first if the post runs long (the age line always stays).
     const text=xShort(full.length<=280?full:`${head}${promo}\n\nLink in bio. 18+/21+ by app.`);
     const mediaId=await xPredictionMedia(env,r,false);
@@ -1815,7 +1826,7 @@ async function predictionsResponse(request,env,now=Date.now()){
   const pmPicks=pmRows.filter(r=>Date.parse(r.game_time)>now-5*86400000).slice(-24).map(r=>{const key=Object.keys(EXCHANGES).find(k=>EXCHANGES[k]===r.exchange);return {id:r.id,exchange:r.exchange,open:allowed.has(key),eventId:r.event_id,player:r.player,team:r.team||'',market:r.market,side:r.side,line:r.line,odds:r.odds,netOdds:r.net_odds,fair:r.fair_pct,edge:r.edge,gameTime:r.game_time,postedAt:r.posted_at,closeOdds:r.close_odds,nowOdds:Date.parse(r.game_time)>now?(find(r.event_id,r.player,r.market,r.side,r.line).find(p=>p[0]===key)?.[5]??null):null,result:r.result,actual:r.actual}});
   const pmParlayRows=(await env.DB.prepare('SELECT * FROM prediction_parlays ORDER BY game_time,posted_at').all().catch(()=>({results:[]}))).results||[];
   const pmParlays=pmParlayRows.filter(r=>Date.parse(r.game_time)>now-5*86400000).slice(-16).map(r=>{let legs=[];try{legs=JSON.parse(r.legs_json)}catch{}const key=Object.keys(EXCHANGES).find(k=>EXCHANGES[k]===r.exchange);return {id:r.id,parlay:true,exchange:r.exchange,open:allowed.has(key),odds:r.odds,gameTime:legs.map(l=>l.gameTime).sort()[0]||r.game_time,postedAt:r.posted_at,result:r.result,legs:legs.map(l=>({player:l.player,market:l.market,side:l.side,line:l.line,odds:l.netOdds??l.odds??null,eventId:l.eventId,gameTime:l.gameTime,team:l.team,sameGame:Boolean(l.sameGame),result:l.result||null}))}});
-  return new Response(JSON.stringify({success:true,...pub,picks,fairs,locked,value:value.slice(0,8),pmPicks,pmRecord:predictionRecord(pmRows),pmParlays,pmParlayRecord:predictionParlayRecord(pmParlayRows)}),{headers:head});
+  return new Response(JSON.stringify({success:true,...pub,picks,fairs,locked,value:value.slice(0,8),pmPicks,pmRecord:predictionRecord(pmRows),pmParlays,pmParlayRecord:predictionParlayRecord(pmParlayRows),nbaApps:await nbaExchangeStatus(env)}),{headers:head});
 }
 function bettingOptionsResponse(request){
   const {exchangeKeys,...where}=bettingOptions(request);
@@ -2889,8 +2900,12 @@ function xCardSvg(c){
   const M='#2ee6a8',F={g:'BTG Grotesk',xb:'BTG Inter XB',sb:'BTG Inter SB'},X=526,W=1200-X-56;
   const [c1,c2]=c.parlay?['#1d4ed8','#0b1530']:(c.team&&XCARD_TEAMS[c.sport||'NFL']?.[String(c.team.abbreviation||'').toUpperCase()])||['#1d4ed8','#0b1530'];
   const initials=String(c.title||'').split(/\s+/).map(w=>w[0]||'').join('').slice(0,3).toUpperCase();
+  // Parlays: the legs' players as overlapping round photos when we have them,
+  // else the big leg count.
+  const faces=c.parlay?(c.legPhotos||[]).filter(Boolean).slice(0,3):[],R=faces.length===3?92:108,cxs=faces.length===3?[118,235,352]:[155,315];
   const left=c.parlay
-    ?`<text x="235" y="320" text-anchor="middle" font-family="${F.g}" font-size="170" fill="#ffffff" fill-opacity=".92">${c.legs.length}</text><text x="235" y="392" text-anchor="middle" font-family="${F.xb}" font-size="32" letter-spacing="6" fill="#ffffff" fill-opacity=".8">LEG PARLAY</text>`
+    ?(faces.length>=2?`<defs>${faces.map((f,i)=>`<clipPath id="lp${i}"><circle cx="${cxs[i]}" cy="270" r="${R}"/></clipPath>`).join('')}</defs>${faces.map((f,i)=>`<circle cx="${cxs[i]}" cy="270" r="${R+6}" fill="#0b1530"/><circle cx="${cxs[i]}" cy="270" r="${R}" fill="#ffffff" fill-opacity=".14"/><image href="data:${f.type};base64,${f.b64}" x="${cxs[i]-R*1.4}" y="${270-R}" width="${R*2.8}" height="${R*2.04}" preserveAspectRatio="xMidYMax meet" clip-path="url(#lp${i})"/>`).join('')}<text x="235" y="452" text-anchor="middle" font-family="${F.xb}" font-size="32" letter-spacing="6" fill="#ffffff" fill-opacity=".85">${c.legs.length}-LEG PARLAY</text>`
+      :`<text x="235" y="320" text-anchor="middle" font-family="${F.g}" font-size="170" fill="#ffffff" fill-opacity=".92">${c.legs.length}</text><text x="235" y="392" text-anchor="middle" font-family="${F.xb}" font-size="32" letter-spacing="6" fill="#ffffff" fill-opacity=".8">LEG PARLAY</text>`)
     :`${c.photo&&c.team?.abbreviation?`<text x="235" y="190" text-anchor="middle" font-family="${F.g}" font-size="170" fill="#ffffff" fill-opacity=".13">${xEsc(c.team.abbreviation)}</text>`:''}${c.photo?`<image href="data:${c.photo.type};base64,${c.photo.b64}" x="-70" y="200" width="610" height="446" preserveAspectRatio="xMidYMax meet"/>`:`<text x="235" y="410" text-anchor="middle" font-family="${F.g}" font-size="170" fill="#ffffff" fill-opacity=".24">${xEsc(c.team?.abbreviation||initials)}</text>`}`;
   const oddsW=[...String(c.odds)].reduce((w,ch)=>w+(ch==='%'?.86:/[0-9]/.test(ch)?.56:.5),0)*86;
   const legs=c.parlay?c.legs.slice(0,4):[];
@@ -2927,7 +2942,7 @@ async function xCardData(env,r,season){
   const legs=recordLegs(r),first=legs[0]||{},sport=r.sport_label||r.sport||'NFL',time=r.game_time||first.gameTime,when=weeklyDay(time);
   const edge=Number(first.edge),seasonText=season&&season.wins+season.losses>=5?`${season.wins}–${season.losses} · ${weeklyMoney(season.profit)}`:'';
   const shortWhen=when.replace(/^(\w+), \w+ \d+, /,'$1 ').toUpperCase();
-  if(r.kind==='parlay')return {sport,parlay:true,title:`${legs.length}-leg parlay`,legs:legs.map(l=>({text:`${l.player} · ${weeklyLegText(l)}`,odds:weeklyOdds(l.odds)})),odds:weeklyOdds(r.combined_odds),oddsNote:`\u0024100 pays \u0024${Math.round(100*(weeklyDecimal(r.combined_odds)||1)).toLocaleString('en-US')}`,season:seasonText,footLeft:shortWhen};
+  if(r.kind==='parlay')return {sport,parlay:true,legPhotos:await xLegPhotos(legs,sport),title:`${legs.length}-leg parlay`,legs:legs.map(l=>({text:`${l.player} · ${weeklyLegText(l)}`,odds:weeklyOdds(l.odds)})),odds:weeklyOdds(r.combined_odds),oddsNote:`\u0024100 pays \u0024${Math.round(100*(weeklyDecimal(r.combined_odds)||1)).toLocaleString('en-US')}`,season:seasonText,footLeft:shortWhen};
   const [team,shot]=await Promise.all([typeof playerTeamOf==='function'?playerTeamOf(env,sport,r.player,first.team):null,typeof playerHeadshot==='function'?playerHeadshot(r.player,sport):null]);
   return {sport,team,photo:shot?{type:shot.type,b64:xBase64(shot.bytes)}:null,title:r.player,bet:weeklyLegText(r).replace(/^./,ch=>ch.toUpperCase()),when:[xMatchup(first.team),when].filter(Boolean).join(' · '),odds:weeklyOdds(r.odds),oddsNote:[first.book?`at ${first.book}`:'',Number.isFinite(edge)&&edge>0?`+${edge.toFixed(1)}% vs fair`:''].filter(Boolean).join(' · '),season:seasonText,footLeft:[team?.full?xNick(team.full).toUpperCase():'',shortWhen].filter(Boolean).join(' · ')};
 }
@@ -3277,6 +3292,26 @@ const nbaRecordSummary=async env=>weeklySummary((await env.DB.prepare("SELECT ki
 const nbaLine=r=>{const legs=recordLegs(r),f=legs[0]||{};return r.kind==='parlay'?`• ${legs.length}-leg parlay (${weeklyOdds(r.combined_odds)}): ${legs.map(l=>`${l.player} ${weeklyLegText(l)}`).join(' + ')}`:`• ${r.player} ${weeklyLegText(r)} (${weeklyOdds(r.odds)}${f.book?`, ${f.book}`:''})`};
 const nbaSlatePicks=rows=>rows.flatMap(r=>{const legs=recordLegs(r),f=legs[0]||{},res=['won','lost','push'].includes(r.result)?r.result:null;return r.kind==='parlay'?[{text:`${legs.length}-leg parlay`,odds:weeklyOdds(r.combined_odds),sub:'¼ unit',res},...legs.map(l=>({leg:true,text:`${l.player} · ${weeklyLegText(l)}`}))]:[{text:`${r.player} · ${weeklyLegText(r)}`,odds:weeklyOdds(r.odds),sub:[xMatchup(f.team),f.book].filter(Boolean).join(' · '),res}]});
 const nbaDecided=r=>['won','lost','push'].includes(r.result)&&(r.status==='final'||recordLegs(r).some(l=>l.decidedEarly));
+// NBA on prediction apps: every 6 hours, one exchange-region call for the
+// next NBA game's main props (points, rebounds, assists, threes; about 4
+// credits) records which apps list NBA player props, for the NBA prediction view.
+const NBA_EXCHANGE_MARKETS=['player_points','player_rebounds','player_assists','player_threes'];
+async function checkNbaExchanges(request,env,ctx,now=Date.now()){
+  if(!env.DB||!env.THE_ODDS_API_KEY)return {disabled:true};
+  let saved={};try{saved=JSON.parse(await appSetting(env,'nba-exchange-check')||'{}')}catch{}
+  if(now-Date.parse(saved.at||0)<6*3600000)return {skipped:true};
+  const schedule=await futureSchedule(new Request(new URL('/api/schedule?sport=NBA',request.url)),env,ctx);if(!schedule.ok)return {error:'schedule'};
+  const next=((await schedule.json()).data||[]).filter(e=>Date.parse(e.status?.startsAt)>now+30*60000).sort((a,b)=>Date.parse(a.status.startsAt)-Date.parse(b.status.startsAt))[0];
+  if(!next)return {games:0};
+  const q=new URLSearchParams({apiKey:env.THE_ODDS_API_KEY,regions:'us_ex',markets:NBA_EXCHANGE_MARKETS.join(','),oddsFormat:'american',dateFormat:'iso'});
+  const r=await fetch(`${API_BASE}/sports/${NBA_SPORT.key}/events/${oddsEventId(next.eventID)}/odds?${q}`,{headers:{accept:'application/json'},signal:AbortSignal.timeout(15000)});
+  if(!r.ok){await setAppSetting(env,'nba-exchange-check',JSON.stringify({at:new Date(now).toISOString(),error:r.status})).catch(()=>{});return {error:r.status}}
+  const d=await r.json(),apps={};
+  for(const b of d.bookmakers||[])if(EXCHANGES[b.key]){const n=(b.markets||[]).reduce((t,m)=>t+(m.outcomes||[]).filter(o=>o.description).length,0);if(n)apps[EXCHANGES[b.key]]=n}
+  await setAppSetting(env,'nba-exchange-check',JSON.stringify({at:new Date(now).toISOString(),game:`${d.away_team||''} @ ${d.home_team||''}`,apps}));
+  return {apps};
+}
+async function nbaExchangeStatus(env){try{const s=JSON.parse(await appSetting(env,'nba-exchange-check')||'null');return s?{at:s.at,apps:s.apps||{}}:null}catch{return null}}
 // NBA launch post: one X post once the first regular-season game's player
 // props are on our board. The watch reads that one game's board every 30
 // minutes from 4 days out until it sees props; x-nba=hold stops the post.
@@ -3482,23 +3517,25 @@ async function postProofToX(env,now=Date.now()){
 }
 async function runXPosts(env,now=Date.now()){
   const picks=await postPicksToX(env,now);
+  // Prediction picks go next, while the run has requests to spare for the
+  // player photo (late in a busy run the photo download was cut off).
+  const predictions=picks.posted?{posted:0,waiting:true}:await postPredictionPicksToX(env,now).catch(error=>({posted:0,error:error.message}));
   const weekly=await postWeeklyToX(env,now);
   const closing=await postClosingToX(env,now);
   // A result graphic needs about as many requests as a pick, so it waits
   // for a run that didn't already post a pick or the weekly graphic.
   // The day's slate graphic waits for a run that didn't post a pick or the weekly.
-  const combo=picks.posted||weekly.posted?{posted:0,waiting:true}:await postComboToX(env,now).catch(error=>({posted:0,error:error.message}));
-  const final=picks.posted||weekly.posted||combo.posted?{posted:0,waiting:true}:await postSlateToX(env,now,true);
-  const slate=picks.posted||combo.posted||weekly.posted||final.posted?{posted:0,waiting:true}:await postSlateToX(env,now);
-  const pin=picks.posted||combo.posted||weekly.posted||final.posted||slate.posted?{posted:0,waiting:true}:await postAlertsPinToX(env,now);
-  const recap=picks.posted||combo.posted||weekly.posted||final.posted||slate.posted||pin.posted?{posted:0,waiting:true}:await postDayRecapToX(env,now);
+  const combo=picks.posted||predictions.posted||weekly.posted?{posted:0,waiting:true}:await postComboToX(env,now).catch(error=>({posted:0,error:error.message}));
+  const final=picks.posted||predictions.posted||weekly.posted||combo.posted?{posted:0,waiting:true}:await postSlateToX(env,now,true);
+  const slate=picks.posted||predictions.posted||combo.posted||weekly.posted||final.posted?{posted:0,waiting:true}:await postSlateToX(env,now);
+  const pin=picks.posted||predictions.posted||combo.posted||weekly.posted||final.posted||slate.posted?{posted:0,waiting:true}:await postAlertsPinToX(env,now);
+  const recap=picks.posted||predictions.posted||combo.posted||weekly.posted||final.posted||slate.posted||pin.posted?{posted:0,waiting:true}:await postDayRecapToX(env,now);
   const proof=await postProofToX(env,now);
   const nbaLaunch=await postNbaLaunchToX(env,now).catch(error=>({posted:0,error:error.message}));
-  const nba=picks.posted||combo.posted||weekly.posted||final.posted||slate.posted?{posted:0,waiting:true}:await postNbaCardToX(env,now).catch(error=>({posted:0,error:error.message}));
-  const predictions=picks.posted?{posted:0,waiting:true}:await postPredictionPicksToX(env,now).catch(error=>({posted:0,error:error.message}));
-  const results=picks.posted||combo.posted||weekly.posted||final.posted||slate.posted||pin.posted||recap.posted?{posted:0,waiting:true}:await postResultsToX(env,now);
+  const nba=picks.posted||predictions.posted||combo.posted||weekly.posted||final.posted||slate.posted?{posted:0,waiting:true}:await postNbaCardToX(env,now).catch(error=>({posted:0,error:error.message}));
+  const results=picks.posted||predictions.posted||combo.posted||weekly.posted||final.posted||slate.posted||pin.posted||recap.posted?{posted:0,waiting:true}:await postResultsToX(env,now);
   // The pinned summary waits for a run with nothing else heavy.
-  const summary=picks.posted||combo.posted||weekly.posted||final.posted||slate.posted||pin.posted||recap.posted||results.posted?{posted:0,waiting:true}:await postSummaryToX(env,now);
+  const summary=picks.posted||predictions.posted||combo.posted||weekly.posted||final.posted||slate.posted||pin.posted||recap.posted||results.posted?{posted:0,waiting:true}:await postSummaryToX(env,now);
   return {picks,weekly,closing,combo,final,slate,pin,recap,proof,nbaLaunch,nba,predictions,results,summary};
 }
 // "My book" alerts: a good-value price at one of someone's own sportsbooks.

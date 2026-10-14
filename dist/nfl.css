@@ -1305,7 +1305,7 @@ html body .prop-card.compact-card.compact-read{opacity:1!important}
 .league-switch button{min-height:36px;padding:0 16px;border:0;border-radius:999px;background:none;color:var(--muted);font:700 14px/1 "Space Grotesk",sans-serif;cursor:pointer}
 .league-switch button[aria-pressed="true"]{background:var(--text);color:var(--bg)}
 .league-switch small{margin-left:6px;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;opacity:.75}
-html[data-league="NBA"] #priceView,html[data-league="NBA"] #pmBanner{display:none!important}
+html[data-league="NBA"] #pmBanner{display:none!important}
 /* Audit 6: light mode for the Settings panel (it kept its dark gradient and
    dark tab/section/footer backgrounds while its text turned dark) and for
    the parlay card's "Details & why" button (near-white text on pale blue). */
@@ -1986,3 +1986,5 @@ body.light .bs-alert{background:#eef4ff;border-color:#bfd3fb}
 #settingsDialog .st-foot{padding-bottom:calc(12px + env(safe-area-inset-bottom))!important}
 .welcome-dialog{max-height:calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom))}
 .hit-dialog{max-height:calc(100dvh - 32px - env(safe-area-inset-top))}
+
+.pm-nba-note .pm-nba-switch{margin:10px 0 0}
