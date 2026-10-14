@@ -1995,7 +1995,7 @@ body.light .bs-alert{background:#eef4ff;border-color:#bfd3fb}
 #alertsHero:not([hidden]){margin-bottom:10px}
 @media(max-width:720px){#heroBanner .hero-title{white-space:nowrap;font-size:16px}#heroBanner .hero-link{font-size:12.5px;white-space:nowrap}}
 .hs-short{display:none}
-@media(max-width:420px){.hs-long{display:none}.hs-short{display:inline}}
+@media(max-width:720px){.hs-long{display:none}.hs-short{display:inline}}
 .bookmark-tools{display:none!important}
 #advancedFilters{display:none!important}
 .has-rail .hs-long{display:none}.has-rail .hs-short{display:inline}
@@ -2018,3 +2018,27 @@ body.light .slip-books{border-color:#d2e0ee;background:#f7fafc}body.light .slip-
 #parlaySummary .slip-books>div,#parlaySummary .slip-books-row{display:grid!important;grid-template-columns:1fr auto auto;align-items:center;gap:8px;padding:7px 0;margin:0;background:none;border-radius:0}
 #parlaySummary .slip-books>.slip-books-head{display:flex!important;justify-content:space-between;padding:0 0 4px}
 #parlaySummary .slip-books-row b{font-size:13px;white-space:nowrap}#parlaySummary .slip-books-row span{font-size:13px}
+/* Audit 8: picks, parlays and Worth a look are one compact list on phones and
+   tablets (slim rows in one panel) instead of swipe rows of big cards. */
+@media (max-width:1179px){
+  html body #officialNowList,html body #parlaysList,html body #leansList.on-list,html body #pmPicksList,html body #pmParlaysList{display:block!important;overflow:visible!important;scroll-snap-type:none!important;padding:0!important;border:1px solid var(--line);border-radius:14px;background:var(--panel)}
+  html body #officialNowList .on-row,html body #parlaysList .on-row,html body #leansList .on-row.lean-row,html body #pmPicksList .on-row,html body #pmParlaysList .on-row{display:flex!important;width:auto!important;flex:none!important;min-height:0;margin:0;padding:8px 12px!important;gap:10px;border:0!important;border-top:1px solid var(--line)!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;scroll-snap-align:none}
+  html body #officialNowList>.on-row:first-child,html body #parlaysList>.on-row:first-child,html body #leansList>.on-row:first-child,html body #pmPicksList>.on-row:first-child,html body #pmParlaysList>.on-row:first-child{border-top:0!important}
+  html body #officialNowList .on-avatar,html body #leansList .on-avatar,html body #pmPicksList .on-avatar,html body #parlaysList .on-avatar,html body #pmParlaysList .on-avatar{width:32px!important;height:32px!important;font-size:11px}
+  html body #officialNowList .on-who b,html body #leansList .on-who b,html body #pmPicksList .on-who b,html body #parlaysList .on-who b,html body #pmParlaysList .on-who b{font-size:14.5px}
+  html body #officialNowList .on-who>span,html body #leansList .on-who>span,html body #pmPicksList .on-who>span{font-size:13px}
+  html body #officialNowList .on-who small,html body #leansList .on-who small,html body #pmPicksList .on-who small{font-size:11.5px}
+  html body #leansList .lean-kicker,html body #leansList .on-form,html body #officialNowList .on-form{display:none!important}
+  html body #officialNowList .on-price,html body #leansList .on-price,html body #pmPicksList .on-price{font-size:14px;padding:3px 8px}
+  html body #officialNowList>.on-more:not([hidden]),html body #officialNowList>.on-final:not([hidden]){display:block!important}
+  html body #officialNowList>.on-more[hidden],html body #officialNowList>.on-final[hidden]{display:none!important}
+  html body #officialNowList .on-more>.on-row,html body #officialNowList .on-final>.on-row{border-top:1px solid var(--line)!important}
+  html body #officialNowList>.on-toggle,html body #parlaysList>.on-toggle{display:block!important;width:100%;margin:0;border:0;border-top:1px solid var(--line);border-radius:0;background:transparent;padding:9px 12px;font-size:13px}
+  html body #officialNowList .on-empty,html body #pmPicksList .on-empty{border:0;margin:0;padding:10px 12px;font-size:13px}
+  html body #officialNowList .on-empty strong,html body #pmPicksList .on-empty strong{font-size:14px}
+}
+@media (max-width:1179px){html body #officialNowList .on-row,html body #leansList .on-row,html body #pmPicksList .on-row,html body #parlaysList .on-row{max-width:none!important;margin-right:0!important}
+  html body #leansList>.lean-row.lean-extra{display:none!important}html body #leansList.open>.lean-row.lean-extra{display:flex!important}
+  html body #leansList>.on-toggle{display:block;width:100%;margin:0;border:0;border-top:1px solid var(--line);background:transparent;padding:9px 12px;font:600 13px 'DM Sans',sans-serif;color:var(--muted,#9aa6b2);cursor:pointer}}
+@media (min-width:1180px){html body #leansList>.on-toggle{display:none}}
+@media (max-width:1179px){html body #officialNowList .on-row,html body #leansList .on-row,html body #pmPicksList .on-row,html body #parlaysList .on-row,html body #pmParlaysList .on-row{width:100%!important;box-sizing:border-box}}

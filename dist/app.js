@@ -2531,7 +2531,10 @@ function statsProp(l){
     const host=document.getElementById('leansNow'),now=Date.now(),list=leans.filter(l=>Date.parse(l.gameTime)>now);
     host.hidden=!list.length;if(!list.length)return;
     document.getElementById('leansCount').textContent=String(list.length);
-    document.getElementById('leansList').innerHTML=list.map(row).join('');
+    // Phones show three; the rest open with See all (desktop shows every one).
+    const box=document.getElementById('leansList');box.classList.remove('open');
+    box.innerHTML=list.map((l,i)=>i<3?row(l,i):row(l,i).replace('class="on-row lean-row','class="on-row lean-row lean-extra')).join('')+(list.length>3?`<button type="button" class="on-toggle" aria-expanded="false">See all ${list.length}</button>`:'');
+    const more=box.querySelector(':scope>.on-toggle');if(more)more.onclick=()=>{const open=!box.classList.contains('open');box.classList.toggle('open',open);more.setAttribute('aria-expanded',String(open));more.textContent=open?'Show fewer':`See all ${list.length}`};
   }
   async function load(){try{const r=await fetch(`/api/leans${LEAGUE==='NBA'?'?sport=NBA':''}`);const body=await r.json();if(!r.ok||!Array.isArray(body?.leans))return;leans=body.leans;render()}catch{}}
   load();setInterval(load,5*60000);
@@ -2924,3 +2927,6 @@ function statsProp(l){
   window.BTGSlip={weekPicks,addPicks,paintAdd};
   setTimeout(()=>{try{paintAdd()}catch{}},2500);
 })();
+
+// The tab bar on Results and the other pages links More to /?more=1: open the sheet.
+(()=>{try{if(typeof location==='undefined'||new URLSearchParams(location.search).get('more')!=='1')return;const sheet=document.getElementById('moreSheet');if(sheet?.showModal&&!sheet.open)setTimeout(()=>sheet.showModal(),300);const url=new URL(location.href);url.searchParams.delete('more');history.replaceState(history.state,'',url)}catch{}})();
