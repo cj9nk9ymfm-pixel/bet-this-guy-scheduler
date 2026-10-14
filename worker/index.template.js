@@ -495,6 +495,8 @@ function espnImageFrom(payload, name, league) {
   const id = String(exact.uid || "").match(/~a:(\d+)/)?.[1] || (/^\d+$/.test(String(exact.id || "")) ? exact.id : null);
   return exact.image?.default || exact.image?.defaultDark || (id ? `https://a.espncdn.com/i/headshots/${league}/players/full/${id}.png` : null);
 }
+// The last lookup's steps, for the headshot-probe owner check.
+let headshotTrace = [];
 // A player's ESPN headshot as raw bytes (for the X pick graphics), or null.
 // ESPN's search can miss hyphenated or punctuated names, so it retries with
 // the punctuation as spaces, then the last name alone.
@@ -504,17 +506,22 @@ async function playerHeadshot(name, sport = "NFL") {
     const plain = String(name).replace(/[-'.]/g, " ").replace(/\s+/g, " ").trim();
     const queries = [...new Set([name, plain, String(name).trim().split(/\s+/).slice(1).join(" ")].filter(Boolean))];
     let url = null;
+    headshotTrace = [];
     for (const query of queries) {
       const response = await fetch(`https://site.web.api.espn.com/apis/search/v2?query=${encodeURIComponent(query)}&limit=8`, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(8000) });
-      if (response.ok) url = espnImageFrom(await response.json(), name, league);
+      const payload = response.ok ? await response.json() : null;
+      if (payload) url = espnImageFrom(payload, name, league);
+      const found = (payload?.results || []).find(group => group.type === "player")?.contents || [];
+      headshotTrace.push({ query, status: response.status, players: found.slice(0, 4).map(p => `${p.displayName}|${p.description || p.defaultLeagueSlug || ""}|${p.image ? "img" : "noimg"}`), url });
       if (url) break;
     }
     if (!url) return null;
     const image = await fetch(url, { signal: AbortSignal.timeout(8000) });
     const type = image.headers.get("content-type") || "";
+    headshotTrace.push({ image: image.status, type });
     if (!image.ok || !/png|jpe?g/.test(type)) return null;
     return { bytes: new Uint8Array(await image.arrayBuffer()), type: type.includes("png") ? "image/png" : "image/jpeg" };
-  } catch { return null; }
+  } catch (error) { headshotTrace.push({ error: error.message }); return null; }
 }
 // Which team a player is on (abbreviation + full name), from BALLDONTLIE.
 async function playerTeamOf(env, sport, name, gameTeams) {
