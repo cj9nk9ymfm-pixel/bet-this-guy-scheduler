@@ -2,6 +2,7 @@ const assert=require('node:assert/strict'),vm=require('node:vm'),{webcrypto}=req
 const {read}=require('./helpers/client.cjs');
 const context=vm.createContext({URL,URLSearchParams,Request,Response,Headers,AbortSignal,Date,console,crypto:webcrypto,TextEncoder,setTimeout,clearTimeout,fetch:async()=>{throw Error('Unexpected provider call')}});
 const template=read('worker/index.template.js');vm.runInContext(template.slice(template.indexOf('const API_BASE')).replace('__MOVEMENT_SERVER__',read('worker/movement.js')).replace('__LIVE_SERVER__',read('worker/live.js')).replace('__STATS_SHARED__',read('dist/stats.js')).replace('__RECORDS_SERVER__',read('worker/records.js')).replace('__ACCOUNTS_SERVER__',read('worker/accounts.js')).replace('export default {','this.worker={'),context);const run=s=>vm.runInContext(s,context);
+vm.runInContext('RETIRED_SHADOWS.clear()',context); // these tests exercise the retired shadow loggers
 context.env={DB:{},THE_ODDS_API_KEY:'fixture',BALLDONTLIE_API_KEY:'fixture',MAINTENANCE_TOKEN:'fixture-token-only-01234567890123456789'};
 const request=(job,token=context.env.MAINTENANCE_TOKEN,method='POST')=>new Request('https://test.invalid/api/maintenance?job='+job,{method,headers:token?{authorization:'Bearer '+token}:{}});
 async function call(req){context.req=req;return run('worker.fetch(req,env,{waitUntil(){}})')}
