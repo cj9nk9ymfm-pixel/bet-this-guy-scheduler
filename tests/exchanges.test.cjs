@@ -119,7 +119,13 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
   db.prepare("INSERT INTO app_settings (key,value) VALUES ('x-tag:Novig','off')").run();assert.equal(await run("xAppTag(env,'Novig')"),'Novig','tag can be switched off');db.prepare("UPDATE app_settings SET value='@NovigApp' WHERE key='x-tag:Novig'").run();assert.equal(await run("xAppTag(env,'Novig')"),'@NovigApp','handle can be overridden');
   context.fetch=oldFetch;for(const k of ['X_API_KEY','X_API_SECRET','X_ACCESS_TOKEN','X_ACCESS_SECRET'])delete context.env[k];
   p=await pred(null,{country:'US',regionCode:'TX'});
+  // Tre Tucker is an official prediction pick now, so he leaves Worth a look...
+  assert.deepEqual(p.value,[],'an official prediction pick never doubles as Worth a look');
+  // ...and with that pick gone, the same price is a value play again.
+  const held=db.prepare('SELECT * FROM prediction_picks').all();db.prepare('DELETE FROM prediction_picks').run();
+  p=await pred(null,{country:'US',regionCode:'TX'});
   assert.deepEqual(p.value.map(v=>[v.exchange,v.player,v.side,v.odds]),[['Novig','Tre Tucker','Over',115]]);assert.ok(p.value[0].edge>2);
+  for(const r of held){const k=Object.keys(r);db.prepare(`INSERT INTO prediction_picks (${k.join(',')}) VALUES (${k.map(()=>'?').join(',')})`).run(...k.map(x=>r[x]))}
   p=await pred('CT',{country:'US',regionCode:'TX'});
   assert.equal(p.state,'CT');assert.equal(p.mode,'sportsbooks');assert.equal(p.value.length,0,'Novig is out in Connecticut');
   assert.equal((await pred(null,{country:'CA',regionCode:'ON'})).mode,'unknown');
