@@ -1805,7 +1805,8 @@ async function predictionBoardResponse(request,env,now=Date.now()){
   if(!row||(!live&&now-Date.parse(row.updated_at)>3*3600000))return new Response(JSON.stringify({success:true,prices:[]}),{headers:head});
   let list=[];try{list=JSON.parse(row.prices_json)}catch{}
   const allowed=new Set(where.exchangeKeys),best=new Map();
-  for(const p of list){if(!allowed.has(p[0]))continue;const k=`${normalizedName(p[1])}|${p[2]}|${p[3]}|${p[4]}`,b=best.get(k);if(!b||recordDecimal(p[5])>recordDecimal(b[5]))best.set(k,p)}
+  // A side priced at 95%+ (e.g. -9900) is an empty book, not a price: never shown.
+  for(const p of list){if(!allowed.has(p[0])||!(Number(p[5])>-1900))continue;const k=`${normalizedName(p[1])}|${p[2]}|${p[3]}|${p[4]}`,b=best.get(k);if(!b||recordDecimal(p[5])>recordDecimal(b[5]))best.set(k,p)}
   return new Response(JSON.stringify({success:true,updatedAt:row.updated_at,prices:[...best.values()].map(p=>[p[1],p[2],p[3],p[4],EXCHANGES[p[0]],p[5]])}),{headers:head});
 }
 async function predictionsResponse(request,env,now=Date.now()){
