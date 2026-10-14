@@ -1329,7 +1329,8 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
   const share=r=>r.kind==='parlay'&&String(r.posted_at||'')>='2026-10-12T18:00:00Z'?.25:1;
   // Same rule as the server's recordPay: a pushed parlay leg drops out of the
   // price; the same-game cut stays only while two remaining legs share a game.
-  const parlayDec=r=>{let legs=[];try{legs=JSON.parse(r.legs_json||'[]')}catch{}if(!legs.length||!legs.every(l=>['won','push'].includes(l.result)))return oddsDecimal(r.combined_odds);const live=legs.filter(l=>l.result==='won');if(!live.length)return 1;const d=live.reduce((t,l)=>t*(oddsDecimal(l.odds)||1),1);return new Set(live.map(l=>l.gameId||l.team||l.player)).size<live.length?1+(d-1)*.8:d};
+  // Prediction parlays keep their after-fee price (the app's parlay fee isn't in the legs).
+  const parlayDec=r=>{if(r.pm)return oddsDecimal(r.combined_odds);let legs=[];try{legs=JSON.parse(r.legs_json||'[]')}catch{}if(!legs.length||!legs.every(l=>['won','push'].includes(l.result)))return oddsDecimal(r.combined_odds);const live=legs.filter(l=>l.result==='won');if(!live.length)return 1;const d=live.reduce((t,l)=>t*(oddsDecimal(l.odds)||1),1);return new Set(live.map(l=>l.gameId||l.team||l.player)).size<live.length?1+(d-1)*.8:d};
   const payout=r=>{const d=r.kind==='parlay'?parlayDec(r):oddsDecimal(r.odds),k=heroStake*share(r);return r.result==='won'&&d?k*(d-1):r.result==='lost'?-k:0};
   // Same comparison as the results page: same line only, 0.05% tolerance.
   const beatClose=r=>{
