@@ -2540,15 +2540,18 @@ function statsProp(l){
   if(typeof document.getElementById!=='function'||!document.getElementById('leansNow')||typeof fetch!=='function')return;
   const when=iso=>{const d=new Date(iso);return Number.isFinite(d.getTime())?d.toLocaleString([],{weekday:'short',hour:'numeric',minute:'2-digit'}):''};
   let leans=[];
+  // "$100 wins $110": what a $100 bet wins at a price (American odds), for both Worth a look lists.
+  window.BTGWins=(odds,stake=100)=>{const o=Number(odds),d=o>=100?1+o/100:o<=-100?1+100/-o:null;return d?`$${stake} wins $${Math.round(stake*(d-1))}`:''};
   function row(l,i){
     const initials=String(l.player||'').split(' ').map(x=>x[0]||'').join('').slice(0,3);
     // Short stat names so player and bet share one line.
     const SHORT={'receptions':'rec','receiving yards':'rec yds','rushing yards':'rush yds','passing yards':'pass yds','passing touchdowns':'pass TDs','pass completions':'completions','pass attempts':'pass att','rush attempts':'rush att','rush + receiving yards':'rush+rec yds','interceptions thrown':'INTs','anytime touchdown':'anytime TD','points':'pts','rebounds':'reb','assists':'ast','3-pointers made':'threes','points + rebounds + assists':'PRA'};
     const m=String(l.market||'').toLowerCase(),bet=`${l.side} ${l.line} ${SHORT[m]||m}`;
+    window.BTGShortMarket=x=>SHORT[String(x||'').toLowerCase()]||String(x||'').toLowerCase();
     const game=String(l.team||'').replace(' · @ ',' @ ').replace(' · vs ',' vs '),matchup=game&&typeof compactGameName==='function'?compactGameName(game):game;
     const p={player:l.player,market:l.market,side:l.side,line:Number(l.line)},f=window.BTGForm?.get?.(p);
     const form=f?`${l.side} in ${f.hits} of last ${f.n}`:'';
-    return `<div class="on-row lean-row"><span class="on-avatar"><span>${htmlEscape(initials)}</span><img loading="lazy" decoding="async" src="/api/player-photo?name=${encodeURIComponent(l.player||'')}${LEAGUE==='NBA'?'&sport=NBA':''}" alt="" onerror="this.remove()"></span><span class="on-who">${l.book?`<span class="on-kicker lean-kicker">${htmlEscape(l.book)}</span>`:''}<b>${htmlEscape(l.player)}</b><span>${htmlEscape(bet.charAt(0).toUpperCase()+bet.slice(1))}</span><small>${htmlEscape([matchup,when(l.gameTime)].filter(Boolean).join(' · '))}</small>${form?`<i class="on-form" data-lean-form="${i}">${htmlEscape(form)}</i>`:''}<i class="on-wx" data-wx="${htmlEscape(l.eventId||'')}" hidden></i></span><span class="on-end">${(u=>u?`<a class="on-price lean-book" href="${u}" target="_blank" rel="noopener sponsored" aria-label="Bet at ${htmlEscape(l.book)}">${htmlEscape(formatOdds(l.odds))}</a>`:`<span class="on-price">${htmlEscape(formatOdds(l.odds))}</span>`)(typeof sportsbookDestination==='function'?sportsbookDestination(l.book):null)}</span></div>`;
+    return `<div class="on-row lean-row"><span class="on-avatar"><span>${htmlEscape(initials)}</span><img loading="lazy" decoding="async" src="/api/player-photo?name=${encodeURIComponent(l.player||'')}${LEAGUE==='NBA'?'&sport=NBA':''}" alt="" onerror="this.remove()"></span><span class="on-who">${l.book?`<span class="on-kicker lean-kicker">${htmlEscape(l.book)}</span>`:''}<b>${htmlEscape(l.player)}</b><span>${htmlEscape(bet.charAt(0).toUpperCase()+bet.slice(1))}</span><small>${htmlEscape([matchup,when(l.gameTime)].filter(Boolean).join(' · '))}<em class="lean-win">${htmlEscape(window.BTGWins(l.odds))}</em></small>${form?`<i class="on-form" data-lean-form="${i}">${htmlEscape(form)}</i>`:''}<i class="on-wx" data-wx="${htmlEscape(l.eventId||'')}" hidden></i></span><span class="on-end">${(u=>u?`<a class="on-price lean-book" href="${u}" target="_blank" rel="noopener sponsored" aria-label="Bet at ${htmlEscape(l.book)}">${htmlEscape(formatOdds(l.odds))}</a>`:`<span class="on-price">${htmlEscape(formatOdds(l.odds))}</span>`)(typeof sportsbookDestination==='function'?sportsbookDestination(l.book):null)}</span></div>`;
   }
   function render(){
     // A lean that has since locked as an official pick (single or parlay leg) leaves the list.
@@ -2669,12 +2672,14 @@ function statsProp(l){
     if(host&&count){const rows=[...host.querySelectorAll('.on-row')],shown=rows.filter(r=>!r.classList.contains('pm-hide'));if(!count.dataset.all||!pm)count.dataset.all=String(rows.length);count.textContent=pm&&data?String(shown.length||''):count.dataset.all==='0'?'':count.dataset.all;
       let note=document.getElementById('pmNoPicks');if(pm&&data&&rows.length&&!shown.length){if(!note){note=document.createElement('p');note.id='pmNoPicks';note.className='pm-empty';host.before(note)}note.textContent='None of this week’s picks are on prediction markets yet.';note.hidden=false}else if(note)note.hidden=true}
   }
-  function row(v){
-    const initials=String(v.player||'').split(' ').map(x=>x[0]||'').join('').slice(0,3),bet=`${v.side} ${v.line} ${String(v.market||'').toLowerCase()}`;
+  function row(v,i=0){
+    const initials=String(v.player||'').split(' ').map(x=>x[0]||'').join('').slice(0,3),bet=`${v.side} ${v.line} ${window.BTGShortMarket?window.BTGShortMarket(v.market):String(v.market||'').toLowerCase()}`;
     const game=String(v.team||'').replace(' · @ ',' @ ').replace(' · vs ',' vs '),matchup=game&&typeof compactGameName==='function'?compactGameName(game):game,url=window.BTGApps.link(v.exchange);
     const price=url?`<a class="on-price lean-book pm-price" href="${url}" target="_blank" rel="noopener" aria-label="Open ${htmlEscape(v.exchange)}">${htmlEscape(pct(v.odds))}</a>`:`<span class="on-price pm-price">${htmlEscape(pct(v.odds))}</span>`;
     const why=Number.isFinite(Number(v.fair))?`Fair chance ${Math.round(v.fair)}%`:`${Number(v.edge).toFixed(1)}% better than fair`;
-    return `<div class="on-row lean-row"><span class="on-avatar"><span>${htmlEscape(initials)}</span><img loading="lazy" decoding="async" src="/api/player-photo?name=${encodeURIComponent(v.player||'')}" alt="" onerror="this.remove()"></span><span class="on-who"><span class="on-kicker lean-kicker">${htmlEscape(v.exchange)}</span><b>${htmlEscape(v.player)}</b><span>${htmlEscape(bet.charAt(0).toUpperCase()+bet.slice(1))}</span><small>${htmlEscape([matchup,when(v.gameTime)].filter(Boolean).join(' · '))}</small><i class="on-why">${htmlEscape(why)}</i></span><span class="on-end">${price}</span></div>`;
+    // Same compact row as the sportsbook Worth a look: player and bet, then
+    // game · app · fair chance · what $100 wins at the app's after-fee price.
+    return `<div class="on-row lean-row${i>=2?' lean-extra':''}"><span class="on-avatar"><span>${htmlEscape(initials)}</span><img loading="lazy" decoding="async" src="/api/player-photo?name=${encodeURIComponent(v.player||'')}" alt="" onerror="this.remove()"></span><span class="on-who"><b>${htmlEscape(v.player)}</b><span>${htmlEscape(bet.charAt(0).toUpperCase()+bet.slice(1))}</span><small>${htmlEscape([matchup,when(v.gameTime),v.exchange,why.replace('Fair chance','fair')].filter(Boolean).join(' · '))}<em class="lean-win">${htmlEscape(window.BTGWins?.(v.netOdds??v.odds)||'')}</em></small></span><span class="on-end">${price}</span></div>`;
   }
   // Prediction-market picks: their own card and record (after fees).
   const money=v=>`${v<0?'−':'+'}$${Math.abs(Math.round(v)).toLocaleString('en-US')}`;
@@ -2842,8 +2847,10 @@ function statsProp(l){
     section.hidden=v!=='predictions'||(!value.length&&d.mode!=='unknown');
     if(!section.hidden){
       document.getElementById('pmCount').textContent=value.length?String(value.length):'';
-      document.getElementById('pmList').innerHTML=value.length?value.map(row).join(''):`<p class="pm-empty">${d.mode==='unknown'?'Choose your state to see prediction-market prices.':'No prediction-market prices beat the sportsbooks right now. Prices are checked every 30 minutes.'}</p>`;
+      const pmBox=document.getElementById('pmList');pmBox.classList.remove('open');
+      pmBox.innerHTML=value.length?value.map((v,i)=>row(v,i)).join('')+(value.length>2?`<button type="button" class="on-toggle" aria-expanded="false">See all ${value.length}</button>`:''):`<p class="pm-empty">${d.mode==='unknown'?'Choose your state to see prediction-market prices.':'No prediction-market prices beat the sportsbooks right now. Prices are checked every 30 minutes.'}</p>`;
       document.getElementById('pmWhere').innerHTML=d.mode==='unknown'?picker(d.state):'';
+      {const more=pmBox.querySelector(':scope>.on-toggle');if(more)more.onclick=()=>{const open=!pmBox.classList.contains('open');pmBox.classList.toggle('open',open);more.setAttribute('aria-expanded',String(open));more.textContent=open?'Show fewer':`See all ${value.length}`}}
     }
     document.querySelectorAll('[data-pm-state]').forEach(sel=>sel.onchange=()=>{store(KEY,sel.value);boardPrices.clear();boardWanted.clear();load().then(resync)});
     paintPicks();renderPicks(v);paintBoard();

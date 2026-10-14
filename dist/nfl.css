@@ -2076,3 +2076,19 @@ html body .leans-now .on-head h2{font-size:17px}
 body.light .on-win{color:#047857}body.light .on-win.lost{color:#c62828}
 /* Prediction view: the sportsbook's value tag doesn't describe the app price shown. */
 .prop-card.pm-card .card-money .verdict-pill,.prop-card.pm-card .card-money [class*="verdict"],.prop-card.pm-card .card-money>button,.prop-card.pm-card .card-money>.pill{display:none!important}
+/* Worth a look: what $100 wins, and the prediction list in the same compact form. */
+.lean-win{display:inline;font-style:normal;font-weight:700;color:#2ee6a8;margin-left:6px}.lean-win:empty{display:none}.lean-win::before{content:"· ";color:var(--muted,#9aa6b2);font-weight:400}
+body.light .lean-win{color:#047857}
+html body #pmList.on-list{display:block!important;overflow:visible!important;border:1px solid var(--line);border-radius:14px;background:var(--panel);padding:0!important}
+html body #pmList>.on-row.lean-row{display:flex!important;width:100%!important;flex:none!important;padding:7px 12px!important;gap:9px;min-height:0;border:0!important;border-top:1px solid var(--line)!important;border-radius:0!important;background:transparent!important;box-shadow:none!important}
+html body #pmList>.on-row.lean-row:first-child{border-top:0!important}
+html body #pmList>.lean-row.lean-extra{display:none!important}html body #pmList.open>.lean-row.lean-extra{display:flex!important}
+html body #pmList .on-avatar{width:28px!important;height:28px!important;font-size:10.5px}
+html body #pmList .on-who{display:grid;grid-template-columns:auto 1fr;column-gap:6px;align-items:baseline}
+html body #pmList .on-who b{font-size:14px;line-height:1.25}
+html body #pmList .on-who>span{font-size:13px;line-height:1.25;color:var(--muted,#9aa6b2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+html body #pmList .on-who small{grid-column:1/-1;font-size:11.5px;line-height:1.3}
+html body #pmList .on-price{font-size:13.5px;padding:2px 8px}
+html body #pmList>.on-toggle{display:block!important;width:100%;margin:0;border:0;border-top:1px solid var(--line);background:transparent;padding:8px 12px;font:600 13px 'DM Sans',sans-serif;color:var(--muted,#9aa6b2);cursor:pointer}
+html body #pmList .pm-empty{padding:10px 12px;margin:0}
+.lean-win{display:block;margin-left:0;white-space:nowrap;line-height:1.35}.lean-win::before{content:none}
