@@ -47,12 +47,16 @@ const run=c=>vm.runInContext(c,context),req='new Request("https://betthisguy.com
   assert.equal(first.state,'completed');assert.equal(first.games,2,'only games tipping within 36 hours');
   const rows=db.prepare('SELECT * FROM public_recommendations ORDER BY id').all()
   const singles=rows.filter(r=>r.kind==='prop').sort((a,b)=>a.player.localeCompare(b.player));
-  assert.deepEqual(singles.map(r=>[r.player,r.market,r.side,r.line,r.odds]),[['Jayson Tatum','Points','Over',27.5,115],['Victor Wembanyama','Rebounds','Over',11.5,114]],'one single per game, best edge, no blocks');
+  assert.ok(singles.some(r=>r.player==='Jayson Tatum'&&r.market==='Points'&&r.odds===115)&&singles.some(r=>r.player==='Victor Wembanyama'&&r.market==='Rebounds'&&r.odds===114),'the best edges post');
+  assert.ok(singles.some(r=>r.player==='Jaylen Brown'),'more than one pick from a game when each clears the bar');
+  assert.equal(new Set(singles.map(r=>r.player)).size,singles.length,'one pick per player');
   assert.ok(rows.every(r=>r.id.startsWith('nba|2026-10-27|')&&r.sport==='NBA'),'nightly NBA ids and sport');
   assert.ok(!singles.some(r=>r.player==='Kristaps Porzingis'),'blocks are not an official NBA market');
-  // A second run adds nothing (one per game is already used).
+  // A second run adds nothing new (the same props, already posted).
   run('runtimeFeedCache.clear()');await run(`publishNbaPicks(${req},env,{waitUntil(){}},${now+600000})`);
-  assert.equal(db.prepare("SELECT COUNT(*) n FROM public_recommendations WHERE kind='prop'").get().n,2);
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM public_recommendations WHERE kind='prop'").get().n,singles.length);
+  // The rest follows the two best picks (Tatum, Wembanyama).
+  db.prepare("DELETE FROM public_recommendations WHERE kind='prop' AND player NOT IN ('Jayson Tatum','Victor Wembanyama')").run();
   // NFL readers never see NBA picks.
   assert.equal((await run('homeRecentRows(env)')).length,0,'the NFL home leaves NBA picks out');
   // Worth a look: the near misses are saved for /api/leans?sport=NBA (none here beyond the picks).
@@ -108,7 +112,7 @@ const run=c=>vm.runInContext(c,context),req='new Request("https://betthisguy.com
   const res=await run(`worker.fetch(new Request('https://betthisguy.com/api/record?view=home&sport=NBA'),env,{waitUntil(){}})`);
   const body=await res.json();
   assert.equal(body.sport,'NBA');assert.deepEqual([body.season.wins,body.season.losses,body.season.pushes],[1,0,1]);
-  assert.equal(body.recent.length,rows.length);assert.equal(body.tonight,'2026-10-27');
+  assert.equal(body.recent.length,db.prepare("SELECT COUNT(*) n FROM public_recommendations WHERE id LIKE 'nba|%'").get().n);assert.equal(body.tonight,'2026-10-27');
   // NBA pages: the index with the record, each night's page, the sitemap.
   {const page=await run(`nbaPage(new Request('https://betthisguy.com/nba'),env)`);assert.equal(page.status,200);const html=await page.text();
    assert.match(html,/NBA player prop picks tonight/);assert.match(html,/href="\/nba\/2026-10-27"/);assert.match(html,/1–0–1/);
@@ -120,11 +124,20 @@ const run=c=>vm.runInContext(c,context),req='new Request("https://betthisguy.com
   run('runtimeFeedCache.clear()');
   assert.equal((await run(`watchNbaLaunch(${req},env,{waitUntil(){}},${Date.parse('2026-10-14T12:00:00Z')})`)).waiting,true,'not before 4 days out');
   assert.ok((await run(`watchNbaLaunch(${req},env,{waitUntil(){}},${now})`)).props>0);
-  const before=posts.length;assert.equal((await run(`postNbaLaunchToX(env,${now})`)).posted,1);assert.equal((await run(`postNbaLaunchToX(env,${now+600000})`)).posted,0,'once');
-  assert.match(posts[before].text,/^🏀 NBA player props are live on Bet This Guy/);
+  // Launch thread: five posts at 9 AM PT on opening day, each a reply to the one before, once.
+  const launchAt=Date.parse('2026-10-20T16:00:00Z'),before=posts.length;
+  assert.equal((await run(`postNbaLaunchToX(env,${launchAt-60000})`)).due,false,'not before 9 AM PT Tuesday');
+  assert.equal((await run(`postNbaLaunchToX(env,${launchAt})`)).posted,5);
+  assert.equal((await run(`postNbaLaunchToX(env,${launchAt+600000})`)).done,true,'once');
+  const thread=posts.slice(before);
+  assert.match(thread[0].text,/^🏀 NBA player props start tonight on Bet This Guy\./);assert.ok(!thread[0].reply,'the first post starts the thread');
+  assert.ok(thread.slice(1).every((p,i)=>p.reply),'the rest are replies');assert.match(thread[1].text,/No nightly quota/);assert.match(thread[4].text,/1-800-GAMBLER/);
+  // X counts most symbols and emoji (like • and 🏀) as 2 characters.
+  const xLen=t=>[...t].reduce((n,ch)=>{const c=ch.codePointAt(0);return n+(c<=4351||(c>=8192&&c<=8205)||(c>=8208&&c<=8223)||(c>=8242&&c<=8247)?1:2)},0);
+  assert.ok(thread.every(p=>xLen(p.text)<=280),'every post fits X\'s limit');
   // Nights: a 10:30 PM ET tip is after midnight UTC but stays on its night.
   assert.equal(run(`nbaNight(Date.parse('${late}'))`),'2026-10-27');
   // Cron: NBA nights grade every publish run.
   assert.deepEqual(run(`cronJobs(new Date('2026-10-28T01:00:00Z'))`).includes('grade'),true);
-  console.log('PASS: official NBA picks post one per game on the core markets as soon as props are listed (up to 36 hours before tip-off), stay out of NFL queries, grade from the box score with no-plays as pushes, and serve their own record');
+  console.log('PASS: official NBA picks post every qualifying core-market prop (one per player) as soon as props are listed (up to 36 hours before tip-off), stay out of NFL queries, grade from the box score with no-plays as pushes, and serve their own record');
 })().catch(e=>{console.error(e);process.exit(1)});
