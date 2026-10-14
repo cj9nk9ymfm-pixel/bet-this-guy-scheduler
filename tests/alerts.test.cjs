@@ -26,6 +26,7 @@ const fromB64=s=>Uint8Array.from(Buffer.from(s.replace(/-/g,'+').replace(/_/g,'/
   assert.equal((await call('/api/alerts/subscribe',{endpoint:'https://evil.example/hook',keys})).status,400,'unknown push hosts are refused');
   assert.equal((await call('/api/alerts/subscribe',{endpoint:'https://fcm.googleapis.com/fcm/send/a',keys:{p256dh:'x',auth:'y'}})).status,400,'malformed keys are refused');
   for(const id of ['ok','gone','broken'])assert.equal((await call('/api/alerts/subscribe',{endpoint:`https://fcm.googleapis.com/fcm/send/${id}`,keys})).status,200);
+  assert.equal((await call('/api/alerts/check',{endpoint:'https://fcm.googleapis.com/fcm/send/ok'})).body.active,true,'a held subscription checks out');assert.equal((await call('/api/alerts/check',{endpoint:'https://fcm.googleapis.com/fcm/send/never'})).body.active,false,'an unknown one reads as lapsed');
   await call('/api/alerts/subscribe',{endpoint:'https://web.push.apple.com/QAB-ok2',keys});
   assert.equal(db.prepare('SELECT COUNT(*) n FROM push_subscriptions').get().n,4);
   await call('/api/alerts/subscribe',{endpoint:'https://fcm.googleapis.com/fcm/send/ok',keys});

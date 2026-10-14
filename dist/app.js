@@ -1725,7 +1725,16 @@ if(typeof fetch==='function')window.btgCountVisit?.('view:home');
     if(button.dataset.alertsSheet!==undefined)$('#moreSheet')?.close?.();
     try{const sub=supported()?await current():null;sub?await turnOff(sub):await turnOn()}catch{note('Couldn’t change alerts right now. Try again in a minute.')}
   }));
-  if(supported())current().then(sub=>show(Boolean(sub)));
+  // The phone may still hold a subscription we no longer have (expired and
+  // removed on send): then alerts read as off, with a note to turn them back on.
+  if(supported())current().then(async sub=>{
+    if(!sub){show(false);return}
+    let active=true;try{const r=await fetch('/api/alerts/check',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({endpoint:sub.endpoint})});if(r.ok)active=(await r.json()).active!==false}catch{}
+    if(active){show(true);return}
+    await sub.unsubscribe().catch(()=>{});show(false);window.btgCount?.('alerts:lapsed');
+    note('Your pick alerts stopped working on this device. Tap Get pick alerts to turn them back on.');
+    const bar=document.getElementById('alertsHero');if(bar){bar.hidden=false;bar.classList.add('alerts-hero-pulse')}
+  });
 })();
 
 // Share cards: the Share button attaches a 1080×1080 image of the pick. The
@@ -2966,3 +2975,15 @@ function statsProp(l){
   }
   if(picks&&typeof MutationObserver==='function'){new MutationObserver(empty).observe(picks,{childList:true});empty()}
 })();
+// From the weekly pages' "Turn on alerts" (/?alerts=1): bring the alerts bar
+// back (even if dismissed) and point at it; the tap itself turns them on.
+(()=>{try{
+  if(typeof location==='undefined'||new URLSearchParams(location.search).get('alerts')!=='1')return;
+  const url=new URL(location.href);url.searchParams.delete('alerts');history.replaceState(history.state,'',url);
+  setTimeout(()=>{
+    if(document.documentElement.classList.contains('alerts-on'))return;
+    const bar=document.getElementById('alertsHero');
+    if(bar){bar.hidden=false;document.body.classList.remove('picks-empty');bar.classList.add('alerts-hero-pulse');bar.scrollIntoView({block:'center',behavior:'smooth'});window.btgCount?.('alerts:fromweek')}
+    else document.querySelector('[data-alerts-toggle]')?.focus();
+  },600);
+}catch{}})();

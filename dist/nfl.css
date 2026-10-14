@@ -2050,3 +2050,9 @@ body.picks-empty #alertsHero{display:none!important}
 .on-pitch{display:flex;flex-direction:column;gap:6px}.on-pitch-btn{align-self:flex-start;margin-top:4px;padding:9px 16px;border:0;border-radius:999px;background:#1f6feb;color:#fff;font:700 13.5px 'DM Sans',sans-serif;cursor:pointer}
 #heroBanner+#engineStatus{margin:-2px 2px 10px;font-size:12.5px}
 #propList .board-nudge{display:none!important}
+@keyframes ahPulse{0%,100%{box-shadow:0 0 0 0 rgba(31,111,235,.0)}50%{box-shadow:0 0 0 6px rgba(31,111,235,.35)}}
+#alertsHero.alerts-hero-pulse{animation:ahPulse 1.4s ease-in-out 3}
+body.picks-empty #alertsHero.alerts-hero-pulse:not([hidden]){display:flex!important}
+/* Welcome: alerts, email, or browse (the account button only stands in when alerts are unavailable) */
+#welcomeDialog #wdAccount:not(.wd-primary){display:none!important}
+#hitsStrip:has(#hitsRow:empty),html[data-league="NBA"] #hitsStrip:not(:has(.hit-card-mini)){display:none!important}
