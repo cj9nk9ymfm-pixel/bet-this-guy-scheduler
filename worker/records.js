@@ -1613,16 +1613,22 @@ function predictionRecord(rows){
     profit:Math.round(graded.reduce((s,r)=>s+(r.result==='won'?100*(dec(r.net_odds)-1):r.result==='lost'?-100:0),0)),
     beat:closes.filter(r=>dec(r.odds)>dec(r.close_odds)).length,tracked:closes.length,pending:rows.filter(r=>!r.result).length};
 }
-// Player props on exchanges: one us_ex call per game in the next 48 hours,
-// every 30 minutes (8 credits a game), compared with this run's boards.
+// Player props on exchanges: one us_ex call per game (8 credits) every 30
+// minutes within 48 hours of kickoff, and every 2 hours (at most 6 games a
+// run) from 48 to 96 hours out, so the prediction board fills earlier in
+// the week without blowing a run's request limit.
+const EXCHANGE_AHEAD=96*3600000;
 async function recordExchangeProps(env,boards,now=Date.now()){
   if(!env.DB||!env.THE_ODDS_API_KEY)return {};
   const last=Number(await appSetting(env,'exchange-props-at')||0);
   if(now-last<29*60000)return {skipped:true};
   await setAppSetting(env,'exchange-props-at',String(now));
   const fairs=sportsbookFairs(boards,now),stamp=new Date(now).toISOString(),statements=[],coverage={};let picks=0,games=0;const pmPool=[];
+  const fetchedAt=new Map(((await env.DB.prepare('SELECT event_id,updated_at FROM exchange_prices WHERE game_time>?').bind(stamp).all().catch(()=>({results:[]}))).results||[]).map(r=>[r.event_id,Date.parse(r.updated_at)]));
+  let far=0;
   for(const board of boards){
-    const kick=Date.parse(board.commence_time);if(!(kick>now+5*60000)||kick-now>48*3600000)continue;
+    const kick=Date.parse(board.commence_time);if(!(kick>now+5*60000)||kick-now>EXCHANGE_AHEAD)continue;
+    if(kick-now>48*3600000){const at=fetchedAt.get(board.eventID||`NFL--${board.id}`);if(now-at<2*3600000-60000||far>=6)continue;far++}
     let ex;try{ex=await fetchExchangeOdds(board.id,env.THE_ODDS_API_KEY)}catch{continue}
     games++;const out=exchangePropCandidates(board,ex,fairs,now);
     statements.push(...await recordPredictionPicks(env,board,ex,fairs,now).catch(()=>[]));
@@ -1696,7 +1702,7 @@ function bettingOptions(request){return bettingOptionsFor(visitorState(request))
 // The prediction-market prices on each official prop when it locked: copied
 // onto its first leg (exchanges, best first, and exchangesAt, when those
 // prices were checked) from the saved exchange prices. A pick that locks
-// before its game has exchange prices (they're saved from 48 hours out) gets
+// before its game has exchange prices (they're saved from 96 hours out) gets
 // them the first time they're saved; exchangesAt says when. Set once, never
 // updated, so the results can later show what prediction markets paid.
 async function stampExchangePrices(env,now=Date.now()){

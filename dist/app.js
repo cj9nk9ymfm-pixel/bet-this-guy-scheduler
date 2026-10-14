@@ -3015,6 +3015,6 @@ function statsProp(l){
     if(!box.dataset.plain)box.dataset.plain=box.innerHTML;
     const pm=window.BTGPmBoard?.active?.(),empty=!box.hidden;
     if(pm&&empty){const soon=(typeof props!=='undefined'?props:[]).filter(p=>p.sport===state.boardSport&&Date.parse(p.startsAt)>Date.now()).map(p=>Date.parse(p.startsAt)).sort((a,b)=>a-b)[0];
-      box.innerHTML=`<strong>No prediction app prices for these props yet.</strong><span>Prediction apps open their props about 2 days before each game${soon&&soon-Date.now()>48*3600000?`; the next game opens ${new Date(soon-48*3600000).toLocaleDateString([],{weekday:'long'})}`:''}. Switch to Sportsbook to see every prop now.</span>`}
+      box.innerHTML=`<strong>No prediction app prices for these props yet.</strong><span>We load prediction app prices about 4 days before each game${soon&&soon-Date.now()>96*3600000?`; the next game’s load ${new Date(soon-96*3600000).toLocaleDateString([],{weekday:'long'})}`:''}. Switch to Sportsbook to see every prop now.</span>`}
     else if(box.innerHTML!==box.dataset.plain)box.innerHTML=box.dataset.plain}catch{}return out};
   window.render=render})();
