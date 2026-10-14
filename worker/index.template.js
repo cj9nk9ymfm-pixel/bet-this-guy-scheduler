@@ -497,36 +497,6 @@ function espnImageFrom(payload, name, league) {
   const id = String(exact.uid || "").match(/~a:(\d+)/)?.[1] || (/^\d+$/.test(String(exact.id || "")) ? exact.id : null);
   return exact.image?.default || exact.image?.defaultDark || exact.headshot?.href || (id ? `https://a.espncdn.com/i/headshots/${league}/players/full/${id}.png` : null);
 }
-// A player's photo from his Wikipedia page summary, only when the page is
-// about a football (or basketball) player of that name.
-async function wikipediaHeadshot(name, sport, headers) {
-  const kind = sport === "NBA" ? "basketball" : "American football";
-  const base = String(name).trim().replace(/\s+/g, "_");
-  for (const title of [base, `${base}_(${sport === "NBA" ? "basketball" : "American_football"})`]) {
-    const response = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`, { headers, signal: AbortSignal.timeout(8000) }).catch(() => null);
-    const page = response?.ok ? await response.json().catch(() => null) : null;
-    const fits = page && page.type === "standard" && String(page.description || "").includes(kind) && normalizedName(String(page.title || "").replace(/\s*\(.*\)$/, "")) === normalizedName(name);
-    const image = fits ? page.thumbnail?.source || page.originalimage?.source || null : null;
-    headshotTrace.push({ source: "wikipedia", title, status: response?.status ?? "failed", description: page?.description || null, url: image });
-    if (image) return image;
-    if (fits) return null;
-  }
-  return null;
-}
-// A player's photo address from TheSportsDB, matched on name and sport.
-async function sportsDbHeadshot(name, sport, headers) {
-  const sportName = sport === "NBA" ? "Basketball" : "American Football";
-  for (const query of [...new Set([name, String(name).replace(/[-'.]/g, " ").replace(/\s+/g, " ").trim()])]) {
-    const response = await fetch(`https://www.thesportsdb.com/api/v1/json/3/searchplayers.php?p=${encodeURIComponent(query)}`, { headers, signal: AbortSignal.timeout(8000) }).catch(() => null);
-    const payload = response?.ok ? await response.json().catch(() => null) : null;
-    const players = payload?.player || [];
-    const hit = players.find(p => normalizedName(p.strPlayer) === normalizedName(name) && p.strSport === sportName);
-    const image = hit ? hit.strCutout || hit.strRender || hit.strThumb : null;
-    headshotTrace.push({ source: "sportsdb", query, status: response?.status ?? "failed", players: players.slice(0, 4).map(p => `${p.strPlayer}|${p.strSport}|${p.strCutout ? "cutout" : p.strThumb ? "thumb" : "none"}`), url: image });
-    if (image) return image;
-  }
-  return null;
-}
 // The last lookup's steps, for the headshot-probe owner check.
 let headshotTrace = [];
 // A player's ESPN headshot as raw bytes (for the X pick graphics), or null.
@@ -557,10 +527,8 @@ async function playerHeadshot(name, sport = "NFL") {
       }
       if (url || refused.size === endpoints.length) break;
     }
-    // ESPN refuses Cloudflare Workers outright (403), so Wikipedia's page
-    // photo comes next, then TheSportsDB (its free key is often rate limited).
-    if (!url) url = await wikipediaHeadshot(name, sport, headers);
-    if (!url) url = await sportsDbHeadshot(name, sport, headers);
+    // Only ESPN's transparent headshots: Wikipedia and TheSportsDB photos are
+    // candid shots that look out of place on the card, so no photo beats them.
     if (!url) return null;
     const image = await fetch(url, { headers: { "user-agent": headers["user-agent"] }, signal: AbortSignal.timeout(8000) });
     const type = image.headers.get("content-type") || "";
