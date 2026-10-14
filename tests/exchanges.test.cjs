@@ -113,8 +113,9 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
   run(`renderCardPng=async svg=>{globalThis.lastCard=svg;return new Uint8Array([1])};xUploadImage=async()=>'m1'`);
   const xp=J(await run(`postPredictionPicksToX(env,${now+60000})`));assert.deepEqual([xp.posted,xp.graphic],[1,true],'posts with the card graphic');
   const card=run('lastCard');assert.ok(card.includes('PREDICTION PICK')&&card.includes('47%')&&card.includes('Tre Tucker'),'prediction card shows the pill, chance and player');
-  assert.ok(tweets[0].startsWith('📈 Prediction market pick: Tre Tucker Over 3.5 receptions\nNovig at 47% · fair chance 50%, after fees')&&tweets[0].length<=280&&!/https?:/.test(tweets[0]),tweets[0]);
+  assert.ok(tweets[0].startsWith('📈 Prediction market pick: Tre Tucker Over 3.5 receptions\n@novig at 47% · fair chance 50%, after fees')&&tweets[0].length<=280&&!/https?:/.test(tweets[0]),tweets[0]);
   assert.equal(J(await run(`postPredictionPicksToX(env,${now+120000})`)).posted,0,'once per pick');
+  db.prepare("INSERT INTO app_settings (key,value) VALUES ('x-tag:Novig','off')").run();assert.equal(await run("xAppTag(env,'Novig')"),'Novig','tag can be switched off');db.prepare("UPDATE app_settings SET value='@NovigApp' WHERE key='x-tag:Novig'").run();assert.equal(await run("xAppTag(env,'Novig')"),'@NovigApp','handle can be overridden');
   context.fetch=oldFetch;for(const k of ['X_API_KEY','X_API_SECRET','X_ACCESS_TOKEN','X_ACCESS_SECRET'])delete context.env[k];
   p=await pred(null,{country:'US',regionCode:'TX'});
   assert.deepEqual(p.value.map(v=>[v.exchange,v.player,v.side,v.odds]),[['Novig','Tre Tucker','Over',115]]);assert.ok(p.value[0].edge>2);
