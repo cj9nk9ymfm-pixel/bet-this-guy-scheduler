@@ -2679,7 +2679,7 @@ function statsProp(l){
     const why=Number.isFinite(Number(v.fair))?`Fair chance ${Math.round(v.fair)}%`:`${Number(v.edge).toFixed(1)}% better than fair`;
     // Same compact row as the sportsbook Worth a look: player and bet, then
     // game · app · fair chance · what $100 wins at the app's after-fee price.
-    return `<div class="on-row lean-row${i>=2?' lean-extra':''}"><span class="on-avatar"><span>${htmlEscape(initials)}</span><img loading="lazy" decoding="async" src="/api/player-photo?name=${encodeURIComponent(v.player||'')}" alt="" onerror="this.remove()"></span><span class="on-who"><b>${htmlEscape(v.player)}</b><span>${htmlEscape(bet.charAt(0).toUpperCase()+bet.slice(1))}</span><small>${htmlEscape([matchup,when(v.gameTime),v.exchange,why.replace('Fair chance','fair')].filter(Boolean).join(' · '))}<em class="lean-win">${htmlEscape(window.BTGWins?.(v.netOdds??v.odds)||'')}</em></small></span><span class="on-end">${price}</span></div>`;
+    return `<div class="on-row lean-row${i>=2?' lean-extra':''}"><span class="on-avatar"><span>${htmlEscape(initials)}</span><img loading="lazy" decoding="async" src="/api/player-photo?name=${encodeURIComponent(v.player||'')}" alt="" onerror="this.remove()"></span><span class="on-who"><b>${htmlEscape(v.player)}</b><span>${htmlEscape(bet.charAt(0).toUpperCase()+bet.slice(1))}</span><small>${htmlEscape([matchup,when(v.gameTime),v.exchange].filter(Boolean).join(' · '))}<em class="lean-win">${htmlEscape([window.BTGWins?.(v.netOdds??v.odds)||'',why.replace('Fair chance','fair')].filter(Boolean).join(' · '))}</em></small></span><span class="on-end">${price}</span></div>`;
   }
   // Prediction-market picks: their own card and record (after fees).
   const money=v=>`${v<0?'−':'+'}$${Math.abs(Math.round(v)).toLocaleString('en-US')}`;
@@ -2793,20 +2793,21 @@ function statsProp(l){
   // Games in progress: prediction prices move with the game, so reload them every 2 minutes (kept on screen while reloading).
   setInterval(()=>{if(view()!=='predictions'||typeof props==='undefined')return;const now=Date.now();
     for(const id of [...boardPrices.keys()]){const kick=Date.parse(props.find(p=>p.eventID===id)?.startsAt||'');if(kick<=now&&now-kick<4.5*3600000){boardWanted.delete(id);loadBoard(id)}}},120000);
-  // Board filter by app ("Best price on"): only in prediction view, only apps on the board.
+  // Which app's prices the board shows: chosen in Settings ("Prediction app"),
+  // best of every app by default. Each card says which app has that price.
   let appFilter=stored('btg-pm-app');
-  function paintAppFilter(pm){
-    const host=document.getElementById('propList');if(!host)return;let bar=document.getElementById('pmAppFilter');
-    const names=[...new Set([...boardPrices.values()].flatMap(m=>[...m.values()].map(h=>h.exchange)))].sort();
-    if(!pm||names.length<2){bar?.remove();return}
-    if(!bar){bar=document.createElement('div');bar.id='pmAppFilter';bar.className='pm-app-filter';bar.setAttribute('role','group');bar.setAttribute('aria-label','Best price on');host.before(bar)}
-    if(appFilter&&!names.includes(appFilter))appFilter='';
-    bar.innerHTML=`<span>Best price on</span>${['',...names].map(n=>`<button type="button" data-pm-app="${htmlEscape(n)}" aria-pressed="${n===appFilter}">${n?chip(n):'All apps'}</button>`).join('')}`;
-    bar.querySelectorAll('[data-pm-app]').forEach(b=>b.onclick=()=>{appFilter=b.dataset.pmApp;store('btg-pm-app',appFilter);paintBoard();try{window.render?.()}catch{}});
+  function paintAppFilter(){
+    document.getElementById('pmAppFilter')?.remove();
+    const sel=document.getElementById('stPmApp');if(!sel)return;
+    const names=[...new Set([...(data?.exchanges||[]),...[...boardPrices.values()].flatMap(m=>[...m.values()].map(h=>h.exchange))])].sort();
+    if(appFilter&&names.length&&!names.includes(appFilter)){appFilter='';store('btg-pm-app','')}
+    const want=['',...names].join('|');if(sel.dataset.names!==want){sel.dataset.names=want;sel.innerHTML=['',...names].map(n=>`<option value="${htmlEscape(n)}">${n?htmlEscape(n):'Any app (best price)'}</option>`).join('')}
+    sel.value=appFilter||'';document.getElementById('stPmAppRow')?.toggleAttribute('hidden',!names.length);
+    if(!sel.dataset.bound){sel.dataset.bound='1';sel.onchange=()=>{appFilter=sel.value;store('btg-pm-app',appFilter);paintBoard();try{window.render?.()}catch{}}}
   }
   function paintBoard(){
     const pm=view()==='predictions';
-    paintAppFilter(pm);
+    paintAppFilter();
     document.querySelectorAll('#propList .prop-card[data-id]').forEach(cardEl=>{
       const b=cardEl.querySelector('.mockup-pick b');if(!b)return;if(!b.dataset.odds)b.dataset.odds=b.textContent;
       let note=cardEl.querySelector('.pm-board');
@@ -2821,8 +2822,8 @@ function statsProp(l){
       cardEl.classList.toggle('pm-hide',!hit||Boolean(appFilter&&hit.exchange!==appFilter));if(!hit)return;
       b.textContent=pct(hit.odds);b.classList.add('pm-price');cardEl.classList.add('pm-card');
       if(moneyText){const o=Number(hit.odds),d=o>=100?1+o/100:o<=-100?1+100/-o:null,stake=Number(String(cardEl.dataset.money||'').match(/\$([\d,.]+)/)?.[1]?.replace(/,/g,''))||100;if(d)moneyText.textContent=`$${stake} wins $${Math.round(stake*(d-1))}`}
-      if(!note){note=document.createElement('small');note.className='pm-board';cardEl.querySelector('.mockup-pick')?.after(note)}
-      const fair=Number(p.fairChance);note.innerHTML=`${chip(hit.exchange)} · ${pct(hit.odds)} chance${Number.isFinite(fair)&&fair>0?` · fair ${Math.round(fair)}%`:''}`;
+      if(!note){note=document.createElement('small');note.className='pm-board';const line=cardEl.querySelector('.card-money');if(line)line.append(note);else cardEl.querySelector('.mockup-pick')?.after(note)}
+      const fair=Number(p.fairChance);note.innerHTML=`Best price on ${chip(hit.exchange)}${Number.isFinite(fair)&&fair>0?` · fair ${Math.round(fair)}%`:''}`;
     });
   }
   const boardNote=()=>{const host=document.getElementById('propList');if(!host)return;const cards=host.querySelectorAll('.prop-card'),shown=[...cards].filter(c=>!c.classList.contains('pm-hide')).length;let n=document.getElementById('pmBoardEmpty');const want=view()==='predictions'&&cards.length&&!shown&&[...boardPrices.keys()].length;if(want&&!n){n=document.createElement('p');n.id='pmBoardEmpty';n.className='pm-empty';n.textContent='None of these props are on prediction markets right now. Prediction markets list receptions, yards, passing TDs, anytime TDs, rush attempts and completions.';host.after(n)}if(n)n.hidden=!want};
@@ -3013,7 +3014,8 @@ function statsProp(l){
     const rec=s&&s.wins+s.losses>=5&&!NBAv?`Season ${s.wins}–${s.losses}, ${Number(s.profit)>=0?'+':'−'}$${Math.abs(Math.round(Number(s.profit)||0)).toLocaleString('en-US')}. `:'';
     const on=document.documentElement.classList.contains('alerts-on');
     box.classList.add('on-pitch');
-    box.innerHTML=`<strong>${NBAv?'No NBA picks yet tonight.':'No picks yet this week.'}</strong><span>${htmlEscape(rec)}${NBAv?'They post as soon as a price qualifies, often the day before.':'Picks usually post Wednesday to Saturday, the moment a price qualifies.'}${on?' Your alerts are on.':''}</span>${on?'':'<button type="button" class="on-pitch-btn">Get a ping when they post</button>'}`;
+    const preNba=NBAv&&Date.now()<Date.parse('2026-10-20T14:00:00Z');
+    box.innerHTML=`<strong>${preNba?'NBA picks start opening night, Tue Oct 20.':NBAv?'No NBA picks yet tonight.':'No picks yet this week.'}</strong><span>${htmlEscape(rec)}${preNba?'Same rules as our football picks: posted only when a price beats the market, every pick graded in public.':NBAv?'They post as soon as a price qualifies, often the day before.':'Picks usually post Wednesday to Saturday, the moment a price qualifies.'}${on?' Your alerts are on.':''}</span>${on?'':'<button type="button" class="on-pitch-btn">Get a ping when they post</button>'}`;
     box.querySelector('.on-pitch-btn')?.addEventListener('click',()=>{window.btgCount?.('empty:alerts');(document.querySelector('[data-alerts-banner]')||document.querySelector('[data-alerts-toggle]'))?.click()});
   }
   if(picks&&typeof MutationObserver==='function'){new MutationObserver(empty).observe(picks,{childList:true});empty()}
@@ -3041,7 +3043,9 @@ function statsProp(l){
   render=function(){const out=base.apply(this,arguments);try{const box=document.getElementById('emptyState');if(!box)return out;
     if(!box.dataset.plain)box.dataset.plain=box.innerHTML;
     const pm=window.BTGPmBoard?.active?.(),empty=!box.hidden;
-    if(pm&&empty){const soon=(typeof props!=='undefined'?props:[]).filter(p=>p.sport===state.boardSport&&Date.parse(p.startsAt)>Date.now()).map(p=>Date.parse(p.startsAt)).sort((a,b)=>a-b)[0];
+    const preNba=typeof LEAGUE!=='undefined'&&LEAGUE==='NBA'&&Date.now()<Date.parse('2026-10-20T14:00:00Z');
+    if(empty&&preNba&&!(typeof props!=='undefined'&&props.length)){box.innerHTML='<strong>NBA props open before opening night, Tue Oct 20.</strong><span>Sportsbooks post player props about a day before tip-off.</span>'}
+    else if(pm&&empty){const soon=(typeof props!=='undefined'?props:[]).filter(p=>p.sport===state.boardSport&&Date.parse(p.startsAt)>Date.now()).map(p=>Date.parse(p.startsAt)).sort((a,b)=>a-b)[0];
       box.innerHTML=`<strong>No prediction app prices for these props yet.</strong><span>We load prediction app prices about 4 days before each game${soon&&soon-Date.now()>96*3600000?`; the next game’s load ${new Date(soon-96*3600000).toLocaleDateString([],{weekday:'long'})}`:''}. Switch to Sportsbook to see every prop now.</span>`}
     else if(box.innerHTML!==box.dataset.plain)box.innerHTML=box.dataset.plain}catch{}return out};
   window.render=render})();
