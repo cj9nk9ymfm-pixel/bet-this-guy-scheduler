@@ -22,10 +22,14 @@ context.fetch=async url=>{url=String(url);asked.push(url);
   const nix=await run("playerHeadshot('Bo Nix','NFL')");assert.ok(nix&&nix.bytes.length===1,'second search address finds him');
   assert.ok(run('headshotTrace').filter(t=>t.endpoint===0).length===1,'a refusing address is tried once');
   // ESPN refuses both addresses: TheSportsDB's photo is used.
-  context.fetch=async url=>{url=String(url);if(url.includes('espn.com'))return new Response('no',{status:403});if(url.includes('r2.thesportsdb'))return new Response(new Uint8Array([4,4]),{headers:{'content-type':'image/png'}});
+  context.fetch=async url=>{url=String(url);if(url.includes('espn.com'))return new Response('no',{status:403});if(url.includes('wikipedia'))return Response.json({type:'standard',title:'Bo Nix',description:'American singer'});if(url.includes('r2.thesportsdb'))return new Response(new Uint8Array([4,4]),{headers:{'content-type':'image/png'}});
     return Response.json({player:[{strPlayer:'Bo Nix',strSport:'Basketball',strCutout:'https://r2.thesportsdb.com/wrong.png'},{strPlayer:'Bo Nix',strSport:'American Football',strCutout:'https://r2.thesportsdb.com/nix.png'}]})};
   const db2=await run("playerHeadshot('Bo Nix','NFL')");assert.ok(db2&&db2.bytes.length===2,'TheSportsDB fills in when ESPN refuses');
   assert.equal(run('headshotTrace').find(t=>t.source==='sportsdb').url,'https://r2.thesportsdb.com/nix.png','matched on sport too');
+  // Wikipedia: used only for a football player's page.
+  context.fetch=async url=>{url=String(url);if(url.includes('espn.com'))return new Response('no',{status:403});if(url.includes('upload.wikimedia'))return new Response(new Uint8Array([5,5,5]),{headers:{'content-type':'image/jpeg'}});
+    if(url.includes('wikipedia'))return Response.json({type:'standard',title:'Jaxon Smith-Njigba',description:'American football player (born 2002)',thumbnail:{source:'https://upload.wikimedia.org/jsn.jpg'}});return new Response('',{status:429})};
+  const wiki=await run("playerHeadshot('Jaxon Smith-Njigba','NFL')");assert.ok(wiki&&wiki.bytes.length===3&&wiki.type==='image/jpeg','Wikipedia photo when ESPN refuses');
   asked.length=0;context.fetch=async()=>Response.json({results:[]});
   assert.equal(await run("playerHeadshot('Nobody Here','NFL')"),null,'no match stays null');
   const db=new DatabaseSync(':memory:');db.exec("CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT)");db.prepare("INSERT INTO app_settings VALUES ('headshot-probe','Nobody Here')").run();
