@@ -516,6 +516,8 @@ async function loadEspnIds(env, now = Date.now()) {
       if (fresh) saved = fresh;
     }
     if (saved?.ids) espnIdMaps[league] = saved.ids;
+    // Hand-checked ids for players Sleeper has no ESPN id for (newer players).
+    try { const extra = JSON.parse((await env.DB.prepare("SELECT value FROM app_settings WHERE key = ?").bind(`espn-ids-extra:${league}`).first())?.value || "null"); if (extra && typeof extra === "object") espnIdMaps[league] = { ...(espnIdMaps[league] || {}), ...extra }; } catch {}
   }
   return espnIdMaps;
 }
