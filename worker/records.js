@@ -1824,6 +1824,8 @@ async function predictionsResponse(request,env,now=Date.now()){
   // Worth a look (prediction view) leaves out official picks and players in prediction parlays.
   const taken=new Set(official.map(r=>`${r.game_id}|${normalizedName(r.player)}`)),value=[];
   for(const r of (((await env.DB.prepare('SELECT legs_json FROM prediction_parlays WHERE game_time>?').bind(stamp).all().catch(()=>({results:[]}))).results)||[])){try{for(const l of JSON.parse(r.legs_json))taken.add(`${l.eventId}|${normalizedName(l.player)}`)}catch{}}
+  // ...and the official prediction picks themselves (a value play that locked as a pick leaves the list).
+  for(const r of (((await env.DB.prepare('SELECT event_id,player FROM prediction_picks WHERE game_time>?').bind(stamp).all().catch(()=>({results:[]}))).results)||[]))taken.add(`${r.event_id}|${normalizedName(r.player)}`);
   const rows=(await env.DB.prepare("SELECT exchange,event_id,player,team,market,side,line,fair_pct,game_time FROM exchange_shadow WHERE kind='prop' AND game_time>?").bind(new Date(now+5*60000).toISOString()).all()).results||[];
   for(const r of rows){
     if(taken.has(`${r.event_id}|${normalizedName(r.player)}`))continue;
