@@ -27,6 +27,16 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
   const cov=JSON.parse(db.prepare("SELECT value FROM app_settings WHERE key='exchange-coverage'").get().value);
   assert.deepEqual(cov.coverage.novig,{lines:2,matched:2});assert.ok(!cov.coverage.bovada,'only prediction markets count');
   out=J(await run(`recordExchangeProps(env,boards,${now+600000})`));assert.deepEqual(out,{skipped:true},'every 30 minutes');
+  // Games 48-96 hours out: fetched too, but every 2 hours rather than every 30 minutes.
+  {const keep=db.prepare("SELECT value FROM app_settings WHERE key='exchange-props-at'").get().value,saveBoards=context.boards,saveFetch=context.fetch;
+   context.boards=[{...saveBoards[0],id:'g9',eventID:'NFL--g9',commence_time:new Date(now+72*3600000).toISOString()}];
+   context.fetch=async url=>{url=String(url);urls.push(url);if(url.includes('/events/g9/odds'))return new Response(JSON.stringify({...exchange,id:'g9'}));return new Response(null,{status:404})};
+   const far=()=>urls.filter(u=>u.includes('/events/g9/odds')).length;
+   await run(`recordExchangeProps(env,boards,${now+31*60000})`);assert.equal(far(),1,'a game three days out gets prediction prices');
+   await run(`recordExchangeProps(env,boards,${now+62*60000})`);assert.equal(far(),1,'not again within two hours');
+   await run(`recordExchangeProps(env,boards,${now+155*60000})`);assert.equal(far(),2,'refreshed after two hours');
+   for(const t of ['exchange_prices','exchange_shadow','prediction_picks'])db.prepare(`DELETE FROM ${t} WHERE event_id='NFL--g9'`).run();
+   db.prepare("UPDATE app_settings SET value=? WHERE key='exchange-props-at'").run(keep);context.boards=saveBoards;context.fetch=saveFetch}
   // Anytime TD: yes/no reads as Over/Under 0.5, and is requested from the exchanges.
   assert.deepEqual(J(run(`exchangePriceList(${JSON.stringify({bookmakers:[{key:'kalshi',markets:[{key:'player_anytime_td',outcomes:[{name:'Yes',description:'Tre Tucker',price:150},{name:'No',description:'Tre Tucker',price:-180}]}]}]})})`)),[['kalshi','Tre Tucker','Anytime Touchdown','Over',0.5,150],['kalshi','Tre Tucker','Anytime Touchdown','Under',0.5,-180]]);
   assert.ok(urls.some(u=>u.includes('player_anytime_td')),'anytime TD is in the exchange request');
