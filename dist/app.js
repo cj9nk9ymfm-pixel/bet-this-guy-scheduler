@@ -2930,3 +2930,39 @@ function statsProp(l){
 
 // The tab bar on Results and the other pages links More to /?more=1: open the sheet.
 (()=>{try{if(typeof location==='undefined'||new URLSearchParams(location.search).get('more')!=='1')return;const sheet=document.getElementById('moreSheet');if(sheet?.showModal&&!sheet.open)setTimeout(()=>sheet.showModal(),300);const url=new URL(location.href);url.searchParams.delete('more');history.replaceState(history.state,'',url)}catch{}})();
+// Audit 2 on home: the board opens collapsed (six props, no tab rows) with a
+// "Browse every prop" button; an empty picks week sells the alerts instead
+// of a blank box; the engine line sits under the record.
+(()=>{
+  if(typeof document.getElementById!=='function'||!document.getElementById('propList'))return;
+  const body=document.body,list=document.getElementById('propList'),SHOW=6;
+  body.classList.add('board-collapsed');
+  const btn=document.createElement('button');btn.type='button';btn.className='board-browse';btn.id='boardBrowse';
+  list.after(btn);
+  function paint(){
+    const cards=[...list.querySelectorAll(':scope>.prop-card')];
+    cards.forEach((c,i)=>c.classList.toggle('board-extra',i>=SHOW));
+    const total=Math.max(cards.length,Number(typeof visiblePropTotal!=='undefined'?visiblePropTotal:0)||0);
+    btn.hidden=!body.classList.contains('board-collapsed')||total<=SHOW;
+    btn.textContent=`Browse every prop (${total})`;
+  }
+  btn.onclick=()=>{body.classList.remove('board-collapsed');btn.hidden=true;window.btgCount?.('board:browse')};
+  if(typeof MutationObserver==='function')new MutationObserver(paint).observe(list,{childList:true});
+  paint();
+  // Engine line under the record.
+  const engine=document.getElementById('engineStatus'),hero=document.getElementById('heroBanner');
+  if(engine&&hero&&innerWidth<=1179)hero.after(engine);
+  // Empty week: the alerts pitch replaces the empty box (and the separate alerts bar).
+  const picks=document.getElementById('officialNowList');
+  function empty(){
+    const box=picks?.querySelector(':scope>.on-empty');body.classList.toggle('picks-empty',Boolean(box));
+    if(!box||box.dataset.pitch)return;box.dataset.pitch='1';
+    const s=window.BTG_SEASON,NBAv=document.documentElement.dataset.league==='NBA';
+    const rec=s&&s.wins+s.losses>=5&&!NBAv?`Season ${s.wins}–${s.losses}, ${Number(s.profit)>=0?'+':'−'}$${Math.abs(Math.round(Number(s.profit)||0)).toLocaleString('en-US')}. `:'';
+    const on=document.documentElement.classList.contains('alerts-on');
+    box.classList.add('on-pitch');
+    box.innerHTML=`<strong>${NBAv?'No NBA picks yet tonight.':'No picks yet this week.'}</strong><span>${htmlEscape(rec)}${NBAv?'They post as soon as a price qualifies, often the day before.':'Picks usually post Wednesday to Saturday, the moment a price qualifies.'}${on?' Your alerts are on.':''}</span>${on?'':'<button type="button" class="on-pitch-btn">Get a ping when they post</button>'}`;
+    box.querySelector('.on-pitch-btn')?.addEventListener('click',()=>{window.btgCount?.('empty:alerts');(document.querySelector('[data-alerts-banner]')||document.querySelector('[data-alerts-toggle]'))?.click()});
+  }
+  if(picks&&typeof MutationObserver==='function'){new MutationObserver(empty).observe(picks,{childList:true});empty()}
+})();

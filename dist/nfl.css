@@ -2042,3 +2042,11 @@ body.light .slip-books{border-color:#d2e0ee;background:#f7fafc}body.light .slip-
   html body #leansList>.on-toggle{display:block;width:100%;margin:0;border:0;border-top:1px solid var(--line);background:transparent;padding:9px 12px;font:600 13px 'DM Sans',sans-serif;color:var(--muted,#9aa6b2);cursor:pointer}}
 @media (min-width:1180px){html body #leansList>.on-toggle{display:none}}
 @media (max-width:1179px){html body #officialNowList .on-row,html body #leansList .on-row,html body #pmPicksList .on-row,html body #parlaysList .on-row,html body #pmParlaysList .on-row{width:100%!important;box-sizing:border-box}}
+/* Audit 2: collapsed board, empty-week pitch, engine line under the record */
+body.board-collapsed #propTypeTabs,body.board-collapsed #gameTabs,body.board-collapsed .controls,body.board-collapsed #loadMoreProps{display:none!important}
+body.board-collapsed #propList>.prop-card.board-extra{display:none!important}
+.board-browse{display:block;width:100%;margin:10px 0 0;padding:12px;border:1px solid var(--line,#26313d);border-radius:12px;background:transparent;color:#7fb4ff;font:700 14px 'DM Sans',sans-serif;cursor:pointer}.board-browse[hidden]{display:none}
+body.picks-empty #alertsHero{display:none!important}
+.on-pitch{display:flex;flex-direction:column;gap:6px}.on-pitch-btn{align-self:flex-start;margin-top:4px;padding:9px 16px;border:0;border-radius:999px;background:#1f6feb;color:#fff;font:700 13.5px 'DM Sans',sans-serif;cursor:pointer}
+#heroBanner+#engineStatus{margin:-2px 2px 10px;font-size:12.5px}
+#propList .board-nudge{display:none!important}
