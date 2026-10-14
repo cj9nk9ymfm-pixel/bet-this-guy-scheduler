@@ -1397,11 +1397,15 @@ const PREDICTION_PARLAY_FEES={novig:p=>10*p*(1-p)};
 // A parlay's after-fee price on its app, from its combined decimal price.
 function predictionParlayNet(key,decimal){const p=1/decimal,fee=(PREDICTION_PARLAY_FEES[key]||(()=>0))(p)/100;return 1/Math.min(.99,p+fee)}
 const PREDICTION_MIN=1,PREDICTION_MAX=12,PREDICTION_PER_GAME=2;
+// Games more than 2 days out: prices are thinner and staler, so a pick needs
+// 2+ points and parlays use no legs from them.
+const PREDICTION_EARLY=48*3600000,PREDICTION_EARLY_MIN=2;
 function predictionNet(key,odds){const d=recordDecimal(odds),p=1/d,win=PREDICTION_WIN_FEES[key],cost=Math.min(.99,win?1/(1+(d-1)*(1-win)):p+(PREDICTION_FEES[key]||(()=>1))(p)/100);return {chance:100*p,netChance:100*cost,netOdds:recordAmerican(1/cost)}}
 function predictionCandidates(board,exchangeBoard,fairs,now=Date.now(),opts={}){
-  const min=opts.min??PREDICTION_MIN,max=opts.max??PREDICTION_MAX;
-  const gameId=board.eventID||`NFL--${board.id}`,kick=Date.parse(board.commence_time),best=new Map();
+  const gameId=board.eventID||`NFL--${board.id}`,kick=Date.parse(board.commence_time),best=new Map(),early=kick-now>PREDICTION_EARLY;
   if(!(kick>now+5*60000))return [];
+  if(early&&opts.noEarly)return [];
+  const min=opts.min??(early?PREDICTION_EARLY_MIN:PREDICTION_MIN),max=opts.max??PREDICTION_MAX;
   for(const ex of exchangeBoard.bookmakers||[]){if(!EXCHANGES[ex.key])continue;
     for(const m of ex.markets||[]){const label=recordLabels[m.key];if(!label)continue;
       for(const o of m.outcomes||[]){
@@ -1632,7 +1636,7 @@ async function recordExchangeProps(env,boards,now=Date.now()){
     let ex;try{ex=await fetchExchangeOdds(board.id,env.THE_ODDS_API_KEY)}catch{continue}
     games++;const out=exchangePropCandidates(board,ex,fairs,now);
     statements.push(...await recordPredictionPicks(env,board,ex,fairs,now).catch(()=>[]));
-    pmPool.push(...predictionCandidates(board,ex,fairs,now,{min:.5,max:1,perExchange:true}));
+    pmPool.push(...predictionCandidates(board,ex,fairs,now,{min:.5,max:1,perExchange:true,noEarly:true}));
     statements.push(env.DB.prepare('INSERT OR REPLACE INTO exchange_prices (event_id,game_time,prices_json,updated_at) VALUES (?,?,?,?)').bind(board.eventID||`NFL--${board.id}`,new Date(kick).toISOString(),JSON.stringify(exchangePriceList(ex)),stamp));
     for(const [k,c] of Object.entries(out.coverage)){const t=coverage[k]||={lines:0,matched:0};t.lines+=c.lines;t.matched+=c.matched}
     for(const p of out.picks){statements.push(exchangeInsert(env,p,stamp));picks++}
