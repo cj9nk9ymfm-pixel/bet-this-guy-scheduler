@@ -6,6 +6,7 @@ const {read}=require('./helpers/client.cjs');
 const context=vm.createContext({URL,URLSearchParams,Request,Response,Headers,AbortSignal,Date,console,setTimeout,clearTimeout,crypto:webcrypto,TextEncoder,btoa,atob,fetch:async()=>new Response(null,{status:404})});
 const template=read('worker/index.template.js');
 vm.runInContext(template.slice(template.indexOf('const API_BASE')).replace('__MOVEMENT_SERVER__',read('worker/movement.js')).replace('__LIVE_SERVER__',read('worker/live.js')).replace('__STATS_SHARED__',read('dist/stats.js')).replace('__RECORDS_SERVER__',read('worker/records.js')).replace('__ACCOUNTS_SERVER__',read('worker/accounts.js')).replace('export default {','this.worker={'),context);
+vm.runInContext('RETIRED_SHADOWS.clear()',context); // these tests exercise the retired shadow loggers
 const db=new DatabaseSync(':memory:');
 for(const f of ['0000_public_record.sql','0003_shared_movement.sql','0009_line_shadow.sql','0014_line_shadow_results.sql'])db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''));
 const wrap=(sql,args=[])=>({bind(...values){return wrap(sql,values)},async first(){return db.prepare(sql).get(...args)||null},async all(){return{results:db.prepare(sql).all(...args)}},async run(){const r=db.prepare(sql).run(...args);return{success:true,meta:{changes:Number(r.changes)}}}});

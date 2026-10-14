@@ -22,6 +22,7 @@ const context=vm.createContext({Date:Clock,URL,URLSearchParams,Request,Response,
   }});
 const template=read('worker/index.template.js');
 vm.runInContext(template.slice(template.indexOf('const API_BASE')).replace('__MOVEMENT_SERVER__',read('worker/movement.js')).replace('__LIVE_SERVER__',read('worker/live.js')).replace('__STATS_SHARED__',read('dist/stats.js')).replace('__RECORDS_SERVER__',read('worker/records.js')).replace('__ACCOUNTS_SERVER__',read('worker/accounts.js')).replace('export default {','this.worker={'),context);
+vm.runInContext('RETIRED_SHADOWS.clear()',context); // these tests exercise the retired shadow loggers
 const db=new DatabaseSync(':memory:');for(const f of ['0000_public_record.sql','0012_nba_shadow.sql'])db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''));
 const wrap=(sql,args=[])=>({bind(...v){return wrap(sql,v)},async all(){return{results:db.prepare(sql).all(...args)}},async run(){const r=db.prepare(sql).run(...args);return{success:true,meta:{changes:Number(r.changes)}}}});
 const env={DB:{prepare:sql=>wrap(sql),async batch(l){for(const s of l)await s.run()}},THE_ODDS_API_KEY:'k',BALLDONTLIE_API_KEY:'k'};context.env=env;

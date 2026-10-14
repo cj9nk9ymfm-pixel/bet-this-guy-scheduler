@@ -156,6 +156,11 @@ const SGP_CUT=.2;
 // use the same direction. Prediction parlays: no game carries more than
 // PARLAYS_PER_GAME (one-game nights otherwise fill the weekly caps).
 const PARLAYS_PER_GAME=3;
+// Shadow tests that ran their course (Oct 14): alt-line value 138-153, live
+// in-game 113-134, defensive matchups 40-57, injury bumps and game lines never
+// filled, and the NBA shadow gave way to official NBA picks. They log nothing
+// new; rows already logged still grade. Tests re-enable them with .clear().
+const RETIRED_SHADOWS=new Set(['line','bump','book','live','game','nba']);
 // A player rides in at most PARLAYS_PER_PLAYER parlays a week (a night for
 // NBA), so one miss can't sink several parlays at once.
 const PARLAYS_PER_PLAYER=1;
@@ -314,6 +319,7 @@ function lineShadowCandidates(events,now=Date.now()){
   return [...best.values()];
 }
 async function recordLineShadow(env,events,now=Date.now()){
+  if(RETIRED_SHADOWS.has('line'))return {retired:true};
   if(!env.DB)return {logged:0};
   const stamp=new Date(now).toISOString(),rows=lineShadowCandidates(events,now);
   const statements=rows.map(r=>env.DB.prepare('INSERT OR IGNORE INTO line_shadow (id,event_id,player,market_key,market,side,line,odds,book,alt,main_line,books,edge,fair,game_time,logged_at,model_json,team) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(r.id,r.event_id,r.player,r.market_key,r.market,r.side,r.line,r.odds,r.book,r.alt,r.main_line,r.books,r.edge,r.fair,r.game_time,stamp,r.model_json,r.team));
@@ -331,6 +337,7 @@ async function recordLineShadow(env,events,now=Date.now()){
 // records the best big-5 price still on offer at the same line, so the last
 // one before tip-off is the closing price; grading follows once stats exist.
 async function recordNbaShadow(request,env,ctx,now=Date.now()){
+  if(RETIRED_SHADOWS.has('nba'))return {retired:true};
   if(!env.DB)return {logged:0};
   const schedule=await futureSchedule(new Request(new URL('/api/schedule?sport=NBA',request.url)),env,ctx);
   if(!schedule.ok)throw new Error('NBA schedule unavailable');
@@ -936,6 +943,7 @@ function mainOver(board,player,marketKey){
   return {line:top[0],odds:top[1].best.price,book:top[1].best.book};
 }
 async function recordBumpShadow(env,boards,injuries,now=Date.now()){
+  if(RETIRED_SHADOWS.has('bump'))return {retired:true};
   if(!env.DB||!injuries?.size)return {logged:0};
   const stamp=new Date(now).toISOString(),statements=[];let logged=0;
   const done=new Set(((await env.DB.prepare('SELECT DISTINCT event_id FROM bump_shadow WHERE game_time>?').bind(stamp).all()).results||[]).map(r=>r.event_id));
@@ -996,6 +1004,7 @@ function liveCheckpoint(g){
   return null;
 }
 async function recordLiveShadow(env,ctx,now=Date.now()){
+  if(RETIRED_SHADOWS.has('live'))return {retired:true};
   if(!env.DB||!env.THE_ODDS_API_KEY||!env.BALLDONTLIE_API_KEY)return {logged:0};
   const live=await (await liveGames(new Request(`${SITE_URL}/api/live`),env,ctx||{waitUntil(){}})).json().catch(()=>({}));
   const playing=(live.games||[]).filter(g=>g.state==='in_progress').map(g=>({...g,check:liveCheckpoint(g)})).filter(g=>g.check);
@@ -1121,6 +1130,7 @@ function gameLinePrice(event,r){
   return top;
 }
 async function recordGameShadow(env,now=Date.now()){
+  if(RETIRED_SHADOWS.has('game'))return {retired:true};
   if(!env.DB||!env.THE_ODDS_API_KEY)return {logged:0};
   // 3 credits a call: every 10 minutes in NFL windows, every 30 otherwise.
   const last=Number(await appSetting(env,'game-lines-at')||0);
@@ -1256,6 +1266,7 @@ function defenseCandidates(boards,form,now=Date.now()){
   return [...best.values()];
 }
 async function recordBookShadow(env,boards,now=Date.now(),opts={}){
+  if(RETIRED_SHADOWS.has('book'))return {retired:true};
   if(!env.DB)return {};
   const stamp=new Date(now).toISOString();
   const locked=new Set(((await env.DB.prepare("SELECT game_id,player FROM public_recommendations WHERE id LIKE 'official|%' AND kind='prop' AND game_time>?").bind(stamp).all()).results||[]).map(r=>`${r.game_id}|${normalizedName(r.player)}`));
