@@ -516,10 +516,42 @@ async function loadEspnIds(env, now = Date.now()) {
       if (fresh) saved = fresh;
     }
     if (saved?.ids) espnIdMaps[league] = saved.ids;
+    // ESPN's own team rosters (a few teams a run, each weekly) cover newer
+    // players Sleeper has no ESPN id for, and win over Sleeper on a clash.
+    const roster = await refreshEspnRosters(env, league, now).catch(() => null);
+    if (roster?.ids) espnIdMaps[league] = { ...(espnIdMaps[league] || {}), ...roster.ids };
     // Hand-checked ids for players Sleeper has no ESPN id for (newer players).
     try { const extra = JSON.parse((await env.DB.prepare("SELECT value FROM app_settings WHERE key = ?").bind(`espn-ids-extra:${league}`).first())?.value || "null"); if (extra && typeof extra === "object") espnIdMaps[league] = { ...(espnIdMaps[league] || {}), ...extra }; } catch {}
   }
   return espnIdMaps;
+}
+const ESPN_TEAMS = {
+  nfl: "ari atl bal buf car chi cin cle dal den det gb hou ind jax kc lv lac lar mia min ne no nyg nyj phi pit sf sea tb ten wsh".split(" "),
+  nba: "atl bos bkn cha chi cle dal den det gs hou ind lac lal mem mia mil min no ny okc orl phi phx por sac sa tor utah wsh".split(" "),
+};
+async function refreshEspnRosters(env, league, now = Date.now(), perRun = 3) {
+  const key = `espn-roster-ids:${league}`;
+  let saved = null;
+  try { saved = JSON.parse((await env.DB.prepare("SELECT value FROM app_settings WHERE key = ?").bind(key).first())?.value || "null"); } catch { saved = null; }
+  saved = saved && typeof saved === "object" ? saved : { at: {}, ids: {} };
+  saved.at ||= {}; saved.ids ||= {};
+  const due = ESPN_TEAMS[league].filter(team => !(now - Date.parse(saved.at[team] || "") < 7 * 86400000)).slice(0, perRun);
+  if (!due.length) return saved;
+  const sport = league === "nba" ? "basketball" : "football";
+  for (const team of due) {
+    const response = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${sport}/${league}/teams/${team}/roster`, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(10000) }).catch(() => null);
+    if (!response?.ok) continue;
+    const payload = await response.json().catch(() => null);
+    // NFL rosters group players by unit (items); NBA lists them flat.
+    const players = (payload?.athletes || []).flatMap(group => Array.isArray(group?.items) ? group.items : [group]);
+    for (const p of players) {
+      const id = String(p?.id || ""), name = normalizedName(p?.fullName || p?.displayName || "");
+      if (/^\d+$/.test(id) && name) saved.ids[name] = Number(id);
+    }
+    if (players.length) saved.at[team] = new Date(now).toISOString();
+  }
+  await env.DB.prepare("INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind(key, JSON.stringify(saved)).run();
+  return saved;
 }
 async function refreshEspnIds(env, league, now = Date.now()) {
   const response = await fetch(`https://api.sleeper.app/v1/players/${league}`, { signal: AbortSignal.timeout(20000) });

@@ -41,5 +41,13 @@ context.fetch=async url=>{url=String(url);asked.push(url);
   seen.length=0;const fromId=await run("playerHeadshot('Bo Nix','NFL')");
   assert.ok(fromId&&fromId.bytes.length===2&&seen.length===1&&seen[0].endsWith('/nfl/players/full/4426338.png'),'one request: the headshot itself');
   seen.length=0;await run('loadEspnIds(env)');assert.ok(!seen.some(u=>u.includes('sleeper')),'the list refreshes weekly, not every run');
+  // ESPN team rosters fill in newer players, three teams a run, each weekly.
+  const roster=team=>({athletes:[{position:'offense',items:[{id:'5000'+team.length,fullName:'Rookie '+team.toUpperCase()}]}]});
+  const hits=[];context.fetch=async url=>{url=String(url);const m=url.match(/teams\/(\w+)\/roster/);if(m){hits.push(m[1]);return Response.json(roster(m[1]))}if(url.includes('sleeper.app'))return Response.json(sleeper);return new Response('no',{status:403})};
+  hits.length=0;await run('loadEspnIds(env)');
+  assert.ok(hits.length>=3&&hits.length<=6,'a few rosters per run (NFL and NBA)');
+  assert.equal(run('espnIdMaps.nfl.rookieari'),50003,'roster player saved');
+  const firstBatch=[...hits];hits.length=0;await run('loadEspnIds(env)');
+  assert.ok(!hits.some(t=>firstBatch.includes(t)),'teams already read wait a week');
   console.log('PASS: headshots retry punctuated names and fall back to the ESPN id');
 })().catch(e=>{console.error(e);process.exit(1)});
