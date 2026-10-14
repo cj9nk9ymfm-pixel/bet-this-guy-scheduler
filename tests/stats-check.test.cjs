@@ -7,7 +7,7 @@ const context=vm.createContext({URL,URLSearchParams,Request,Response,Headers,Abo
 const template=read('worker/index.template.js');
 vm.runInContext(template.slice(template.indexOf('const API_BASE')).replace('__MOVEMENT_SERVER__',read('worker/movement.js')).replace('__LIVE_SERVER__',read('worker/live.js')).replace('__STATS_SHARED__',read('dist/stats.js')).replace('__RECORDS_SERVER__',read('worker/records.js')).replace('__ACCOUNTS_SERVER__',read('worker/accounts.js')).replace('export default {','this.worker={'),context);
 const db=new DatabaseSync(':memory:');
-for(const f of ['0000_public_record.sql','0001_record_settlement.sql','0002_historical_replays.sql','0015_near_shadow.sql','0016_stats_check.sql'])db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''));
+for(const f of ['0000_public_record.sql','0001_record_settlement.sql','0002_historical_replays.sql','0015_near_shadow.sql','0016_stats_check.sql','0028_prediction_picks.sql','0032_prediction_early.sql'])db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''));
 const wrap=(sql,args=[])=>({bind(...values){return wrap(sql,values)},async first(){return db.prepare(sql).get(...args)||null},async all(){return{results:db.prepare(sql).all(...args)}},async run(){const r=db.prepare(sql).run(...args);return{success:true,meta:{changes:Number(r.changes)}}}});
 context.env={DB:{prepare:sql=>wrap(sql),async batch(list){for(const s of list)await s.run()}},BALLDONTLIE_API_KEY:'test'};
 const run=code=>vm.runInContext(code,context);
@@ -68,12 +68,19 @@ const J=v=>JSON.parse(JSON.stringify(v));
   assert.equal(J(await run(`runStatsChecks(env,{waitUntil(){}},${now+700000})`)).checked,0);
   context.playerStats=keep;run('playerStats=globalThis.playerStats');
   assert.equal(J(await run(`runStatsChecks(env,{waitUntil(){}},${now+800000})`)).checked,1,'checked once the provider is back');
+  // Prediction picks are checked too (logged only), ahead of near misses.
+  db.prepare("INSERT INTO prediction_picks(id,exchange,event_id,player,team,market,side,line,odds,net_odds,fair_pct,edge,game_time,posted_at) VALUES('pm|NFL--e|tate','Novig','NFL--e','Carnell Tate',?,'Receptions','Under',4.5,110,110,50,2.4,?,?)").run(team,kick,new Date(now).toISOString());
+  db.prepare("INSERT INTO near_shadow(id,event_id,player,team,market,side,line,odds,book,edge,game_time,logged_at) VALUES('NFL--e|y','NFL--e','Late Guy',?,'Receptions','Over',3.5,-110,'FanDuel',.7,?,?)").run(team,kick,new Date(now).toISOString());
+  assert.equal(J(await run(`runStatsChecks(env,{waitUntil(){}},${now+850000})`)).checked,2);
+  assert.equal(db.prepare("SELECT kind FROM stats_checks WHERE id='pm|NFL--e|tate'").get()?.kind,'pm','prediction pick checked');
+  db.prepare("UPDATE prediction_picks SET result='lost'").run();
   assert.equal(run("statsPos({position:'Wide Receiver'})"),'WR');
   assert.equal(J(await run(`runStatsChecks(env,{waitUntil(){}},Date.parse('${kick}')+60000)`)).checked,0,'never after kickoff');
   // The summary joins results once picks are graded.
   db.prepare("UPDATE public_recommendations SET status='final',result='won'").run();
   const sum=J(await run('statsCheckSummary(env)'));
   assert.deepEqual(sum.find(s=>s.kind==='official'),{kind:'official',verdict:'agree',picks:1,won:1,lost:0,push:0,void:0,pending:0});
+  assert.deepEqual(sum.find(s=>s.kind==='pm'),{kind:'pm',verdict:'agree',picks:1,won:0,lost:1,push:0,void:0,pending:0},'prediction picks get their results');
   // Player lookup: a common surname that crowds the player out falls back to the first name.
   const searches=[];context.bdlRequest=async path=>{const term=new URLSearchParams(path.split('?')[1]).get('search');searches.push(term);
     return {data:term==='Johnson'?Array.from({length:100},(_,i)=>({id:i,first_name:'Other'+i,last_name:'Johnson',team:{full_name:'Dallas Cowboys'}})):term==='Tez'?[{id:7,first_name:'Tez',last_name:'Johnson',team:{full_name:'Tampa Bay Buccaneers'}}]:[]}};
