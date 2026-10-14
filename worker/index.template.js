@@ -487,16 +487,28 @@ async function playerStats(request, env, ctx, opts = {}) {
 
 function espnImageFrom(payload, name, league) {
   const players = (payload?.results || []).find(group => group.type === "player")?.contents || [];
-  const exact = players.find(player => normalizedName(player.displayName) === normalizedName(name) && (player.description === league.toUpperCase() || player.defaultLeagueSlug === league));
-  return exact?.image?.default || exact?.image?.defaultDark || null;
+  const inLeague = player => player.description === league.toUpperCase() || player.defaultLeagueSlug === league;
+  const exact = players.find(player => normalizedName(player.displayName) === normalizedName(name) && inLeague(player));
+  if (!exact) return null;
+  // Some players (hyphenated names among them) come back without an image
+  // link; their ESPN id still gives the standard headshot address.
+  const id = String(exact.uid || "").match(/~a:(\d+)/)?.[1] || (/^\d+$/.test(String(exact.id || "")) ? exact.id : null);
+  return exact.image?.default || exact.image?.defaultDark || (id ? `https://a.espncdn.com/i/headshots/${league}/players/full/${id}.png` : null);
 }
 // A player's ESPN headshot as raw bytes (for the X pick graphics), or null.
+// ESPN's search can miss hyphenated or punctuated names, so it retries with
+// the punctuation as spaces, then the last name alone.
 async function playerHeadshot(name, sport = "NFL") {
   try {
     const league = sport === "NBA" ? "nba" : "nfl";
-    const response = await fetch(`https://site.web.api.espn.com/apis/search/v2?query=${encodeURIComponent(name)}&limit=8`, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(8000) });
-    if (!response.ok) return null;
-    const url = espnImageFrom(await response.json(), name, league);
+    const plain = String(name).replace(/[-'.]/g, " ").replace(/\s+/g, " ").trim();
+    const queries = [...new Set([name, plain, String(name).trim().split(/\s+/).slice(1).join(" ")].filter(Boolean))];
+    let url = null;
+    for (const query of queries) {
+      const response = await fetch(`https://site.web.api.espn.com/apis/search/v2?query=${encodeURIComponent(query)}&limit=8`, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(8000) });
+      if (response.ok) url = espnImageFrom(await response.json(), name, league);
+      if (url) break;
+    }
     if (!url) return null;
     const image = await fetch(url, { signal: AbortSignal.timeout(8000) });
     const type = image.headers.get("content-type") || "";
