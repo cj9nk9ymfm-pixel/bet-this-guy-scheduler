@@ -539,7 +539,9 @@ async function refreshEspnRosters(env, league, now = Date.now(), perRun = 3) {
   if (!due.length) return saved;
   const sport = league === "nba" ? "basketball" : "football";
   for (const team of due) {
-    const response = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${sport}/${league}/teams/${team}/roster`, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(10000) }).catch(() => null);
+    const response = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${sport}/${league}/teams/${team}/roster`, { headers: { accept: "application/json", "user-agent": "Mozilla/5.0 (compatible; BetThisGuy/1.0; +https://betthisguy.com)" }, signal: AbortSignal.timeout(10000) }).catch(() => null);
+    // Why a team failed, for the owner check (espn-roster-last).
+    if (!response?.ok) await env.DB.prepare("INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind("espn-roster-last", `${new Date(now).toISOString()} ${league} ${team} ${response?.status ?? "failed"}`).run().catch(() => {});
     if (!response?.ok) continue;
     const payload = await response.json().catch(() => null);
     // NFL rosters group players by unit (items); NBA lists them flat.
