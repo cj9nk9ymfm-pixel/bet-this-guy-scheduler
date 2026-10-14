@@ -3518,7 +3518,16 @@ async function postProofToX(env,now=Date.now()){
   try{const sent=await xPost(env,text);await xDone(env,key,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} proof ${req} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,beat:s.beat,tracked:s.tracked}}
   catch(error){console.warn('x_proof_failed',error.message);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
 }
+// Owner check: app_settings headshot-probe holds player names (comma-separated);
+// the next run looks each up and saves what ESPN returned to headshot-probe-result.
+async function runHeadshotProbe(env){
+  const names=await appSetting(env,'headshot-probe').catch(()=>null);if(!names||typeof playerHeadshot!=='function')return null;
+  await env.DB.prepare("DELETE FROM app_settings WHERE key='headshot-probe'").run();
+  const out=[];for(const name of String(names).split(',').map(n=>n.trim()).filter(Boolean).slice(0,4)){const shot=await playerHeadshot(name,'NFL');out.push({name,found:Boolean(shot),bytes:shot?.bytes?.length||0,steps:typeof headshotTrace!=='undefined'?headshotTrace:[]})}
+  await setAppSetting(env,'headshot-probe-result',JSON.stringify({at:new Date().toISOString(),out}));return out;
+}
 async function runXPosts(env,now=Date.now()){
+  await runHeadshotProbe(env).catch(()=>null);
   const picks=await postPicksToX(env,now);
   // Prediction picks go next, while the run has requests to spare for the
   // player photo (late in a busy run the photo download was cut off).

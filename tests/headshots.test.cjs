@@ -1,4 +1,4 @@
-const {webcrypto}=require('node:crypto'),fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict'),path=require('node:path');
+const {DatabaseSync}=require('node:sqlite'),{webcrypto}=require('node:crypto'),fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict'),path=require('node:path');
 const root=path.resolve(__dirname,'..'),read=f=>fs.readFileSync(path.join(root,f),'utf8');
 // Headshots for X cards: when ESPN's search misses a hyphenated name, it
 // retries without the hyphen; a hit with no image link uses the ESPN id.
@@ -18,5 +18,11 @@ context.fetch=async url=>{url=String(url);asked.push(url);
   assert.ok(asked.includes('https://a.espncdn.com/i/headshots/nfl/players/full/4430878.png'),'headshot built from the ESPN id');
   asked.length=0;context.fetch=async()=>Response.json({results:[]});
   assert.equal(await run("playerHeadshot('Nobody Here','NFL')"),null,'no match stays null');
+  const db=new DatabaseSync(':memory:');db.exec("CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT)");db.prepare("INSERT INTO app_settings VALUES ('headshot-probe','Nobody Here')").run();
+  const wrap=(sql,args=[])=>({bind(...v){return wrap(sql,v)},async first(){return db.prepare(sql).get(...args)||null},async all(){return{results:db.prepare(sql).all(...args)}},async run(){db.prepare(sql).run(...args);return{success:true}}});
+  context.env={DB:{prepare:sql=>wrap(sql)}};
+  const probe=await run('runHeadshotProbe(env)');assert.equal(probe[0].found,false);
+  const saved=JSON.parse(db.prepare("SELECT value FROM app_settings WHERE key='headshot-probe-result'").get().value);
+  assert.ok(saved.out[0].steps.length>=1&&!db.prepare("SELECT 1 FROM app_settings WHERE key='headshot-probe'").get(),'probe saves its steps once');
   console.log('PASS: headshots retry punctuated names and fall back to the ESPN id');
 })().catch(e=>{console.error(e);process.exit(1)});
