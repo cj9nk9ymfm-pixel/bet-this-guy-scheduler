@@ -573,7 +573,7 @@ function refreshDependentOptions(){const allSportProps=props.filter(p=>state.spo
 function refreshFilterCatalog(){const sportSelect=$('#sportFilterAdvanced');sportSelect.innerHTML=`<option value="${LEAGUE}">${LEAGUE}</option>`;state.sport=LEAGUE;state.market=setOptions($('#propFilterAdvanced'),unique([...props.map(p=>p.market),...(state.market==='All'?[]:[state.market])]),'All prop types',state.market);refreshDependentOptions()}
 function renderBoardSubtabs(){
   const parlayMode=['parlays','generator'].includes(document.body.dataset.mobilePage),marketKey=parlayMode?'market':'boardMarket',gameKey=parlayMode?'game':'boardGame';
-  const marketBar=$('#propTypeTabs'),gameBar=$('#gameTabs'),sportProps=props.filter(p=>p.sport===state.boardSport);
+  const marketBar=$('#propTypeTabs'),gameBar=$('#gameTabs'),pmOnly=window.BTGPmBoard?.active?.(),sportProps=props.filter(p=>p.sport===state.boardSport&&(!pmOnly||window.BTGPmBoard.has(p)));
   if(state.boardSport==='All'){marketBar.hidden=true;gameBar.hidden=true;state.boardMarket='All';state.boardGame='All';return}
   const counts=marketCounts(sportProps),markets=[...counts.keys()].sort((a,b)=>counts.get(b)-counts.get(a)||a.localeCompare(b));
   if(!markets.includes(state[marketKey])){if(parlayMode&&state[marketKey]!=='All')markets.push(state[marketKey]);else state[marketKey]='All'}
@@ -2753,7 +2753,19 @@ function statsProp(l){
     if(!id||boardWanted.has(id))return;boardWanted.add(id);
     try{const st=stored(KEY),r=await fetch(`/api/predictions/board?event=${encodeURIComponent(id)}${st?`&state=${encodeURIComponent(st)}`:''}`);const body=await r.json();const m=new Map();for(const p of body?.prices||[])m.set(`${String(p[0]).toLowerCase().replace(/[^a-z]/g,'')}|${p[1]}|${p[2]}|${p[3]}`,{exchange:p[4],odds:p[5]});boardPrices.set(id,m)}catch{boardPrices.set(id,new Map())}
     paintBoard();
+    // The list and the tab counts are filtered by these prices: redraw once a game's arrive.
+    clearTimeout(pmRedraw);pmRedraw=setTimeout(()=>{try{if(view()==='predictions')window.render?.()}catch{}},120);
   }
+  let pmRedraw=null;
+  // Prediction view: a prop is on the board only with a prediction-app price in
+  // the visitor's state (and on the chosen app). Used for the list and the tab
+  // counts alike, so a count never promises props the list then hides.
+  window.BTGPmBoard={
+    active:()=>view()==='predictions',
+    has(p){const id=p?.eventID;if(!id)return false;if(!boardPrices.has(id)){loadBoard(id);return false}
+      const hit=boardPrices.get(id).get(`${String(p.player).toLowerCase().replace(/[^a-z]/g,'')}|${p.market}|${p.side}|${Number(p.line)}`);
+      return Boolean(hit&&(!appFilter||hit.exchange===appFilter))}
+  };
   // Games in progress: prediction prices move with the game, so reload them every 2 minutes (kept on screen while reloading).
   setInterval(()=>{if(view()!=='predictions'||typeof props==='undefined')return;const now=Date.now();
     for(const id of [...boardPrices.keys()]){const kick=Date.parse(props.find(p=>p.eventID===id)?.startsAt||'');if(kick<=now&&now-kick<4.5*3600000){boardWanted.delete(id);loadBoard(id)}}},120000);
@@ -2766,7 +2778,7 @@ function statsProp(l){
     if(!bar){bar=document.createElement('div');bar.id='pmAppFilter';bar.className='pm-app-filter';bar.setAttribute('role','group');bar.setAttribute('aria-label','Best price on');host.before(bar)}
     if(appFilter&&!names.includes(appFilter))appFilter='';
     bar.innerHTML=`<span>Best price on</span>${['',...names].map(n=>`<button type="button" data-pm-app="${htmlEscape(n)}" aria-pressed="${n===appFilter}">${n?chip(n):'All apps'}</button>`).join('')}`;
-    bar.querySelectorAll('[data-pm-app]').forEach(b=>b.onclick=()=>{appFilter=b.dataset.pmApp;store('btg-pm-app',appFilter);paintBoard()});
+    bar.querySelectorAll('[data-pm-app]').forEach(b=>b.onclick=()=>{appFilter=b.dataset.pmApp;store('btg-pm-app',appFilter);paintBoard();try{window.render?.()}catch{}});
   }
   function paintBoard(){
     const pm=view()==='predictions';
@@ -2987,3 +2999,18 @@ function statsProp(l){
     else document.querySelector('[data-alerts-toggle]')?.focus();
   },600);
 }catch{}})();
+
+// Prediction view: the board lists only props with a prediction-app price
+// (window.BTGPmBoard), the same set the tab counts use.
+(()=>{if(typeof visibleProps!=='function')return;const base=visibleProps;visibleProps=function(){const list=base.apply(this,arguments);return window.BTGPmBoard?.active?.()?list.filter(p=>window.BTGPmBoard.has(p)):list}})();
+
+// Prediction view with nothing on the board: say why (prices load about two
+// days before each game) instead of "No props match these filters".
+(()=>{if(typeof render!=='function'||typeof document.getElementById!=='function')return;const base=render;
+  render=function(){const out=base.apply(this,arguments);try{const box=document.getElementById('emptyState');if(!box)return out;
+    if(!box.dataset.plain)box.dataset.plain=box.innerHTML;
+    const pm=window.BTGPmBoard?.active?.(),empty=!box.hidden;
+    if(pm&&empty){const soon=(typeof props!=='undefined'?props:[]).filter(p=>p.sport===state.boardSport&&Date.parse(p.startsAt)>Date.now()).map(p=>Date.parse(p.startsAt)).sort((a,b)=>a-b)[0];
+      box.innerHTML=`<strong>No prediction app prices for these props yet.</strong><span>Prediction apps open their props about 2 days before each game${soon&&soon-Date.now()>48*3600000?`; the next game opens ${new Date(soon-48*3600000).toLocaleDateString([],{weekday:'long'})}`:''}. Switch to Sportsbook to see every prop now.</span>`}
+    else if(box.innerHTML!==box.dataset.plain)box.innerHTML=box.dataset.plain}catch{}return out};
+  window.render=render})();
