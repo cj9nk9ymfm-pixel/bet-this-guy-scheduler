@@ -3534,7 +3534,10 @@ async function postProofToX(env,now=Date.now()){
 async function runHeadshotProbe(env){
   const names=await appSetting(env,'headshot-probe').catch(()=>null);if(!names||typeof playerHeadshot!=='function')return null;
   await env.DB.prepare("DELETE FROM app_settings WHERE key='headshot-probe'").run();
-  const out=[];for(const name of String(names).split(',').map(n=>n.trim()).filter(Boolean).slice(0,4)){const shot=await playerHeadshot(name,'NFL');out.push({name,found:Boolean(shot),bytes:shot?.bytes?.length||0,steps:typeof headshotTrace!=='undefined'?headshotTrace:[]})}
+  const out=[];for(const name of String(names).split(',').map(n=>n.trim()).filter(Boolean).slice(0,4)){
+    // url:<address> checks that one image address can be fetched from here.
+    if(name.startsWith('url:')){const r=await fetch(name.slice(4),{headers:{'user-agent':'Mozilla/5.0'},signal:AbortSignal.timeout(8000)}).catch(e=>({status:String(e.message)}));out.push({url:name.slice(4),status:r.status,type:r.headers?.get?.('content-type')||null,bytes:r.arrayBuffer?(await r.arrayBuffer().catch(()=>new ArrayBuffer(0))).byteLength:0});continue}
+    const shot=await playerHeadshot(name,'NFL');out.push({name,found:Boolean(shot),bytes:shot?.bytes?.length||0,steps:typeof headshotTrace!=='undefined'?headshotTrace:[]})}
   await setAppSetting(env,'headshot-probe-result',JSON.stringify({at:new Date().toISOString(),out}));return out;
 }
 async function runXPosts(env,now=Date.now()){
