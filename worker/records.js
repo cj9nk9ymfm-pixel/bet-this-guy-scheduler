@@ -828,6 +828,7 @@ async function postCustomToX(env,now=Date.now()){
   catch(error){await setAppSetting(env,'x-custom-post',raw).catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} custom: ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
 }
 async function runXResults(env,now=Date.now()){
+  if(typeof loadEspnIds==='function')await loadEspnIds(env,now).catch(()=>null);
   const grading=await gradePredictionNow(env,now).catch(error=>({error:error.message}));
   const results=await postPredictionResultsToX(env,now,2).catch(error=>({posted:0,error:error.message}));
   const nba=await postNbaRepliesToX(env,now,2).catch(error=>({posted:0,error:error.message}));
@@ -3537,10 +3538,14 @@ async function runHeadshotProbe(env){
   const out=[];for(const name of String(names).split(',').map(n=>n.trim()).filter(Boolean).slice(0,4)){
     // url:<address> checks that one image address can be fetched from here.
     if(name.startsWith('url:')){const r=await fetch(name.slice(4),{headers:{'user-agent':'Mozilla/5.0'},signal:AbortSignal.timeout(8000)}).catch(e=>({status:String(e.message)}));out.push({url:name.slice(4),status:r.status,type:r.headers?.get?.('content-type')||null,bytes:r.arrayBuffer?(await r.arrayBuffer().catch(()=>new ArrayBuffer(0))).byteLength:0});continue}
+    if(name.startsWith('img:')){const shot=await playerHeadshot(name.slice(4),'NFL');const id=(typeof headshotTrace!=='undefined'?headshotTrace:[]).find(t=>t.source==='espn-id')?.id||null;
+      let small=null;if(id){const r=await fetch(`https://a.espncdn.com/combiner/i?img=/i/headshots/nfl/players/full/${id}.png&w=160&h=116`).catch(()=>null);if(r?.ok)small=xBase64(new Uint8Array(await r.arrayBuffer()))}
+      await setAppSetting(env,`headshot-probe-image:${normalizedName(name.slice(4))}`,small||'none');out.push({name:name.slice(4),id,found:Boolean(shot),bytes:shot?.bytes?.length||0});continue}
     const shot=await playerHeadshot(name,'NFL');out.push({name,found:Boolean(shot),bytes:shot?.bytes?.length||0,steps:typeof headshotTrace!=='undefined'?headshotTrace:[]})}
   await setAppSetting(env,'headshot-probe-result',JSON.stringify({at:new Date().toISOString(),out}));return out;
 }
 async function runXPosts(env,now=Date.now()){
+  if(typeof loadEspnIds==='function')await loadEspnIds(env,now).catch(()=>null);
   await runHeadshotProbe(env).catch(()=>null);
   const picks=await postPicksToX(env,now);
   // Prediction picks go next, while the run has requests to spare for the
