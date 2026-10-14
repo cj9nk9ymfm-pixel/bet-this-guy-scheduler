@@ -486,14 +486,16 @@ async function playerStats(request, env, ctx, opts = {}) {
 }
 
 function espnImageFrom(payload, name, league) {
-  const players = (payload?.results || []).find(group => group.type === "player")?.contents || [];
-  const inLeague = player => player.description === league.toUpperCase() || player.defaultLeagueSlug === league;
+  // search/v2 groups results by type; common/v3 lists items directly.
+  const players = (payload?.results || []).find(group => group.type === "player")?.contents || (payload?.items || []).filter(item => !item.type || item.type === "player");
+  const leagueIds = { nfl: "l:28", nba: "l:46" };
+  const inLeague = player => player.description === league.toUpperCase() || player.defaultLeagueSlug === league || player.league === league || String(player.uid || "").includes(`~${leagueIds[league]}~`);
   const exact = players.find(player => normalizedName(player.displayName) === normalizedName(name) && inLeague(player));
   if (!exact) return null;
   // Some players (hyphenated names among them) come back without an image
   // link; their ESPN id still gives the standard headshot address.
   const id = String(exact.uid || "").match(/~a:(\d+)/)?.[1] || (/^\d+$/.test(String(exact.id || "")) ? exact.id : null);
-  return exact.image?.default || exact.image?.defaultDark || (id ? `https://a.espncdn.com/i/headshots/${league}/players/full/${id}.png` : null);
+  return exact.image?.default || exact.image?.defaultDark || exact.headshot?.href || (id ? `https://a.espncdn.com/i/headshots/${league}/players/full/${id}.png` : null);
 }
 // The last lookup's steps, for the headshot-probe owner check.
 let headshotTrace = [];
@@ -507,16 +509,26 @@ async function playerHeadshot(name, sport = "NFL") {
     const queries = [...new Set([name, plain, String(name).trim().split(/\s+/).slice(1).join(" ")].filter(Boolean))];
     let url = null;
     headshotTrace = [];
+    // ESPN refuses requests with no browser headers (403); two search
+    // addresses, and one that refuses is skipped for the rest of the lookup.
+    const headers = { accept: "application/json", "user-agent": "Mozilla/5.0 (compatible; BetThisGuy/1.0; +https://betthisguy.com)" };
+    const endpoints = [q => `https://site.web.api.espn.com/apis/search/v2?query=${encodeURIComponent(q)}&limit=8`, q => `https://site.api.espn.com/apis/common/v3/search?query=${encodeURIComponent(q)}&limit=8&type=player`];
+    const refused = new Set();
     for (const query of queries) {
-      const response = await fetch(`https://site.web.api.espn.com/apis/search/v2?query=${encodeURIComponent(query)}&limit=8`, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(8000) });
-      const payload = response.ok ? await response.json() : null;
-      if (payload) url = espnImageFrom(payload, name, league);
-      const found = (payload?.results || []).find(group => group.type === "player")?.contents || [];
-      headshotTrace.push({ query, status: response.status, players: found.slice(0, 4).map(p => `${p.displayName}|${p.description || p.defaultLeagueSlug || ""}|${p.image ? "img" : "noimg"}`), url });
-      if (url) break;
+      for (const [index, endpoint] of endpoints.entries()) {
+        if (refused.has(index)) continue;
+        const response = await fetch(endpoint(query), { headers, signal: AbortSignal.timeout(8000) });
+        if (response.status === 403 || response.status === 401) refused.add(index);
+        const payload = response.ok ? await response.json().catch(() => null) : null;
+        if (payload) url = espnImageFrom(payload, name, league);
+        const found = (payload?.results || []).find(group => group.type === "player")?.contents || payload?.items || [];
+        headshotTrace.push({ endpoint: index, query, status: response.status, players: found.slice(0, 4).map(p => `${p.displayName}|${p.description || p.defaultLeagueSlug || p.league || ""}|${p.uid || p.id || ""}`), url });
+        if (url) break;
+      }
+      if (url || refused.size === endpoints.length) break;
     }
     if (!url) return null;
-    const image = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    const image = await fetch(url, { headers: { "user-agent": headers["user-agent"] }, signal: AbortSignal.timeout(8000) });
     const type = image.headers.get("content-type") || "";
     headshotTrace.push({ image: image.status, type });
     if (!image.ok || !/png|jpe?g/.test(type)) return null;

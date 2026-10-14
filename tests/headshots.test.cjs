@@ -16,6 +16,11 @@ context.fetch=async url=>{url=String(url);asked.push(url);
   const shot=await run("playerHeadshot('Jaxon Smith-Njigba','NFL')");
   assert.ok(shot&&shot.type==='image/png'&&shot.bytes.length===2,'photo found on the retry');
   assert.ok(asked.includes('https://a.espncdn.com/i/headshots/nfl/players/full/4430878.png'),'headshot built from the ESPN id');
+  // First search address refuses (403): the second one's items are used.
+  context.fetch=async url=>{url=String(url);if(url.includes('search/v2'))return new Response('no',{status:403});if(url.includes('espncdn'))return new Response(new Uint8Array([3]),{headers:{'content-type':'image/png'}});
+    return Response.json({items:[{id:'4426515',uid:'s:20~l:28~a:4426515',displayName:'Bo Nix',type:'player'}]})};
+  const nix=await run("playerHeadshot('Bo Nix','NFL')");assert.ok(nix&&nix.bytes.length===1,'second search address finds him');
+  assert.ok(run('headshotTrace').filter(t=>t.endpoint===0).length===1,'a refusing address is tried once');
   asked.length=0;context.fetch=async()=>Response.json({results:[]});
   assert.equal(await run("playerHeadshot('Nobody Here','NFL')"),null,'no match stays null');
   const db=new DatabaseSync(':memory:');db.exec("CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT)");db.prepare("INSERT INTO app_settings VALUES ('headshot-probe','Nobody Here')").run();
