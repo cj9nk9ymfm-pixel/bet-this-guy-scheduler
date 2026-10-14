@@ -497,6 +497,20 @@ function espnImageFrom(payload, name, league) {
   const id = String(exact.uid || "").match(/~a:(\d+)/)?.[1] || (/^\d+$/.test(String(exact.id || "")) ? exact.id : null);
   return exact.image?.default || exact.image?.defaultDark || exact.headshot?.href || (id ? `https://a.espncdn.com/i/headshots/${league}/players/full/${id}.png` : null);
 }
+// A player's photo address from TheSportsDB, matched on name and sport.
+async function sportsDbHeadshot(name, sport, headers) {
+  const sportName = sport === "NBA" ? "Basketball" : "American Football";
+  for (const query of [...new Set([name, String(name).replace(/[-'.]/g, " ").replace(/\s+/g, " ").trim()])]) {
+    const response = await fetch(`https://www.thesportsdb.com/api/v1/json/3/searchplayers.php?p=${encodeURIComponent(query)}`, { headers, signal: AbortSignal.timeout(8000) }).catch(() => null);
+    const payload = response?.ok ? await response.json().catch(() => null) : null;
+    const players = payload?.player || [];
+    const hit = players.find(p => normalizedName(p.strPlayer) === normalizedName(name) && p.strSport === sportName);
+    const image = hit ? hit.strCutout || hit.strRender || hit.strThumb : null;
+    headshotTrace.push({ source: "sportsdb", query, status: response?.status ?? "failed", players: players.slice(0, 4).map(p => `${p.strPlayer}|${p.strSport}|${p.strCutout ? "cutout" : p.strThumb ? "thumb" : "none"}`), url: image });
+    if (image) return image;
+  }
+  return null;
+}
 // The last lookup's steps, for the headshot-probe owner check.
 let headshotTrace = [];
 // A player's ESPN headshot as raw bytes (for the X pick graphics), or null.
@@ -527,6 +541,9 @@ async function playerHeadshot(name, sport = "NFL") {
       }
       if (url || refused.size === endpoints.length) break;
     }
+    // ESPN refuses Cloudflare Workers outright; TheSportsDB's free player
+    // search carries photos (cutout or thumb) and answers them.
+    if (!url) url = await sportsDbHeadshot(name, sport, headers);
     if (!url) return null;
     const image = await fetch(url, { headers: { "user-agent": headers["user-agent"] }, signal: AbortSignal.timeout(8000) });
     const type = image.headers.get("content-type") || "";
