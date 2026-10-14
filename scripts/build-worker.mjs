@@ -22,7 +22,20 @@ const files = await Promise.all([
   readFile("node_modules/@supabase/supabase-js/dist/umd/supabase.js", "utf8"),
 ]);
 
-const [html, landing, landingCss, legal, trust, app, styles, theme, nfl, performance, logo, template, live, liveCss, liveServer, authClient, authCss, supabaseClient] = files;
+const [html, landing, landingCss, legal, trust, appSource, stylesSource, themeSource, nflSource, performanceSource, logo, template, liveSource, liveCssSource, liveServer, authSource, authCssSource, supabaseClient] = files;
+// The browser gets minified copies of the scripts and styles (about a sixth
+// smaller over the wire); dist/ keeps the readable source the tests read.
+// No esbuild, or a file it can't parse: that file ships as written.
+let esbuild = null;
+try { esbuild = await import("esbuild"); } catch { console.warn("esbuild unavailable: assets ship unminified"); }
+const minify = (source, loader) => {
+  if (!esbuild) return source;
+  try { return esbuild.transformSync(source, { loader, minify: true, target: loader === "js" ? "es2020" : undefined, legalComments: "none" }).code; }
+  catch (error) { console.warn(`minify skipped (${loader}): ${error.message.split("\n")[0]}`); return source; }
+};
+const app = minify(appSource, "js"), live = minify(liveSource, "js"), authClient = minify(authSource, "js");
+const styles = minify(stylesSource, "css"), theme = minify(themeSource, "css"), nfl = minify(nflSource, "css"), performance = minify(performanceSource, "css");
+const liveCss = minify(liveCssSource, "css"), authCss = minify(authCssSource, "css");
 // Fingerprint each versioned asset so the HTML always references its current
 // content. The Worker caches a file for a year when the request carries its
 // fingerprint, so nobody has to bump ?v= numbers by hand.
@@ -35,11 +48,12 @@ const accounts = await readFile("worker/accounts.js", "utf8");
 const xFonts = await Promise.all(["SpaceGrotesk-Bold", "Inter-ExtraBold", "Inter-SemiBold"].map(async name => (await readFile(`worker/fonts/${name}.ttf`)).toString("base64")));
 const movement = await readFile("dist/movement.js", "utf8");
 const movementServer = await readFile("worker/movement.js", "utf8");
+const statsClient = minify(stats, "js"), movementClient = minify(movement, "js");
 const versioned = {
   "/styles.css": styles, "/theme-blue.css": theme, "/nfl.css": nfl, "/performance.css": performance,
   "/live.css": liveCss, "/auth.css": authCss, "/landing.css": landingCss,
-  "/supabase.js": supabaseClient, "/auth.js": authClient, "/stats.js": stats,
-  "/movement.js": movement, "/app.js": app, "/live.js": live,
+  "/supabase.js": supabaseClient, "/auth.js": authClient, "/stats.js": statsClient,
+  "/movement.js": movementClient, "/app.js": app, "/live.js": live,
 };
 const assetVersions = Object.fromEntries(Object.entries(versioned).map(([path, body]) =>
   [path, createHash("sha256").update(body).digest("hex").slice(0, 12)]));
@@ -55,10 +69,10 @@ const output = template
   .replaceAll("__AUTH_CSS__", () => JSON.stringify(authCss))
   .replaceAll("__ACCOUNTS_SERVER__", () => accounts)
   .replaceAll("__MOVEMENT_SERVER__", () => movementServer)
-  .replaceAll("__MOVEMENT_PAYLOAD__", () => JSON.stringify(movement))
+  .replaceAll("__MOVEMENT_PAYLOAD__", () => JSON.stringify(movementClient))
   .replaceAll("__RECORDS_SERVER__", () => records)
   .replaceAll("__STATS_SHARED__", () => stats)
-  .replaceAll("__STATS_PAYLOAD__", () => JSON.stringify(stats))
+  .replaceAll("__STATS_PAYLOAD__", () => JSON.stringify(statsClient))
   .replaceAll("__LIVE_SERVER__", () => liveServer)
   .replaceAll("__LIVE_CLIENT__", () => JSON.stringify(live))
   .replaceAll("__LIVE_CSS__", () => JSON.stringify(liveCss))
