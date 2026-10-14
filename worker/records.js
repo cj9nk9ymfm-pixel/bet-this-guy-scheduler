@@ -1957,9 +1957,12 @@ async function runStatsChecks(env,ctx,now=Date.now()){
   const defense=await ingestDefenseGames(env,now).catch(error=>({error:error.message}));
   const start=new Date(now).toISOString();
   const official=((await env.DB.prepare("SELECT id,player,market,side,line,game_time,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND kind='prop' AND game_time>? AND id NOT IN (SELECT id FROM stats_checks) ORDER BY game_time LIMIT 2").bind(start).all()).results||[]).map(r=>({...r,kind:'official',team:recordLegs(r)[0]?.team||''}));
-  const near=official.length>=2?[]:((await env.DB.prepare("SELECT 'near|'||id AS id,player,team,market,side,line,game_time FROM near_shadow WHERE game_time>? AND 'near|'||id NOT IN (SELECT id FROM stats_checks) ORDER BY game_time LIMIT ?").bind(start,2-official.length).all()).results||[]).map(r=>({...r,kind:'near'}));
+  // Prediction picks next: logged only, never used to skip a pick (so far the
+  // check's 'disagree' picks have won more often than its 'agree' ones).
+  const pm=official.length>=2?[]:((await env.DB.prepare("SELECT id,player,team,market,side,line,game_time FROM prediction_picks WHERE game_time>? AND id NOT IN (SELECT id FROM stats_checks) ORDER BY game_time LIMIT ?").bind(start,2-official.length).all()).results||[]).map(r=>({...r,kind:'pm'}));
+  const near=official.length+pm.length>=2?[]:((await env.DB.prepare("SELECT 'near|'||id AS id,player,team,market,side,line,game_time FROM near_shadow WHERE game_time>? AND 'near|'||id NOT IN (SELECT id FROM stats_checks) ORDER BY game_time LIMIT ?").bind(start,2-official.length-pm.length).all()).results||[]).map(r=>({...r,kind:'near'}));
   const statements=[];
-  for(const pick of [...official,...near]){
+  for(const pick of [...official,...pm,...near]){
     // A provider error leaves the pick unchecked, so the next run tries again.
     const c=await checkPickStats(env,ctx,pick,now).catch(()=>null);if(!c)continue;
     const r2=v=>v==null||!Number.isFinite(v)?null:+v.toFixed(3);
@@ -1970,7 +1973,7 @@ async function runStatsChecks(env,ctx,now=Date.now()){
 }
 // The test so far: picks by verdict, with results (official and near misses).
 async function statsCheckSummary(env){
-  const rows=(await env.DB.prepare("SELECT c.kind,c.verdict,COALESCE(p.result,n.result) AS result FROM stats_checks c LEFT JOIN public_recommendations p ON p.id=c.id AND p.status='final' LEFT JOIN near_shadow n ON 'near|'||n.id=c.id").all()).results||[];
+  const rows=(await env.DB.prepare("SELECT c.kind,c.verdict,COALESCE(p.result,n.result,m.result) AS result FROM stats_checks c LEFT JOIN public_recommendations p ON p.id=c.id AND p.status='final' LEFT JOIN near_shadow n ON 'near|'||n.id=c.id LEFT JOIN prediction_picks m ON m.id=c.id").all()).results||[];
   const out={};
   for(const r of rows){const k=`${r.kind}|${r.verdict}`,s=out[k]||(out[k]={kind:r.kind,verdict:r.verdict,picks:0,won:0,lost:0,push:0,void:0,pending:0});s.picks++;if(['won','lost','push','void'].includes(r.result))s[r.result]++;else s.pending++}
   return Object.values(out);
