@@ -156,6 +156,9 @@ const SGP_CUT=.2;
 // use the same direction. Prediction parlays: no game carries more than
 // PARLAYS_PER_GAME (one-game nights otherwise fill the weekly caps).
 const PARLAYS_PER_GAME=3;
+// A player rides in at most PARLAYS_PER_PLAYER parlays a week (a night for
+// NBA), so one miss can't sink several parlays at once.
+const PARLAYS_PER_PLAYER=1;
 const sideKey=(game,player,market)=>`${game}|${normalizedName(player)}|${String(market||'').toLowerCase()}`;
 const statFamily=m=>/touchdown|tds\b/i.test(m)?'td':/kick|field goal|extra point/i.test(m)?'kick':/pass|interception/i.test(m)?'passing':/recep/i.test(m)?'receiving':/rush/i.test(m)?'rushing':'other';
 // Players on different teams (known from saved form): any pair, touchdown
@@ -197,7 +200,7 @@ function officialPlan(candidates,existing,week,now=Date.now(),pool=candidates,cf
         const p=pool[(j+Math.floor(attempt/(max-min+1)))%pool.length];
         // A second leg from the same game only when the two are unlinked; never a third.
         const inGame=legs.filter(l=>l.gameId===p.gameId);
-        if((exposure.get(p.playerKey)||0)>=3||inGame.length>=2||(inGame.length&&!sgpOk(inGame[0],p))||(markets.get(p.market)||0)>=2)continue;
+        if((exposure.get(p.playerKey)||0)>=PARLAYS_PER_PLAYER||inGame.length>=2||(inGame.length&&!sgpOk(inGame[0],p))||(markets.get(p.market)||0)>=2)continue;
         const was=sides.get(sideKey(p.gameId,p.player,p.market));if(was&&was!==p.side)continue;
         // Skip a leg that would make this parlay share two players with a posted one.
         if(prior.some(keys=>keys.includes(p.playerKey)&&legs.some(l=>keys.includes(l.playerKey))))continue;
@@ -1530,7 +1533,7 @@ function predictionParlayPlan(pool,existing,week,now=Date.now()){
         const sorted=[...legsOn].sort((a,b)=>(exposure.get(key(a))||0)-(exposure.get(key(b))||0)||b.edge-a.edge);
         for(let j=0;j<sorted.length&&legs.length<size;j++){
           const p=sorted[(j+Math.floor(attempt/(max-min+1)))%sorted.length],inGame=legs.filter(l=>l.eventId===p.eventId);
-          if((exposure.get(key(p))||0)>=3||legs.some(l=>key(l)===key(p))||inGame.length>=2||(inGame.length&&!sgpOk(inGame[0],p)))continue;
+          if((exposure.get(key(p))||0)>=PARLAYS_PER_PLAYER||legs.some(l=>key(l)===key(p))||inGame.length>=2||(inGame.length&&!sgpOk(inGame[0],p)))continue;
           if(prior.some(keys=>keys.includes(key(p))&&legs.some(l=>keys.includes(key(l)))))continue;
           const was=sides.get(sideKey(p.eventId,p.player,p.market));if((was&&was!==p.side)||(perGame.get(p.eventId)||0)>=PARLAYS_PER_GAME)continue;
           legs.push(p);
