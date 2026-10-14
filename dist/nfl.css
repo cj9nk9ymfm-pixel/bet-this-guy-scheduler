@@ -2134,3 +2134,7 @@ html body #propList .prop-card.pm-card .pm-board{display:block!important;margin:
 html body #propList .prop-card.pm-card .pm-board .app-chip{color:var(--text)}
 html body #propList .prop-card.pm-card .card-money .pm-board{display:inline!important;margin:0 0 0 2px}
 html body #propList .prop-card.pm-card .card-money .pm-board::before{content:none}
+/* Empty-week pitch follows the alerts switch: no "Get a ping" once alerts are on. */
+.on-pitch .on-pitch-on{display:none;font-style:normal}
+html.alerts-on .on-pitch .on-pitch-on{display:inline}
+html.alerts-on .on-pitch .on-pitch-btn{display:none!important}

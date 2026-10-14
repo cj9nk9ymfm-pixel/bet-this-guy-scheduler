@@ -3012,10 +3012,9 @@ function statsProp(l){
     if(!box||box.dataset.pitch)return;box.dataset.pitch='1';
     const s=window.BTG_SEASON,NBAv=document.documentElement.dataset.league==='NBA';
     const rec=s&&s.wins+s.losses>=5&&!NBAv?`Season ${s.wins}–${s.losses}, ${Number(s.profit)>=0?'+':'−'}$${Math.abs(Math.round(Number(s.profit)||0)).toLocaleString('en-US')}. `:'';
-    const on=document.documentElement.classList.contains('alerts-on');
     box.classList.add('on-pitch');
     const preNba=NBAv&&Date.now()<Date.parse('2026-10-20T14:00:00Z');
-    box.innerHTML=`<strong>${preNba?'NBA picks start opening night, Tue Oct 20.':NBAv?'No NBA picks yet tonight.':'No picks yet this week.'}</strong><span>${htmlEscape(rec)}${preNba?'Same rules as our football picks: posted only when a price beats the market, every pick graded in public.':NBAv?'They post as soon as a price qualifies, often the day before.':'Picks usually post Wednesday to Saturday, the moment a price qualifies.'}${on?' Your alerts are on.':''}</span>${on?'':'<button type="button" class="on-pitch-btn">Get a ping when they post</button>'}`;
+    box.innerHTML=`<strong>${preNba?'NBA picks start opening night, Tue Oct 20.':NBAv?'No NBA picks yet tonight.':'No picks yet this week.'}</strong><span>${htmlEscape(rec)}${preNba?'Same rules as our football picks: posted only when a price beats the market, every pick graded in public.':NBAv?'They post as soon as a price qualifies, often the day before.':'Picks usually post Wednesday to Saturday, the moment a price qualifies.'}<em class="on-pitch-on"> Your alerts are on.</em></span><button type="button" class="on-pitch-btn">Get a ping when they post</button>`;
     box.querySelector('.on-pitch-btn')?.addEventListener('click',()=>{window.btgCount?.('empty:alerts');(document.querySelector('[data-alerts-banner]')||document.querySelector('[data-alerts-toggle]'))?.click()});
   }
   if(picks&&typeof MutationObserver==='function'){new MutationObserver(empty).observe(picks,{childList:true});empty()}
