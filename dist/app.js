@@ -1717,9 +1717,11 @@ if(typeof fetch==='function')window.btgCountVisit?.('view:home');
     // iPhones only allow web notifications from the Home Screen, so offer
     // email alerts first: one step in a free account.
     if(ios&&!standalone()){window.btgCount?.('alerts:email');if(window.BTGEmailSub&&!window.BTGAuth?.isSignedIn?.()){window.BTGEmailSub.open('iphone');return}const auth=window.BTGAuth;auth?.open?.(auth.hasAccount?.()?'account':'signup');note('On iPhone, email alerts are the easy way: tick “Email me when new picks post” in your free account. Prefer phone notifications? Add Bet This Guy to your Home Screen (Share → Add to Home Screen) and turn on pick alerts there.');return}
-    if(!supported()){note('This browser can’t show notifications. Try Chrome, Edge, Firefox or Safari.');return}
+    // No notifications here (unsupported or blocked): email instead, so the tap still signs them up.
+    const toEmail=why=>{window.btgCount?.(why);if(window.BTGEmailSub&&!window.BTGAuth?.isSignedIn?.()){window.BTGEmailSub.open(why);return true}return false};
+    if(!supported()){if(!toEmail('alerts:unsupported'))note('This browser can’t show notifications. Try Chrome, Edge, Firefox or Safari.');return}
     const permission=await Notification.requestPermission();
-    if(permission!=='granted'){note('Notifications are blocked for this site. Allow them in your browser settings, then tap Get pick alerts again.');return}
+    if(permission!=='granted'){if(!toEmail('alerts:denied'))note('Notifications are blocked for this site. Allow them in your browser settings, then tap Get pick alerts again.');return}
     const reg=await navigator.serviceWorker.register('/sw.js');await navigator.serviceWorker.ready;
     const {publicKey}=await (await fetch('/api/alerts/key')).json();
     const sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:keyBytes(publicKey)});
@@ -2898,7 +2900,7 @@ function statsProp(l){
   const dlg=document.getElementById('emailDialog');if(!dlg||typeof fetch!=='function')return;
   const $=id=>document.getElementById(id),status=(t,cls='')=>{const el=$('emailSubStatus');el.textContent=t;el.className=`email-status ${cls}`};
   const ios=/iPhone|iPad|iPod/.test(navigator.userAgent||'');
-  window.BTGEmailSub={open(source){window.btgCount?.('email:open');$('emailIphoneNote').hidden=!(ios||source==='iphone');status('');$('emailSubSend').disabled=false;if(typeof dlg.showModal==='function')dlg.showModal();else dlg.setAttribute('open','');setTimeout(()=>{try{$('emailSubInput').focus()}catch{}},60)}};
+  window.BTGEmailSub={open(source){window.btgCount?.('email:open');$('emailIphoneNote').hidden=!(ios||source==='iphone');{const n=$('emailBlockedNote');if(n)n.hidden=!['alerts:denied','alerts:unsupported'].includes(source)}status('');$('emailSubSend').disabled=false;if(typeof dlg.showModal==='function')dlg.showModal();else dlg.setAttribute('open','');setTimeout(()=>{try{$('emailSubInput').focus()}catch{}},60)}};
   const close=()=>dlg.close?.();$('emailDialogX').onclick=close;dlg.addEventListener('click',e=>{if(e.target===dlg)close()});
   $('emailSubForm').addEventListener('submit',async e=>{e.preventDefault();const email=$('emailSubInput').value.trim();
     if(!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(email)){status('Enter a full email address, like you@example.com.','err');return}
@@ -3014,7 +3016,8 @@ function statsProp(l){
     const rec=s&&s.wins+s.losses>=5&&!NBAv?`Season ${s.wins}–${s.losses}, ${Number(s.profit)>=0?'+':'−'}$${Math.abs(Math.round(Number(s.profit)||0)).toLocaleString('en-US')}. `:'';
     box.classList.add('on-pitch');
     const preNba=NBAv&&Date.now()<Date.parse('2026-10-20T14:00:00Z');
-    box.innerHTML=`<strong>${preNba?'NBA picks start opening night, Tue Oct 20.':NBAv?'No NBA picks yet tonight.':'No picks yet this week.'}</strong><span>${htmlEscape(rec)}${preNba?'Same rules as our football picks: posted only when a price beats the market, every pick graded in public.':NBAv?'They post as soon as a price qualifies, often the day before.':'Picks usually post Wednesday to Saturday, the moment a price qualifies.'}<em class="on-pitch-on"> Your alerts are on.</em></span><button type="button" class="on-pitch-btn">Get a ping when they post</button>`;
+    box.innerHTML=`<strong>${preNba?'NBA picks start opening night, Tue Oct 20.':NBAv?'No NBA picks yet tonight.':'No picks yet this week.'}</strong><span>${htmlEscape(rec)}${preNba?'Same rules as our football picks: posted only when a price beats the market, every pick graded in public.':NBAv?'They post as soon as a price qualifies, often the day before.':'Picks usually post Wednesday to Saturday, the moment a price qualifies.'}<em class="on-pitch-on"> Your alerts are on.</em></span><button type="button" class="on-pitch-btn">Get a ping when they post</button><button type="button" class="on-pitch-email">Or get them by email</button>`;
+    box.querySelector('.on-pitch-email')?.addEventListener('click',()=>{window.btgCount?.('email:pitch');window.BTGEmailSub?.open('pitch')});
     box.querySelector('.on-pitch-btn')?.addEventListener('click',()=>{window.btgCount?.('empty:alerts');(document.querySelector('[data-alerts-banner]')||document.querySelector('[data-alerts-toggle]'))?.click()});
   }
   if(picks&&typeof MutationObserver==='function'){new MutationObserver(empty).observe(picks,{childList:true});empty()}

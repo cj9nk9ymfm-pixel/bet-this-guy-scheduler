@@ -2138,3 +2138,7 @@ html body #propList .prop-card.pm-card .card-money .pm-board::before{content:non
 .on-pitch .on-pitch-on{display:none;font-style:normal}
 html.alerts-on .on-pitch .on-pitch-on{display:inline}
 html.alerts-on .on-pitch .on-pitch-btn{display:none!important}
+/* Empty-week pitch: email as a second way in. */
+.on-pitch .on-pitch-email{display:inline-block;margin:8px 0 0 12px;padding:0;border:0;background:none;color:#7fb4ff;font:600 14px 'DM Sans',sans-serif;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+body.light .on-pitch .on-pitch-email{color:#1d4ed8}
+.on-pitch .on-pitch-email{align-self:flex-start;margin:10px 0 0;text-align:left}
