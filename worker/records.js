@@ -358,14 +358,15 @@ async function recordNbaShadow(request,env,ctx,now=Date.now()){
 }
 // Official NBA picks, from opening night (Oct 20, 2026). The price rules are
 // the NFL's (big-5 book, 1-12% edge, 3+ books pricing both sides), sized for
-// a nightly sport: one single per game, NBA_CAPS a night, and only the core
-// markets. A game's picks can post as soon as its props are listed (from
+// a nightly sport: every single that clears the price rule (one per player,
+// never both sides; 30 a night only as a guard against bad data), the parlay
+// caps in NBA_CAPS, and only the core markets. A game's picks can post as soon as its props are listed (from
 // NBA_WINDOW before tip-off, when 3+ books price both sides) until 5 minutes
 // before: early prices are the softest. A player ruled out later is no
 // action, never a loss. Ids are nba|<night>|<tier>|...,
 // so every NFL query (id LIKE 'official|%') leaves them out.
 const NBA_START=Date.parse('2026-10-20T14:00:00Z');
-const NBA_CAPS={props:6,reasonable:1,swing:1,moonshot:0},NBA_PER_GAME=1,NBA_WINDOW=36*3600000;
+const NBA_CAPS={props:30,reasonable:1,swing:1,moonshot:0},NBA_PER_GAME=99,NBA_WINDOW=36*3600000;
 const NBA_OFFICIAL_MARKETS=new Set(['Points','Rebounds','Assists','3-Pointers Made','Points + Rebounds + Assists']);
 // The night a game belongs to: its US Eastern date (a 10:30 PM ET tip is
 // after midnight UTC, so 6 hours back keeps it on the same night).
@@ -2253,7 +2254,7 @@ async function nbaPage(request,env){
   const nights=[...new Set(all.map(r=>String(r.id).split('|')[1]))].sort().reverse();
   if(url.pathname==='/nba'||url.pathname==='/nba/'){
     const items=nights.map(n=>{const rows=all.filter(r=>String(r.id).startsWith(`nba|${n}|`)),s=weeklySummary(rows),g=s.wins+s.losses+s.pushes;return `<li><a href="/nba/${n}"><span><strong>${weeklyEscape(nbaNightLabel(n).replace(/, \d{4}$/,''))}</strong> <small>${rows.length} pick${rows.length===1?'':'s'}</small></span><small>${g?`${s.wins}–${s.losses}${s.pushes?`–${s.pushes}`:''} · ${weeklyMoney(s.profit)}`:'To play'}</small></a></li>`}).join('');
-    const body=`<p class="eyebrow">OFFICIAL NBA PICKS</p><h1>NBA player prop picks tonight</h1><p class="lead">Free NBA player prop picks, posted the moment a sportsbook price beats the fair line across the big books. Up to 6 picks a night, one per game, each locked before tip-off and graded from the box score, losses included.${graded?` NBA record: ${record}, ${weeklyMoney(season.profit)} at $100 a pick.`:' The first picks post for opening night, Tuesday, October 20.'}</p>${stats(season)}<p><a class="cta" href="/?league=NBA">Tonight’s NBA board →</a><a href="/trust#nba" style="white-space:nowrap">NBA results →</a></p>${items?`<h2>Every night</h2><ul class="weeks">${items}</ul>`:''}`;
+    const body=`<p class="eyebrow">OFFICIAL NBA PICKS</p><h1>NBA player prop picks tonight</h1><p class="lead">Free NBA player prop picks, posted the moment a sportsbook price beats the fair line across the big books. Every prop whose price clears the bar posts, no nightly quota, each locked before tip-off and graded from the box score, losses included.${graded?` NBA record: ${record}, ${weeklyMoney(season.profit)} at $100 a pick.`:' The first picks post for opening night, Tuesday, October 20.'}</p>${stats(season)}<p><a class="cta" href="/?league=NBA">Tonight’s NBA board →</a><a href="/trust#nba" style="white-space:nowrap">NBA results →</a></p>${items?`<h2>Every night</h2><ul class="weeks">${items}</ul>`:''}`;
     return new Response(weeklyShell({title:'NBA Player Prop Picks Tonight: Free, Graded in Public | Bet This Guy',description:graded?`Free NBA player prop picks every night, locked before tip-off and graded in public: ${record} on singles, ${weeklyMoney(season.profit)} at $100 a pick.`:'Free NBA player prop picks every night from opening night, Oct 20: priced against the fair line across the big books, locked before tip-off, graded in public.',path:'/nba',body}),{headers});
   }
   const m=url.pathname.match(/^\/nba\/(\d{4}-\d{2}-\d{2})\/?$/);if(!m||!nights.includes(m[1]))return null;
@@ -3393,10 +3394,20 @@ async function checkNbaExchanges(request,env,ctx,now=Date.now()){
   return {apps};
 }
 async function nbaExchangeStatus(env){try{const s=JSON.parse(await appSetting(env,'nba-exchange-check')||'null');return s?{at:s.at,apps:s.apps||{}}:null}catch{return null}}
-// NBA launch post: one X post once the first regular-season game's player
-// props are on our board. The watch reads that one game's board every 30
-// minutes from 4 days out until it sees props; x-nba=hold stops the post.
-const NBA_LAUNCH_TEXT='🏀 NBA player props are live on Bet This Guy.\n\nEvery night: up to 6 picks, each priced better than the fair line across the big books, locked before tip-off and graded in public, losses included.\n\nSame deal as our NFL picks: free, no paywall, every result on the record. Free alerts: link in bio. 21+';
+// NBA launch: a five-post thread at 9 AM PT on opening day (Tim's call), with
+// the NFL record filled in at posting time. x-nba=hold stops it. The props
+// watch below only records when the first game's props appear.
+const NBA_LAUNCH_AT=Date.parse('2026-10-20T16:00:00Z');
+function nbaLaunchThread(s){
+  const money=v=>(v<0?'−':'+')+'\u0024'+Math.abs(Math.round(v)).toLocaleString('en-US');
+  const rec=s&&s.wins+s.losses>=10?`Same rules that got our NFL singles to ${s.wins}–${s.losses}, ${money(s.profit)}: a pick posts only when a sportsbook price beats the fair line across the big books. Locked before tip-off, graded in public.`:'Same rules as our NFL picks: a pick posts only when a sportsbook price beats the fair line across the big books. Locked before tip-off, graded in public.';
+  const close=s&&s.tracked>=10?`The number we judge ourselves by: ${s.beat} of ${s.tracked} NFL picks beat the closing price (${Math.round(100*s.beat/s.tracked)}%).\n\nOne game is luck. Beating the final price week after week is how you know the edge is real.`:'The number we judge ourselves by: how often our price beats the closing price.\n\nOne game is luck. Beating the final price week after week is how you know the edge is real.';
+  return [`🏀 NBA player props start tonight on Bet This Guy.\n\n${rec}`,
+    'How it works:\n• Every prop where a big-book price beats the fair line posts. No nightly quota\n• Points, rebounds, assists, threes and PRA\n• Posted the moment a price qualifies\n• Player sits = no action, same as at the book\n• Singles at $100, parlays at $25',
+    close,
+    'Every loss stays on the record. NBA gets its own public record, separate from NFL:\nbetthisguy.com/trust#nba',
+    'Free. No paywall. Turn on alerts and get each pick the second it locks:\nbetthisguy.com\n\n21+ · Gambling problem? Call 1-800-GAMBLER'];
+}
 async function watchNbaLaunch(request,env,ctx,now=Date.now()){
   if(!env.DB||await appSetting(env,'nba-props-live'))return {done:true};
   if(now<NBA_START-4*86400000)return {waiting:true};
@@ -3413,10 +3424,18 @@ async function watchNbaLaunch(request,env,ctx,now=Date.now()){
 }
 async function postNbaLaunchToX(env,now=Date.now()){
   if(!env.DB||!xReady(env)||await appSetting(env,'x-nba')==='hold')return {posted:0,disabled:true};
-  if(!(await appSetting(env,'nba-props-live')))return {posted:0,due:false};
-  const key='x-nba-launch';if(!(await xClaimable(env,key,now))||!(await xClaim(env,key,now)))return {posted:0,done:true};
-  try{const sent=await xPost(env,NBA_LAUNCH_TEXT);await xDone(env,key,now);if(sent?.data?.id)await setAppSetting(env,`xid:${key}`,String(sent.data.id)).catch(()=>{});await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} nba launch ${sent?.data?.id||''}`).catch(()=>{});return {posted:1}}
-  catch(error){await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
+  if(now<NBA_LAUNCH_AT)return {posted:0,due:false};
+  // All five in one run, each a reply to the one before; the ids so far are
+  // saved after every post, so a failure resumes from that post next run.
+  const key='x-nba-launch';let ids=[];try{ids=JSON.parse(await appSetting(env,'x-nba-launch-ids')||'[]')}catch{}
+  const posts=nbaLaunchThread(await homeSeason(env,now).catch(()=>null));
+  if(ids.length>=posts.length)return {posted:0,done:true};
+  if(!(await xClaimable(env,key,now))||!(await xClaim(env,key,now)))return {posted:0,busy:true};
+  let posted=0;
+  try{while(ids.length<posts.length){const sent=await xPost(env,posts[ids.length],null,ids.at(-1)||null);const id=String(sent?.data?.id||'');if(!id)throw new Error('X returned no post id');
+      ids.push(id);posted++;await setAppSetting(env,'x-nba-launch-ids',JSON.stringify(ids));if(ids.length===1)await setAppSetting(env,`xid:${key}`,id).catch(()=>{})}
+    await xDone(env,key,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} nba launch thread ${ids[0]}`).catch(()=>{});return {posted}}
+  catch(error){await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {posted,error:error.message}}
 }
 async function postNbaCardToX(env,now=Date.now()){
   if(!env.DB||!xReady(env)||await appSetting(env,'x-nba')==='hold')return {posted:0,disabled:true};
