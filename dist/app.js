@@ -443,7 +443,7 @@ function setupParlayMixer(){const odds=$('#oddsSlider'),legs=$('#legsSlider'),ma
 function removeSlipLeg(index){if(!Number.isInteger(index)||index<0||index>=state.slip.length)return;state.slip.splice(index,1);render()}
 function renderSlip(){const legs=$('#slipLegs');legs.innerHTML=state.slip.map((x,index)=>`<div class="slip-leg"><div><span>${x.p.sport}</span><strong>${x.p.player} ${x.side} ${x.p.line}</strong><span>${x.p.market} · ${formatOdds(x.odds)}</span></div><button type="button" data-remove-slip="${index}" aria-label="Remove ${htmlEscape(x.p.player)} ${htmlEscape(x.side)} ${htmlEscape(x.p.line)} from slip">×</button></div>`).join('');legs.querySelectorAll('[data-remove-slip]').forEach(button=>button.onclick=()=>removeSlipLeg(Number(button.dataset.removeSlip)));const has=state.slip.length>0;$('#slipEmpty').hidden=has;$('#parlaySummary').hidden=!has;($('#slipCount').textContent=state.slip.length,$('#slipCount').hidden=!state.slip.length);if(has){$('#trackParlay').textContent=state.slip.length===1?'＋ Track this pick':'＋ Track this parlay';calcParlay()}}
 function weeklyStaked(){const cutoff=Date.now()-7*86400000;return trackedParlays.filter(item=>item.createdAt>=cutoff).reduce((sum,item)=>sum+item.wager,0)}
-function calcParlay(){const dec=state.slip.reduce((a,x)=>a*americanToDecimal(x.odds),1),american=decimalToAmerican(dec);$('#combinedOdds').textContent=formatOddsPretty(american);$('#parlayProb').textContent=`${(100/dec)>=10?Math.round(100/dec):(100/dec).toFixed(1)}%`;const wager=Math.max(0,parseFloat($('#wager').value)||0),remaining=Math.max(0,preferences.weeklyBudget-weeklyStaked());$('#payout').textContent=formatMoney(wager*dec);const warning=$('#budgetWarning');warning.hidden=preferences.noWeeklyLimit||!preferences.weeklyBudget||wager<=remaining;warning.textContent=`This exceeds your remaining seven-day entertainment budget of ${formatMoney(remaining)}.`;scheduleShareCard()}
+function calcParlay(){const dec=state.slip.reduce((a,x)=>a*americanToDecimal(x.odds),1),american=decimalToAmerican(dec);$('#combinedOdds').textContent=formatOddsPretty(american);$('#parlayProb').textContent=`${(100/dec)>=10?Math.round(100/dec):(100/dec).toFixed(1)}%`;const wager=Math.max(0,parseFloat($('#wager').value)||0),remaining=Math.max(0,preferences.weeklyBudget-weeklyStaked());$('#payout').textContent=formatMoney(wager*(dec-1));const warning=$('#budgetWarning');warning.hidden=preferences.noWeeklyLimit||!preferences.weeklyBudget||wager<=remaining;warning.textContent=`This exceeds your remaining seven-day entertainment budget of ${formatMoney(remaining)}.`;scheduleShareCard()}
 const playerStatsCache=new Map(),playerStatsPending=new Map();
 async function playerStatsFor(p){const key=`${p.sport}|${p.player}|${p.team}`;let payload=playerStatsCache.get(key);if(payload)return payload;if(playerStatsPending.has(key))return playerStatsPending.get(key);const request=(async()=>{const params=new URLSearchParams({sport:p.sport,player:p.player,team:p.team}),response=await fetch(`/api/player-stats?${params}`),result=await response.json();if(!response.ok||result.success===false)throw new Error(result.error||'Recent games unavailable');playerStatsCache.set(key,result);return result})().finally(()=>playerStatsPending.delete(key));playerStatsPending.set(key,request);return request}
 async function hydrateHitProfile(host,p){try{const payload=await playerStatsFor(p),player=payload.player||{},recent=(payload.stats||[]).map(row=>({row,date:statDate(row),metric:propMetric(p,row)})).filter(item=>item.metric.value!==null).sort((a,b)=>(b.date?.getTime()||0)-(a.date?.getTime()||0)).slice(0,10),hits=recent.filter(item=>hitAgainstLine(p,item.metric.value)===true).length;if(!host.isConnected)return;if(!recent.length){host.querySelector('strong').textContent='No graded games';host.querySelector('span').textContent='This stat is not included in the connected feed.';return}host.querySelector('strong').textContent=`${hits} of last ${recent.length}`;host.querySelector('span').textContent=`hit ${p.side.toLowerCase()} ${p.line}`;host.querySelector('i').className='';host.querySelector('i').innerHTML=recent.map(item=>`<b class="${hitAgainstLine(p,item.metric.value)?'hit':'miss'}" title="${htmlEscape(item.date?item.date.toLocaleDateString():'Game')} · ${htmlEscape(opponentLabel(item.row,player))} · ${htmlEscape(item.metric.value)}"></b>`).join('');host.querySelector('.mini-games').innerHTML=recent.map(item=>{const hit=hitAgainstLine(p,item.metric.value);return`<div class="${hit?'hit':'miss'}"><span>${item.date?item.date.toLocaleDateString([],{month:'numeric',day:'numeric'}):'Game'}</span><b>${htmlEscape(opponentLabel(item.row,player))}</b><em>${htmlEscape(item.metric.value)} · ${hit?'HIT':'MISS'}</em></div>`}).join('')}catch(error){if(host.isConnected){host.querySelector('strong').textContent='Last 10 unavailable';host.querySelector('span').textContent=error.message;host.querySelector('i').className=''}}}
@@ -1327,7 +1327,10 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
   const stakeText=()=>`$${heroStake.toLocaleString('en-US',{maximumFractionDigits:2})}`;
   // Parlays posted from Oct 12, 2026 on are a quarter unit; earlier ones a full unit.
   const share=r=>r.kind==='parlay'&&String(r.posted_at||'')>='2026-10-12T18:00:00Z'?.25:1;
-  const payout=r=>{const d=oddsDecimal(r.kind==='parlay'?r.combined_odds:r.odds),k=heroStake*share(r);return r.result==='won'&&d?k*(d-1):r.result==='lost'?-k:0};
+  // Same rule as the server's recordPay: a pushed parlay leg drops out of the
+  // price; the same-game cut stays only while two remaining legs share a game.
+  const parlayDec=r=>{let legs=[];try{legs=JSON.parse(r.legs_json||'[]')}catch{}if(!legs.length||!legs.every(l=>['won','push'].includes(l.result)))return oddsDecimal(r.combined_odds);const live=legs.filter(l=>l.result==='won');if(!live.length)return 1;const d=live.reduce((t,l)=>t*(oddsDecimal(l.odds)||1),1);return new Set(live.map(l=>l.gameId||l.team||l.player)).size<live.length?1+(d-1)*.8:d};
+  const payout=r=>{const d=r.kind==='parlay'?parlayDec(r):oddsDecimal(r.odds),k=heroStake*share(r);return r.result==='won'&&d?k*(d-1):r.result==='lost'?-k:0};
   // Same comparison as the results page: same line only, 0.05% tolerance.
   const beatClose=r=>{
     if(r.kind!=='prop'||!r.closing_captured_at||r.closing_odds==null)return null;
@@ -1450,7 +1453,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     return {chip,title:isParlay?`${legs.length}-leg ${legs.some(l=>l.sameGame)?'same-game ':''}parlay`:r.player,bet,game,price:r.pm?`${r.pm.pct}%`:formatOdds(odds),
       // Alerts prompt for anyone without alerts or pick emails: right after a hit, or on an open pick.
       alert:document.documentElement.classList.contains('alerts-on')||(()=>{try{return localStorage.getItem('btg-email-sub')==='1'}catch{return false}})()?null:done&&r.result==='won'?{title:'This one hit. Get the next one first.',text:'Picks lock at a price, and the price moves. Alerts get you the next pick the second it posts.'}:!done?{title:'Get the next pick the second it locks',text:'Prices move fast after we post. Free alerts by phone or email, about 3–6 a week.'}:null,
-      note:pmOffer?`Partner offer: new to ${r.pm.exchange}? Use code ${pmOffer.code}${pmOffer.offer?`: ${pmOffer.offer}`:''}. Open ${r.pm.exchange} copies the code for you. Age limits and terms apply. We earn a commission on sign-ups; it never changes our picks.`:'',stake:share(r)<1?`$${(heroStake*share(r)).toLocaleString('en-US',{maximumFractionDigits:2})} (¼ unit)`:stakeText(),
+      note:pmOffer?`Partner offer: new to ${r.pm.exchange}? Use code ${pmOffer.code}${pmOffer.offer?`: ${pmOffer.offer}`:''}. Open ${r.pm.exchange} copies the code for you. Age limits and terms apply. We earn a commission on sign-ups; it never changes our picks.`:'',stake:share(r)<1?`$${(heroStake*share(r)).toLocaleString('en-US',{maximumFractionDigits:2})} ($25)`:stakeText(),
       money:done?money(payout(r)):d?`wins $${Math.round(heroStake*share(r)*(d-1)).toLocaleString('en-US')}`:'—',moneyCls:done?(r.result==='won'?'pos':r.result==='lost'?'neg':''):'pos',
       rows,legs:legRows,chart:points.length>=2?{label:done?'Price posted → kickoff':'Price since posted',points}:null,
       actions:r.pm?[...betAction(r,legs,done),...(!done&&window.BTGApps?.link(r.pm.exchange)?[{label:`Open ${r.pm.exchange}`,icon:'external',wide:true,onClick:()=>{const app=String(r.pm.exchange).toLowerCase();window.btgCount?.(`app:${app}`);
@@ -1520,6 +1523,14 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     return rows.filter(r=>(NBA?weekOf(r)>=current:weekOf(r)===current)&&(r.kind==='prop'||r.kind==='parlay')).sort((a,b)=>group(a)-group(b)||(group(a)===2?t(b).localeCompare(t(a)):t(a).localeCompare(t(b)))||String(a.posted_at||'').localeCompare(String(b.posted_at||'')));
   }
   const kickoff=iso=>{const d=new Date(iso);return Number.isFinite(d.getTime())?d.toLocaleString([],{weekday:'short',hour:'numeric',minute:'2-digit'}):''};
+  // Under each pick: what the stake wins ($100 singles, $25 parlays, or the
+  // bet amount set in Settings), and once graded what it did (same rule as the record).
+  function winLine(r,isParlay,odds,done){
+    const stake=heroStake*share(r),d=isParlay?parlayDec(r):oddsDecimal(odds);if(!d)return '';
+    const money=n=>`$${Number.isInteger(n)?n:n.toFixed(2).replace(/\.00$/,'')}`;
+    const txt=done?(r.result==='won'?`Won +${money(Math.round(payout(r)))}`:r.result==='lost'?`Lost −${money(stake)}`:'Push · $0'):`${money(stake)} wins ${money(Math.round(stake*(d-1)))}`;
+    return `<i class="on-win ${done?r.result:'open'}">${htmlEscape(txt)}</i>`;
+  }
   function officialRow(r,i){
     const legs=recordLegs(r),isParlay=r.kind==='parlay',odds=isParlay?r.combined_odds:r.odds;
     const done=graded(r);
@@ -1533,7 +1544,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     const why=edges.length?(isParlay?`Every leg beats fair`:`${Math.max(...edges).toFixed(1)}% better than fair`):'';
     const game=String(legs[0]?.team||'').replace(' · @ ',' @ ').replace(' · vs ',' vs '),matchup=isParlay?'':game&&typeof compactGameName==='function'?compactGameName(game):game;
     // Compact row: the book rides in the small line (the section already says these are official).
-    return `<button type="button" class="on-row on-${status[0]}-row" data-on="${i}" data-on-player="${htmlEscape(isParlay?'':r.player||'')}" data-on-team="${htmlEscape(isParlay?'':legs[0]?.team||'')}" aria-label="Details for ${htmlEscape(title)}">${avatar}<span class="on-who"><b>${htmlEscape(title)}</b><span>${htmlEscape(sub)}</span><small>${htmlEscape([matchup,kickoff(r.game_time),books.length===1?books[0]:''].filter(Boolean).join(' · '))}</small>${why?`<i class="on-why">${htmlEscape(why)}</i>`:''}<i class="on-form" data-on-form="${i}" hidden></i><i class="on-wx" data-wx="${htmlEscape(r.game_id||legs[0]?.gameId||'')}" hidden></i><em class="on-live" data-on-live="${i}" hidden></em>${isParlay?'':`<i class="on-pm" data-pm="${htmlEscape(r.id||'')}" data-pm-odds="${htmlEscape(String(odds))}" data-pm-status="${htmlEscape(status[0])}" hidden></i>`}</span><span class="on-end"><b class="on-price">${htmlEscape(formatOdds(odds))}</b><span class="on-tag on-${status[0]}"${status[0]==='locked'?' title="Posted at this price before kickoff"':''}>${tag}</span></span></button>`;
+    return `<button type="button" class="on-row on-${status[0]}-row" data-on="${i}" data-on-player="${htmlEscape(isParlay?'':r.player||'')}" data-on-team="${htmlEscape(isParlay?'':legs[0]?.team||'')}" aria-label="Details for ${htmlEscape(title)}">${avatar}<span class="on-who"><b>${htmlEscape(title)}</b><span>${htmlEscape(sub)}</span><small>${htmlEscape([matchup,kickoff(r.game_time),books.length===1?books[0]:''].filter(Boolean).join(' · '))}</small>${winLine(r,isParlay,odds,done)}${why?`<i class="on-why">${htmlEscape(why)}</i>`:''}<i class="on-form" data-on-form="${i}" hidden></i><i class="on-wx" data-wx="${htmlEscape(r.game_id||legs[0]?.gameId||'')}" hidden></i><em class="on-live" data-on-live="${i}" hidden></em>${isParlay?'':`<i class="on-pm" data-pm="${htmlEscape(r.id||'')}" data-pm-odds="${htmlEscape(String(odds))}" data-pm-status="${htmlEscape(status[0])}" hidden></i>`}</span><span class="on-end"><b class="on-price">${htmlEscape(formatOdds(odds))}</b><span class="on-tag on-${status[0]}"${status[0]==='locked'?' title="Posted at this price before kickoff"':''}>${tag}</span></span></button>`;
   }
   // Live progress for locked picks, refreshed with the live board (every 5s in games).
   let officialLiveList=[];
@@ -2696,17 +2707,20 @@ function statsProp(l){
     host.querySelectorAll('[data-live-pick]').forEach(b=>b.onclick=()=>window.BTGOpenPick?.(list[+b.dataset.livePick]));
   };
   function bindPmRows(){document.querySelectorAll('[data-pm-i]').forEach(el=>{el.onclick=()=>window.BTGOpenPick?.(pmRows[+el.dataset.pmI]);el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();el.click()}}});updatePmLive()}
+  // What the stake wins at the posted (after-fee) price; once graded, what it did.
+  function pmWin(odds,stake,result,money){const o=Number(odds),d=o>=100?1+o/100:o<=-100?1+100/-o:null;if(!d)return '';const win=Math.round(stake*(d-1));
+    if(result==='won')return `Won +$${Number.isFinite(Number(money))?Math.round(Number(money)):win}`;if(result==='lost')return `Lost −$${stake}`;if(result==='push'||result==='void')return 'Push · $0';return `$${stake} wins $${win}`}
   function pickRow(r){
     const initials=String(r.player||'').split(' ').map(x=>x[0]||'').join('').slice(0,3),bet=`${r.side} ${r.line} ${String(r.market||'').toLowerCase()}`;
     const game=String(r.team||'').replace(' · @ ',' @ ').replace(' · vs ',' vs '),matchup=game&&typeof compactGameName==='function'?compactGameName(game):game,st=pmStatus(r);
-    const note=[`Fair chance ${Math.round(r.fair)}%`,r.open===false?`not offered in ${data?.stateName||'your state'}`:''].filter(Boolean).join(' · ');
+    const note=[pmWin(r.netOdds??r.odds,100,r.result),`Fair chance ${Math.round(r.fair)}%`,r.open===false?`not offered in ${data?.stateName||'your state'}`:''].filter(Boolean).join(' · ');
     const idx=pmRows.push(pmRecord(r))-1;
     return `<div class="on-row on-${st[0]}-row pm-pick" role="button" tabindex="0" data-pm-i="${idx}" aria-label="${htmlEscape(`Details for ${r.player}`)}"><span class="on-avatar"><span>${htmlEscape(initials)}</span><img loading="lazy" decoding="async" src="/api/player-photo?name=${encodeURIComponent(r.player||'')}" alt="" onerror="this.remove()"></span><span class="on-who"><b>${htmlEscape(r.player)}</b><span>${htmlEscape(bet.charAt(0).toUpperCase()+bet.slice(1))}</span><small>${htmlEscape([matchup,when(r.gameTime)].filter(Boolean).join(' · '))} · ${chip(r.exchange)}</small><i class="on-pm pm-ok">${htmlEscape(note)}</i>${pmLiveSpan(idx)}</span>${pmEnd(r,st)}</div>`;
   }
   function parlayRow(r){
     const st=pmStatus(r),same=r.legs.some(l=>l.sameGame);
     const legs=r.legs.map(l=>`${l.result==='won'?'✓ ':l.result==='lost'?'✗ ':''}${l.player} ${l.side} ${l.line} ${String(l.market||'').toLowerCase()}`).join(' + ');
-    const note=[`¼ unit${same?' · same game':''}`,r.open===false?`not offered in ${data?.stateName||'your state'}`:''].filter(Boolean).join(' · ');
+    const note=[pmWin(r.odds,25,r.result,r.money),same?'same game':'',r.open===false?`not offered in ${data?.stateName||'your state'}`:''].filter(Boolean).join(' · ');
     const idx=pmRows.push(pmRecord(r))-1;
     return `<div class="on-row on-${st[0]}-row pm-pick" role="button" tabindex="0" data-pm-i="${idx}" aria-label="Details for this parlay"><span class="on-avatar on-parlay">${typeof icon==='function'?icon('layers'):''}</span><span class="on-who"><b>${r.legs.length}-leg parlay</b><span>${htmlEscape(legs)}</span><small>${htmlEscape(when(r.gameTime))} · ${chip(r.exchange)}</small><i class="on-pm pm-ok">${htmlEscape(note)}</i>${pmLiveSpan(idx)}</span>${pmEnd(r,st)}</div>`;
   }
@@ -2790,15 +2804,19 @@ function statsProp(l){
     document.querySelectorAll('#propList .prop-card[data-id]').forEach(cardEl=>{
       const b=cardEl.querySelector('.mockup-pick b');if(!b)return;if(!b.dataset.odds)b.dataset.odds=b.textContent;
       let note=cardEl.querySelector('.pm-board');
-      if(!pm){b.textContent=b.dataset.odds;b.classList.remove('pm-price');cardEl.classList.remove('pm-hide');note?.remove();return}
+      // The payout line follows the price shown: the app's price in this view.
+      const moneyEl=cardEl.querySelector('.card-money>span'),moneyText=moneyEl?[...moneyEl.childNodes].find(n=>n.nodeType===3):null;
+      if(moneyText&&cardEl.dataset.money==null)cardEl.dataset.money=moneyText.textContent;
+      if(!pm){b.textContent=b.dataset.odds;b.classList.remove('pm-price');cardEl.classList.remove('pm-hide','pm-card');note?.remove();if(moneyText&&cardEl.dataset.money!=null)moneyText.textContent=cardEl.dataset.money;return}
       const p=typeof props!=='undefined'?props.find(x=>x.id===+cardEl.dataset.id):null;if(!p){cardEl.classList.add('pm-hide');return}
       const id=p.eventID;if(id&&!boardPrices.has(id)){cardEl.classList.add('pm-hide');loadBoard(id);return}
       const hit=boardPrices.get(id)?.get(`${String(p.player).toLowerCase().replace(/[^a-z]/g,'')}|${p.market}|${p.side}|${Number(p.line)}`);
       // No prediction-market price: the prop doesn't show in this view.
       cardEl.classList.toggle('pm-hide',!hit||Boolean(appFilter&&hit.exchange!==appFilter));if(!hit)return;
-      b.textContent=pct(hit.odds);b.classList.add('pm-price');
+      b.textContent=pct(hit.odds);b.classList.add('pm-price');cardEl.classList.add('pm-card');
+      if(moneyText){const o=Number(hit.odds),d=o>=100?1+o/100:o<=-100?1+100/-o:null,stake=Number(String(cardEl.dataset.money||'').match(/\$([\d,.]+)/)?.[1]?.replace(/,/g,''))||100;if(d)moneyText.textContent=`$${stake} wins $${Math.round(stake*(d-1))}`}
       if(!note){note=document.createElement('small');note.className='pm-board';cardEl.querySelector('.mockup-pick')?.after(note)}
-      note.innerHTML=`${chip(hit.exchange)} · ${pct(hit.odds)} chance`;
+      const fair=Number(p.fairChance);note.innerHTML=`${chip(hit.exchange)} · ${pct(hit.odds)} chance${Number.isFinite(fair)&&fair>0?` · fair ${Math.round(fair)}%`:''}`;
     });
   }
   const boardNote=()=>{const host=document.getElementById('propList');if(!host)return;const cards=host.querySelectorAll('.prop-card'),shown=[...cards].filter(c=>!c.classList.contains('pm-hide')).length;let n=document.getElementById('pmBoardEmpty');const want=view()==='predictions'&&cards.length&&!shown&&[...boardPrices.keys()].length;if(want&&!n){n=document.createElement('p');n.id='pmBoardEmpty';n.className='pm-empty';n.textContent='None of these props are on prediction markets right now. Prediction markets list receptions, yards, passing TDs, anytime TDs, rush attempts and completions.';host.after(n)}if(n)n.hidden=!want};
@@ -2914,7 +2932,7 @@ function statsProp(l){
     const wager=Math.max(0,Number(String($('#wager')?.value||'').replace(/[^0-9.]/g,''))||0),same=new Set(legs.map(l=>l.p.eventID)).size<legs.length;
     if(!full.length){box.hidden=false;box.innerHTML='<p class="slip-books-none">No single book lists every leg at these lines. Try fewer legs.</p>';return}
     box.hidden=false;
-    box.innerHTML=`<div class="slip-books-head"><span>This parlay at each book</span><small>${wager?`${usd(wager)} pays`:'Odds'}</small></div>${full.slice(0,4).map((v,i)=>`<div class="slip-books-row${i===0?' best':''}"><span>${htmlEscape(v.b)}${bookAllowed(v.b)&&picked()?' <em>your book</em>':''}</span><b>${htmlEscape(formatOdds(amer(v.d)))}${wager?` · ${usd(Math.round(wager*v.d*100)/100)}`:''}</b>${openLink(v.b)}</div>`).join('')}${same?'<small>Same-game legs: books price these lower than the multiplied odds.</small>':''}`;
+    box.innerHTML=`<div class="slip-books-head"><span>This parlay at each book</span><small>${wager?`${usd(wager)} wins`:'Odds'}</small></div>${full.slice(0,4).map((v,i)=>`<div class="slip-books-row${i===0?' best':''}"><span>${htmlEscape(v.b)}${bookAllowed(v.b)&&picked()?' <em>your book</em>':''}</span><b>${htmlEscape(formatOdds(amer(v.d)))}${wager?` · ${usd(Math.round(wager*(v.d-1)))}`:''}</b>${openLink(v.b)}</div>`).join('')}${same?'<small>Same-game legs: books price these lower than the multiplied odds.</small>':''}`;
   }
   function paintPartner(){
     const summary=$('#parlaySummary');if(!summary)return;

@@ -624,7 +624,7 @@ async function xCardPreview(request, env) {
   // ?week=YYYY-MM-DD shows that week's results graphic. Never posts anything.
   const params = new URL(request.url).searchParams, id = params.get("id") || "", week = params.get("week") || "";
   if (!env.DB) return new Response("", { status: 404 });
-  const seasonRows = (await env.DB.prepare("SELECT kind,posted_at,line,odds,combined_odds,status,result,closing_line,closing_odds,closing_captured_at FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%'").all()).results || [];
+  const seasonRows = (await env.DB.prepare("SELECT kind,posted_at,line,odds,combined_odds,status,result,closing_line,closing_odds,closing_captured_at,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%'").all()).results || [];
   let svg;
   if (/^\d{4}-\d{2}-\d{2}$/.test(week)) {
     const rows = await weeklyRows(env, week), info = nflWeekOf(week);
@@ -635,7 +635,7 @@ async function xCardPreview(request, env) {
     const row = await env.DB.prepare("SELECT * FROM public_recommendations WHERE id = ? AND source = 'market-verified-v2'").bind(id).first();
     if (!row) return new Response("", { status: 404 });
     // An NBA pick's graphic carries the NBA record, not the NFL one.
-    const nbaRows = id.startsWith("nba|") ? (await env.DB.prepare("SELECT kind,posted_at,line,odds,combined_odds,status,result,closing_line,closing_odds,closing_captured_at FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'nba|%'").all()).results || [] : null;
+    const nbaRows = id.startsWith("nba|") ? (await env.DB.prepare("SELECT kind,posted_at,line,odds,combined_odds,status,result,closing_line,closing_odds,closing_captured_at,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'nba|%'").all()).results || [] : null;
     const season = weeklySummary(nbaRows || seasonRows), graded = XRESULT[row.result] && params.get("result") === "1";
     svg = xCardSvg(graded ? await xResultData(env, row, season) : await xCardData(env, row, season));
   }
@@ -1164,7 +1164,7 @@ let homeRowsCache = { at: 0, rows: null };
 let homeSeasonCache = { at: 0, season: null };
 async function homeSeason(env, now = Date.now()) {
   if (homeSeasonCache.season && now - homeSeasonCache.at < 60000) return homeSeasonCache.season;
-  const rows = (await env.DB.prepare("SELECT kind, posted_at, line, odds, combined_odds, status, result, closing_line, closing_odds, closing_captured_at FROM public_recommendations WHERE source = 'market-verified-v2' AND id LIKE 'official|%' AND kind IN ('prop','parlay')").all()).results || [];
+  const rows = (await env.DB.prepare("SELECT kind, posted_at, line, odds, combined_odds, status, result, closing_line, closing_odds, closing_captured_at, legs_json FROM public_recommendations WHERE source = 'market-verified-v2' AND id LIKE 'official|%' AND kind IN ('prop','parlay')").all()).results || [];
   const s = weeklySummary(rows);
   // Price story for the welcome screen: how many picks got a worse price than
   // kickoff, and the typical (median) posted and kickoff prices.
