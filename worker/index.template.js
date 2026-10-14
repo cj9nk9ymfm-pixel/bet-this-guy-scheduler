@@ -497,6 +497,22 @@ function espnImageFrom(payload, name, league) {
   const id = String(exact.uid || "").match(/~a:(\d+)/)?.[1] || (/^\d+$/.test(String(exact.id || "")) ? exact.id : null);
   return exact.image?.default || exact.image?.defaultDark || exact.headshot?.href || (id ? `https://a.espncdn.com/i/headshots/${league}/players/full/${id}.png` : null);
 }
+// A player's photo from his Wikipedia page summary, only when the page is
+// about a football (or basketball) player of that name.
+async function wikipediaHeadshot(name, sport, headers) {
+  const kind = sport === "NBA" ? "basketball" : "American football";
+  const base = String(name).trim().replace(/\s+/g, "_");
+  for (const title of [base, `${base}_(${sport === "NBA" ? "basketball" : "American_football"})`]) {
+    const response = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`, { headers, signal: AbortSignal.timeout(8000) }).catch(() => null);
+    const page = response?.ok ? await response.json().catch(() => null) : null;
+    const fits = page && page.type === "standard" && String(page.description || "").includes(kind) && normalizedName(String(page.title || "").replace(/\s*\(.*\)$/, "")) === normalizedName(name);
+    const image = fits ? page.thumbnail?.source || page.originalimage?.source || null : null;
+    headshotTrace.push({ source: "wikipedia", title, status: response?.status ?? "failed", description: page?.description || null, url: image });
+    if (image) return image;
+    if (fits) return null;
+  }
+  return null;
+}
 // A player's photo address from TheSportsDB, matched on name and sport.
 async function sportsDbHeadshot(name, sport, headers) {
   const sportName = sport === "NBA" ? "Basketball" : "American Football";
@@ -525,7 +541,7 @@ async function playerHeadshot(name, sport = "NFL") {
     headshotTrace = [];
     // ESPN refuses requests with no browser headers (403); two search
     // addresses, and one that refuses is skipped for the rest of the lookup.
-    const headers = { accept: "application/json", "user-agent": "Mozilla/5.0 (compatible; BetThisGuy/1.0; +https://betthisguy.com)" };
+    const headers = { accept: "application/json", "user-agent": "BetThisGuy/1.0 (https://betthisguy.com; support@betthisguy.com)" };
     const endpoints = [q => `https://site.web.api.espn.com/apis/search/v2?query=${encodeURIComponent(q)}&limit=8`, q => `https://site.api.espn.com/apis/common/v3/search?query=${encodeURIComponent(q)}&limit=8&type=player`];
     const refused = new Set();
     for (const query of queries) {
@@ -541,8 +557,9 @@ async function playerHeadshot(name, sport = "NFL") {
       }
       if (url || refused.size === endpoints.length) break;
     }
-    // ESPN refuses Cloudflare Workers outright; TheSportsDB's free player
-    // search carries photos (cutout or thumb) and answers them.
+    // ESPN refuses Cloudflare Workers outright (403), so Wikipedia's page
+    // photo comes next, then TheSportsDB (its free key is often rate limited).
+    if (!url) url = await wikipediaHeadshot(name, sport, headers);
     if (!url) url = await sportsDbHeadshot(name, sport, headers);
     if (!url) return null;
     const image = await fetch(url, { headers: { "user-agent": headers["user-agent"] }, signal: AbortSignal.timeout(8000) });
