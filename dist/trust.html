@@ -78,7 +78,7 @@ button.sum-row{width:100%;border:0;border-top:1px solid #272c35;background:trans
 .bs-gate{display:flex;justify-content:space-between;align-items:center;margin:12px 0 0;padding:10px 12px;border:1px dashed #323844;border-radius:12px;color:#98a1ad;font-weight:600;font-size:14px}
 .bs-gate span{display:inline-flex;align-items:center;gap:6px}.bs-gate a{height:32px;line-height:32px;padding:0 12px;border-radius:999px;background:#2563eb;color:#fff;font-size:13px;font-weight:700;text-decoration:none}
 .bs-acts{display:flex;gap:8px;margin-top:16px}.bs-btn{flex:1;height:46px;border-radius:12px;border:1px solid #272c35;background:#1e222a;color:#f2f4f7;font:700 15px "DM Sans",sans-serif;display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer}
-.stake-note{margin:-4px 0 14px;font-size:12.5px;color:#98a1ad;line-height:1.45}.sum-pending{border-bottom:1px solid #232a33}.sum-pending>summary{list-style:none;cursor:pointer;display:flex;justify-content:space-between;align-items:center;padding:13px 16px;font-weight:700;color:#cfd6df}.sum-pending>summary::-webkit-details-marker{display:none}.sum-pending>summary b{margin-left:auto;padding:2px 9px;border-radius:999px;background:#1f2731;color:#e8eef5;font-size:12.5px}.sum-pending>summary::after{content:"▾";color:#98a1ad;margin-left:8px}.sum-pending[open]>summary::after{content:"▴"}@media(max-width:720px){header .site-nav{display:none}}.pm-stats>p.subtle{grid-column:1/-1;margin:0}.toolbar[hidden],.pm-list[hidden]{display:none!important}</style>
+.sum-stats>p{grid-column:1/-1;margin:0}.summary [hidden]{display:none!important}.stake-note{margin:-4px 0 14px;font-size:12.5px;color:#98a1ad;line-height:1.45}.sum-pending{border-bottom:1px solid #232a33}.sum-pending>summary{list-style:none;cursor:pointer;display:flex;justify-content:space-between;align-items:center;padding:13px 16px;font-weight:700;color:#cfd6df}.sum-pending>summary::-webkit-details-marker{display:none}.sum-pending>summary b{margin-left:auto;padding:2px 9px;border-radius:999px;background:#1f2731;color:#e8eef5;font-size:12.5px}.sum-pending>summary::after{content:"▾";color:#98a1ad;margin-left:8px}.sum-pending[open]>summary::after{content:"▴"}@media(max-width:720px){header .site-nav{display:none}}.pm-stats>p.subtle{grid-column:1/-1;margin:0}.toolbar[hidden],.pm-list[hidden]{display:none!important}</style>
 <style>.rec-tabs{display:inline-flex;gap:4px;padding:3px;margin:0 0 14px;border-radius:12px;background:#1e222a}.rec-tabs a{padding:8px 14px;border-radius:9px;color:#b5bcc7;font-weight:600;font-size:14px;text-decoration:none}.rec-tabs a[aria-current="page"]{background:#3a404a;color:#fff}
 .pm-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:0 0 14px}@media(max-width:640px){.pm-stats{grid-template-columns:1fr 1fr}}
 .pm-stat{padding:12px 14px;border-radius:14px;background:#1d1f22;border:1px solid #2c2f34}.pm-stat strong{display:block;font:700 22px 'Space Grotesk',sans-serif;color:#fff}.pm-stat strong.pos{color:#22c55e}.pm-stat strong.neg{color:#f06060}.pm-stat span{font-size:12.5px;color:#98a1ad}
@@ -113,19 +113,13 @@ html.light img[src^="/logo.png"]{content:url(/logo-dark.png)}html.light{color-sc
 <nav class="rec-tabs" aria-label="Which record"><a href="#overview">NFL</a><a href="#nba" aria-current="page">NBA</a><a href="#predictions">Predictions</a></nav>
 <h1>NBA record</h1><p class="lede">Every official NBA pick, graded from box scores. Its own record, separate from our NFL picks.</p>
 <p class="lede stake-note">Singles at $100, parlays at $25. One pick per game, up to 6 a night, posted as soon as a price qualifies, often the day before. A player who doesn’t play is no action, the same as at the sportsbook.</p>
-<div id="nbaStats" class="pm-stats"><p class="subtle">Loading…</p></div>
-<div id="nbaMarkets" class="pm-apps"></div>
-<div class="toolbar"><p id="nbaCountNote" class="subtle"></p><label>Show <select id="nbaFilter"><option value="all">All picks</option><option value="prop">Singles</option><option value="parlay">Parlays</option><option value="open">Not graded yet</option></select></label></div>
-<div id="nbaList" class="pm-list"></div>
+<div id="nbaSummary" class="summary"><div id="nbaSumStats" class="sum-stats"><p class="subtle">Loading…</p></div><div id="nbaClv" class="clv-banner" hidden></div><div id="nbaMarkets" class="pm-apps"></div><div class="sum-card"><div class="sum-head"><h2>Profit over time</h2><span id="nbaSumStake" class="subtle"></span></div><div id="nbaChart"></div></div><div class="sum-head sum-list-head"><h2>Every NBA pick</h2><div class="sum-tabs" role="group" aria-label="Show"><button type="button" class="on" aria-pressed="true" data-nbasum="all">All</button><button type="button" aria-pressed="false" data-nbasum="prop">Singles</button><button type="button" aria-pressed="false" data-nbasum="parlay">Parlays</button></div></div><div id="nbaTable" class="sum-table"></div></div>
 </section>
 <section id="predictionsPanel" hidden>
 <nav class="rec-tabs" aria-label="Which record"><a href="#overview">NFL</a><a href="#nba">NBA</a><a href="#predictions" aria-current="page">Predictions</a></nav>
 <h1>Prediction app record</h1><p class="lede">Every pick and parlay we post on prediction apps (Novig, ProphetX and others), graded from box scores. Its own record, separate from our sportsbook picks.</p>
 <p class="lede stake-note">Singles at $100, parlays at $25, at each app’s price after its fee. A price like 60% means you pay 60¢ to win $1.</p>
-<div id="pmStats" class="pm-stats"><p class="subtle">Loading…</p></div>
-<div id="pmApps" class="pm-apps"></div>
-<div class="toolbar"><p id="pmCountNote" class="subtle"></p><label>Show <select id="pmFilter"><option value="all">All plays</option><option value="single">Singles</option><option value="parlay">Parlays</option><option value="open">Not graded yet</option></select></label></div>
-<div id="pmList" class="pm-list"></div>
+<div id="pmSummary" class="summary"><div id="pmSumStats" class="sum-stats"><p class="subtle">Loading…</p></div><div id="pmClv" class="clv-banner" hidden></div><div id="pmApps" class="pm-apps"></div><div class="sum-card"><div class="sum-head"><h2>Profit over time</h2><span id="pmSumStake" class="subtle"></span></div><div id="pmChart"></div></div><div class="sum-head sum-list-head"><h2>Every prediction pick</h2><div class="sum-tabs" role="group" aria-label="Show"><button type="button" class="on" aria-pressed="true" data-pmsum="all">All</button><button type="button" aria-pressed="false" data-pmsum="prop">Singles</button><button type="button" aria-pressed="false" data-pmsum="parlay">Parlays</button></div></div><div id="pmTable" class="sum-table"></div></div>
 <div class="pm-rules"><h2>How prediction picks work</h2><ul>
 <li><b>What qualifies:</b> a single posts when an app’s price, after its fee, is at least 1 point under our fair chance from the sportsbooks. Parlays use props just short of that (0.5 to 1 point), at most 3 per game, all legs on one app.</li>
 <li><b>Fees:</b> we grade at the after-fee price, from each app’s published fees: Novig charges nothing on pre-game single bets and 0.10 × P × (1 − P) per contract on parlays; ProphetX takes 2% of net winnings on singles and nothing on parlays; Kalshi and Polymarket about 7 × P × (1 − P) per contract (P is the price). Fees change, so check the app before you trade.</li>
@@ -225,9 +219,9 @@ const officialOnly=rows=>rows.filter(verified).filter(row=>String(row.id||'').st
 const shortDate=value=>{const d=new Date(value);return Number.isNaN(d.getTime())?'':d.toLocaleDateString([],{month:'short',day:'numeric'})};
 const legName=leg=>{const m=String(leg.market||'').toLowerCase();if(/touchdown/.test(m)&&Number(leg.line)===0.5){const t=(leg.side==='Under'?'no ':'')+m;return t.charAt(0).toUpperCase()+t.slice(1)}return `${leg.side||''} ${leg.line??''} ${m}`.replace(/\s+/g,' ').trim()};
 const dollars=value=>`${value>=0?'+':'−'}$${Math.abs(Math.round(value)).toLocaleString('en-US')}`;
-function profitChart(points){
+function profitChart(points,hostSel='#summaryChart'){
   if(points.length<2)return '<p class="subtle">The chart fills in as picks are graded.</p>';
-  const W=Math.max(300,Math.min(1100,Math.round(resultNode('#summaryChart')?.clientWidth||640))),H=W<500?190:240,L=8,R=58,T=14,B=26,vals=points.map(p=>p.v),lo=Math.min(0,...vals),hi=Math.max(0,...vals),span=(hi-lo)||1;
+  const W=Math.max(300,Math.min(1100,Math.round(resultNode(hostSel)?.clientWidth||640))),H=W<500?190:240,L=8,R=58,T=14,B=26,vals=points.map(p=>p.v),lo=Math.min(0,...vals),hi=Math.max(0,...vals),span=(hi-lo)||1;
   const step=[50,100,250,500,1000,2500,5000,10000].find(s=>span/s<=4)||20000,ticks=[];for(let v=Math.floor(lo/step)*step;v<=hi+step*.01;v+=step)ticks.push(v);
   const yMin=Math.min(lo,ticks[0]),yMax=Math.max(hi,ticks.at(-1)),y=v=>T+(H-T-B)*(1-(v-yMin)/((yMax-yMin)||1)),x=i=>L+(W-L-R)*i/(points.length-1);
   const line=points.map((p,i)=>`${x(i).toFixed(1)},${y(p.v).toFixed(1)}`).join(' '),up=points.at(-1).v>=0,col=up?'#22c55e':'#f06060';
@@ -327,26 +321,50 @@ document.addEventListener('click',event=>{const target=event.target.closest?.('[
 resultNode('#gradeFilter').onchange=renderDetail;
 resultNode('#recordScope').onchange=()=>paint(allResultRows);
 // Prediction app record (#predictions): its own data, loaded when the tab opens.
+// The same layout as the NFL record for any record: four tiles, the closing
+// price box, profit over time and every pick (picks still to play folded at the top).
+// Rows: {id,date,title,sub,price,kind:'prop'|'parlay',grade,net,clv}.
+function recordBoard(k,opts){
+  const {rows,clv,stakeText,empty,kickoff='kickoff',totals={}}=opts,sum=resultNode(`#${k}Summary`);if(!sum)return;
+  const money=v=>Math.round(v)===0?'$0':dollars(v),tone=v=>Math.round(v)>0?'pos':Math.round(v)<0?'neg':'';
+  const done=rows.filter(r=>r.grade!=='pending').sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+  const part=kind=>{const l=done.filter(r=>r.kind===kind);return {w:l.filter(r=>r.grade==='won').length,l:l.filter(r=>r.grade==='lost').length,p:l.filter(r=>r.grade==='push').length,net:l.reduce((t,r)=>t+(r.net||0),0),n:l.length}};
+  // Server totals when given (rows carry rounded dollars).
+  const s=part('prop'),p=part('parlay');if(totals.prop!=null)s.net=totals.prop;if(totals.parlay!=null)p.net=totals.parlay;
+  const stats=[[`${s.w}–${s.l}${s.p?'–'+s.p:''}`,'Singles record',''],[money(s.net),'Singles profit',tone(s.net)],[s.w+s.l?`${Math.round(100*s.w/(s.w+s.l))}%`:'—','Singles win rate',''],[`${p.w}–${p.l}${p.p?'–'+p.p:''}`,p.n?`Parlays · ${money(p.net)}`:'Parlays','']];
+  resultNode(`#${k}SumStats`).innerHTML=done.length?stats.map(([v,l,c])=>`<div class="sum-stat"><b class="${c}">${escape(v)}</b><span>${escape(l)}</span></div>`).join(''):`<p class="subtle">${escape(empty)}</p>`;
+  const banner=resultNode(`#${k}Clv`);
+  if(banner){banner.hidden=!clv?.of;banner.innerHTML=clv?.of?`<div class="clv-main"><span class="clv-eyebrow">Did we get good prices?</span><p class="clv-big"><b>${clv.beat} of ${clv.of}</b> picks beat the closing price</p><p class="clv-sub">We got a better price than the final one before ${escape(kickoff)} ${Math.round(100*clv.beat/clv.of)}% of the time${Math.abs(clv.avg||0)>=.05?`, paying ${Math.abs(clv.avg).toFixed(1)}% ${clv.avg>0?'more':'less'} on average`:''}.</p></div><details class="clv-why"><summary>Why this matters</summary><p>The final price before ${escape(kickoff)} is the market’s sharpest estimate, after all the money and news are in. A single game is mostly luck, but beating that final price again and again is the clearest sign a method finds real value. It’s the number professional bettors judge themselves by.</p></details>`:''}
+  // Nothing posted yet: just the note (no empty chart or list).
+  sum.querySelectorAll?.(':scope>.sum-card,:scope>.sum-list-head,:scope>.sum-table').forEach(el=>el.hidden=!rows.length);
+  resultNode(`#${k}SumStake`).textContent=stakeText;
+  let run=0;const points=[{v:0,d:done[0]?.date},...done.map(r=>({v:run+=(r.net||0),d:r.date}))];
+  resultNode(`#${k}Chart`).innerHTML=profitChart(points,`#${k}Chart`);
+  const kind=sum.dataset?.kind||'all',list=rows.filter(r=>kind==='all'||r.kind===kind).sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+  const tag={won:'Won',lost:'Lost',push:'Push',void:'No action',pending:'Pending'};
+  const rowHtml=r=>`<div class="sum-row"><span class="sum-date">${escape(shortDate(r.date))}</span><span class="sum-pick"><b>${escape(r.title)}${r.clv?'<em class="sum-clv">Beat closing price</em>':''}</b><small>${escape(r.sub)}</small></span><span class="sum-odds">${escape(r.price)}</span><span class="sum-tag sum-${r.grade==='void'?'push':r.grade}">${tag[r.grade]}</span><span class="sum-net ${tone(r.net||0)}">${r.grade==='pending'?'—':escape(money(r.net||0))}</span></div>`;
+  const waiting=list.filter(r=>r.grade==='pending'),graded=list.filter(r=>r.grade!=='pending');
+  resultNode(`#${k}Table`).innerHTML=list.length?(waiting.length?`<details class="sum-pending"><summary>Still to play <b>${waiting.length}</b></summary>${waiting.map(rowHtml).join('')}</details>`:'')+graded.map(rowHtml).join(''):'<p class="subtle" style="padding:14px">No picks in this view yet.</p>';
+  document.querySelectorAll?.(`[data-${k}sum]`).forEach(b=>b.onclick=()=>{sum.dataset.kind=b.dataset[`${k}sum`];document.querySelectorAll(`[data-${k}sum]`).forEach(x=>{x.classList.toggle('on',x===b);x.setAttribute('aria-pressed',String(x===b))});recordBoard(k,opts)});
+}
 let pmRecordData=null,pmLoading=null;
 const pmColors={Kalshi:'#10b981',Polymarket:'#3b82f6',Novig:'#8b5cf6',ProphetX:'#f97316',BetOpenly:'#eab308'};
 const pmMoney=v=>Math.round(v)===0?'$0':`${v<0?'−':'+'}$${Math.abs(Math.round(v)).toLocaleString('en-US')}`;
 const pmPct=o=>{o=Number(o);const d=o>=100?1+o/100:o<=-100?1+100/-o:null;return d?`${Math.round(100/d)}%`:'—'};
 const pmLeg=l=>`${l.player} ${l.side} ${l.line} ${String(l.market||'').toLowerCase()}`;
 const pmWhen=iso=>{const d=new Date(iso);return Number.isFinite(d.getTime())?d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}):''};
-function loadPredictionRecord(){if(pmLoading)return pmLoading;pmLoading=fetch('/api/predictions/record').then(r=>r.json()).then(d=>{if(d?.success){pmRecordData=d;renderPredictionRecord()}else throw 0}).catch(()=>{resultNode('#pmStats').innerHTML='<p class="subtle">Couldn’t load the prediction record. Try again in a minute.</p>';pmLoading=null});return pmLoading}
-function renderPredictionRecord(){const d=pmRecordData;if(!d)return;const s=d.singles,p=d.parlays,w=s.wins+p.wins,l=s.losses+p.losses,net=s.profit+p.profit;
-  const stat=(v,label,cls='')=>`<div class="pm-stat"><strong class="${cls}">${escape(v)}</strong><span>${escape(label)}</span></div>`;
-  resultNode('#pmStats').innerHTML=w+l?stat(`${w}–${l}`,`all plays · ${pmMoney(net)}`,net>0?'pos':net<0?'neg':'')+stat(`${s.wins}–${s.losses}`,`singles · ${pmMoney(s.profit)}`,s.profit>0?'pos':s.profit<0?'neg':'')+stat(`${p.wins}–${p.losses}`,`parlays · ${pmMoney(p.profit)}`,p.profit>0?'pos':p.profit<0?'neg':'')+stat(s.tracked?`${s.beat} of ${s.tracked}`:'—','singles beat the kickoff price'):'<p class="subtle">No graded prediction picks yet.</p>';
+function loadPredictionRecord(){if(pmLoading)return pmLoading;pmLoading=fetch('/api/predictions/record').then(r=>r.json()).then(d=>{if(d?.success){pmRecordData=d;renderPredictionRecord()}else throw 0}).catch(()=>{resultNode('#pmSumStats').innerHTML='<p class="subtle">Couldn’t load the prediction record. Try again in a minute.</p>';pmLoading=null});return pmLoading}
+function renderPredictionRecord(){const d=pmRecordData;if(!d)return;
+  const grade=r=>['won','lost','push','void'].includes(r.result)?r.result:'pending',dec=o=>{o=Number(o);return o>=100?1+o/100:o<=-100?1+100/-o:null};
+  const mark=l=>l.result==='won'?'✓ ':l.result==='lost'?'✗ ':'';
+  // Beat the close: the app's own price at kickoff, same side and line (singles).
+  const rows=d.plays.map(r=>{const single=r.kind!=='parlay',g=grade(r),edge=single&&r.closeOdds!=null&&g!=='pending'&&dec(r.odds)&&dec(r.closeOdds)?100*(dec(r.odds)/dec(r.closeOdds)-1):null;
+    return {id:r.id,date:r.gameTime||r.postedAt,kind:single?'prop':'parlay',grade:g,net:g==='pending'?null:Number(r.money)||0,price:pmPct(single?(r.netOdds??r.odds):r.odds),clv:edge!=null&&edge>.05,edge,
+      title:single?r.player:`${r.legs.length}-leg parlay`,sub:single?`${r.side} ${r.line} ${String(r.market||'').toLowerCase()} · ${r.exchange}`:`${r.legs.map(l=>mark(l)+l.player).join(' + ')} · ${r.exchange}`}});
+  const tracked=rows.filter(r=>r.edge!=null);
+  recordBoard('pm',{rows,clv:{beat:tracked.filter(r=>r.edge>.05).length,of:tracked.length,avg:tracked.length?tracked.reduce((t,r)=>t+r.edge,0)/tracked.length:0},stakeText:'Singles at $100, parlays at $25, after each app’s fee',empty:'No graded prediction picks yet.',totals:{prop:d.singles.profit,parlay:d.parlays.profit}});
   resultNode('#pmApps').innerHTML=Object.entries(d.apps).sort((a,b)=>b[1].plays-a[1].plays).map(([n,a])=>`<span class="pm-app"><i style="background:${pmColors[n]||'#8a93a0'}"></i><b>${escape(n)}</b> ${a.wins}–${a.losses} · ${escape(pmMoney(a.profit))}</span>`).join('');
-  const f=resultNode('#pmFilter').value,list=d.plays.filter(r=>f==='all'||(f==='open'?!r.result:r.kind===f));
-  resultNode('#pmCountNote').textContent=`${list.length} play${list.length===1?'':'s'}`;
-  // Nothing posted at all: no filter row or second empty line under the stats note.
-  {const none=!d.plays.length,bar=resultNode('#pmCountNote')?.closest('.toolbar');if(bar)bar.hidden=none;const pl=resultNode('#pmList');if(pl)pl.hidden=none}
-  const tag=r=>r.result==='won'?['pos','Hit']:r.result==='lost'?['neg','Lost']:r.result==='push'?['','Push']:r.result==='void'?['','Void']:['wait','Pending'];
-  resultNode('#pmList').innerHTML=list.map(r=>{const [cls,txt]=tag(r),title=r.kind==='parlay'?`${r.legs.length}-leg parlay`:`${r.player} · ${r.side} ${r.line} ${String(r.market||'').toLowerCase()}`,sub=[r.exchange,pmWhen(r.gameTime),r.kind==='parlay'?'$25':'$100',r.kind==='single'&&r.actual!=null?`final ${r.actual}`:''].filter(Boolean).join(' · ');
-    return `<div class="pm-play"><b>${escape(title)}</b><span class="pm-sub">${escape(sub)}</span><span class="pm-num"><strong>${escape(pmPct(r.odds))}</strong><small class="${cls}">${escape(txt)}${r.result&&r.result!=='void'?` ${escape(pmMoney(r.money))}`:''}</small></span>${r.kind==='parlay'?`<ul class="pm-legs">${r.legs.map(l=>`<li>${l.result==='won'?'✅':l.result==='lost'?'❌':'·'} ${escape(pmLeg(l))}</li>`).join('')}</ul>`:''}</div>`}).join('')||'<p class="subtle">Nothing here yet.</p>';
 }
-resultNode('#pmFilter').onchange=renderPredictionRecord;
 // NBA record (#nba): nightly official picks from /api/record?view=home&sport=NBA&all=1.
 let nbaData=null,nbaLoading=null;
 const nbaDec=o=>{o=Number(o);return o>=100?1+o/100:o<=-100?1+100/-o:null};
@@ -355,23 +373,15 @@ const nbaStake=r=>r.kind==='parlay'?25:100;
 const nbaNet=r=>{const d=nbaDec(r.kind==='parlay'?r.combined_odds:r.odds);return r.result==='won'&&d?nbaStake(r)*(d-1):r.result==='lost'?-nbaStake(r):0};
 const nbaLegs=r=>{try{return JSON.parse(r.legs_json||'[]')}catch{return []}};
 const nbaDone=r=>r.status==='final'&&['won','lost','push'].includes(r.result);
-const nbaNight=r=>(String(r.id||'').split('|')[1])||'';
-function loadNbaRecord(){if(nbaLoading)return nbaLoading;nbaLoading=fetch('/api/record?view=home&sport=NBA&all=1').then(r=>r.json()).then(d=>{if(d?.success){nbaData=d;renderNbaRecord()}else throw 0}).catch(()=>{resultNode('#nbaStats').innerHTML='<p class="subtle">Couldn’t load the NBA record. Try again in a minute.</p>';nbaLoading=null});return nbaLoading}
-function renderNbaRecord(){const d=nbaData;if(!d)return;const s=d.season||{},rows=d.recent||[];
-  const stat=(v,label,cls='')=>`<div class="pm-stat"><strong class="${cls}">${escape(v)}</strong><span>${escape(label)}</span></div>`,tone=v=>v>0?'pos':v<0?'neg':'';
-  resultNode('#nbaStats').innerHTML=s.wins+s.losses+s.pushes?stat(`${s.wins}–${s.losses}${s.pushes?`–${s.pushes}`:''}`,`singles · ${pmMoney(s.profit)}`,tone(s.profit))+stat(`${s.parlayWins}–${s.parlayLosses}`,`parlays · ${pmMoney(s.parlayProfit)}`,tone(s.parlayProfit))+stat(s.tracked?`${s.beat} of ${s.tracked}`:'—','beat the tip-off price'):'<p class="subtle">No graded NBA picks yet. The first ones post on opening night, Tuesday, Oct 20.</p>';
-  const markets={};rows.filter(r=>r.kind==='prop'&&nbaDone(r)).forEach(r=>{const m=markets[r.market]||(markets[r.market]={w:0,l:0,net:0});if(r.result==='won')m.w++;if(r.result==='lost')m.l++;m.net+=nbaNet(r)});
+function loadNbaRecord(){if(nbaLoading)return nbaLoading;nbaLoading=fetch('/api/record?view=home&sport=NBA&all=1').then(r=>r.json()).then(d=>{if(d?.success){nbaData=d;renderNbaRecord()}else throw 0}).catch(()=>{resultNode('#nbaSumStats').innerHTML='<p class="subtle">Couldn’t load the NBA record. Try again in a minute.</p>';nbaLoading=null});return nbaLoading}
+function renderNbaRecord(){const d=nbaData;if(!d)return;const s=d.season||{},list=d.recent||[];
+  const rows=list.map(r=>{const legs=nbaLegs(r),single=r.kind!=='parlay',voided=r.result==='push'&&legs.length&&legs.every(l=>l.voided),g=!nbaDone(r)?'pending':voided?'void':r.result;
+    return {id:r.id,date:r.game_time||r.posted_at,kind:single?'prop':'parlay',grade:g,net:g==='pending'?null:nbaNet(r),price:nbaOdds(single?r.odds:r.combined_odds),clv:false,
+      title:single?r.player:`${legs.length}-leg parlay`,sub:single?`${r.side} ${r.line} ${String(r.market||'').toLowerCase()}${legs[0]?.book?' · '+legs[0].book:''}`:legs.map(l=>(l.result==='won'?'✓ ':l.result==='lost'?'✗ ':'')+l.player).join(' + ')}});
+  recordBoard('nba',{rows,clv:{beat:s.beat||0,of:s.tracked||0},kickoff:'tip-off',totals:{prop:s.profit,parlay:s.parlayProfit},stakeText:'Singles at $100, parlays at $25',empty:'No graded NBA picks yet. The first ones post on opening night, Tuesday, Oct 20.'});
+  const markets={};list.filter(r=>r.kind==='prop'&&nbaDone(r)).forEach(r=>{const m=markets[r.market]||(markets[r.market]={w:0,l:0,net:0});if(r.result==='won')m.w++;if(r.result==='lost')m.l++;m.net+=nbaNet(r)});
   resultNode('#nbaMarkets').innerHTML=Object.entries(markets).sort((a,b)=>(b[1].w+b[1].l)-(a[1].w+a[1].l)).map(([n,m])=>`<span class="pm-app"><b>${escape(n)}</b> ${m.w}–${m.l} · ${escape(pmMoney(m.net))}</span>`).join('');
-  const f=resultNode('#nbaFilter').value,list=rows.filter(r=>f==='all'||(f==='open'?!nbaDone(r):r.kind===f));
-  resultNode('#nbaCountNote').textContent=`${list.length} pick${list.length===1?'':'s'}`;
-  {const none=!rows.length,bar=resultNode('#nbaCountNote')?.closest('.toolbar');if(bar)bar.hidden=none;const nl=resultNode('#nbaList');if(nl)nl.hidden=none}
-  const tag=r=>{const legs=nbaLegs(r);if(!nbaDone(r))return ['wait','Pending'];if(r.result==='push'&&legs.length&&legs.every(l=>l.voided))return ['','No action'];return r.result==='won'?['pos','Hit']:r.result==='lost'?['neg','Lost']:['','Push']};
-  const nights=[...new Set(list.map(nbaNight))];
-  resultNode('#nbaList').innerHTML=nights.map(n=>{const items=list.filter(r=>nbaNight(r)===n),done=items.filter(nbaDone),w=done.filter(r=>r.result==='won').length,l=done.filter(r=>r.result==='lost').length,net=done.reduce((t,r)=>t+nbaNet(r),0);
-    return `<h2 class="nba-night">${escape(new Date(n+'T12:00:00Z').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',timeZone:'UTC'}))}${done.length?` <small>${w}–${l} · ${escape(pmMoney(net))}</small>`:''}</h2>`+items.map(r=>{const [cls,txt]=tag(r),legs=nbaLegs(r),title=r.kind==='parlay'?`${legs.length}-leg parlay`:`${r.player} · ${r.side} ${r.line} ${String(r.market||'').toLowerCase()}`,actual=legs[0]?.actualValue,sub=[legs[0]?.book,r.kind==='parlay'?'':String(legs[0]?.team||'').replace(' · @ ',' @ '),r.kind==='parlay'?'$25':'$100',r.kind==='prop'&&actual!=null&&nbaDone(r)?`final ${actual}`:''].filter(Boolean).join(' · ');
-      return `<div class="pm-play"><b>${escape(title)}</b><span class="pm-sub">${escape(sub)}</span><span class="pm-num"><strong>${escape(nbaOdds(r.kind==='parlay'?r.combined_odds:r.odds))}</strong><small class="${cls}">${escape(txt)}${nbaDone(r)&&txt!=='No action'&&txt!=='Push'?` ${escape(pmMoney(nbaNet(r)))}`:''}</small></span>${r.kind==='parlay'?`<ul class="pm-legs">${legs.map(x=>`<li>${x.result==='won'?'✅':x.result==='lost'?'❌':'·'} ${escape(pmLeg(x))}</li>`).join('')}</ul>`:''}</div>`}).join('')}).join('')||'<p class="subtle">Nothing here yet.</p>';
 }
-resultNode('#nbaFilter').onchange=renderNbaRecord;
 
 addEventListener('hashchange',()=>{resultNode('#gradeFilter').value='all';showResultSection(location.hash.slice(1));window.scrollTo({top:0,behavior:'auto'})});
 showResultSection(location.hash.slice(1));refreshRecord();setInterval(refreshRecord,15000);document.addEventListener('visibilitychange',refreshRecord);
