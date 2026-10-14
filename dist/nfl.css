@@ -2071,3 +2071,8 @@ html body #leansList .on-price{font-size:13.5px;padding:2px 8px}
 html body #leansList>.on-toggle{display:block!important;width:100%;margin:0;border:0;border-top:1px solid var(--line);background:transparent;padding:8px 12px;font:600 13px 'DM Sans',sans-serif;color:var(--muted,#9aa6b2);cursor:pointer}
 html body .leans-now .on-sub{font-size:12px;margin:0 0 6px}
 html body .leans-now .on-head h2{font-size:17px}
+/* Under each pick: what the bet wins */
+.on-win{display:block;font-style:normal;font-size:12px;font-weight:700;color:#2ee6a8;margin-top:2px}.on-win.lost{color:#f87171}.on-win.push{color:#9aa6b2}
+body.light .on-win{color:#047857}body.light .on-win.lost{color:#c62828}
+/* Prediction view: the sportsbook's value tag doesn't describe the app price shown. */
+.prop-card.pm-card .card-money .verdict-pill,.prop-card.pm-card .card-money [class*="verdict"],.prop-card.pm-card .card-money>button,.prop-card.pm-card .card-money>.pill{display:none!important}
