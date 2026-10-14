@@ -25,7 +25,7 @@ equal(c.eval('hitAgainstLine({side:"Over",line:50},50)'),null,'push not miss');
 equal(c.eval('liveLegState({market:"Rushing Yards",side:"Over",line:50},{state:"final"},{rushing_yards:50}).title'),'PROVISIONAL PUSH');
 equal(se('selectPlayer([{first_name:"Other",last_name:"Allen"}],"Josh Allen","")'),null);
 for(const key of ['propedge-saved','bet-this-guy-preferences','bet-this-guy-tracked'])equal(Boolean(client(390,{[key]:'{invalid'}).error),false,`recover ${key}`);
-c.eval('innerWidth=1280;showDesktopPage("saved")');equal(c.eval('state.view'),'saved');
+c.eval('innerWidth=1280;showDesktopPage("saved")');equal(c.eval('state.view'),'board','retired pages (Watchlist) land on Picks');
 c.eval('props=[{...demoProps[0],eventID:"NFL--fixture",startsAt:new Date(Date.now()+86400000).toISOString()}];state.slip=[{key:"1-Under",p:props[0],side:"Under",odds:props[0].under}];renderSlip()');
 equal(c.eval('state.slip[0].changed'),false,'Under uses its price');
 c.eval('props=[];renderSlip()');equal(c.eval('state.slip[0].unavailable'),true,'removed market');equal(c.nodes.get('#trackParlay').disabled,true,'no tracking unavailable market');
