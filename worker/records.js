@@ -1333,6 +1333,21 @@ function sportsbookFairs(boards,now=Date.now(),minBooks=3){
   for(const [k,g] of groups){const pairs=[...g.values()].filter(p=>p.over!=null&&p.under!=null);if(pairs.length<minBooks)continue;fairs.set(k,pairs.reduce((s,p)=>{const o=1/recordDecimal(p.over),u=1/recordDecimal(p.under);return s+o/(o+u)},0)/pairs.length)}
   return fairs;
 }
+// Anytime touchdown: sportsbooks quote only Yes, so there's no Over/Under pair to
+// remove the margin from. Estimate: the average Yes chance across 4+ books,
+// less a typical 8% margin. Only for the 'td1' background test, never picks.
+const TD_YES_MARGIN=1.08;
+function tdYesFairs(boards,now=Date.now()){
+  const out=new Map();
+  for(const board of boards){
+    const gameId=board.eventID||`NFL--${board.id}`,by=new Map();
+    for(const book of board.bookmakers||[]){if(EXCHANGES[book.key])continue;
+      for(const m of book.markets||[]){if(m.key!=='player_anytime_td')continue;const updated=Date.parse(m.last_update||book.last_update||'');if(!Number.isFinite(updated)||now-updated>15*60000)continue;
+        for(const o of m.outcomes||[]){const player=String(o.description||'').trim(),odds=BTGStats.number(o.price);if(!player||!/^yes$/i.test(String(o.name||''))||odds===null)continue;const g=by.get(player)||new Map();g.set(book.key,odds);by.set(player,g)}}}
+    for(const [player,g] of by){if(g.size<4)continue;const p=[...g.values()].reduce((t,o)=>t+1/recordDecimal(o),0)/g.size/TD_YES_MARGIN;if(p>0&&p<1)out.set(`${gameId}|${normalizedName(player)}|Anytime Touchdown|0.5`,p)}
+  }
+  return out;
+}
 function exchangePropCandidates(board,exchangeBoard,fairs,now=Date.now(),kind='prop'){
   const gameId=board.eventID||`NFL--${board.id}`,kick=Date.parse(board.commence_time),best=new Map(),coverage={};
   if(!(kick>now+5*60000))return {picks:[],coverage};
@@ -1631,6 +1646,7 @@ async function recordExchangeProps(env,boards,now=Date.now()){
   const fairs=sportsbookFairs(boards,now),stamp=new Date(now).toISOString(),statements=[],coverage={};let picks=0,games=0;const pmPool=[];
   // Two-book test (kind 'prop2', not shown anywhere): lines only two sportsbooks price.
   const fairs2=new Map([...sportsbookFairs(boards,now,2)].filter(([k])=>!fairs.has(k)));let picks2=0;
+  const fairsTd=new Map([...tdYesFairs(boards,now)].filter(([k])=>!fairs.has(k)&&!fairs2.has(k)));
   const fetchedAt=new Map(((await env.DB.prepare('SELECT event_id,updated_at FROM exchange_prices WHERE game_time>?').bind(stamp).all().catch(()=>({results:[]}))).results||[]).map(r=>[r.event_id,Date.parse(r.updated_at)]));
   let far=0;
   for(const board of boards){
@@ -1645,8 +1661,10 @@ async function recordExchangeProps(env,boards,now=Date.now()){
     for(const p of out.picks){statements.push(exchangeInsert(env,p,stamp));picks++}
     const two=exchangePropCandidates(board,ex,fairs2,now,'prop2');for(const p of two.picks){statements.push(exchangeInsert(env,p,stamp));picks2++}
     for(const [k,c] of Object.entries(two.coverage)){const t=coverage[k]||={lines:0,matched:0};t.matched2=(t.matched2||0)+c.matched}
+    const td=exchangePropCandidates(board,ex,fairsTd,now,'td1');for(const p of td.picks){statements.push(exchangeInsert(env,p,stamp));picks2++}
+    for(const [k,c] of Object.entries(td.coverage)){const t=coverage[k]||={lines:0,matched:0};t.matchedTd=(t.matchedTd||0)+c.matched}
     // Closing price at the same exchange, line and side.
-    const open=(await env.DB.prepare("SELECT id,exchange,player,market,side,line FROM exchange_shadow WHERE kind IN ('prop','prop2') AND event_id=? AND game_time>?").bind(board.eventID||`NFL--${board.id}`,stamp).all()).results||[];
+    const open=(await env.DB.prepare("SELECT id,exchange,player,market,side,line FROM exchange_shadow WHERE kind IN ('prop','prop2','td1') AND event_id=? AND game_time>?").bind(board.eventID||`NFL--${board.id}`,stamp).all()).results||[];
     for(const r of open){const key=Object.keys(EXCHANGES).find(k=>EXCHANGES[k]===r.exchange);let price=null;
       for(const b of ex.bookmakers||[])if(b.key===key)for(const m of b.markets||[])if(recordLabels[m.key]===r.market)for(const o of m.outcomes||[])if(String(o.description||'').trim()===r.player&&exchangeOutcome(o).side===r.side.toLowerCase()&&exchangeOutcome(o).line===Number(r.line))price=BTGStats.number(o.price);
       if(price!==null)statements.push(env.DB.prepare('UPDATE exchange_shadow SET close_odds=?,close_at=? WHERE id=?').bind(price,stamp,r.id))}
