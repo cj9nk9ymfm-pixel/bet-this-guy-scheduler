@@ -2530,19 +2530,23 @@ function statsProp(l){
   let leans=[];
   function row(l,i){
     const initials=String(l.player||'').split(' ').map(x=>x[0]||'').join('').slice(0,3);
-    const bet=`${l.side} ${l.line} ${String(l.market||'').toLowerCase()}`;
+    // Short stat names so player and bet share one line.
+    const SHORT={'receptions':'rec','receiving yards':'rec yds','rushing yards':'rush yds','passing yards':'pass yds','passing touchdowns':'pass TDs','pass completions':'completions','pass attempts':'pass att','rush attempts':'rush att','rush + receiving yards':'rush+rec yds','interceptions thrown':'INTs','anytime touchdown':'anytime TD','points':'pts','rebounds':'reb','assists':'ast','3-pointers made':'threes','points + rebounds + assists':'PRA'};
+    const m=String(l.market||'').toLowerCase(),bet=`${l.side} ${l.line} ${SHORT[m]||m}`;
     const game=String(l.team||'').replace(' · @ ',' @ ').replace(' · vs ',' vs '),matchup=game&&typeof compactGameName==='function'?compactGameName(game):game;
     const p={player:l.player,market:l.market,side:l.side,line:Number(l.line)},f=window.BTGForm?.get?.(p);
     const form=f?`${l.side} in ${f.hits} of last ${f.n}`:'';
     return `<div class="on-row lean-row"><span class="on-avatar"><span>${htmlEscape(initials)}</span><img loading="lazy" decoding="async" src="/api/player-photo?name=${encodeURIComponent(l.player||'')}${LEAGUE==='NBA'?'&sport=NBA':''}" alt="" onerror="this.remove()"></span><span class="on-who">${l.book?`<span class="on-kicker lean-kicker">${htmlEscape(l.book)}</span>`:''}<b>${htmlEscape(l.player)}</b><span>${htmlEscape(bet.charAt(0).toUpperCase()+bet.slice(1))}</span><small>${htmlEscape([matchup,when(l.gameTime)].filter(Boolean).join(' · '))}</small>${form?`<i class="on-form" data-lean-form="${i}">${htmlEscape(form)}</i>`:''}<i class="on-wx" data-wx="${htmlEscape(l.eventId||'')}" hidden></i></span><span class="on-end">${(u=>u?`<a class="on-price lean-book" href="${u}" target="_blank" rel="noopener sponsored" aria-label="Bet at ${htmlEscape(l.book)}">${htmlEscape(formatOdds(l.odds))}</a>`:`<span class="on-price">${htmlEscape(formatOdds(l.odds))}</span>`)(typeof sportsbookDestination==='function'?sportsbookDestination(l.book):null)}</span></div>`;
   }
   function render(){
-    const host=document.getElementById('leansNow'),now=Date.now(),list=leans.filter(l=>Date.parse(l.gameTime)>now);
+    // A lean that has since locked as an official pick (single or parlay leg) leaves the list.
+    const official=new Set();(window.BTGOfficialRows?.()||[]).forEach(r=>{let legs=[];try{legs=JSON.parse(r.legs_json||'[]')}catch{}(legs.length?legs:[{player:r.player}]).forEach(l=>official.add(String(l.player||'').toLowerCase()))});
+    const host=document.getElementById('leansNow'),now=Date.now(),list=leans.filter(l=>Date.parse(l.gameTime)>now&&!official.has(String(l.player||'').toLowerCase()));
     host.hidden=!list.length;if(!list.length)return;
     document.getElementById('leansCount').textContent=String(list.length);
-    // Phones show three; the rest open with See all (desktop shows every one).
+    // Two show; the rest open with See all.
     const box=document.getElementById('leansList');box.classList.remove('open');
-    box.innerHTML=list.map((l,i)=>i<3?row(l,i):row(l,i).replace('class="on-row lean-row','class="on-row lean-row lean-extra')).join('')+(list.length>3?`<button type="button" class="on-toggle" aria-expanded="false">See all ${list.length}</button>`:'');
+    box.innerHTML=list.map((l,i)=>i<2?row(l,i):row(l,i).replace('class="on-row lean-row','class="on-row lean-row lean-extra')).join('')+(list.length>2?`<button type="button" class="on-toggle" aria-expanded="false">See all ${list.length}</button>`:'');
     const more=box.querySelector(':scope>.on-toggle');if(more)more.onclick=()=>{const open=!box.classList.contains('open');box.classList.toggle('open',open);more.setAttribute('aria-expanded',String(open));more.textContent=open?'Show fewer':`See all ${list.length}`};
   }
   async function load(){try{const r=await fetch(`/api/leans${LEAGUE==='NBA'?'?sport=NBA':''}`);const body=await r.json();if(!r.ok||!Array.isArray(body?.leans))return;leans=body.leans;render()}catch{}}
@@ -2802,7 +2806,7 @@ function statsProp(l){
   const boardHost=document.getElementById('propList');if(boardHost)new MutationObserver(()=>{clearTimeout(boardTimer);boardTimer=setTimeout(paintBoard,60)}).observe(boardHost,{childList:true});
   function render(){
     const banner=document.getElementById('pmBanner'),section=document.getElementById('pmNow'),toggle=document.getElementById('priceView');
-    const d=data||{mode:'unknown'},v=view(),now=Date.now(),value=(d.value||[]).filter(x=>Date.parse(x.gameTime)>now),names=apps(d);
+    const d=data||{mode:'unknown'},v=view(),now=Date.now(),pickKeys=new Set((d.pmPicks||[]).map(r=>`${r.eventId||r.event_id||''}|${String(r.player||'').toLowerCase()}`)),value=(d.value||[]).filter(x=>Date.parse(x.gameTime)>now&&!pickKeys.has(`${x.eventId}|${String(x.player||'').toLowerCase()}`)),names=apps(d);
     document.body.dataset.priceView=v;
     if(toggle)toggle.querySelectorAll('[data-view]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.view===v)));
     if(banner){

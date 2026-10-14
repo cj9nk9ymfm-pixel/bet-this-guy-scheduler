@@ -2056,3 +2056,18 @@ body.picks-empty #alertsHero.alerts-hero-pulse:not([hidden]){display:flex!import
 /* Welcome: alerts, email, or browse (the account button only stands in when alerts are unavailable) */
 #welcomeDialog #wdAccount:not(.wd-primary){display:none!important}
 #hitsStrip:has(#hitsRow:empty),html[data-league="NBA"] #hitsStrip:not(:has(.hit-card-mini)){display:none!important}
+/* Worth a look, compact everywhere: two rows (player + bet, then game), two shown. */
+html body #leansList.on-list{display:block!important;overflow:visible!important;border:1px solid var(--line);border-radius:14px;background:var(--panel);padding:0!important}
+html body #leansList>.on-row.lean-row{display:flex!important;width:100%!important;flex:none!important;padding:7px 12px!important;gap:9px;min-height:0;border:0!important;border-top:1px solid var(--line)!important;border-radius:0!important;background:transparent!important;box-shadow:none!important}
+html body #leansList>.on-row.lean-row:first-child{border-top:0!important}
+html body #leansList>.lean-row.lean-extra{display:none!important}html body #leansList.open>.lean-row.lean-extra{display:flex!important}
+html body #leansList .on-avatar{width:28px!important;height:28px!important;font-size:10.5px}
+html body #leansList .on-who{display:grid;grid-template-columns:auto 1fr;column-gap:6px;align-items:baseline}
+html body #leansList .on-who b{font-size:14px;line-height:1.25}
+html body #leansList .on-who>span{font-size:13px;line-height:1.25;color:var(--muted,#9aa6b2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+html body #leansList .on-who small{grid-column:1/-1;font-size:11.5px;line-height:1.3}
+html body #leansList .lean-kicker,html body #leansList .on-form,html body #leansList .on-wx,html body #leansList [data-wx],html body #leansList .lean-wx{display:none!important}
+html body #leansList .on-price{font-size:13.5px;padding:2px 8px}
+html body #leansList>.on-toggle{display:block!important;width:100%;margin:0;border:0;border-top:1px solid var(--line);background:transparent;padding:8px 12px;font:600 13px 'DM Sans',sans-serif;color:var(--muted,#9aa6b2);cursor:pointer}
+html body .leans-now .on-sub{font-size:12px;margin:0 0 6px}
+html body .leans-now .on-head h2{font-size:17px}
