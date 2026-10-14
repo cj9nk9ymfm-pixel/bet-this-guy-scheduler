@@ -42,19 +42,15 @@
     <nav class="desktop-nav" aria-label="Main navigation">
       <button class="nav-link active" data-view="board">Picks</button>
       <button class="nav-link" data-nav-target="live"><span class="nav-live-dot"></span>Live</button>
-      <button class="nav-link" data-nav-target="parlays">Parlays</button>
+      <a class="nav-link" href="/trust">Results</a>
       <button class="nav-link nav-more-toggle" id="desktopMoreBtn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="desktopMorePanel">More<i class="nav-more-caret" aria-hidden="true">▾</i></button>
       <div class="nav-more-panel" id="desktopMorePanel" hidden>
-        <button class="nav-link" data-nav-target="generator">Parlay Generator<small>Build a parlay to your odds and size</small></button>
-        <button class="nav-link" data-view="movement">Line Movement<small>See which lines are moving</small></button>
-        <button class="nav-link" data-view="saved">Watchlist <span id="watchCount">0</span><small>Props you starred</small></button>
-        <a class="nav-link" href="/trust">Results<small>Every graded pick</small></a>
+        <button class="nav-link" type="button" data-desktop-settings>Settings<small>Bet amount, your sportsbooks, weekly limit</small></button>
         <a class="nav-link" href="/picks">Picks by Week<small>Every official pick, week by week</small></a>
       </div>
     </nav>
     <div class="top-actions">
       <button class="icon-btn search-btn" id="searchBtn" aria-label="Search players" aria-expanded="false" aria-controls="searchPanel"><svg class="ico" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg></button>
-      <button class="icon-btn saved-header-btn" id="openSavedProps" aria-label="Open saved props"><svg class="ico" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9z"/></svg><span id="savedHeaderCount" hidden>0</span></button>
       <button class="feed-status" id="feedBtn"><i></i><span>Connecting…</span></button>
       <button class="icon-btn account-btn" id="accountBtn" aria-label="Sign in or create an account"><svg class="ico" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4.5 21a7.5 7.5 0 0 1 15 0"/></svg><span>Sign in</span></button>
       <button class="icon-btn" id="settingsBtn" aria-label="Betting preferences"><svg class="ico" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6h-8M8 6H4M20 12h-4M12 12H4M20 18h-6M10 18H4M10 4v4M16 10v4M12 16v4"/></svg></button>
@@ -96,7 +92,7 @@
           <p class="hero-eyebrow" id="heroEyebrow">OFFICIAL PICKS</p>
           <h2 class="hero-title" id="heroTitle">Every pick locked before kickoff</h2>
           <div class="hero-stats" id="heroStats"></div>
-          <div class="hero-actions"><a class="hero-cta" id="heroCta" href="#propsSection">See this week’s picks</a><button type="button" class="alerts-btn" data-alerts-toggle>Get pick alerts</button><a class="hero-link" href="/trust#overview">Results →</a></div>
+          <div class="hero-actions"><a class="hero-cta" id="heroCta" href="#propsSection">See this week’s picks</a><button type="button" class="alerts-btn" data-alerts-toggle>Get pick alerts</button><a class="hero-link" href="/trust#overview">Every pick graded →</a></div>
           <p class="alerts-note" id="alertsNote" role="status" hidden></p>
           <p class="hero-note" id="heroNote">Singles at $100 each at the posted price (change your usual wager in Settings). Every pick is locked before kickoff and graded in public. Past results don’t guarantee future ones.</p>
         </section>
@@ -107,6 +103,7 @@
         </section>
         <button type="button" class="my-pl" id="myRecord" hidden></button>
         <button type="button" class="why-strip" id="whyStrip" hidden><span class="why-items"><span><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg><b id="whyBeat">Beats the kickoff price</b></span><span><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Every pick on the record</span><span><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Free</span></span><span class="why-more">How it works ›</span></button>
+        <div class="alerts-hero" id="alertsHero" hidden><span class="ah-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></span><span class="ah-copy"><strong>Get a ping when picks post</strong></span><button type="button" class="ah-btn" data-alerts-toggle data-alerts-banner>Turn on</button><button type="button" class="ah-close" id="alertsHeroClose" aria-label="Hide this">×</button></div>
         <nav class="jump-bar" id="jumpBar" aria-label="Jump to"><div class="jump-links"><a href="#officialNow" data-jump="picks">Picks</a><a href="#leansNow" data-jump="leans">Worth a look</a><a href="#propsSection" data-jump="board">Board</a></div><div class="price-view" id="priceView" role="group" aria-label="Show prices as"><button type="button" data-view="odds" aria-pressed="true">Sportsbook</button><button type="button" data-view="predictions" aria-pressed="false">Prediction apps</button></div></nav>
         <section class="official-now" id="officialNow" aria-labelledby="officialNowTitle" hidden>
           <div class="on-head"><h2 id="officialNowTitle">This week’s picks <span class="on-count" id="officialNowCount"></span></h2><button type="button" class="alerts-btn on-alerts" data-alerts-toggle>Get pick alerts</button></div>
@@ -138,7 +135,6 @@
           <div class="on-list" id="pmList"></div>
           <div class="pm-foot"><span id="pmWhere"></span></div>
         </section>
-        <div class="alerts-hero" id="alertsHero" hidden><span class="ah-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></span><span class="ah-copy"><strong>Get a ping when picks post</strong></span><button type="button" class="ah-btn" data-alerts-toggle data-alerts-banner>Turn on</button><button type="button" class="ah-close" id="alertsHeroClose" aria-label="Hide this">×</button></div>
         <section class="hits-strip" id="hitsStrip" aria-labelledby="hitsTitle" hidden>
           <div class="hits-head"><h2 id="hitsTitle">Last week’s hits</h2><div class="hits-nav"><button type="button" id="hitsPrev" aria-label="Previous hits">‹</button><button type="button" id="hitsNext" aria-label="More hits">›</button></div><a href="/trust#official">See every pick →</a></div>
           <div class="hits-row" id="hitsRow"></div>
@@ -196,7 +192,7 @@
           <div class="advanced-filter-actions"><span>These filters apply only to Parlays and the Parlay Generator.</span><button id="resetAdvancedFilters" type="button">Reset all</button></div>
         </details>
 
-        <section class="parlay-mixer" id="parlayMixer" aria-labelledby="mixerTitle">
+        <section class="parlay-mixer" id="parlayMixer" aria-labelledby="mixerTitle" hidden>
           <div class="mixer-intro">
             <div><p class="eyebrow">PARLAY GENERATOR</p><h2 id="mixerTitle">Build a parlay</h2><span>Set your target and leg count, then shuffle through fresh combinations.</span></div>
             <div class="target-odds"><small>TARGET ODDS</small><output id="targetOdds">+1000</output></div>
@@ -221,7 +217,7 @@
           </div>
         </section>
 
-        <section class="parlay-lab" id="parlayLab" aria-labelledby="parlayLabTitle">
+        <section class="parlay-lab" id="parlayLab" aria-labelledby="parlayLabTitle" hidden>
           <div class="parlay-lab-head">
             <div><p class="eyebrow">PREMADE PARLAYS</p><h2 id="parlayLabTitle">Pick your payout range</h2></div>
             <span>Three fresh options every time</span>
@@ -260,12 +256,9 @@
     </section>
   </main>
 
-  <nav class="mobile-nav" aria-label="Mobile navigation"><a class="active" href="?page=props" data-page-link="props"><svg class="ico nav-ico" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11 12 4l9 7v9H3z"/></svg><em>Picks</em></a><a href="?page=parlays" data-page-link="parlays"><svg class="ico nav-ico" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></svg><em>Parlays</em></a><a href="?page=slip" data-page-link="slip"><svg class="ico nav-ico" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></svg><em>Slip</em> <span id="slipCount" hidden>0</span></a><a class="nav-more" href="#more" id="mobileMoreBtn" aria-haspopup="dialog" aria-controls="moreSheet"><svg class="ico nav-ico" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg><em>More</em></a></nav>
+  <nav class="mobile-nav" aria-label="Mobile navigation"><a class="active" href="?page=props" data-page-link="props"><svg class="ico nav-ico" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11 12 4l9 7v9H3z"/></svg><em>Picks</em></a><a href="/trust" class="nav-results"><svg class="ico nav-ico" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/></svg><em>Results</em></a><a href="?page=slip" data-page-link="slip"><svg class="ico nav-ico" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></svg><em>Slip</em> <span id="slipCount" hidden>0</span></a><a class="nav-more" href="#more" id="mobileMoreBtn" aria-haspopup="dialog" aria-controls="moreSheet"><svg class="ico nav-ico" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg><em>More</em></a></nav>
   <dialog class="more-sheet" id="moreSheet" aria-label="More pages"><div class="more-sheet-head"><strong>More</strong><button type="button" class="more-sheet-close" id="moreSheetClose" aria-label="Close">×</button></div>
     <a href="/trust"><strong>Results</strong><span>Every official pick, graded</span></a>
-    <a href="?page=generator" data-page-link="generator"><strong>Parlay Generator</strong><span>Build a parlay to your odds and size</span></a>
-    <a href="?page=movement" data-page-link="movement"><strong>Line Movement</strong><span>See which lines are moving</span></a>
-    <button type="button" data-more-action="saved"><strong>Watchlist</strong><span>Props you starred</span></button>
     <button type="button" data-alerts-toggle data-alerts-sheet><strong>Pick alerts</strong><span>Get a notification when a new official pick drops</span></button>
     <button type="button" data-more-action="settings"><strong>Settings</strong><span>Bet amount, your sportsbooks, weekly limit</span></button>
     <div class="more-mini"><a href="/picks">Picks by week</a><button type="button" class="more-phone-only" data-more-action="theme">Light or dark</button><button type="button" class="more-phone-only" data-more-action="feed"><span id="moreFeedStatus">Live prices</span></button></div>

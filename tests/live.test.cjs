@@ -105,7 +105,7 @@ const reply = body => Response.json(body);
   assert.equal(vm.runInContext('liveBoardTimeLabel({state:"in_progress",period:3,clock:"8:42"})',client),'LIVE · Q3 · 8:42 left · Update delayed');
   vm.runInContext('liveBoard.stale=false',client);
   const html=fs.readFileSync(path.join(root,'dist/index.html'),'utf8');
-  assert.equal((html.match(/data-page-link=/g)||[]).length,5);
+  assert.equal((html.match(/data-page-link=/g)||[]).length,2,'Picks and Slip are the only in-app pages; Results links out');
   assert.ok(!html.includes('data-page-link="live"'));
   assert.equal(vm.runInContext('liveStatValue({rushing_yards:null},"rushing_yards")',client),null);
   assert.equal(vm.runInContext('liveStatValue({rushing_yards:0},"rushing_yards")',client),0);

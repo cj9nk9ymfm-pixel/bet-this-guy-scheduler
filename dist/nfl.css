@@ -1988,3 +1988,16 @@ body.light .bs-alert{background:#eef4ff;border-color:#bfd3fb}
 .hit-dialog{max-height:calc(100dvh - 32px - env(safe-area-inset-top))}
 
 .pm-nba-note .pm-nba-switch{margin:10px 0 0}
+/* Audit 7: the proof strip merged into the record line; the generator is gone;
+   Settings lives in More on phones, so the header keeps search and account. */
+#whyStrip,#parlayMixer,#parlayLab{display:none!important}
+@media(max-width:720px){#settingsBtn{display:none!important}}
+#alertsHero:not([hidden]){margin-bottom:10px}
+@media(max-width:720px){#heroBanner .hero-title{white-space:nowrap;font-size:16px}#heroBanner .hero-link{font-size:12.5px;white-space:nowrap}}
+.hs-short{display:none}
+@media(max-width:420px){.hs-long{display:none}.hs-short{display:inline}}
+.bookmark-tools{display:none!important}
+#advancedFilters{display:none!important}
+.has-rail .hs-long{display:none}.has-rail .hs-short{display:inline}
+.has-rail #heroBanner .hero-title{font-size:16px;white-space:nowrap}.has-rail #heroBanner .hero-link{font-size:12.5px;white-space:nowrap}
+html body .has-rail #heroBanner .hero-title{font-size:16px!important;white-space:nowrap}html body .has-rail #heroBanner .hero-link{font-size:12.5px!important;white-space:nowrap}html body .has-rail #heroBanner.hero{flex-wrap:nowrap!important;gap:8px!important}
