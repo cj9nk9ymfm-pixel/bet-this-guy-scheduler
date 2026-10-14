@@ -25,7 +25,7 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
   assert.deepEqual([row.kind,row.exchange,row.player,row.side,row.line,row.odds],['prop','Novig','Tre Tucker','Over',3.5,115]);
   assert.ok(row.fair_pct>49&&row.fair_pct<51&&row.edge>2,'fair from the sportsbooks, edge at the exchange price');
   const cov=JSON.parse(db.prepare("SELECT value FROM app_settings WHERE key='exchange-coverage'").get().value);
-  assert.deepEqual(cov.coverage.novig,{lines:2,matched:2,matched2:0});assert.ok(!cov.coverage.bovada,'only prediction markets count');
+  assert.deepEqual(cov.coverage.novig,{lines:2,matched:2,matched2:0,matchedTd:0});assert.ok(!cov.coverage.bovada,'only prediction markets count');
   out=J(await run(`recordExchangeProps(env,boards,${now+600000})`));assert.deepEqual(out,{skipped:true},'every 30 minutes');
   // Games 48-96 hours out: fetched too, but every 2 hours rather than every 30 minutes.
   {const keep=db.prepare("SELECT value FROM app_settings WHERE key='exchange-props-at'").get().value,saveBoards=context.boards,saveFetch=context.fetch;
@@ -48,6 +48,12 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
    const two={...context.boards[0],bookmakers:context.boards[0].bookmakers.slice(0,2)};
    assert.equal(run(`sportsbookFairs([${JSON.stringify(two)}],${now})`).size,0,'two books are not enough for the official fair price');
    assert.equal(run(`sportsbookFairs([${JSON.stringify(two)}],${now},2)`).size,1,'the two-book test uses them');}
+  // Anytime TD: Yes-only sportsbook prices (4+ books) give an estimated fair chance for the td1 test.
+  {const yes=(key,price)=>({key,title:key,last_update:upd,markets:[{key:'player_anytime_td',last_update:upd,outcomes:[{name:'Yes',description:'Bijan Robinson',price}]}]});
+   const bd=[{id:'g1',eventID:'NFL--g1',commence_time:kick,bookmakers:[yes('draftkings',-120),yes('fanduel',-115),yes('betmgm',-125),yes('caesars',-120)]}];
+   const f=J([...run(`tdYesFairs(${JSON.stringify(bd)},${now})`)]);
+   assert.equal(f.length,1);assert.equal(f[0][0],'NFL--g1|bijanrobinson|Anytime Touchdown|0.5');assert.ok(f[0][1]>.5&&f[0][1]<.53,'about 54.5% implied, less the 8% margin');
+   assert.equal(run(`tdYesFairs(${JSON.stringify([{...bd[0],bookmakers:bd[0].bookmakers.slice(0,3)}])},${now})`).size,0,'needs 4 books');}
   // Anytime TD: yes/no reads as Over/Under 0.5, and is requested from the exchanges.
   assert.deepEqual(J(run(`exchangePriceList(${JSON.stringify({bookmakers:[{key:'kalshi',markets:[{key:'player_anytime_td',outcomes:[{name:'Yes',description:'Tre Tucker',price:150},{name:'No',description:'Tre Tucker',price:-180}]}]}]})})`)),[['kalshi','Tre Tucker','Anytime Touchdown','Over',0.5,150],['kalshi','Tre Tucker','Anytime Touchdown','Under',0.5,-180]]);
   assert.ok(urls.some(u=>u.includes('player_anytime_td')),'anytime TD is in the exchange request');
