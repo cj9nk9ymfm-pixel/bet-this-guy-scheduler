@@ -2167,7 +2167,7 @@ body.light .on-pitch .on-pitch-email{color:#1d4ed8}
 /* Chart labels: opponent over week/date */
 .pp-chart{height:150px;padding-top:16px!important;padding-bottom:34px!important}.pp-line{margin-bottom:0!important}
 .pp-bar small{display:flex;flex-direction:column;align-items:center;line-height:1.15;bottom:-30px!important}
-.pp-bar small i{font-style:normal;font-size:9.5px;color:#6f7884}
+.pp-bar small i{font-style:normal;font-size:9px;letter-spacing:-.02em;color:#6f7884}
 /* Prices are add-to-slip buttons */
 button.on-price,b.on-price[data-slip-price]{cursor:pointer;font:inherit;color:inherit}
 button.on-price{appearance:none;-webkit-appearance:none;background:transparent;border:1px solid #2c323c;border-radius:999px;padding:3px 10px;font-weight:700}
