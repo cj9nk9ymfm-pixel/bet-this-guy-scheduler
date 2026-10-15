@@ -898,8 +898,9 @@ async function refreshInjuries(env,now=Date.now()){
       const statements=[env.DB.prepare('DELETE FROM injuries WHERE id LIKE ?').bind(`${sport}|%`)];
       for(const x of rows)statements.push(env.DB.prepare('INSERT OR REPLACE INTO injuries (id,player,team,position,status,detail,reported_at,fetched_at) VALUES (?,?,?,?,?,?,?,?)').bind(`${sport}|${normalizedName(x.player)}`,x.player,x.team||null,x.position||null,x.status,String(x.detail||'').slice(0,120)||null,x.date||null,now));
       await env.DB.batch(statements);out[sport]=rows.length;
-    }catch(error){if(sport==='NFL')throw error;out[sport]={error:error.message}}
+    }catch(error){out[sport]={error:error.message}}
   }
+  // One league's report failing never blocks the other's.
   return {rows:out.NFL??0,nba:out.NBA};
 }
 async function injuryMap(env,sport='NFL'){
@@ -3840,4 +3841,4 @@ self.addEventListener('notificationclick',event=>{event.notification.close();eve
   return self.clients.openWindow(target);
 })())});
 `;
-const WEB_MANIFEST=JSON.stringify({name:'Bet This Guy',short_name:'Bet This Guy',description:'NFL player prop picks, locked before kickoff and graded in public.',start_url:'/?source=home-screen',scope:'/',display:'standalone',background_color:'#0e1013',theme_color:'#0e1013',icons:[{src:'/icon-192.png',sizes:'192x192',type:'image/png',purpose:'any'},{src:'/icon-512.png',sizes:'512x512',type:'image/png',purpose:'any'}]});
+const WEB_MANIFEST=JSON.stringify({name:'Bet This Guy',short_name:'Bet This Guy',description:'NFL and NBA player prop picks, locked before the game and graded in public.',start_url:'/?source=home-screen',scope:'/',display:'standalone',background_color:'#0e1013',theme_color:'#0e1013',icons:[{src:'/icon-192.png',sizes:'192x192',type:'image/png',purpose:'any'},{src:'/icon-512.png',sizes:'512x512',type:'image/png',purpose:'any'}]});
