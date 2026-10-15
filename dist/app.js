@@ -1457,7 +1457,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     let why=isParlay?null:r.pm?betWhy({done,need:r.pm.pct,fair:r.pm.fair,where:r.pm.exchange,pm:true,afterFee:r.netOdds!=null&&Number(r.netOdds)!==Number(r.odds)}):(()=>{const d0=oddsDecimal(r.odds),e=Number(first.edge);return d0&&Number.isFinite(e)?betWhy({done,need:100/d0,fair:100/d0+e,where:first.book||'The book',price:formatOdds(r.odds)}):null})();
     const boardP=!isParlay&&!done?boardPropFor(r):null;
     return {chip,title:isParlay?`${legs.length}-leg ${legs.some(l=>l.sameGame)?'same-game ':''}parlay`:r.player,photo:isParlay?null:r.player,sport:sp?.sport,why,statsProp:sp,
-      slip:boardP?{inSlip:()=>state.slip.some(x=>x.key===slipSelectionKey(boardP,r.side==='Under'?'Under':'Over')),toggle:()=>toggleLeg(boardP,r.side==='Under'?'Under':'Over',slipPmOf(r))}:null,bet,game,price:r.pm?`${r.pm.pct}%`:formatOdds(odds),
+      slip:boardP?{inSlip:()=>state.slip.some(x=>x.key===slipSelectionKey(boardP,r.side==='Under'?'Under':'Over')),toggle:()=>toggleLeg(boardP,r.side==='Under'?'Under':'Over',slipPmOf(r))}:isParlay&&!done&&parlayLegsFor(r)?{inSlip:()=>Boolean(parlayLegsFor(r)?.every(l=>state.slip.some(x=>x.key===slipSelectionKey(l.p,l.side)))),toggle:()=>addParlayToSlip(r)}:null,bet,game,price:r.pm?`${r.pm.pct}%`:formatOdds(odds),
       // Alerts prompt for anyone without alerts or pick emails: right after a hit, or on an open pick.
       alert:document.documentElement.classList.contains('alerts-on')||(()=>{try{return localStorage.getItem('btg-email-sub')==='1'}catch{return false}})()?null:done&&r.result==='won'?{title:'This one hit. Get the next one first.',text:'Picks lock at a price, and the price moves. Alerts get you the next pick the second it posts.'}:!done?{title:'Get the next pick the second it locks',text:'Prices move fast after we post. Free alerts by phone or email, about 3–6 a week.'}:null,
       note:pmOffer?`Partner offer: new to ${r.pm.exchange}? Use code ${pmOffer.code}${pmOffer.offer?`: ${pmOffer.offer}`:''}. Open ${r.pm.exchange} copies the code for you. Age limits and terms apply. We earn a commission on sign-ups; it never changes our picks.`:'',stake:share(r)<1?`$${(heroStake*share(r)).toLocaleString('en-US',{maximumFractionDigits:2})} ($25)`:stakeText(),
@@ -1566,7 +1566,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     const why=edges.length?(isParlay?`Every leg beats fair`:`${Math.max(...edges).toFixed(1)}% better than fair`):'';
     const game=String(legs[0]?.team||'').replace(' · @ ',' @ ').replace(' · vs ',' vs '),matchup=isParlay?'':game&&typeof compactGameName==='function'?compactGameName(game):game;
     // Compact row: the book rides in the small line (the section already says these are official).
-    return `<button type="button" class="on-row on-${status[0]}-row" data-on="${i}" data-on-player="${htmlEscape(isParlay?'':r.player||'')}" data-on-team="${htmlEscape(isParlay?'':legs[0]?.team||'')}" aria-label="Details for ${htmlEscape(title)}">${avatar}<span class="on-who"><b>${htmlEscape(title)}</b><span>${htmlEscape(sub)}</span><small>${htmlEscape([matchup,kickoff(r.game_time),books.length===1?books[0]:''].filter(Boolean).join(' · '))}</small>${winLine(r,isParlay,odds,done)}${why?`<i class="on-why">${htmlEscape(why)}</i>`:''}<i class="on-form" data-on-form="${i}" hidden></i><i class="on-wx" data-wx="${htmlEscape(r.game_id||legs[0]?.gameId||'')}" hidden></i><em class="on-live" data-on-live="${i}" hidden></em>${isParlay?'':`<i class="on-pm" data-pm="${htmlEscape(r.id||'')}" data-pm-odds="${htmlEscape(String(odds))}" data-pm-status="${htmlEscape(status[0])}" hidden></i>`}</span><span class="on-end"><b class="on-price"${!isParlay&&status[0]!=='won'&&status[0]!=='lost'?' data-slip-price title="Add to slip"':''}>${htmlEscape(formatOdds(odds))}</b><span class="on-tag on-${status[0]}"${status[0]==='locked'?' title="Posted at this price before kickoff"':''}>${tag}</span></span></button>`;
+    return `<button type="button" class="on-row on-${status[0]}-row" data-on="${i}" data-on-player="${htmlEscape(isParlay?'':r.player||'')}" data-on-team="${htmlEscape(isParlay?'':legs[0]?.team||'')}" aria-label="Details for ${htmlEscape(title)}">${avatar}<span class="on-who"><b>${htmlEscape(title)}</b><span>${htmlEscape(sub)}</span><small>${htmlEscape([matchup,kickoff(r.game_time),books.length===1?books[0]:''].filter(Boolean).join(' · '))}</small>${winLine(r,isParlay,odds,done)}${why?`<i class="on-why">${htmlEscape(why)}</i>`:''}<i class="on-form" data-on-form="${i}" hidden></i><i class="on-wx" data-wx="${htmlEscape(r.game_id||legs[0]?.gameId||'')}" hidden></i><em class="on-live" data-on-live="${i}" hidden></em>${isParlay?'':`<i class="on-pm" data-pm="${htmlEscape(r.id||'')}" data-pm-odds="${htmlEscape(String(odds))}" data-pm-status="${htmlEscape(status[0])}" hidden></i>`}</span><span class="on-end"><b class="on-price"${status[0]!=='won'&&status[0]!=='lost'?' data-slip-price title="Add to slip"':''}>${htmlEscape(formatOdds(odds))}</b><span class="on-tag on-${status[0]}"${status[0]==='locked'?' title="Posted at this price before kickoff"':''}>${tag}</span></span></button>`;
   }
   // Live progress for locked picks, refreshed with the live board (every 5s in games).
   let officialLiveList=[];
@@ -1609,7 +1609,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     fill('#officialNowList',singles,'pick',NBA?'<div class="on-empty"><strong>No NBA picks yet tonight.</strong><span>They post as soon as a price qualifies, often the day before. No nightly quota: every price that beats the market.</span></div>':'<div class="on-empty"><strong>No picks yet this week.</strong><span>They post the moment a price qualifies, any day before kickoff.</span></div>');
     fill('#parlaysList',parlays,'parlay',NBA?'<div class="on-empty"><strong>No NBA parlays yet tonight.</strong><span>Up to 2 a night, when two or more Worth a look props line up.</span></div>':'<div class="on-empty"><strong>No parlays yet this week.</strong><span>They post when two or more Worth a look props line up.</span></div>');
     // Tap the row for the bet screen; tap a single's price to add it to the slip.
-    $$('#officialNowList button[data-on], #parlaysList button[data-on]').forEach(b=>b.onclick=e=>{const r=list[+b.dataset.on];if(e.target.closest('[data-slip-price]')&&r&&r.kind!=='parlay'&&!['won','lost','push'].includes(r.result)&&addBetToSlip(r))return;openPick(r)});
+    $$('#officialNowList button[data-on], #parlaysList button[data-on]').forEach(b=>b.onclick=e=>{const r=list[+b.dataset.on];if(e.target.closest('[data-slip-price]')&&r&&!['won','lost','push'].includes(r.result)&&(r.kind==='parlay'?addParlayToSlip(r):addBetToSlip(r)))return;openPick(r)});
     officialLiveList=list;updateOfficialLive();window.btgOfficialForm?.(list);
     $$('#officialNowList [data-on-player]').forEach(row=>{const player=row.dataset.onPlayer;if(!player||typeof playerStatsFor!=='function')return;const r=list[+row.dataset.on];playerStatsFor({sport:r?.sport||'NFL',player,team:row.dataset.onTeam}).then(payload=>window.BTGPaintTeam?.(row,payload?.player?.team,r?.sport||'NFL')).catch(()=>{})});
     host.hidden=false;if($('#parlaysNow')){$('#parlaysNow').hidden=!parlays.length;$('#parlaysNow').dataset.empty=parlays.length?'':'1'}
@@ -1966,6 +1966,19 @@ function slipToast(text){
 // Tap a price anywhere: add that bet to the slip (never open a book or app). Returns false when the prop isn't on the board.
 // A prediction pick or lean keeps its app and price in the slip.
 function slipPmOf(x){return x?.pm?.exchange?{exchange:x.pm.exchange,odds:x.pm.odds??x.odds}:x?.exchange&&!x.book?{exchange:x.exchange,odds:x.netOdds??x.odds}:null}
+// A premade parlay into the slip: it replaces what's there with every leg,
+// matched to the live board. Prediction parlays keep their app and price.
+function parlayLegsFor(r){
+  let legs=Array.isArray(r?.legs)?r.legs:[];if(!legs.length)try{legs=JSON.parse(r?.legs_json||'[]')}catch{}
+  const app=r?.pm?.exchange||(r?.exchange&&!r.book?r.exchange:null);
+  const out=legs.map(l=>{const p=boardPropFor(l);if(!p)return null;const side=l.side==='Under'?'Under':'Over';
+    if(!app)return {p,side,pm:null};const hit=window.BTGPmBoard?.hit?.({...p,side}),o=Number(l.netOdds??l.odds)||(hit&&hit.exchange===app?hit.odds:null);return {p,side,pm:o?{exchange:app,odds:o}:null}});
+  return out.length>=2&&out.every(Boolean)?out:null;
+}
+function addParlayToSlip(r){
+  const legs=parlayLegsFor(r);if(!legs)return false;state.slip=[];for(const l of legs)toggleLeg(l.p,l.side,l.pm);
+  slipToast(`${icon('check')} Parlay added to your slip · <button type="button" data-open-slip>Open slip</button>`);window.btgCount?.('slip:parlay');return true;
+}
 function addBetToSlip(x){
   const p=boardPropFor(x);if(!p)return false;const side=x.side==='Under'?'Under':'Over',key=slipSelectionKey(p,side);
   if(!state.slip.some(l=>l.key===key))toggleLeg(p,side,slipPmOf(x));slipToast(`${icon('check')} Added to your slip · <button type="button" data-open-slip>Open slip</button>`);window.btgCount?.('slip:add');return true;
@@ -2789,7 +2802,7 @@ function statsProp(l){
   // Prediction picks and parlays use the official pick card: avatar, name, bet,
   // a meta line (matchup · time · app), one note line, and price over status.
   const pmStatus=r=>r.result==='won'?['won','Won']:r.result==='lost'?['lost','Lost']:r.result==='push'?['push','Push']:r.result==='void'?['push','Void']:Date.parse(r.gameTime)<=Date.now()?['live','Live']:['locked',`${typeof icon==='function'?icon('lock'):''} Locked`];
-  const pmEnd=(r,st)=>{const t=pct(r.odds);return `<span class="on-end"><b class="on-price"${!r.result&&!r.legs?' data-slip-price title="Add to slip"':''}>${htmlEscape(t)}</b><span class="on-tag on-${st[0]}">${st[1]}</span></span>`};
+  const pmEnd=(r,st)=>{const t=pct(r.odds);return `<span class="on-end"><b class="on-price"${!r.result?' data-slip-price title="Add to slip"':''}>${htmlEscape(t)}</b><span class="on-tag on-${st[0]}">${st[1]}</span></span>`};
   // Prediction picks and parlays as records, so they open the same pick sheet
   // and show the same live line as sportsbook picks.
   const pctOf=o=>{o=Number(o);const d=o>=100?1+o/100:o<=-100?1+100/-o:null;return d?Math.round(100/d):null};
@@ -2815,7 +2828,7 @@ function statsProp(l){
       return `<button type="button" class="live-pick" data-live-pick="${i}"><span><b>${htmlEscape(title)}</b><small>${htmlEscape(bet)} · ${where}</small>${line?`<em class="on-live ${line.cls||''}">${line.html}</em>`:''}</span><strong>${price}</strong></button>`}).join('');
     host.querySelectorAll('[data-live-pick]').forEach(b=>b.onclick=()=>window.BTGOpenPick?.(list[+b.dataset.livePick]));
   };
-  function bindPmRows(){document.querySelectorAll('[data-pm-i]').forEach(el=>{el.onclick=e=>{const r=pmRows[+el.dataset.pmI];if(e.target.closest('[data-slip-price]')&&r&&r.kind!=='parlay'&&addBetToSlip(r))return;window.BTGOpenPick?.(r)};el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();el.click()}}});updatePmLive()}
+  function bindPmRows(){document.querySelectorAll('[data-pm-i]').forEach(el=>{el.onclick=e=>{const r=pmRows[+el.dataset.pmI];if(e.target.closest('[data-slip-price]')&&r&&(r.legs||r.kind==='parlay'?addParlayToSlip(r):addBetToSlip(r)))return;window.BTGOpenPick?.(r)};el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();el.click()}}});updatePmLive()}
   // What the stake wins at the posted (after-fee) price; once graded, what it did.
   function pmWin(odds,stake,result,money){const o=Number(odds),d=o>=100?1+o/100:o<=-100?1+100/-o:null;if(!d)return '';const win=Math.round(stake*(d-1));
     if(result==='won')return `Won +$${Number.isFinite(Number(money))?Math.round(Number(money)):win}`;if(result==='lost')return `Lost −$${stake}`;if(result==='push'||result==='void')return 'Push · $0';return `$${stake} wins $${win}`}
