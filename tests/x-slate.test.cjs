@@ -38,8 +38,8 @@ pick('d','Brock Purdy',110,'2026-10-13T00:15:00.000Z');pick('e','Old Pick',150,'
   assert.equal((await run(`postSlateToX(env,${Date.parse('2026-10-11T16:30:00Z')},true)`)).due,false,'not 30 minutes out');
   const fin=await run(`postSlateToX(env,${Date.parse('2026-10-11T15:45:00Z')},true)`);
   assert.equal(fin.posted,1);assert.equal(fin.final,true);
-  assert.ok(posts.at(-1).text.startsWith('🔒 Final card for Sunday: 3 picks, all locked')&&posts.at(-1).text.includes('Kickoff 1:00 PM ET'),posts.at(-1).text);
-  assert.ok(run('globalThis.__svg').includes('FINAL CARD')&&run('globalThis.__svg').includes('All locked'));
+  assert.ok(posts.at(-1).text.startsWith('🔒 Locked so far for Sunday: 3 picks')&&posts.at(-1).text.includes('More can drop until kickoff (1:00 PM ET)'),posts.at(-1).text);
+  assert.ok(run('globalThis.__svg').includes('LOCKED SO FAR')&&run('globalThis.__svg').includes('More can drop until kickoff')&&run('globalThis.__svg').includes('SPORTSBOOKS')&&run('globalThis.__svg').includes('PREDICTION APPS'));
   assert.equal((await run(`postSlateToX(env,${Date.parse('2026-10-11T15:50:00Z')},true)`)).done,true,'final card once a day');
   // Alerts pin post: once per x-pin-request date, with the day's locked picks (even after kickoff).
   assert.equal((await run(`postAlertsPinToX(env,${Date.parse('2026-10-11T17:40:00Z')})`)).none,true,'nothing until requested');
