@@ -3025,16 +3025,50 @@ function statsProp(l){
   const offersFor=leg=>{const p=leg.current||leg.p,list=(p?.books?.[leg.side]||[]).filter(x=>Number(x.o)&&x.b);return list.length?list:(p?.bestBook?[{b:p.bestBook,o:leg.odds}]:[])};
   const picked=()=>Array.isArray(preferences?.books)&&preferences.books.length>0;
   const bestAt=leg=>{const all=offersFor(leg),mine=all.filter(x=>bookAllowed(x.b));return (mine.length?mine:all)[0]||null};
+  // Where to bet each slip leg: every licensed book's (or, for a prediction
+  // pick, every app's) price with the link that opens that bet in its app.
+  // Fetched once per game and market when the slip shows (/api/bet-links).
+  const APPS=new Set(['kalshi','polymarket','novig','prophetx','betopenly']),linkReq=new Map(),nk=v=>String(v||'').toLowerCase().replace(/[^a-z]/g,'');
+  const marketKeysFor=label=>{const base=Object.keys(marketLabels).filter(k=>/^player_/.test(k)&&!/_alternate$/.test(k)&&marketLabels[k]===label);return [...new Set(base.flatMap(k=>[k,`${k}_alternate`]))].slice(0,3)};
+  const stateCode=()=>{try{return String(localStorage.getItem('btg-state')||'').toLowerCase()}catch{return ''}};
+  const wagerAmt=()=>Math.max(1,Math.round(Number(String($('#wager')?.value||'').replace(/[^0-9.]/g,''))||100));
+  // Links can carry {state} and {wager}; one we can't fill opens the book's home page instead.
+  const fillLink=u=>{if(!u)return null;const st=stateCode();if(/\{state\}/.test(u)&&!st)return null;const out=String(u).replace(/\{state\}/g,st).replace(/\{wager(Amount)?\}/g,String(wagerAmt()));return /\{[a-zA-Z]+\}/.test(out)?null:out};
+  function linkRows(leg){
+    const p=leg.current||leg.p,keys=marketKeysFor(p?.market);if(!p?.eventID||!keys.length)return null;
+    const k=`${p.eventID}|${keys.join(',')}`;
+    if(!linkReq.has(k)){const st=stateCode(),entry={rows:null};linkReq.set(k,entry);
+      fetch(`/api/bet-links?event=${encodeURIComponent(p.eventID)}&markets=${keys.join(',')}${st?`&state=${encodeURIComponent(st.toUpperCase())}`:''}`).then(r=>r.json()).catch(()=>({})).then(d=>{entry.rows=Array.isArray(d?.rows)?d.rows:[];try{paintLegs();paintBooks()}catch{}})}
+    const rows=linkReq.get(k).rows;if(!rows)return null;
+    return rows.filter(x=>nk(x[2])===nk(p.player)&&x[3]===leg.side&&(p.binary?x[4]==null||Number(x[4])===.5:Number(x[4])===Number(p.line)));
+  }
+  function placesFor(leg){
+    const rows=linkRows(leg),mine=b=>picked()&&bookAllowed(b);
+    if(leg.pm){
+      const apps=(rows||[]).filter(x=>APPS.has(x[0])&&Number(x[5])>-1900).map(x=>({name:x[1],odds:Number(x[5]),url:fillLink(x[6])||window.BTGApps?.link?.(x[1]),deep:Boolean(fillLink(x[6]))}));
+      if(!apps.some(a=>nk(a.name)===nk(leg.pm.exchange)))apps.push({name:leg.pm.exchange,odds:leg.pm.odds,url:window.BTGApps?.link?.(leg.pm.exchange),deep:false});
+      return apps.filter(a=>a.url).sort((a,b)=>dec(b.odds)-dec(a.odds));
+    }
+    const books=(rows||[]).filter(x=>!APPS.has(x[0]));
+    const list=books.length?books.map(x=>({name:x[1],odds:Number(x[5]),url:fillLink(x[6])||sportsbookDestination(x[1]),deep:Boolean(fillLink(x[6]))})):offersFor(leg).map(x=>({name:x.b,odds:Number(x.o),url:sportsbookDestination(x.b),deep:false}));
+    return list.filter(x=>x.url).map(x=>({...x,mine:mine(x.name)})).sort((a,b)=>(b.mine-a.mine)||dec(b.odds)-dec(a.odds));
+  }
+  // A parlay loaded at once: DraftKings and FanDuel take several bets in one link.
+  function parlayLink(book){
+    const key=normalizeBookName(book),rows=state.slip.map(leg=>(linkRows(leg)||[]).find(x=>normalizeBookName(x[1])===key&&x[6]));if(rows.some(r=>!r))return null;
+    if(key==='draftkings'){const ids=rows.map(r=>{try{return new URL(r[6]).searchParams.get('outcomes')}catch{return null}});return ids.every(Boolean)?`https://sportsbook.draftkings.com/?outcomes=${ids.map(encodeURIComponent).join('+')}`:null}
+    if(key==='fanduel'){const sel=rows.map(r=>{try{const u=new URL(r[6]);return [u.searchParams.get('marketId'),u.searchParams.get('selectionId')]}catch{return [null,null]}});return sel.every(([m,x])=>m&&x)?`https://sportsbook.fanduel.com/addToBetslip?${sel.map(([m,x],i)=>`marketId[${i}]=${encodeURIComponent(m)}&selectionId[${i}]=${encodeURIComponent(x)}`).join('&')}`:null}
+    return null;
+  }
+  const pickLinks=(places,pm)=>`<p class="slip-where">${pm?'Bet it on':'Bet it at'}</p><div class="slip-picks">${places.slice(0,5).map((o,i)=>`<a class="slip-pick${i===0?' best':''}" href="${htmlEscape(o.url)}" target="_blank" rel="noopener sponsored" data-book="${htmlEscape(normalizeBookName(o.name))}"><span>${htmlEscape(o.name)}${o.mine?' <em>your book</em>':''}</span><b>${pm?`${Math.round(100/dec(o.odds))}%`:htmlEscape(formatOdds(o.odds))}</b><i>${o.deep?'Bet ›':'Open ›'}</i></a>`).join('')}</div>`;
   const openLink=book=>{const url=sportsbookDestination(book);return url?`<a class="slip-open" href="${htmlEscape(url)}" target="_blank" rel="noopener sponsored">Open ${htmlEscape(book)}</a>`:''};
   function paintLegs(){
     $$('#slipLegs .slip-leg').forEach(el=>{
       el.querySelector('.slip-book')?.remove();
       const leg=state.slip[Number(el.querySelector('[data-remove-slip]')?.dataset.removeSlip)];if(!leg||leg.unavailable||leg.changed)return;
-      if(leg.pm){const url=window.BTGApps?.link?.(leg.pm.exchange),row=document.createElement('div');row.className='slip-book';
-        row.innerHTML=`<span>Your price: <b>${htmlEscape(leg.pm.exchange)} ${Math.round(100/dec(leg.pm.odds))}%</b></span>${state.slip.length===1&&url?`<a class="slip-open" href="${htmlEscape(url)}" target="_blank" rel="noopener sponsored">Open ${htmlEscape(leg.pm.exchange)}</a>`:''}`;el.append(row);return}
-      const b=bestAt(leg);if(!b)return;
-      const row=document.createElement('div');row.className='slip-book';
-      row.innerHTML=`<span>${picked()?'Best at your books':'Best price'}: <b>${htmlEscape(b.b)} ${htmlEscape(formatOdds(b.o))}</b></span>${state.slip.length===1?openLink(b.b):''}`;
+      const places=placesFor(leg);if(!places.length)return;
+      const row=document.createElement('div');row.className='slip-book slip-places';row.innerHTML=pickLinks(places,Boolean(leg.pm));
+      row.querySelectorAll('[data-book]').forEach(a=>a.addEventListener('click',()=>window.btgCount?.('book:'+a.dataset.book)));
       el.append(row);
     });
   }
@@ -3052,7 +3086,7 @@ function statsProp(l){
     const wager=Math.max(0,Number(String($('#wager')?.value||'').replace(/[^0-9.]/g,''))||0),same=new Set(legs.map(l=>l.p.eventID)).size<legs.length;
     if(!full.length){box.hidden=false;box.innerHTML='<p class="slip-books-none">No single book lists every leg at these lines. Try fewer legs.</p>';return}
     box.hidden=false;
-    box.innerHTML=`<div class="slip-books-head"><span>This parlay at each book</span><small>${wager?`${usd(wager)} wins`:'Odds'}</small></div>${full.slice(0,4).map((v,i)=>`<div class="slip-books-row${i===0?' best':''}"><span>${htmlEscape(v.b)}${bookAllowed(v.b)&&picked()?' <em>your book</em>':''}</span><b>${htmlEscape(formatOdds(amer(v.d)))}${wager?` · ${usd(Math.round(wager*(v.d-1)))}`:''}</b>${openLink(v.b)}</div>`).join('')}${same?'<small>Same-game legs: books price these lower than the multiplied odds.</small>':''}`;
+    box.innerHTML=`<div class="slip-books-head"><span>This parlay at each book</span><small>${wager?`${usd(wager)} wins`:'Odds'}</small></div>${full.slice(0,4).map((v,i)=>`<div class="slip-books-row${i===0?' best':''}"><span>${htmlEscape(v.b)}${bookAllowed(v.b)&&picked()?' <em>your book</em>':''}</span><b>${htmlEscape(formatOdds(amer(v.d)))}${wager?` · ${usd(Math.round(wager*(v.d-1)))}`:''}</b>${(u=>u?`<a class="slip-open" href="${htmlEscape(u)}" target="_blank" rel="noopener sponsored">Bet parlay</a>`:openLink(v.b))(parlayLink(v.b))}</div>`).join('')}${same?'<small>Same-game legs: books price these lower than the multiplied odds.</small>':''}`;
   }
   function paintPartner(){
     const summary=$('#parlaySummary');if(!summary)return;

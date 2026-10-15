@@ -1429,6 +1429,7 @@ async function routeRequest(request, env, ctx) {
     if (url.pathname === "/api/where") return bettingOptionsResponse(request);
     if (url.pathname === "/api/partners") return partnersResponse(env);
     if (url.pathname === "/api/predictions/board") return predictionBoardResponse(request, env);
+    if (url.pathname === "/api/bet-links") return (await allowEventLookup(request, env, ctx, String(url.searchParams.get("event") || ""))) ? betLinksResponse(request, env) : json({ success: false, rows: [] }, 429, { "retry-after": "60" });
     if (url.pathname === "/api/predictions/record") return predictionRecordResponse(request, env);
     if (url.pathname === "/api/predictions") return predictionsResponse(request, env);
     if (url.pathname === "/api/live-games") return liveGames(request, env, ctx);
