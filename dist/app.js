@@ -1976,7 +1976,7 @@ function parlayLegsFor(r){
   return out.length>=2&&out.every(Boolean)?out:null;
 }
 function addParlayToSlip(r){
-  const legs=parlayLegsFor(r);if(!legs)return false;state.slip=[];for(const l of legs)toggleLeg(l.p,l.side,l.pm);
+  const legs=parlayLegsFor(r);if(!legs)return false;state.slip=[];for(const l of legs)toggleLeg(l.p,l.side,l.pm);state.slipMode='parlay';renderSlip();
   slipToast(`${icon('check')} Parlay added to your slip · <button type="button" data-open-slip>Open slip</button>`);window.btgCount?.('slip:parlay');return true;
 }
 function addBetToSlip(x){
@@ -3066,14 +3066,8 @@ function statsProp(l){
     const list=books.length?books.map(x=>({name:x[1],odds:Number(x[5]),url:fillLink(x[6])||sportsbookDestination(x[1]),deep:Boolean(fillLink(x[6]))})):offersFor(leg).map(x=>({name:x.b,odds:Number(x.o),url:sportsbookDestination(x.b),deep:false}));
     return list.filter(x=>x.url).map(x=>({...x,mine:mine(x.name)})).sort((a,b)=>(b.mine-a.mine)||dec(b.odds)-dec(a.odds));
   }
-  // A parlay loaded at once: DraftKings and FanDuel take several bets in one link.
-  function parlayLink(book){
-    const key=normalizeBookName(book),rows=state.slip.map(leg=>(linkRows(leg)||[]).find(x=>normalizeBookName(x[1])===key&&x[6]));if(rows.some(r=>!r))return null;
-    if(key==='draftkings'){const ids=rows.map(r=>{try{return new URL(r[6]).searchParams.get('outcomes')}catch{return null}});return ids.every(Boolean)?`https://sportsbook.draftkings.com/?outcomes=${ids.map(encodeURIComponent).join('+')}`:null}
-    if(key==='fanduel'){const sel=rows.map(r=>{try{const u=new URL(r[6]);return [u.searchParams.get('marketId'),u.searchParams.get('selectionId')]}catch{return [null,null]}});return sel.every(([m,x])=>m&&x)?`https://sportsbook.fanduel.com/addToBetslip?${sel.map(([m,x],i)=>`marketId[${i}]=${encodeURIComponent(m)}&selectionId[${i}]=${encodeURIComponent(x)}`).join('&')}`:null}
-    return null;
-  }
-  const pickLinks=(places,pm)=>`<p class="slip-where">${pm?'Bet it on':'Bet it at'}</p><div class="slip-picks">${places.slice(0,5).map((o,i)=>`<a class="slip-pick${i===0?' best':''}" href="${htmlEscape(o.url)}" target="_blank" rel="noopener sponsored" data-book="${htmlEscape(normalizeBookName(o.name))}"><span>${htmlEscape(o.name)}${o.mine?' <em>your book</em>':''}</span><b>${pm?`${Math.round(100/dec(o.odds))}%`:htmlEscape(formatOdds(o.odds))}</b><i>${o.deep?'Bet ›':'Open ›'}</i></a>`).join('')}</div>`;
+
+  const pickLinks=(places,pm)=>`<p class="slip-where">${pm?'Bet it on':'Bet it at'}${places[0]?`<span>${usd(wagerAmt())} wins ${usd(Math.round(wagerAmt()*(dec(places[0].odds)-1)))}</span>`:''}</p><div class="slip-picks">${places.slice(0,5).map((o,i)=>`<a class="slip-pick${i===0?' best':''}" href="${htmlEscape(o.url)}" target="_blank" rel="noopener sponsored" data-book="${htmlEscape(normalizeBookName(o.name))}"><span>${htmlEscape(o.name)}${o.mine?' <em>your book</em>':''}</span><b>${pm?`${Math.round(100/dec(o.odds))}%`:htmlEscape(formatOdds(o.odds))}</b><i>${o.deep?'Bet ›':'Open ›'}</i></a>`).join('')}</div>`;
   const openLink=book=>{const url=sportsbookDestination(book);return url?`<a class="slip-open" href="${htmlEscape(url)}" target="_blank" rel="noopener sponsored">Open ${htmlEscape(book)}</a>`:''};
   function paintLegs(){
     $$('#slipLegs .slip-leg').forEach(el=>{
@@ -3086,21 +3080,40 @@ function statsProp(l){
     });
   }
   // A parlay only pays at a book that offers every leg, so price it per book.
+  // Parlay tab: where the whole parlay pays most. A book's row opens to one
+  // button per leg; each tap adds that leg to the book's own slip, where the
+  // legs are placed together as a parlay.
   function paintBooks(){
     const summary=$('#parlaySummary');if(!summary)return;
     let box=$('#slipBooks');if(!box){box=document.createElement('div');box.id='slipBooks';box.className='slip-books';($('#shareParlay')||summary.lastChild).before(box)}
     const legs=state.slip;if(legs.length<2||legs.some(l=>l.unavailable||l.changed)){box.hidden=true;return}
-    // Prediction app legs: a parlay has to be on one app, so no per-book table.
-    if(legs.some(l=>l.pm)){const apps=[...new Set(legs.map(l=>l.pm?.exchange||''))],one=apps.length===1&&apps[0];box.hidden=false;
-      box.innerHTML=one?`<p class="slip-books-none">Bet this parlay on ${htmlEscape(one)}. Its parlay price may differ a little after the app's fee.</p>`:'<p class="slip-books-none">These legs are on different apps or books, and a parlay has to be on one. Bet them as singles, or keep the legs from one app.</p>';return}
-    const books=new Map();
-    legs.forEach((leg,i)=>offersFor(leg).forEach(x=>{const k=normalizeBookName(x.b);if(!books.has(k))books.set(k,{b:x.b,odds:[]});books.get(k).odds[i]=Number(x.o)}));
-    const full=[...books.values()].filter(v=>legs.every((_,i)=>v.odds[i])).map(v=>({b:v.b,d:v.odds.reduce((d,o)=>d*dec(o),1)})).sort((a,b)=>(bookAllowed(b.b)-bookAllowed(a.b))||b.d-a.d);
     const wager=Math.max(0,Number(String($('#wager')?.value||'').replace(/[^0-9.]/g,''))||0),same=new Set(legs.map(l=>l.p.eventID)).size<legs.length;
-    if(!full.length){box.hidden=false;box.innerHTML='<p class="slip-books-none">No single book lists every leg at these lines. Try fewer legs.</p>';return}
+    const pm=legs.some(l=>l.pm);
+    if(pm&&!legs.every(l=>l.pm)){box.hidden=false;box.innerHTML='<p class="slip-books-none">These legs mix a prediction app and sportsbooks, and a parlay has to be on one. Bet them as singles, or keep the legs from one place.</p>';return}
+    // Every place that has every leg, with that leg's price and link there.
+    const places=new Map();
+    legs.forEach((leg,i)=>placesFor(leg).forEach(x=>{const k=normalizeBookName(x.name);if(!places.has(k))places.set(k,{name:x.name,mine:x.mine,legs:[]});places.get(k).legs[i]=x}));
+    const full=[...places.values()].filter(v=>legs.every((_,i)=>v.legs[i])).map(v=>({...v,d:v.legs.reduce((d,x)=>d*dec(x.odds),1)})).sort((a,b)=>(b.mine-a.mine)||b.d-a.d);
+    if(!full.length){box.hidden=false;box.innerHTML=`<p class="slip-books-none">No single ${pm?'app':'book'} lists every leg at these lines. Try fewer legs.</p>`;return}
+    const legName=l=>`${l.p.player} ${l.p.binary?(l.side==='Over'?'Yes':'No'):`${l.side} ${l.p.line}`}`;
     box.hidden=false;
-    box.innerHTML=`<div class="slip-books-head"><span>This parlay at each book</span><small>${wager?`${usd(wager)} wins`:'Odds'}</small></div>${full.slice(0,4).map((v,i)=>`<div class="slip-books-row${i===0?' best':''}"><span>${htmlEscape(v.b)}${bookAllowed(v.b)&&picked()?' <em>your book</em>':''}</span><b>${htmlEscape(formatOdds(amer(v.d)))}${wager?` · ${usd(Math.round(wager*(v.d-1)))}`:''}</b>${(u=>u?`<a class="slip-open" href="${htmlEscape(u)}" target="_blank" rel="noopener sponsored">Bet parlay</a>`:openLink(v.b))(parlayLink(v.b))}</div>`).join('')}${same?'<small>Same-game legs: books price these lower than the multiplied odds.</small>':''}`;
+    box.innerHTML=`<div class="slip-books-head"><span>Bet this parlay at</span><small>${wager?`${usd(wager)} wins`:'Odds'}</small></div>${full.slice(0,5).map((v,i)=>`<details class="slip-pbook${i===0?' best':''}"${i===0?' open':''}><summary><span>${htmlEscape(v.name)}${v.mine?' <em>your book</em>':''}</span><b>${pm?`${Math.round(100/v.d)}%`:htmlEscape(formatOdds(amer(v.d)))}${wager?` · ${usd(Math.round(wager*(v.d-1)))}`:''}</b><i aria-hidden="true">›</i></summary>
+      <div class="slip-steps">${v.legs.map((x,n)=>`<a class="slip-step" href="${htmlEscape(x.url)}" target="_blank" rel="noopener sponsored" data-book="${htmlEscape(normalizeBookName(v.name))}"><span>${n+1}</span><strong>${htmlEscape(legName(legs[n]))}</strong><i>${x.deep?'Add ›':'Open ›'}</i></a>`).join('')}
+      <small>${v.legs.every(x=>x.deep)?`Each tap adds one leg to your ${htmlEscape(v.name)} slip. Add them all, then place them there as one parlay.`:`Open ${htmlEscape(v.name)} and add these legs to one parlay.`}${pm?' The app’s parlay price can differ a little after its fee.':''}</small></div></details>`).join('')}${same?'<small>Same-game legs: books price these lower than the multiplied odds.</small>':''}`;
+    box.querySelectorAll('[data-book]').forEach(a=>a.addEventListener('click',()=>{a.classList.add('done');window.btgCount?.('book:'+a.dataset.book)}));
   }
+  // Two or more legs: a Parlay tab and a Bet singles tab. A premade parlay
+  // opens on Parlay; legs added one at a time open on Bet singles.
+  function paintTabs(){
+    const slip=$('#slip'),legsBox=$('#slipLegs');if(!slip||!legsBox)return;
+    let tabs=$('#slipTabs');if(!tabs){tabs=document.createElement('div');tabs.id='slipTabs';tabs.className='slip-tabs';tabs.setAttribute('role','tablist');legsBox.before(tabs)}
+    const many=state.slip.length>1;if(!state.slip.length)state.slipMode=null;
+    const mode=many?(state.slipMode||'singles'):'single';
+    tabs.hidden=!many;slip.classList.toggle('mode-parlay',mode==='parlay');slip.classList.toggle('mode-singles',mode==='singles');
+    if(many){tabs.innerHTML=`<button type="button" role="tab" aria-selected="${mode==='parlay'}" data-slip-mode="parlay">Parlay <small>${state.slip.length} legs</small></button><button type="button" role="tab" aria-selected="${mode==='singles'}" data-slip-mode="singles">Bet singles <small>${state.slip.length} bets</small></button>`;
+      tabs.querySelectorAll('[data-slip-mode]').forEach(b=>b.onclick=()=>{state.slipMode=b.dataset.slipMode;renderSlip()})}
+  }
+
   function paintPartner(){
     const summary=$('#parlaySummary');if(!summary)return;
     let row=$('#slipPartner');const offer=window.BTGApps?.offer?.('Novig');
@@ -3132,7 +3145,8 @@ function statsProp(l){
     const head=document.querySelector('#officialNow .on-head');if(head){let b=head.querySelector('.on-addall');if(!b&&n){b=document.createElement('button');b.type='button';b.className='on-addall';b.onclick=addPicks;head.append(b)}if(b){b.hidden=!n;b.textContent='＋ Add all to slip'}}
   }
   const base=renderSlip;
-  renderSlip=function(){base.apply(this,arguments);try{paintLegs();paintBooks();paintPartner();paintAdd()}catch(error){console.warn('slip helper',error)}};
+  renderSlip=function(){base.apply(this,arguments);try{paintTabs();paintLegs();paintBooks();paintPartner();paintAdd()}catch(error){console.warn('slip helper',error)}};
+  $('#wager')?.addEventListener('input',()=>{try{paintLegs();paintBooks()}catch{}});
   $('#wager')?.addEventListener('input',()=>{try{paintBooks()}catch{}});
   window.BTGSlip={weekPicks,addPicks,paintAdd};
   setTimeout(()=>{try{paintAdd()}catch{}},2500);
