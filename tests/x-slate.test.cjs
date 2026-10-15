@@ -24,13 +24,23 @@ pick('d','Brock Purdy',110,'2026-10-13T00:15:00.000Z');pick('e','Old Pick',150,'
   assert.deepEqual(posts[0].media,{media_ids:['m1']});assert.ok(!/https?:\/\//.test(text),'no link in the text');
   const svg=run('globalThis.__svg');assert.ok(svg.includes('Sunday')&&svg.includes('Carnell Tate')&&svg.includes('Texans @ Titans · FanDuel'));
   assert.equal((await run(`postSlateToX(env,${Date.parse('2026-10-11T02:05:00Z')})`)).done,true,'once per game day');assert.equal(posts.length,1);
-  // Final card: the run 25 to 35 minutes before the first pick kicks off.
-  assert.equal((await run(`postSlateToX(env,${Date.parse('2026-10-11T16:00:00Z')},true)`)).due,false,'not an hour out');
-  const fin=await run(`postSlateToX(env,${Date.parse('2026-10-11T16:25:00Z')},true)`);
+  // Morning update: 9 AM Eastern on game day, only when picks locked after the night post.
+  assert.equal((await run(`postSlateToX(env,${Date.parse('2026-10-11T12:05:00Z')},false,true)`)).due,false,'not at 8 AM ET');
+  assert.equal((await run(`postSlateToX(env,${Date.parse('2026-10-11T13:05:00Z')},false,true)`)).nothingNew,true,'nothing new since the night post');
+  pick('f','Morning Pick',115,'2026-10-11T17:00:00.000Z');db.prepare("UPDATE public_recommendations SET posted_at='2026-10-11T12:00:00Z' WHERE player='Morning Pick'").run();
+  const am=await run(`postSlateToX(env,${Date.parse('2026-10-11T13:10:00Z')},false,true)`);
+  assert.equal(am.posted,1);assert.equal(am.morning,true);assert.equal(am.picks,4);
+  assert.ok(posts.at(-1).text.startsWith('☀️ Sunday morning: 4 official picks locked so far')&&posts.at(-1).text.includes('• Morning Pick')&&posts.at(-1).text.length<=280,posts.at(-1).text);
+  assert.equal((await run(`postSlateToX(env,${Date.parse('2026-10-11T13:15:00Z')},false,true)`)).done,true,'morning update once a day');
+  db.prepare("DELETE FROM public_recommendations WHERE player='Morning Pick'").run();
+  // Final card: the run 65 to 80 minutes before the first pick kicks off.
+  assert.equal((await run(`postSlateToX(env,${Date.parse('2026-10-11T15:00:00Z')},true)`)).due,false,'not two hours out');
+  assert.equal((await run(`postSlateToX(env,${Date.parse('2026-10-11T16:30:00Z')},true)`)).due,false,'not 30 minutes out');
+  const fin=await run(`postSlateToX(env,${Date.parse('2026-10-11T15:45:00Z')},true)`);
   assert.equal(fin.posted,1);assert.equal(fin.final,true);
-  assert.ok(posts[1].text.startsWith('🔒 Final card for Sunday: 3 picks, all locked')&&posts[1].text.includes('Kickoff 1:00 PM ET'),posts[1].text);
+  assert.ok(posts.at(-1).text.startsWith('🔒 Final card for Sunday: 3 picks, all locked')&&posts.at(-1).text.includes('Kickoff 1:00 PM ET'),posts.at(-1).text);
   assert.ok(run('globalThis.__svg').includes('FINAL CARD')&&run('globalThis.__svg').includes('All locked'));
-  assert.equal((await run(`postSlateToX(env,${Date.parse('2026-10-11T16:35:00Z')},true)`)).done,true,'final card once a day');
+  assert.equal((await run(`postSlateToX(env,${Date.parse('2026-10-11T15:50:00Z')},true)`)).done,true,'final card once a day');
   // Alerts pin post: once per x-pin-request date, with the day's locked picks (even after kickoff).
   assert.equal((await run(`postAlertsPinToX(env,${Date.parse('2026-10-11T17:40:00Z')})`)).none,true,'nothing until requested');
   db.prepare("UPDATE public_recommendations SET legs_json=json_set(legs_json,'$[0].priceTrail',json('[{\"o\":-120}]')) WHERE player IN ('Carnell Tate','Brock Bowers')").run();
@@ -52,5 +62,5 @@ pick('d','Brock Purdy',110,'2026-10-13T00:15:00.000Z');pick('e','Old Pick',150,'
   assert.equal(proof.posted,1);assert.equal(proof.beat,9);assert.equal(proof.tracked,12);assert.equal(posts.length,before+1);
   const xt=posts.at(-1);assert.ok(xt.text.startsWith('📈 9 of 12 of our picks this season beat the closing line')&&xt.text.includes('Free alerts')&&xt.text.length<=280&&!xt.media,xt.text);
   assert.equal((await run(`postProofToX(env,${Date.parse('2026-10-12T02:10:00Z')})`)).done,true,'once per request');
-  console.log('PASS: slate post sends the day\'s pending picks on one graphic, once, from 16 hours before kickoff, and a final card 30 minutes out');
+  console.log('PASS: slate post sends the day\'s pending picks on one graphic, once, from 16 hours before kickoff, a 9 AM ET morning update when new picks locked, and a final card 75 minutes out');
 })().catch(error=>{console.error(error);process.exit(1)});

@@ -3294,23 +3294,30 @@ async function slatePicks(env,now){
   const day=etDate(Date.parse(rows[0].game_time),{year:'numeric',month:'2-digit',day:'2-digit'});
   return {rows:rows.filter(r=>etDate(Date.parse(r.game_time),{year:'numeric',month:'2-digit',day:'2-digit'})===day),first:Date.parse(rows[0].game_time)};
 }
-// final: the same card about 30 minutes before the day's first pick kicks
-// off (the run 25 to 35 minutes out), with everything that's locked by then.
-async function postSlateToX(env,now=Date.now(),final=false){
+// final: the same card about 75 minutes before the day's first pick kicks
+// off (the run 65 to 80 minutes out, after inactives), with everything
+// locked by then. morning: an update at 9 AM Eastern on game day, when
+// picks have locked since the night-before post and kickoff is 90+ minutes off.
+async function postSlateToX(env,now=Date.now(),final=false,morning=false){
   if(!env.DB||!xReady(env))return {posted:0,disabled:true};
-  const {rows,first}=await slatePicks(env,now);
-  if(rows.length<(final?1:2)||(final?(first-now>35*60000||first-now<20*60000):first-now>16*3600000))return {posted:0,due:false};
-  const key=`x-${final?'final':'slate'}:${new Date(first).toISOString().slice(0,10)}`;
+  const {rows,first}=await slatePicks(env,now),date=first?new Date(first).toISOString().slice(0,10):'';
+  if(morning){
+    const ymd=t=>etDate(t,{year:'numeric',month:'2-digit',day:'2-digit'});
+    if(rows.length<2||ymd(now)!==ymd(first)||Number(etDate(now,{hour:'numeric',hourCycle:'h23'}))!==9||first-now<90*60000||await appSetting(env,`x-final:${date}`))return {posted:0,due:false};
+    const night=Date.parse(String(await appSetting(env,`x-slate:${date}`)||'').replace(/^pending /,''));
+    if(Number.isFinite(night)&&!rows.some(r=>Date.parse(r.posted_at)>night))return {posted:0,nothingNew:true};
+  }else if(rows.length<(final?1:2)||(final?(first-now>80*60000||first-now<65*60000):first-now>16*3600000))return {posted:0,due:false};
+  const key=`x-${final?'final':morning?'morning':'slate'}:${date}`;
   if(!(await xClaim(env,key,now)))return {posted:0,done:true};
   const all=(await env.DB.prepare("SELECT kind,posted_at,line,odds,combined_odds,status,result,closing_line,closing_odds,closing_captured_at,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%'").all()).results||[];
   const season=weeklySummary(all);
   const picks=rows.map(r=>{const legs=recordLegs(r),f=legs[0]||{};return r.kind==='parlay'?{text:`${legs.length}-leg parlay`,odds:weeklyOdds(r.combined_odds),sub:legs.map(l=>l.player).join(' + '),line:`• ${legs.length}-leg parlay (${weeklyOdds(r.combined_odds)})`}:{text:`${r.player} · ${weeklyLegText(r)}`,odds:weeklyOdds(r.odds),sub:[xMatchup(f.team),f.book,exchangeLine(r,null,1)].filter(Boolean).join(' · '),line:`• ${r.player} ${weeklyLegText(r)} (${weeklyOdds(r.odds)})`}});
   const dayName=etDate(first,{weekday:'long'}),kick=`${etDate(first,{hour:'numeric',minute:'2-digit'})} ET`;
-  const text=final?xShort(`🔒 Final card for ${dayName}: ${rows.length} pick${rows.length===1?'':'s'}, all locked\n${picks.map(p=>p.line).join('\n')}\n\nKickoff ${kick}. Graded in public, link in bio. 21+`):xShort(`🔒 ${dayName}’s official picks so far\n${picks.map(p=>p.line).join('\n')}\n\nMore can drop up to kickoff: turn on alerts, link in bio. 21+`);
+  const text=morning?xShort(`☀️ ${dayName} morning: ${rows.length} official picks locked so far\n${picks.map(p=>p.line).join('\n')}\n\nMore can drop up to kickoff: turn on alerts, link in bio. 21+`):final?xShort(`🔒 Final card for ${dayName}: ${rows.length} pick${rows.length===1?'':'s'}, all locked\n${picks.map(p=>p.line).join('\n')}\n\nKickoff ${kick}. Graded in public, link in bio. 21+`):xShort(`🔒 ${dayName}’s official picks so far\n${picks.map(p=>p.line).join('\n')}\n\nMore can drop up to kickoff: turn on alerts, link in bio. 21+`);
   let mediaId=null;
   try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(xSlateSvg({final,kick,day:dayName,date:etDate(first,{month:'short',day:'numeric'}),picks,season:season.wins+season.losses>=5?`${season.wins}–${season.losses} · ${weeklyMoney(season.profit)}`:''})))}
   catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} slate graphic: ${error.message}`).catch(()=>{})}
-  try{await xPost(env,text,mediaId);await xDone(env,key,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} slate ${key}`).catch(()=>{});return {posted:1,final,picks:rows.length,graphic:Boolean(mediaId)}}
+  try{await xPost(env,text,mediaId);await xDone(env,key,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} slate ${key}`).catch(()=>{});return {posted:1,final,morning,picks:rows.length,graphic:Boolean(mediaId)}}
   catch(error){console.warn('x_slate_failed',error.message);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});return {posted:0,error:error.message}}
 }
 // Alerts post to pin: a day's locked picks as proof, and why alerts matter
@@ -3649,7 +3656,8 @@ async function runXPosts(env,now=Date.now()){
   // The day's slate graphic waits for a run that didn't post a pick or the weekly.
   const combo=picks.posted||predictions.posted||weekly.posted?{posted:0,waiting:true}:await postComboToX(env,now).catch(error=>({posted:0,error:error.message}));
   const final=picks.posted||predictions.posted||weekly.posted||combo.posted?{posted:0,waiting:true}:await postSlateToX(env,now,true);
-  const slate=picks.posted||predictions.posted||combo.posted||weekly.posted||final.posted?{posted:0,waiting:true}:await postSlateToX(env,now);
+  const morning=picks.posted||predictions.posted||combo.posted||weekly.posted||final.posted?{posted:0,waiting:true}:await postSlateToX(env,now,false,true);
+  const slate=picks.posted||predictions.posted||combo.posted||weekly.posted||final.posted||morning.posted?{posted:0,waiting:true}:await postSlateToX(env,now);
   const pin=picks.posted||predictions.posted||combo.posted||weekly.posted||final.posted||slate.posted?{posted:0,waiting:true}:await postAlertsPinToX(env,now);
   const recap=picks.posted||predictions.posted||combo.posted||weekly.posted||final.posted||slate.posted||pin.posted?{posted:0,waiting:true}:await postDayRecapToX(env,now);
   const proof=await postProofToX(env,now);
