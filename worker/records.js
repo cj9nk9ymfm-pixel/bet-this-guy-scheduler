@@ -1339,8 +1339,13 @@ async function checkBetLinks(env,now=Date.now()){
     const withLink=outs.filter(o=>o.link),one=withLink[0]||outs[0]||{};
     books[b.key]={event:b.link||null,eventSid:b.sid||null,markets:(b.markets||[]).length,marketLink:(b.markets||[]).find(m=>m.link)?.link||null,outcomes:outs.length,outcomeLinks:withLink.length,sample:one.description?`${one.description} ${one.name} ${one.point} (${one.price})`:null,sampleLink:one.link||null,sampleSid:one.sid||null,secondLink:withLink[1]?.link||null};
   }
-  const out={at:new Date(now).toISOString(),game:`${d.away_team} @ ${d.home_team}`,eventId:next.id,books};
-  await setAppSetting(env,'links-check',JSON.stringify(out).slice(0,20000));
+  // Which web addresses open each app on an iPhone (apple-app-site-association).
+  const apps={};
+  for(const host of ['novig.com','novig.us','app.novig.us','www.prophetx.co','sportsbook.draftkings.com','sportsbook.fanduel.com']){
+    try{const a=await fetch(`https://${host}/.well-known/apple-app-site-association`,{headers:{accept:'application/json'},signal:AbortSignal.timeout(8000)});apps[host]=a.ok?(await a.text()).slice(0,1500):`status ${a.status}`}catch(error){apps[host]=`error ${error.message}`}
+  }
+  const out={at:new Date(now).toISOString(),game:`${d.away_team} @ ${d.home_team}`,eventId:next.id,books,apps};
+  await setAppSetting(env,'links-check',JSON.stringify(out).slice(0,40000));
   return {books:Object.keys(books).length,withLinks:Object.values(books).filter(b=>b.outcomeLinks).length};
 }
 // Sportsbook fair chance of the Over for every player line priced by 3+ books
