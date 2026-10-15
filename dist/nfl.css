@@ -2154,6 +2154,7 @@ body.light .on-pitch .on-pitch-email{color:#1d4ed8}
 .bs-why-g .bs-why-h{color:#22c55e}.bs-why-r .bs-why-h{color:#f06060}
 .bs-why p:not(.bs-why-h){margin:0;font-size:14.5px;line-height:1.45;color:#e6eaf0}
 .bs-meter{margin-top:12px}
+.bs-pay{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}.bs-pay>div{padding:9px 12px;border-radius:10px;background:rgba(255,255,255,.05)}.bs-pay small{display:block;font-size:12px;color:#98a1ad}.bs-pay b{font-size:20px;color:#f2f4f7}.bs-pay b.pos{color:#22c55e}.bs-pay b.neg{color:#f06060}.bs-heads{margin:10px 0 0!important;padding-top:10px;border-top:1px solid rgba(255,255,255,.08);font-size:13.5px!important;color:#e3b341!important}
 .bs-meter-bar{position:relative;height:8px;border-radius:999px;background:linear-gradient(90deg,#2a313c,#2a313c)}
 .bs-meter-bar i{position:absolute;top:50%;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;border:2px solid #0e1013}
 .bs-meter i.bs-need,.bs-meter-keys i.bs-need{background:#98a1ad}
@@ -2164,7 +2165,7 @@ body.light .on-pitch .on-pitch-email{color:#1d4ed8}
 .bs-stats .pp-card.pp-bare{margin:0;padding:12px 14px;border-radius:14px}
 .bs-stats .pp-card.pp-bare .pp-h{margin:0}
 /* Chart labels: opponent over week/date */
-.pp-chart{padding-bottom:34px!important}
+.pp-chart{height:150px;padding-top:16px!important;padding-bottom:34px!important}.pp-line{margin-bottom:0!important}
 .pp-bar small{display:flex;flex-direction:column;align-items:center;line-height:1.15;bottom:-30px!important}
 .pp-bar small i{font-style:normal;font-size:9.5px;color:#6f7884}
 /* Prices are add-to-slip buttons */
@@ -2178,7 +2179,7 @@ button.on-price{appearance:none;-webkit-appearance:none;background:transparent;b
 .slip-toast button{border:0;background:rgba(255,255,255,.2);color:#fff;border-radius:999px;padding:3px 10px;font:inherit;cursor:pointer}
 body.light .bs-why{background:#f6f8fb;border-color:#e2e6ec}body.light .bs-why p:not(.bs-why-h){color:#0f172a}
 body.light .bs-why-g{background:#effbf3;border-color:#bfe8cc}body.light .bs-why-r{background:#fdf1f1;border-color:#f3c9c9}
-body.light .bs-meter-bar{background:#e2e6ec}body.light .bs-meter-bar i{border-color:#fff}body.light .bs-photo{background:#e8edf3;color:#334155}
+body.light .bs-pay>div{background:#eef1f5}body.light .bs-pay b{color:#0f172a}body.light .bs-pay b.pos{color:#15803d}body.light .bs-pay b.neg{color:#c62828}body.light .bs-heads{color:#a16207!important;border-color:#e2e6ec}body.light .bs-meter-bar{background:#e2e6ec}body.light .bs-meter-bar i{border-color:#fff}body.light .bs-photo{background:#e8edf3;color:#334155}
 body.light button.on-price{border-color:#cbd5e1}
 /* Game log on phones: tighter columns, and a fade on the right edge that says "scroll for more". */
 @media (max-width:520px){html body .pp-log th,html body .pp-log td{padding:8px 7px;font-size:12.5px}}

@@ -1453,8 +1453,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     const pmOffer=r.pm&&!done?window.BTGApps?.offer?.(r.pm.exchange):null;
     // The case for the pick, the player's last 10 and Add to slip (singles).
     const sp=isParlay?null:statsProp({...first,player:r.player,market:r.market,line:r.line,side:r.side,odds:r.odds,gameTime:r.game_time||first.gameTime,sport:r.sport||(String(r.id||'').startsWith('nba|')?'NBA':'NFL')});
-    let why=isParlay?null:r.pm?betWhy({need:r.pm.pct,fair:r.pm.fair,where:r.pm.exchange,pm:true,afterFee:r.netOdds!=null&&Number(r.netOdds)!==Number(r.odds)}):(()=>{const d0=oddsDecimal(r.odds),e=Number(first.edge);return d0&&Number.isFinite(e)?betWhy({need:100/d0,fair:100/d0+e,where:first.book||'The book',price:formatOdds(r.odds)}):null})();
-    if(why&&done)why={...why,title:'Why we picked it'};
+    let why=isParlay?null:r.pm?betWhy({done,need:r.pm.pct,fair:r.pm.fair,where:r.pm.exchange,pm:true,afterFee:r.netOdds!=null&&Number(r.netOdds)!==Number(r.odds)}):(()=>{const d0=oddsDecimal(r.odds),e=Number(first.edge);return d0&&Number.isFinite(e)?betWhy({done,need:100/d0,fair:100/d0+e,where:first.book||'The book',price:formatOdds(r.odds)}):null})();
     const boardP=!isParlay&&!done?boardPropFor(r):null;
     return {chip,title:isParlay?`${legs.length}-leg ${legs.some(l=>l.sameGame)?'same-game ':''}parlay`:r.player,photo:isParlay?null:r.player,sport:sp?.sport,why,statsProp:sp,
       slip:boardP?{inSlip:()=>state.slip.some(x=>x.key===slipSelectionKey(boardP,r.side==='Under'?'Under':'Over')),toggle:()=>toggleLeg(boardP,r.side==='Under'?'Under':'Over')}:null,bet,game,price:r.pm?`${r.pm.pct}%`:formatOdds(odds),
@@ -1478,7 +1477,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     window.BTGSheet.open({chip:{cls:'n',icon:'layers',text:`Leg of a ${recordLegs(r).length}-leg parlay`},title:l.player,photo:l.player,sport:sp.sport,
       bet:(t=>t.charAt(0).toUpperCase()+t.slice(1))(legText({...l,market:String(l.market||'').toLowerCase()})),game:[String(l.team||'').replace(' · ',' '),when(l.gameTime||r.game_time)].filter(Boolean).join(' · '),
       price:pm?(need?`${Math.round(need)}%`:'—'):formatOdds(o),stake:'$100',moneyLabel:'As a single, $100',money:d0?`wins $${Math.round(100*(d0-1))}`:'—',moneyCls:'pos',
-      why:(w=>w&&w.gap>=.45?{...w,title:'Why it’s in the parlay'}:w)(betWhy({need,fair,where:pm?r.pm.exchange:(l.book||'The book'),price:formatOdds(o),pm})),statsProp:sp,
+      why:(betWhy({need,fair,where:pm?r.pm.exchange:(l.book||'The book'),price:formatOdds(o),pm})),statsProp:sp,
       slip:bp?{inSlip:()=>state.slip.some(x=>x.key===slipSelectionKey(bp,side)),toggle:()=>toggleLeg(bp,side)}:null,
       rows:l.result?[['Result',l.result==='won'?'Hit':l.result==='lost'?'Missed':l.result,l.result==='won'?'pos':l.result==='lost'?'neg':'']]:[],
       actions:[{label:'Back to the parlay',wide:true,onClick:()=>openPick(r)}],
@@ -1914,14 +1913,22 @@ if(typeof fetch==='function')window.btgCountVisit?.('view:home');
 // betWhy: the plain-English case for or against a price. need is the chance
 // the price needs to break even (after the app's fee for prediction apps),
 // fair is how often the sportsbooks say it happens.
-function betWhy({need,fair,where,price,pm=false,books,afterFee=true}){
-  need=Number(need);fair=Number(fair);if(!Number.isFinite(need)||!Number.isFinite(fair)||need<=0||fair<=0)return null;
-  const gap=fair-need,pts=Math.abs(gap).toFixed(1),n=Math.round(need),f=Math.round(fair);
-  const title=gap>=.95?'Why we like it':gap<=-3.5?'Why we’d pass':gap>=.45?'Close to a pick':'Priced about right';
-  const lead=pm?`${where} sells this at ${n}¢ to win $1${afterFee?' after its fee':''}, so it needs to hit ${n}% of the time to pay off.`:`${where} pays ${price}, so this needs to hit ${n}% of the time to pay off.`;
-  const market=`The sportsbooks${books>=3?` (${books} of them)`:''} say it hits about ${f}%`;
-  const end=gap>=.45?`: a ${pts}-point edge in your favor.`:gap<=-.45?`, so you’d be paying ${pts} points too much.`:', so there’s no real edge either way.';
-  return {title,text:`${lead} ${market}${end}`,need,fair,gap,cls:gap>=.95?'g':gap<=-3.5?'r':'n'};
+// When the last 10 games point the other way, say so under the why.
+function headsUp(host,slot,done){
+  const [h,n]=String(slot.querySelector('[data-l10]')?.dataset.l10||'').split('/').map(Number),why=host.querySelector('.bs-why');
+  if(why&&n>=6&&h/n<=.3&&!why.querySelector('.bs-heads'))why.insertAdjacentHTML('beforeend',`<p class="bs-heads">Heads up: ${done?'it had':'this has'} hit just ${h} of the last ${n} games.</p>`);
+}
+// The bet screen's "why", in dollars: what this bet pays against what a bet
+// this likely should pay. How likely comes from the sportsbooks' odds with
+// their cut taken out. `good` is the edge (in points) a Good value needs.
+function betWhy({need,fair,where,stake=100,done=false,good=.95}){
+  need=Number(need);fair=Number(fair);if(!Number.isFinite(need)||!Number.isFinite(fair)||need<=0||fair<=0||need>=100||fair>=100)return null;
+  const gap=fair-need,win=Math.round(stake*(100/need-1)),should=Math.round(stake*(100/fair-1)),diff=win-should,usd=v=>`$${Math.abs(v).toLocaleString('en-US')}`;
+  const often=fair>=10?`about ${Math.max(1,Math.min(9,Math.round(fair/10)))} in 10 times`:`about 1 in ${Math.round(100/fair)} times`;
+  const cls=gap>=good?'g':gap<=-3.5?'r':'n',pays=done?'paid':'pays';
+  const title=`${done?'Paid':'Pays'} ${cls==='g'?'more than':cls==='r'?'less than':'about what'} it should`;
+  const end=cls==='g'?`${usd(diff)} extra.`:cls==='r'?`${usd(diff)} less than it should.`:done?(diff>0?`${usd(diff)} extra.`:diff<0?`${usd(diff)} less.`:'about the same.'):diff>0?`${usd(diff)} extra, but not enough to make it a pick.`:diff<0?`${usd(diff)} less, so it’s not a pick.`:'about the same, so it’s not a pick.';
+  return {title,text:`The sportsbooks’ odds ${done?'said this would hit':'say this hits'} ${often}. A bet like that should win about ${usd(should)} on a ${usd(stake)} bet. ${where} ${pays} ${usd(win)}: ${end}`,where,done,win:usd(win),should:usd(should),cls,gap};
 }
 // Worth a look (sportsbook or prediction app) on the bet screen.
 function openLeanSheet(x,pm=false){
@@ -1933,7 +1940,7 @@ function openLeanSheet(x,pm=false){
   const when=betWhen(x.gameTime);
   window.BTGSheet.open({chip:{cls:'n',icon:'fair',text:'Worth a look · not a pick'},title:x.player,photo:x.player,sport,bet:bet.charAt(0).toUpperCase()+bet.slice(1),
     game:[String(x.team||'').replace(' · ',' '),when].filter(Boolean).join(' · '),price:pm?(need?`${Math.round(need)}%`:'—'):formatOdds(o),stake:'$100',money:d0?`wins $${Math.round(100*(d0-1))}`:'—',moneyCls:'pos',
-    why:(w=>w&&w.gap>=.45?{...w,title:'Why it’s worth a look'}:w)(betWhy({need,fair,where:pm?x.exchange:(x.book||'The best book'),price:formatOdds(o),pm})),statsProp:sp,
+    why:(betWhy({need,fair,where:pm?x.exchange:(x.book||'The best book'),price:formatOdds(o),pm})),statsProp:sp,
     slip:bp?{inSlip:()=>state.slip.some(l=>l.key===slipSelectionKey(bp,side)),toggle:()=>toggleLeg(bp,side)}:null,
     rows:[['Best price',pm?`${x.exchange} · ${need?Math.round(need)+'%':''}`:(x.book||'—'),'']],
     note:'Close to our bar but not an official pick, so it’s not counted in our record.',
@@ -1981,7 +1988,7 @@ function addBetToSlip(x){
     const rows=m.rows?.length?`<div class="bs-rows">${m.rows.map(([a,b,c],i)=>`<div><span>${esc(a)}</span><b class="${c||''}" data-bs-row="${i}">${esc(b)}</b></div>`).join('')}</div>`:'';
     const acts=m.actions?.length?`<div class="bs-acts">${m.actions.map((a,i)=>`<button type="button" class="bs-btn ${a.primary?'p':''} ${a.wide||a.primary?'wide':''}" data-bs-act="${i}" ${a.label?'':`aria-label="${esc(a.aria||'')}"`}>${a.icon?icon(a.icon):''}${a.label?esc(a.label):''}</button>`).join('')}</div>`:'';
     const photo=m.photo?`<span class="bs-photo"><span>${esc(String(m.photo).split(' ').map(s=>s[0]||'').join('').slice(0,2))}</span><img src="/api/player-photo?name=${encodeURIComponent(m.photo)}${m.sport==='NBA'?'&sport=NBA':''}" alt="" onerror="this.remove()"></span>`:'';
-    const w=m.why,meter=w?`<div class="bs-meter" role="img" aria-label="Needs ${Math.round(w.need)}% to break even; the market says ${Math.round(w.fair)}%"><div class="bs-meter-bar"><i class="bs-need" style="left:${Math.max(2,Math.min(98,w.need))}%"></i><i class="bs-fair bs-${w.cls}" style="left:${Math.max(2,Math.min(98,w.fair))}%"></i></div><div class="bs-meter-keys"><span><i class="bs-need"></i>Needs ${Math.round(w.need)}%</span><span><i class="bs-fair bs-${w.cls}"></i>Market ${Math.round(w.fair)}%</span></div></div>`:'';
+    const w=m.why,meter=w?`<div class="bs-pay"><div><small>${esc(w.where)} ${w.done?'paid':'pays'}</small><b class="${w.cls==='g'?'pos':w.cls==='r'?'neg':''}">${w.win}</b></div><div><small>${w.done?'Should have paid':'Should pay'}</small><b>${w.should}</b></div></div>`:'';
     const why=w?`<div class="bs-why bs-why-${w.cls}"><p class="bs-why-h">${esc(w.title)}</p><p>${esc(w.text)}</p>${meter}</div>`:'';
     return `<div class="bsheet"><span class="bs-chip bs-${m.chip.cls}">${m.chip.icon?icon(m.chip.icon):''}${esc(m.chip.text)}</span><div class="bs-head">${photo}<div><h2>${esc(m.title)}</h2>${m.bet?`<p class="bs-bet">${esc(m.bet)}</p>`:''}${m.game?`<p class="bs-game">${esc(m.game)}</p>`:''}</div></div>
       <div class="bs-money"><div><small>Price</small><b>${esc(m.price)}</b></div><div><small>${esc(m.moneyLabel||`${m.stake} bet`)}</small><b class="${m.moneyCls||''}">${esc(m.money)}</b></div></div>${m.slip?`<button type="button" class="bs-btn p wide bs-slip" data-bs-slip>${m.slip.inSlip()?'✓ In your slip':'＋ Add to slip'}</button>`:''}${why}${m.statsProp?'<div class="bs-stats" data-bs-stats><p class="bs-loading">Loading the last 10 games…</p></div>':''}${legs}${rows}${chart(m.chart)}${m.note?`<p class="bs-note">${esc(m.note)}</p>`:''}${acts}${m.alert?`<div class="bs-alert"><p><b>${icon('bell')} ${esc(m.alert.title)}</b><span>${esc(m.alert.text)}</span></p><div class="bs-alert-acts"><button type="button" class="bs-btn p" data-bs-alert>Turn on alerts</button>${window.BTGEmailSub?'<button type="button" class="bs-btn" data-bs-email>Email me instead</button>':''}</div></div>`:''}${(m.links||(m.link?[m.link]:[])).map((l,i)=>`<a class="bs-link" ${l.href?`href="${esc(l.href)}"${l.external?' target="_blank" rel="noopener"':''} data-bs-href="${i}"`:`href="#" data-bs-link="${i}"`}>${esc(l.text)}</a>`).join('')}</div>`;
@@ -2010,7 +2017,7 @@ function addBetToSlip(x){
     host.innerHTML=renderSheet(m);bind(host,m,dialog);m.after?.(host);
     if(m.statsProp){const slot=host.querySelector('[data-bs-stats]'),sp=m.statsProp,full=`<button type="button" class="bs-btn wide bs-fullstats" data-bs-fullstats><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Full stats &amp; game log <span aria-hidden="true">›</span></button>`;
       const wire=()=>slot.querySelector('[data-bs-fullstats]')?.addEventListener('click',()=>{window.btgCount?.('profile:open');dialog.close?.();openPlayerProfile(sp)});
-      window.BTGPlayer?.betBlockFor?.(sp).then(html=>{if(!slot.isConnected)return;slot.innerHTML=(html||'')+full;wire()}).catch(()=>{slot.innerHTML=full;wire()})}
+      window.BTGPlayer?.betBlockFor?.(sp).then(html=>{if(!slot.isConnected)return;slot.innerHTML=(html||'')+full;wire();headsUp(host,slot,false)}).catch(()=>{slot.innerHTML=full;wire()})}
     if(!dialog.open){if(typeof dialog.showModal==='function')dialog.showModal();else dialog.setAttribute('open','')}
     // Don't land focus on the close button (it shows a ring); keep keyboard users inside the sheet.
     try{if(!dialog.hasAttribute('tabindex'))dialog.setAttribute('tabindex','-1');dialog.focus({preventScroll:true})}catch{}
@@ -2021,13 +2028,15 @@ function addBetToSlip(x){
   const stakeNow=()=>Math.max(1,Number(preferences.typicalWager)||100);
   const winsOn=odds=>{const d=oddsDecimal(odds);return d?`wins $${Math.round(stakeNow()*(d-1)).toLocaleString('en-US')}`:'—'};
   function propModel(p){
-    const v=propVerdict(p),odds=recommendedOdds(p),edge=Number(p.rawEdge),selection=p.binary?(p.side==='Over'?(p.overLabel||'Yes'):(p.underLabel||'No')):`${p.side} ${p.line}`;
-    const chip=v?{send:{cls:'g',icon:'check',text:'Good value'},flip:{cls:'n',icon:'fair',text:'Fair price'},read:{cls:'r',icon:'over',text:'Overpriced'}}[v.key]:{cls:'n',icon:'',text:p.market};
+    let v=propVerdict(p);const odds=recommendedOdds(p),edge=Number(p.rawEdge),selection=p.binary?(p.side==='Over'?(p.overLabel||'Yes'):(p.underLabel||'No')):`${p.side} ${p.line}`;
+    let chip=v?{send:{cls:'g',icon:'check',text:'Good value'},flip:{cls:'n',icon:'fair',text:'Fair price'},read:{cls:'r',icon:'over',text:'Overpriced'}}[v.key]:{cls:'n',icon:'',text:p.market};
     const inSlip=()=>state.slip.some(x=>x.key===slipSelectionKey(p,p.side)),saved=()=>state.saved.has(savedPropKey(p));
     // Prediction view: the best app price on the board (after-fee chance shown as %).
     const pmHit=window.BTGPriceView?.view?.()==='predictions'?window.BTGPmBoard?.hit?.(p):null,pmD=pmHit?oddsDecimal(pmHit.odds):null;
     const sbNeed=oddsDecimal(odds)?100/oddsDecimal(odds):null,fair=Number.isFinite(edge)&&sbNeed?sbNeed+edge:null;
-    const why=pmD?betWhy({need:100/pmD,fair,where:pmHit.exchange,pm:true,books:p.pairedBooks,afterFee:false}):betWhy({need:sbNeed,fair,where:p.bestBook||'The best book',price:formatOdds(odds),books:p.pairedBooks});
+    // The chip and the why box always agree, in either view.
+    const why=pmD?betWhy({need:100/pmD,fair,where:pmHit.exchange,stake:stakeNow()}):betWhy({need:sbNeed,fair,where:p.bestBook||'The best book',stake:stakeNow(),good:(Number(p.pairedBooks)||0)>=3?(p.curve?1.5:.95):Infinity});
+    if(why)chip={g:{cls:'g',icon:'check',text:'Good value'},n:{cls:'n',icon:'fair',text:'Fair price'},r:{cls:'r',icon:'over',text:'Overpriced'}}[why.cls];
     const rows=[[pmD?'Best price':'Best price',pmD?`${pmHit.exchange} · ${Math.round(100/pmD)}%`:p.bestBook||'Best available','']];
     if(p.bestLine){const b=p.bestLine;rows.push(['Best line',`${b.side} ${b.line} at ${b.book} (${formatOdds(b.odds)}) · ${b.gain}${b.unit} ${b.side==='Over'?'lower':'higher'}, +${b.edge}% vs fair`,'pos'])}
     return {chip,title:p.player,photo:p.player,sport:p.sport,bet:`${selection} ${String(p.market||'').toLowerCase()}`.trim(),game:[String(p.team||'').replace(' · vs ',' vs ').replace(' · @ ',' @ '),p.time].filter(Boolean).join(' · '),
@@ -2173,7 +2182,7 @@ function addBetToSlip(x){
     const line=betLine(p),list=games.slice(0,10).reverse();if(!list.length||line===null)return '';
     const top=Math.max(line,...list.map(x=>x.v))*1.18||1,h=v=>Math.max(3,Math.round(100*v/top));
     const when=x=>nbaView||x.info.week===null?shortDate(x.date).replace(/^(\w{3}) /,'$1 '):x.info.post?'PO':`Wk ${x.info.week}`;
-    return `<div class="pp-chart" role="img" aria-label="Last ${list.length} games against the line of ${line}"><i class="pp-line" style="bottom:${h(line)}%"></i>${list.map(x=>`<div class="pp-bar ${x.hit===true?'hit':x.hit===false?'miss':'push'}"><span style="height:${h(x.v)}%"><em>${fmt(x.v)}</em></span><small>${esc(x.info.opp)}<i>${esc(when(x))}</i></small></div>`).join('')}</div>`;
+    return `<div class="pp-chart" role="img" aria-label="Last ${list.length} games against the line of ${line}"><i class="pp-line" style="bottom:calc(34px + ${h(line)}px)"></i>${list.map(x=>`<div class="pp-bar ${x.hit===true?'hit':x.hit===false?'miss':'push'}"><span style="height:${h(x.v)}%"><em>${fmt(x.v)}</em></span><small>${esc(x.info.opp)}<i>${esc(when(x))}</i></small></div>`).join('')}</div>`;
   }
   function betBlock(p,rows,player,bare=false){
     const graded=rows.map(x=>({...x,v:betMetric(p,x.row),info:gameInfo(x.row,player)})).filter(x=>x.v!==null).map(x=>({...x,hit:hitAgainstLine({...p,line:betLine(p)},x.v)}));
@@ -2181,7 +2190,7 @@ function addBetToSlip(x){
     const l10=graded.slice(0,10),l5=graded.slice(0,5),hits=l=>l.filter(x=>x.hit===true).length,avg=l=>fmt(Math.round(10*l.reduce((a,x)=>a+x.v,0)/l.length)/10);
     const cur=graded[0].info.season,season=graded.filter(x=>x.info.season===cur),opp=profileOpponentName(p,player),vs=opp?graded.filter(x=>matchupOpponentMatches(x.row,p,player)):[];
     let odds='';try{odds=formatOdds(recommendedOdds(p))}catch{}
-    return `<section class="pp-card${bare?' pp-bare':''}">${bare?`<h3 class="pp-h">Last ${l10.length} games</h3>`:`<div class="pp-bethead"><div><h3 class="pp-h">This bet</h3><p class="pp-bet">${esc(betName(p))}</p></div>${odds?`<b class="pp-odds">${esc(odds)}</b>`:''}</div>`}
+    return `<section class="pp-card${bare?' pp-bare':''}" data-l10="${hits(l10)}/${l10.length}">${bare?`<h3 class="pp-h">Last ${l10.length} games</h3>`:`<div class="pp-bethead"><div><h3 class="pp-h">This bet</h3><p class="pp-bet">${esc(betName(p))}</p></div>${odds?`<b class="pp-odds">${esc(odds)}</b>`:''}</div>`}
       ${chart(p,l10)}<p class="pp-legend"><i></i> Line ${betLine(p)} <span class="hit"></span> Cleared <span class="miss"></span> Missed</p>
       <div class="pp-kpis"><div><span>Last 10</span><strong>${hits(l10)}/${l10.length}</strong></div><div><span>Last 5</span><strong>${hits(l5)}/${l5.length}</strong></div><div><span>L10 avg</span><strong>${avg(l10)}</strong></div><div><span>${cur&&!nbaView?cur:'Season'} avg</span><strong>${avg(season)}</strong></div></div>
       ${vs.length?`<div class="pp-vs"><p>Last ${Math.min(vs.length,5)} vs ${esc(opp)} <b>${hits(vs.slice(0,5))} of ${Math.min(vs.length,5)} cleared</b></p><div>${vs.slice(0,5).map(x=>`<span class="${x.hit===true?'hit':x.hit===false?'miss':''}"><b>${fmt(x.v)}</b>${esc(nbaView?shortDate(x.date):String(x.info.season||''))}</span>`).join('')}</div></div>`:''}
@@ -2562,7 +2571,7 @@ function statsProp(l){
       const mine=b=>typeof bookAllowed==='function'&&Array.isArray(preferences?.books)&&preferences.books.length&&bookAllowed(b);
       const table=document.createElement('div');table.className='bs-books';
       table.innerHTML=`<div class="bs-books-head"><span>${htmlEscape(p.binary?(p.side==='Over'?(p.overLabel||'Yes'):(p.underLabel||'No')):`${p.side} ${p.line}`)} at every book</span><small>${offers.length} books</small></div>${offers.map((x,i)=>`<div class="${i===0?'best':''}${mine(x.b)?' mine':''}"><span>${htmlEscape(x.b)}${mine(x.b)?' <em>your book</em>':''}</span><b>${htmlEscape(formatOdds(x.o))}${i===0?' <i>best</i>':''}</b></div>`).join('')}`;
-      const after=host.querySelector('.bs-form')||rows||host.querySelector('.bs-money');after?.after(table);
+      const after=host.querySelector('.bs-stats')||host.querySelector('.bs-why')||host.querySelector('.bs-money');after?.after(table);
       host.querySelector('[data-bs-row="0"]')?.closest('div')?.remove();
     }
     // "I bet this" (tracked and graded in My Picks) and Follow, under the main action.
