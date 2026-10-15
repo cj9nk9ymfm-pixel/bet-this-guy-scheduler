@@ -1316,6 +1316,33 @@ async function fetchExchangeOdds(eventId,apiKey){
   const left=r.headers.get('x-requests-remaining');if(left!==null&&Number.isFinite(Number(left)))oddsCreditsLeft=Number(left);
   const d=JSON.parse(body);return {...d,bookmakers:(d.bookmakers||[]).filter(b=>EXCHANGES[b.key])};
 }
+// Bet slip links test: once per value of the app_settings key
+// links-check-request, one receptions call (sportsbooks + exchanges, about
+// 2 credits) for the next NFL game with includeLinks and includeSids. What
+// each book returns is saved to links-check for review; nothing on the site
+// uses it yet.
+async function checkBetLinks(env,now=Date.now()){
+  if(!env.DB||!env.THE_ODDS_API_KEY)return {skipped:true};
+  const req=String((await appSetting(env,'links-check-request'))||'');if(!req)return {none:true};
+  if((await appSetting(env,'links-check-done'))===req)return {done:true};
+  await setAppSetting(env,'links-check-done',req);
+  const ev=await fetch(`${API_BASE}/sports/${SPORTS[0].key}/events?${new URLSearchParams({apiKey:env.THE_ODDS_API_KEY,dateFormat:'iso'})}`,{headers:{accept:'application/json'}});
+  const events=ev.ok?await ev.json():[],next=(events||[]).filter(e=>Date.parse(e.commence_time)>now+10*60000).sort((a,b)=>Date.parse(a.commence_time)-Date.parse(b.commence_time))[0];
+  if(!next){await setAppSetting(env,'links-check',JSON.stringify({at:new Date(now).toISOString(),error:'no upcoming game'}));return {error:'no upcoming game'}}
+  const q=new URLSearchParams({apiKey:env.THE_ODDS_API_KEY,regions:'us,us_ex',markets:'player_receptions',oddsFormat:'american',dateFormat:'iso',includeLinks:'true',includeSids:'true'});
+  const r=await fetch(`${API_BASE}/sports/${SPORTS[0].key}/events/${next.id}/odds?${q}`,{headers:{accept:'application/json'}});
+  const body=await r.text();const left=r.headers.get('x-requests-remaining');if(left!==null&&Number.isFinite(Number(left)))oddsCreditsLeft=Number(left);
+  if(!r.ok){await setAppSetting(env,'links-check',JSON.stringify({at:new Date(now).toISOString(),status:r.status,body:body.slice(0,400)}));return {error:r.status}}
+  const d=JSON.parse(body),books={};
+  for(const b of d.bookmakers||[]){
+    const outs=(b.markets||[]).flatMap(m=>(m.outcomes||[]).map(o=>({...o,market:m})));
+    const withLink=outs.filter(o=>o.link),one=withLink[0]||outs[0]||{};
+    books[b.key]={event:b.link||null,eventSid:b.sid||null,markets:(b.markets||[]).length,marketLink:(b.markets||[]).find(m=>m.link)?.link||null,outcomes:outs.length,outcomeLinks:withLink.length,sample:one.description?`${one.description} ${one.name} ${one.point} (${one.price})`:null,sampleLink:one.link||null,sampleSid:one.sid||null,secondLink:withLink[1]?.link||null};
+  }
+  const out={at:new Date(now).toISOString(),game:`${d.away_team} @ ${d.home_team}`,eventId:next.id,books};
+  await setAppSetting(env,'links-check',JSON.stringify(out).slice(0,20000));
+  return {books:Object.keys(books).length,withLinks:Object.values(books).filter(b=>b.outcomeLinks).length};
+}
 // Sportsbook fair chance of the Over for every player line priced by 3+ books
 // (minBooks 2 for the two-book test).
 function sportsbookFairs(boards,now=Date.now(),minBooks=3){
