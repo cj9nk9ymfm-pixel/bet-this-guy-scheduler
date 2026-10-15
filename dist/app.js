@@ -1707,6 +1707,8 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
       if(header){header.onclick=event=>{event.stopPropagation();toggle()};header.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();toggle()}};header.setAttribute('aria-expanded',String(el.classList.contains('expanded')));header.setAttribute('aria-label',`${p.player}: show or hide details`)}
       el.onclick=event=>{if(event.target.closest('button,a,input,select,.mockup-pick,.card-more,[data-board-progress]'))return;toggle()};
       el.querySelector('[data-open-profile]')?.addEventListener('click',event=>{event.stopPropagation();window.btgCount?.('profile:open');openPlayerProfile(p)});
+      el.querySelector('[data-card-stats]')?.addEventListener('click',event=>{event.stopPropagation();window.btgCount?.('card:stats');window.BTGSheet?.prop(p);
+        const go=(n=0)=>{const box=document.querySelector('#hitDialogBody [data-bs-stats]');if(box&&!box.querySelector('.bs-loading'))box.scrollIntoView({behavior:'smooth',block:'start'});else if(n<20)setTimeout(()=>go(n+1),150)};go()});
       el.querySelectorAll('[data-affiliate]').forEach(link=>link.addEventListener('click',event=>{event.stopPropagation();window.btgCount?.('affiliate:click')}));
     });
   };
@@ -2001,10 +2003,14 @@ function addBetToSlip(x){
     const dialog=$(dialogSel),host=$(bodySel);if(!dialog||!host)return;
     // Books and apps open from the slip only: no open-app or open-book buttons here.
     if(m.actions)m.actions=m.actions.filter(a=>a.icon!=='external');
+    // The big stats button replaces the small "stats & game log" link.
+    if(m.statsProp){const keep=l=>!/stats & game log/.test(l?.text||'');if(m.links)m.links=m.links.filter(keep);if(m.link&&!keep(m.link))m.link=null}
     // With Add to slip on the sheet, the other actions are secondary.
     if(m.slip&&m.actions)m.actions=m.actions.map(a=>({...a,primary:false}));
     host.innerHTML=renderSheet(m);bind(host,m,dialog);m.after?.(host);
-    if(m.statsProp){const slot=host.querySelector('[data-bs-stats]');window.BTGPlayer?.betBlockFor?.(m.statsProp).then(html=>{if(!slot.isConnected)return;if(html)slot.innerHTML=html;else slot.remove()}).catch(()=>slot.remove())}
+    if(m.statsProp){const slot=host.querySelector('[data-bs-stats]'),sp=m.statsProp,full=`<button type="button" class="bs-btn wide bs-fullstats" data-bs-fullstats><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Full stats &amp; game log <span aria-hidden="true">›</span></button>`;
+      const wire=()=>slot.querySelector('[data-bs-fullstats]')?.addEventListener('click',()=>{window.btgCount?.('profile:open');dialog.close?.();openPlayerProfile(sp)});
+      window.BTGPlayer?.betBlockFor?.(sp).then(html=>{if(!slot.isConnected)return;slot.innerHTML=(html||'')+full;wire()}).catch(()=>{slot.innerHTML=full;wire()})}
     if(!dialog.open){if(typeof dialog.showModal==='function')dialog.showModal();else dialog.setAttribute('open','')}
     // Don't land focus on the close button (it shows a ring); keep keyboard users inside the sheet.
     try{if(!dialog.hasAttribute('tabindex'))dialog.setAttribute('tabindex','-1');dialog.focus({preventScroll:true})}catch{}
@@ -2534,13 +2540,14 @@ function statsProp(l){
     if(!html.includes('<p class="card-money">'))return html;
     html=html.replace(/<p class="card-why card-why-flip">[\s\S]*?<\/p>/,'');
     const inj=injuryFor(p);if(inj)html=html.replace(/(<header class="player prop-player"[\s\S]*?<strong>[^<]*)(<\/strong>)/,(m,a,b)=>`${a}${injuryTag(inj)}${b}`);
-    const f=formFor(p);if(!f)return html;
-    // One plain line: "Over in 7 of last 10 · avg 78.3 yds", no colour coding.
-    // The game-by-game chart is in the prop sheet.
-    const td=p.binary||/anytime|first|last|scorer/i.test(p.market||''),cls='';
+    // A stats button on every card: "Over in 7 of last 10 · avg 78.3 yds" (green when it
+    // usually clears, red when it usually misses), opening the bet screen at the last-10 chart.
+    const f=formFor(p),statsIcon='<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>';
+    if(!f)return html.replace('<p class="card-money">',()=>`<button type="button" class="card-form cf-btn" data-card-stats>${statsIcon}<span>Last 10 games &amp; stats</span><i aria-hidden="true">›</i></button><p class="card-money">`);
+    const td=p.binary||/anytime|first|last|scorer/i.test(p.market||''),rate=f.n?f.hits/f.n:0,cls=f.n>=5?(rate>=.6?' good':rate<=.4?' bad':''):'';
     const m=String(p.market||'').toLowerCase(),unit=/yards/.test(m)?' yds':/reception/.test(m)?' rec':/completion/.test(m)?' comp':/attempt/.test(m)?' att':/touchdown/.test(m)?' TD':'';
     const lead=td?(p.side==='Under'?'No TD in':'Scored in'):`${p.side} in`,count=`<b class="cf-count${cls}">${f.hits} of last ${f.n}</b>`;
-    return html.replace('<p class="card-money">',()=>`<div class="card-form cf-text" title="${htmlEscape(formText(p,f))}"><span>${htmlEscape(lead)} ${count}${td?'':` · avg ${htmlEscape(fmt(+f.avg.toFixed(1)))}${unit}`}</span></div><p class="card-money">`);
+    return html.replace('<p class="card-money">',()=>`<button type="button" class="card-form cf-btn" data-card-stats title="${htmlEscape(formText(p,f))}">${statsIcon}<span>${htmlEscape(lead)} ${count}${td?'':` · avg ${htmlEscape(fmt(+f.avg.toFixed(1)))}${unit}`}</span><i aria-hidden="true">Stats ›</i></button><p class="card-money">`);
   };
 
   // The prop sheet: last 10 games as bars, and every book's price.
@@ -2550,11 +2557,6 @@ function statsProp(l){
     const host=document.getElementById('hitDialogBody');if(!host)return;
     const inj=injuryFor(p);
     if(inj){const line=document.createElement('p');line.className=`bs-injury inj-${inj.c}`;line.textContent=`${inj.s}${inj.d?` · ${inj.d}`:''}${inj.at&&Number.isFinite(Date.parse(inj.at))?` · updated ${new Date(inj.at).toLocaleDateString([],{weekday:'short'})}`:''}`;host.querySelector('.bs-game')?.after(line)}
-    const f=formFor(p),rows=host.querySelector('.bs-rows');
-    if(f){const cell=host.querySelector('[data-bs-row="2"]');cell?.closest('div')?.remove();
-      const block=document.createElement('div');block.className='bs-form';
-      block.innerHTML=`<div class="bs-form-head"><span>Last ${f.n} games</span><b>${htmlEscape(formText(p,f))}</b></div>${bars(p,f,true)}<div class="bs-form-dates">${[...f.games].reverse().map(g=>`<span>${htmlEscape(g.o.replace(/^(vs|@) /,'')||'')}</span>`).join('')}</div>${p.binary?'':`<small>Dashed line: ${htmlEscape(String(p.line))}</small>`}`;
-      (rows||host.querySelector('.bs-money'))?.after(block)}
     const offers=p.books?.[p.side]||[];
     if(offers.length>1){
       const mine=b=>typeof bookAllowed==='function'&&Array.isArray(preferences?.books)&&preferences.books.length&&bookAllowed(b);

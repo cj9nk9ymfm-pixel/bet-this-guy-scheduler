@@ -2185,3 +2185,19 @@ body.light button.on-price{border-color:#cbd5e1}
 .pp-logcard{position:relative}
 .pp-logcard::after{content:"";position:absolute;top:0;right:0;width:28px;height:calc(100% - 56px);pointer-events:none;background:linear-gradient(90deg,transparent,var(--panel,#16191e));border-radius:0 14px 0 0}
 body.light .bs-chip.bs-n{color:#334155;background:#e8edf3}
+/* Stats button on every card: the last-10 line as a bright, tappable button. */
+html body #propList .prop-card>.card-form.cf-btn,.card-form.cf-btn{display:flex!important;align-items:center;gap:8px;width:100%;margin:8px 0 6px;padding:9px 12px;border:1px solid rgba(106,168,255,.45);border-radius:12px;background:linear-gradient(135deg,rgba(31,111,235,.20),rgba(31,111,235,.06));color:#dce8ff;font:600 13.5px 'DM Sans',sans-serif;text-align:left;cursor:pointer;line-height:1.3}
+.card-form.cf-btn svg{flex:none;color:#7fb4ff}
+.card-form.cf-btn span{flex:1;min-width:0;color:#c9d6ea}
+.card-form.cf-btn .cf-count{color:#fff;font-weight:800}
+.card-form.cf-btn .cf-count.good{color:#2ee6a8}.card-form.cf-btn .cf-count.bad{color:#ff8a8a}
+.card-form.cf-btn i{flex:none;font-style:normal;font-weight:800;color:#7fb4ff;white-space:nowrap}
+.card-form.cf-btn:active{transform:scale(.99)}
+body.light .card-form.cf-btn{background:linear-gradient(135deg,#e8f0ff,#f5f8ff);border-color:#b9cff5;color:#1e3a8a}
+body.light .card-form.cf-btn span{color:#334155}body.light .card-form.cf-btn .cf-count{color:#0f172a}
+body.light .card-form.cf-btn .cf-count.good{color:#15803d}body.light .card-form.cf-btn .cf-count.bad{color:#b42318}
+body.light .card-form.cf-btn svg,body.light .card-form.cf-btn i{color:#1d4ed8}
+/* Bet screen: the full stats button under the last-10 chart */
+.bs-fullstats{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:10px;border:1px solid rgba(106,168,255,.45)!important;background:linear-gradient(135deg,rgba(31,111,235,.22),rgba(31,111,235,.08))!important;color:#dce8ff!important;font-weight:800}
+.bs-fullstats svg{color:#7fb4ff}
+body.light .bs-fullstats{background:linear-gradient(135deg,#e8f0ff,#f5f8ff)!important;border-color:#b9cff5!important;color:#1e3a8a!important}
