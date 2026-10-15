@@ -1871,6 +1871,35 @@ async function predictionBoardResponse(request,env,now=Date.now()){
   for(const p of list){if(!allowed.has(p[0])||!(Number(p[5])>-1900))continue;const k=`${normalizedName(p[1])}|${p[2]}|${p[3]}|${p[4]}`,b=best.get(k);if(!b||recordDecimal(p[5])>recordDecimal(b[5]))best.set(k,p)}
   return new Response(JSON.stringify({success:true,updatedAt:row.updated_at,prices:[...best.values()].map(p=>[p[1],p[2],p[3],p[4],EXCHANGES[p[0]],p[5]])}),{headers:head});
 }
+// Bet slip links for one game and market, fetched when a visitor's slip
+// asks for them (one call per game and market for every visitor, cached 5
+// minutes): each licensed sportsbook's and each prediction app's price with
+// the link that opens that bet in its app. Apps are only the ones open in
+// the visitor's state. Rows: [book key, name, player, side, line, odds, link, sid].
+async function betLinksResponse(request,env){
+  const head={'content-type':'application/json; charset=utf-8','cache-control':'private, max-age=120'};
+  const url=new URL(request.url),id=String(url.searchParams.get('event')||''),m=/^(NFL|NBA)--([A-Za-z0-9_-]{2,100})$/.exec(id);
+  const sport=m&&SPORTS_BY_LABEL[m[1]],known=new Set(sport?[...sport.markets,...(sport.expandedMarkets||[])]:[]);
+  const markets=String(url.searchParams.get('markets')||'').split(',').filter(k=>known.has(k)).slice(0,3);
+  if(!sport||!markets.length||!env.THE_ODDS_API_KEY)return new Response(JSON.stringify({success:false,rows:[]}),{headers:head});
+  const cacheKey=new Request(`https://cache.betthisguy.com/bet-links/${id}/${markets.sort().join(',')}`),cache=typeof caches!=='undefined'?caches.default:null;
+  let rows=null;
+  try{const hit=await cache?.match(cacheKey);if(hit)rows=await hit.json()}catch{}
+  if(!rows){
+    const q=new URLSearchParams({apiKey:env.THE_ODDS_API_KEY,regions:'us,us_ex',markets:markets.join(','),oddsFormat:'american',dateFormat:'iso',includeLinks:'true',includeSids:'true'});
+    const r=await fetch(`${API_BASE}/sports/${sport.key}/events/${m[2]}/odds?${q}`,{headers:{accept:'application/json'}});
+    if(!r.ok)return new Response(JSON.stringify({success:false,rows:[]}),{headers:head});
+    const d=await r.json();rows=[];
+    for(const b of d.bookmakers||[]){if(!LICENSED_BOOKS.has(b.key)&&!EXCHANGES[b.key])continue;
+      for(const mk of b.markets||[])for(const o of mk.outcomes||[]){const price=Number(o.price);if(!o.description||!Number.isFinite(price))continue;
+        const name=String(o.name||'').toLowerCase(),side=name==='over'||name==='yes'?'Over':name==='under'||name==='no'?'Under':null;if(!side)continue;
+        rows.push([b.key,EXCHANGES[b.key]||b.title||b.key,String(o.description).trim(),side,Number.isFinite(Number(o.point))?Number(o.point):null,price,o.link||null,o.sid||null])}}
+    try{await cache?.put(cacheKey,new Response(JSON.stringify(rows),{headers:{'content-type':'application/json','cache-control':'max-age=300'}}))}catch{}
+  }
+  // Prediction apps the visitor can use where they are; every licensed sportsbook.
+  const allowed=new Set(bettingOptions(request).exchangeKeys||[]);
+  return new Response(JSON.stringify({success:true,rows:rows.filter(x=>!EXCHANGES[x[0]]||allowed.has(x[0]))}),{headers:head});
+}
 async function predictionsResponse(request,env,now=Date.now()){
   const where=bettingOptions(request),head={'content-type':'application/json; charset=utf-8','cache-control':'private, no-store'};
   const {exchangeKeys,...pub}=where;
