@@ -3327,7 +3327,7 @@ function xSlateSvg(d){
   // Parlay legs sit tight under their parlay; every other row gets the full gap.
   const ys=[];picks.forEach((p,i)=>ys.push(i?ys[i-1]+(p.leg?(picks[i-1].leg?32:52):(picks[i-1].leg?gap-10:gap)):150));
   const end=picks.length?ys.at(-1)+(picks.at(-1).leg?gap-10:gap):150;
-  const H=Math.max(675,end+(more>0?40:0)+110),B=H-675;
+  const H=Math.max(675+(d.records?56:0),end+(more>0?40:0)+110),B=H-675;
   const mark=(res,x,y)=>res==='won'?`<circle cx="${x}" cy="${y}" r="11" fill="${M}"/><path d="M${x-5} ${y}l3.5 3.5 7-7.5" fill="none" stroke="#06231a" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>`:res==='lost'?`<circle cx="${x}" cy="${y}" r="11" fill="#f87171"/><path d="M${x-4.5} ${y-4.5}l9 9M${x+4.5} ${y-4.5}l-9 9" fill="none" stroke="#2a0909" stroke-width="2.6" stroke-linecap="round"/>`:res==='push'?`<circle cx="${x}" cy="${y}" r="11" fill="#cbd5e1"/>`:`<circle cx="${x}" cy="${y}" r="6" fill="${M}"/>`;
   // Locked and closing prices side by side when the picks have a close.
   const hasClose=picks.some(p=>p.close);
@@ -3340,7 +3340,7 @@ function xSlateSvg(d){
 <text x="50" y="260" font-family="${F.g}" font-size="${xFit(d.day,380,120,.62)}" fill="${d.dayColor||"#ffffff"}">${xEsc(d.day)}</text>
 <text x="56" y="318" font-family="${F.sb}" font-size="26" fill="#ffffff" fill-opacity=".75">${xEsc(d.dateLine||`${d.date} · ${d.picks.length} pick${d.picks.length===1?'':'s'}${d.final?'':' so far'}`)}</text>
 <text x="56" y="352" font-family="${F.sb}" font-size="22" fill="#ffffff" fill-opacity=".6">${xEsc(d.note||(d.final?`More can drop until kickoff · ${d.kick}`:'More can drop up to kickoff'))}</text>${d.note2?`<text x="56" y="384" font-family="${F.sb}" font-size="22" fill="#ffffff" fill-opacity=".6">${xEsc(d.note2)}</text>`:''}
-${d.records?d.records.map((r,i)=>`<text x="56" y="${404+i*58+Math.max(0,B-24)}" font-family="${F.xb}" font-size="15" letter-spacing="2.5" fill="${r.color||'#ffffff'}" fill-opacity=".85">${xEsc(r.label)}</text><text x="56" y="${432+i*58+Math.max(0,B-24)}" font-family="${F.sb}" font-size="22" fill="#ffffff">${xEsc(r.value)}</text>`).join(''):d.season?`<text x="56" y="${d.note2?446:430}" font-family="${F.sb}" font-size="24" fill="#ffffff" fill-opacity=".75">Season <tspan font-family="${F.xb}" fill="#ffffff" fill-opacity="1">${xEsc(d.season)}</tspan></text>`:''}
+${d.records?d.records.map((r,i)=>{const y=410+i*90+Math.max(0,B-56);return `<text x="56" y="${y}" font-family="${F.xb}" font-size="15" letter-spacing="2.5" fill="${r.color||'#ffffff'}" fill-opacity=".85">${xEsc(r.label)}</text>${r.lines.map((l,j)=>`<text x="56" y="${y+28+j*28}" font-family="${F.sb}" font-size="21" fill="#ffffff">${xEsc(l)}</text>`).join('')}`}).join(''):d.season?`<text x="56" y="${d.note2?446:430}" font-family="${F.sb}" font-size="24" fill="#ffffff" fill-opacity=".75">Season <tspan font-family="${F.xb}" fill="#ffffff" fill-opacity="1">${xEsc(d.season)}</tspan></text>`:''}
 ${xLogo(56,520+B,56)}<text x="128" y="${558+B}" font-family="${F.g}" font-size="30" fill="#ffffff">Bet This Guy</text>
 <text x="56" y="${643+B}" font-family="${F.xb}" font-size="20" letter-spacing="2.5" fill="#ffffff" fill-opacity=".85">${xEsc(d.foot||"LOCKED BEFORE KICKOFF · 21+")}</text>
 ${heads}${rows}${more>0?`<text x="${X+30}" y="${end}" font-family="${F.sb}" font-size="22" fill="#9fb0cc">+ ${more} more</text>`:''}
@@ -3362,12 +3362,13 @@ async function slatePicks(env,now){
 // locked by then. morning: an update at 9 AM Eastern on game day, when
 // picks have locked since the night-before post and kickoff is 90+ minutes off.
 // Season records for the card graphics: sportsbook and prediction-app
-// singles and parlays, W–L.
+// singles and parlays, W–L and profit ($100 singles; parlays at their stake).
 async function xCardRecords(env){
   const sb=weeklySummary((await env.DB.prepare("SELECT kind,posted_at,line,odds,combined_odds,status,result,closing_line,closing_odds,closing_captured_at,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%'").all()).results||[]);
   const pm=predictionRecord((await env.DB.prepare('SELECT result,odds,net_odds,close_odds FROM prediction_picks').all().catch(()=>({results:[]}))).results||[]);
   const pp=predictionParlayRecord((await env.DB.prepare('SELECT result,odds,legs_json,posted_at FROM prediction_parlays').all().catch(()=>({results:[]}))).results||[]);
-  return [{label:'SPORTSBOOKS',value:`${sb.wins}–${sb.losses} singles · ${sb.parlayWins}–${sb.parlayLosses} parlays`,color:'#2ee6a8'},{label:'PREDICTION APPS',value:`${pm.wins}–${pm.losses} singles · ${pp.wins}–${pp.losses} parlays`,color:'#c4b5fd'}];
+  const m=v=>Math.round(v)===0?'$0':weeklyMoney(v);
+  return [{label:'SPORTSBOOKS',color:'#2ee6a8',lines:[`Singles ${sb.wins}–${sb.losses} · ${m(sb.profit)}`,`Parlays ${sb.parlayWins}–${sb.parlayLosses} · ${m(sb.parlayProfit)}`]},{label:'PREDICTION APPS',color:'#c4b5fd',lines:[`Singles ${pm.wins}–${pm.losses} · ${m(pm.profit)}`,`Parlays ${pp.wins}–${pp.losses} · ${m(pp.profit)}`]}];
 }
 async function postSlateToX(env,now=Date.now(),final=false,morning=false){
   if(!env.DB||!xReady(env))return {posted:0,disabled:true};
@@ -3437,11 +3438,12 @@ async function postComboToX(env,now=Date.now()){
   const all=(await env.DB.prepare("SELECT kind,posted_at,line,odds,combined_odds,status,result,closing_line,closing_odds,closing_captured_at,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%'").all()).results||[];
   const season=weeklySummary(all),first=Math.min(...[...official,...pm,...pmp].map(r=>Date.parse(r.game_time))),dayName=etDate(first,{weekday:'long'});
   const games=[...new Set([...official.map(r=>xMatchup(recordLegs(r)[0]?.team)),...pm.map(r=>xMatchup(r.team))].filter(Boolean))],matchup=games.length===1?games[0]:'';
-  const text=xShort(`📍 Wherever you are, Bet This Guy helps you find the best value on each and every game.\n\n🏈 Sportsbooks in your state? We find the best number.\n📈 Prediction apps only? We price those too.\n\n${matchup?`Tonight’s full card, ${matchup}`:`${dayName}’s full card`} 👇\nFree alerts + every pick graded. Link in bio. 21+`);
+  const ownText=String((await appSetting(env,'x-combo-text'))||'').trim();
+  const text=ownText&&[...ownText].length<=280?ownText:xShort(`📍 Wherever you are, Bet This Guy helps you find the best value on each and every game.\n\n🏈 Sportsbooks in your state? We find the best number.\n📈 Prediction apps only? We price those too.\n\n${matchup?`Tonight’s full card, ${matchup}`:`${dayName}’s full card`} 👇\nFree alerts + every pick graded. Link in bio. 21+`);
   let mediaId=null;
   try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(xSlateSvg({final:true,kicker:matchup?'TONIGHT’S CARD':'THE FULL CARD',day:matchup||dayName,date:etDate(first,{month:'short',day:'numeric'}),dateLine:`${etDate(first,{month:'short',day:'numeric'})} · ${total} play${total===1?'':'s'}`,note:'Sportsbooks + prediction apps',note2:`Kickoff ${etDate(first,{hour:'numeric',minute:'2-digit'})} ET`,picks,records:await xCardRecords(env).catch(()=>null),cta:'Wherever you bet',season:season.wins+season.losses>=5?`${season.wins}–${season.losses} · ${weeklyMoney(season.profit)}`:''})))}
   catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} combo graphic: ${error.message}`).catch(()=>{})}
-  try{const sent=await xPost(env,text,mediaId);await xDone(env,key,now);if(sent?.data?.id)await setAppSetting(env,`xid:x-combo:${day}`,String(sent.data.id)).catch(()=>{});await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} combo ${day} ${mediaId?'graphic':'text'} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,plays:total,graphic:Boolean(mediaId)}}
+  try{const sent=await xPost(env,text,mediaId);await xDone(env,key,now);if(ownText)await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind('x-combo-text').run().catch(()=>{});if(sent?.data?.id)await setAppSetting(env,`xid:x-combo:${day}`,String(sent.data.id)).catch(()=>{});await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} combo ${day} ${mediaId?'graphic':'text'} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,plays:total,graphic:Boolean(mediaId)}}
   catch(error){console.warn('x_combo_failed',error.message);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
 }
 // NBA on X: one card a night about 30 minutes before the first tip (every
