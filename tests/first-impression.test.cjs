@@ -41,7 +41,7 @@ assert.ok(c.eval('window.BTGFirstImpression').hitDetails({...jonnu,closing_odds:
 // Every pick in this week's list opens: a locked pick shows its price, book, why it qualified and where the price is now.
 {const fi=c.eval('window.BTGFirstImpression'),locked={id:'official|2026-09-29|props|prop|y',kind:'prop',player:'Saquon Barkley',market:'Anytime Touchdown',side:'Over',line:.5,odds:-140,status:'pending',result:null,posted_at:'2026-10-01T15:00:00Z',game_time:'2026-10-04T17:00:00Z',legs_json:JSON.stringify([{player:'Saquon Barkley',market:'Anytime Touchdown',side:'Over',line:.5,odds:-140,book:'FanDuel',edge:2.3,team:'Philadelphia Eagles · @ Dallas Cowboys',gameTime:'2026-10-04T17:00:00Z',priceTrail:[{t:Date.parse('2026-10-01T16:00:00Z'),o:-150},{t:Date.parse('2026-10-01T17:00:00Z'),o:-155}]}])};
  const html=fi.pickDetails(locked);
- for(const text of ['Official pick · Locked','Saquon Barkley','Anytime touchdown','-140','FanDuel','+2.3% better','-155 · you got the better price','wins $71','Price history'])assert.ok(html.includes(text),`locked pick details show "${text}"`);
+ for(const text of ['Official pick · Locked','Saquon Barkley','Anytime touchdown','-140','FanDuel','2.3-point edge in your favor','-155 · you got the better price','wins $71','Price history'])assert.ok(html.includes(text),`locked pick details show "${text}"`);
  assert.ok(!html.includes('Share this hit'),'a locked pick is not labelled a hit');
  assert.ok(fi.pickDetails({...locked,status:'final',result:'lost'}).includes('Lost'),'a lost pick says so');
  assert.ok(fi.pickDetails({...locked,status:'final',result:'won'}).includes('Share this hit'),'a won pick is a hit');}
