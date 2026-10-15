@@ -1548,7 +1548,7 @@ async function xPredictionMedia(env,r,parlay){
 async function postPredictionPicksToX(env,now=Date.now()){
   if(!env.DB||!xReady(env))return {posted:0,disabled:true};
   // Prediction parlays first-come with picks: one post per run.
-  const parlays=(await env.DB.prepare('SELECT * FROM prediction_parlays WHERE posted_at>? AND game_time>? ORDER BY posted_at LIMIT 6').bind(new Date(now-24*3600000).toISOString(),new Date(now).toISOString()).all().catch(()=>({results:[]}))).results||[];
+  const parlays=(await env.DB.prepare('SELECT * FROM prediction_parlays WHERE posted_at>? AND game_time>? ORDER BY posted_at LIMIT 40').bind(new Date(now-24*3600000).toISOString(),new Date(now).toISOString()).all().catch(()=>({results:[]}))).results||[];
   for(const r of parlays){
     const key=`xpmp:${r.id}`;if(!(await xClaimable(env,key,now)))continue;if(!(await xClaim(env,key,now)))continue;
     let legs=[];try{legs=JSON.parse(r.legs_json)}catch{}
@@ -1559,7 +1559,7 @@ async function postPredictionPicksToX(env,now=Date.now()){
     try{const sent=await xPost(env,text,mediaId);await xDone(env,key,now);if(sent?.data?.id)await setAppSetting(env,`xid:${r.id}`,String(sent.data.id)).catch(()=>{});await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} prediction-parlay ${mediaId?'graphic':'text'} ${r.id} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,parlay:true,graphic:Boolean(mediaId)}}
     catch(error){await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});return {posted:0,error:error.message}}
   }
-  const rows=(await env.DB.prepare('SELECT * FROM prediction_picks WHERE posted_at>? AND game_time>? ORDER BY posted_at LIMIT 6').bind(new Date(now-24*3600000).toISOString(),new Date(now).toISOString()).all()).results||[];
+  const rows=(await env.DB.prepare('SELECT * FROM prediction_picks WHERE posted_at>? AND game_time>? ORDER BY posted_at LIMIT 40').bind(new Date(now-24*3600000).toISOString(),new Date(now).toISOString()).all()).results||[];
   for(const r of rows){
     const key=`xpm:${r.id}`;if(!(await xClaimable(env,key,now)))continue;
     if(!(await xClaim(env,key,now)))continue;
@@ -2990,8 +2990,10 @@ const xSetTail=(env,id,sent)=>sent?.data?.id?setAppSetting(env,`xtail:${id}`,Str
 async function postPicksToX(env,now=Date.now()){
   if(!env.DB||!xReady(env))return {posted:0,disabled:true};
   const since=new Date(now-24*3600000).toISOString(),start=new Date(now).toISOString();
-  const picks=(await env.DB.prepare("SELECT id,kind,posted_at,sport,player,market,side,line,odds,combined_odds,legs_json,game_time FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND posted_at>? AND game_time>? ORDER BY posted_at LIMIT 6").bind(since,start).all()).results||[];
+  const picks=(await env.DB.prepare("SELECT id,kind,posted_at,sport,player,market,side,line,odds,combined_odds,legs_json,game_time FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND posted_at>? AND game_time>? ORDER BY posted_at LIMIT 40").bind(since,start).all()).results||[];
   if(!picks.length)return {posted:0};
+  // Picks already on X are skipped below, so a busy day (more than a handful
+  // of picks in 24 hours) never leaves the newest one out.
   const seasonRows=(await env.DB.prepare("SELECT kind,posted_at,line,odds,combined_odds,status,result,closing_line,closing_odds,closing_captured_at,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%'").all()).results||[];
   const season=weeklySummary(seasonRows);let posted=0,attempts=0;
   for(const r of picks){
