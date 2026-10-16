@@ -2254,3 +2254,4 @@ html body .on-row .on-pm.pm-lost{color:#f06060}html body .on-row .on-pm.pm-push{
 #pmHero .pm-new{margin-left:6px;padding:1px 7px;border-radius:999px;background:#2a313c;color:#c4b5fd;font:700 11px "DM Sans",sans-serif;font-style:normal;text-transform:uppercase;letter-spacing:.04em}
 body.light #pmHero .pm-new{background:#ede9fe;color:#6d28d9}body.light #pmHero .hero-toggle.pm-second{color:#3b4452}
 .ah-copy small{display:block;margin-top:2px;font-size:12px;font-weight:500;color:#98a1ad;line-height:1.3}body.light .ah-copy small{color:#5b6472}
+.slip-disclose{display:block;margin-top:4px;font-size:11.5px;color:#8a96a3}
