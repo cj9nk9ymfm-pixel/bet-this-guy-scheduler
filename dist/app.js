@@ -3079,14 +3079,27 @@ function statsProp(l){
     return list.filter(x=>x.url).map(x=>({...x,mine:mine(x.name)})).sort((a,b)=>(b.mine-a.mine)||dec(b.odds)-dec(a.odds));
   }
 
-  const pickLinks=(places,pm)=>`<p class="slip-where">${pm?'Bet it on':'Bet it at'}${places[0]?`<span>${usd(wagerAmt())} wins ${usd(Math.round(wagerAmt()*(dec(places[0].odds)-1)))}</span>`:''}</p><div class="slip-picks">${places.slice(0,5).map((o,i)=>`<a class="slip-pick${i===0?' best':''}" href="${htmlEscape(o.url)}" target="_blank" rel="noopener sponsored" data-book="${htmlEscape(normalizeBookName(o.name))}"><span>${htmlEscape(o.name)}${o.mine?' <em>your book</em>':''}</span><b>${pm?`${Math.round(100/dec(o.odds))}%`:htmlEscape(formatOdds(o.odds))}</b><i>${o.deep?'Bet ›':'Open ›'}</i></a>`).join('')}</div>`;
+  const pickLinks=(places,pm,bet='')=>`<p class="slip-where">${pm?'Bet it on':'Bet it at'}${places[0]?`<span>${usd(wagerAmt())} wins ${usd(Math.round(wagerAmt()*(dec(places[0].odds)-1)))}</span>`:''}</p><div class="slip-picks">${places.slice(0,5).map((o,i)=>`<a class="slip-pick${i===0?' best':''}" href="${htmlEscape(o.url)}" target="_blank" rel="noopener sponsored" data-book="${htmlEscape(normalizeBookName(o.name))}" data-bet="${htmlEscape(bet)}" data-app="${htmlEscape(o.name)}"><span>${htmlEscape(o.name)}${o.mine?' <em>your book</em>':''}</span><b>${pm?`${Math.round(100/dec(o.odds))}%`:htmlEscape(formatOdds(o.odds))}</b><i>${o.deep?'Bet ›':'Open ›'}</i></a>`).join('')}</div>`;
   const openLink=book=>{const url=sportsbookDestination(book);return url?`<a class="slip-open" href="${htmlEscape(url)}" target="_blank" rel="noopener sponsored">Open ${htmlEscape(book)}</a>`:''};
+  // iPhone home-screen app: links open in a browser panel that loads the
+  // book's website, never its app. Hand the tap to Safari (/go), where one
+  // more tap opens the app with the bet in its slip. Older iPhones that
+  // can't switch to Safari open the link as before.
+  const iosHome=()=>(/iPhone|iPad|iPod/.test(navigator.userAgent)||(/Macintosh/.test(navigator.userAgent)&&navigator.maxTouchPoints>1))&&(window.matchMedia?.('(display-mode: standalone)').matches||navigator.standalone===true);
+  document.addEventListener('click',e=>{
+    const a=e.target.closest?.('a.slip-pick,a.slip-step');if(!a||!iosHome())return;
+    e.preventDefault();window.btgCount?.('go:safari');
+    const q=new URLSearchParams({u:a.href,b:a.dataset.app||'',t:a.dataset.bet||''});
+    let left=false;const away=()=>{left=true};document.addEventListener('visibilitychange',away,{once:true});
+    location.href=`x-safari-https://${location.host}/go?${q}`;
+    setTimeout(()=>{document.removeEventListener('visibilitychange',away);if(!left&&document.visibilityState==='visible')window.open(a.href,'_blank','noopener')},1500);
+  },true);
   function paintLegs(){
     $$('#slipLegs .slip-leg').forEach(el=>{
       el.querySelector('.slip-book')?.remove();
       const leg=state.slip[Number(el.querySelector('[data-remove-slip]')?.dataset.removeSlip)];if(!leg||leg.unavailable||leg.changed)return;
       const places=placesFor(leg);if(!places.length)return;
-      const row=document.createElement('div');row.className='slip-book slip-places';row.innerHTML=pickLinks(places,Boolean(leg.pm));
+      const row=document.createElement('div');row.className='slip-book slip-places';row.innerHTML=pickLinks(places,Boolean(leg.pm),`${leg.p.player} ${leg.p.binary?(leg.side==='Over'?'Yes':'No'):`${leg.side} ${leg.p.line}`} ${leg.p.market||''}`.trim());
       row.querySelectorAll('[data-book]').forEach(a=>a.addEventListener('click',()=>window.btgCount?.('book:'+a.dataset.book)));
       el.append(row);
     });
@@ -3110,7 +3123,7 @@ function statsProp(l){
     const legName=l=>`${l.p.player} ${l.p.binary?(l.side==='Over'?'Yes':'No'):`${l.side} ${l.p.line}`}`;
     box.hidden=false;
     box.innerHTML=`<div class="slip-books-head"><span>Bet this parlay at</span><small>${wager?`${usd(wager)} wins`:'Odds'}</small></div>${full.slice(0,5).map((v,i)=>`<details class="slip-pbook${i===0?' best':''}"${i===0?' open':''}><summary><span>${htmlEscape(v.name)}${v.mine?' <em>your book</em>':''}</span><b>${pm?`${Math.round(100/v.d)}%`:htmlEscape(formatOdds(amer(v.d)))}${wager?` · ${usd(Math.round(wager*(v.d-1)))}`:''}</b><i aria-hidden="true">›</i></summary>
-      <div class="slip-steps">${v.legs.map((x,n)=>`<a class="slip-step" href="${htmlEscape(x.url)}" target="_blank" rel="noopener sponsored" data-book="${htmlEscape(normalizeBookName(v.name))}"><span>${n+1}</span><strong>${htmlEscape(legName(legs[n]))}</strong><i>${x.deep?'Add ›':'Open ›'}</i></a>`).join('')}
+      <div class="slip-steps">${v.legs.map((x,n)=>`<a class="slip-step" href="${htmlEscape(x.url)}" target="_blank" rel="noopener sponsored" data-book="${htmlEscape(normalizeBookName(v.name))}" data-bet="${htmlEscape(legName(legs[n]))}" data-app="${htmlEscape(v.name)}"><span>${n+1}</span><strong>${htmlEscape(legName(legs[n]))}</strong><i>${x.deep?'Add ›':'Open ›'}</i></a>`).join('')}
       <small>${v.legs.every(x=>x.deep)?`Each tap adds one leg to your ${htmlEscape(v.name)} slip. Add them all, then place them there as one parlay.`:`Open ${htmlEscape(v.name)} and add these legs to one parlay.`}${pm?' The app’s parlay price can differ a little after its fee.':''}</small></div></details>`).join('')}${same?'<small>Same-game legs: books price these lower than the multiplied odds.</small>':''}`;
     box.querySelectorAll('[data-book]').forEach(a=>a.addEventListener('click',()=>{a.classList.add('done');window.btgCount?.('book:'+a.dataset.book)}));
   }
