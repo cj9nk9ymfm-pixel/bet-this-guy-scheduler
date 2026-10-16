@@ -1504,7 +1504,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     const season=heroSeason&&heroSeason.wins+heroSeason.losses>=5?heroSeason:null,weekTitle=$('#heroTitle').innerHTML;
     if(season){const net=season.profit*heroStake/100;$('#heroTitle').innerHTML=`<span class="hs-long">Season record</span><span class="hs-short">Record</span> <b>${season.wins}–${season.losses}${season.pushes?`–${season.pushes}`:''}</b> <span class="hero-profit ${net>=0?'up':'down'}">${htmlEscape(money(net))}</span>`}
     const stats=[[money(s.profit),`betting ${stakeText()} a pick`,s.profit>=0?'up':'down']];
-    if(s.tracked)stats.push([`${s.beat} of ${s.tracked}`,'beat the closing line','']);
+    if(s.tracked)stats.push([`${s.beat} of ${s.tracked}`,'beat the kickoff price','']);
     if(s.parlayWins+s.parlayLosses)stats.push([`${s.parlayWins}–${s.parlayLosses}`,`parlays · ${money(s.parlayProfit)}`,s.parlayProfit>=0?'up':'down']);
     $('#heroStats').innerHTML=stats.map(([value,label,tone])=>`<div class="hero-stat ${tone}"><strong>${htmlEscape(value)}</strong><span>${htmlEscape(label)}</span></div>`).join('');
     $('#heroNote').textContent=`Singles at ${stakeText()} a pick at the posted price. Past results don’t guarantee future ones.`;
@@ -1926,12 +1926,16 @@ function headsUp(host,slot,done){
 // their cut taken out. `good` is the edge (in points) a Good value needs.
 function betWhy({need,fair,where,stake=100,done=false,good=.95}){
   need=Number(need);fair=Number(fair);if(!Number.isFinite(need)||!Number.isFinite(fair)||need<=0||fair<=0||need>=100||fair>=100)return null;
-  const gap=fair-need,win=Math.round(stake*(100/need-1)),should=Math.round(stake*(100/fair-1)),diff=win-should,usd=v=>`$${Math.abs(v).toLocaleString('en-US')}`;
+  // Prediction apps quote what a bet pays back in total, sportsbooks what it wins on top.
+  const app=/^(Novig|ProphetX|Kalshi|Polymarket|Polymarket \(US\)|BetOpenly)$/i.test(String(where||'')),back=app?0:1;
+  const gap=fair-need,win=Math.round(stake*(100/need-back)),should=Math.round(stake*(100/fair-back)),diff=win-should,usd=v=>`$${Math.abs(v).toLocaleString('en-US')}`;
   const often=fair>=10?`about ${Math.max(1,Math.min(9,Math.round(fair/10)))} in 10 times`:`about 1 in ${Math.round(100/fair)} times`;
-  const cls=gap>=good?'g':gap<=-3.5?'r':'n',pays=done?'paid':'pays';
+  const cls=gap>=good?'g':gap<=-3.5?'r':'n';
   const title=`${done?'Paid':'Pays'} ${cls==='g'?'more than':cls==='r'?'less than':'about what'} it should`;
   const end=cls==='g'?`${usd(diff)} extra.`:cls==='r'?`${usd(diff)} less than it should.`:done?(diff>0?`${usd(diff)} extra.`:diff<0?`${usd(diff)} less.`:'about the same.'):diff>0?`${usd(diff)} extra, but not enough to make it a pick.`:diff<0?`${usd(diff)} less, so it’s not a pick.`:'about the same, so it’s not a pick.';
-  return {title,text:`The sportsbooks’ odds ${done?'said this would hit':'say this hits'} ${often}. A bet like that should win about ${usd(should)} on a ${usd(stake)} bet. ${where} ${pays} ${usd(win)}: ${end}`,where,done,win:usd(win),should:usd(should),cls,gap};
+  const fairly=app?`should ${done?'have paid':'pay'} about ${usd(should)} back on a ${usd(stake)} bet. ${where} ${done?'paid':'pays'} ${usd(win)}`:done?`should have won about ${usd(should)} on a ${usd(stake)} bet. ${where}’s price paid ${usd(win)} on a win`:`should win about ${usd(should)} on a ${usd(stake)} bet. At ${where} it wins ${usd(win)}`;
+  const labels=app?[`${where} ${done?'paid':'pays'}`,done?'Should have paid':'Should pay']:done?[`${where} paid`,'Should have paid']:[`Wins at ${where}`,'Should win'];
+  return {title,text:`The sportsbooks’ odds ${done?'said this would hit':'say this hits'} ${often}. A bet like that ${fairly}: ${end}`,where,done,win:usd(win),should:usd(should),cls,gap,labels};
 }
 // Worth a look (sportsbook or prediction app) on the bet screen.
 function openLeanSheet(x,pm=false){
@@ -2006,7 +2010,7 @@ function addBetToSlip(x){
     const rows=m.rows?.length?`<div class="bs-rows">${m.rows.map(([a,b,c],i)=>`<div><span>${esc(a)}</span><b class="${c||''}" data-bs-row="${i}">${esc(b)}</b></div>`).join('')}</div>`:'';
     const acts=m.actions?.length?`<div class="bs-acts">${m.actions.map((a,i)=>`<button type="button" class="bs-btn ${a.primary?'p':''} ${a.wide||a.primary?'wide':''}" data-bs-act="${i}" ${a.label?'':`aria-label="${esc(a.aria||'')}"`}>${a.icon?icon(a.icon):''}${a.label?esc(a.label):''}</button>`).join('')}</div>`:'';
     const photo=m.photo?`<span class="bs-photo"><span>${esc(String(m.photo).split(' ').map(s=>s[0]||'').join('').slice(0,2))}</span><img src="/api/player-photo?name=${encodeURIComponent(m.photo)}${m.sport==='NBA'?'&sport=NBA':''}" alt="" onerror="this.remove()"></span>`:'';
-    const w=m.why,meter=w?`<div class="bs-pay"><div><small>${esc(w.where)} ${w.done?'paid':'pays'}</small><b class="${w.cls==='g'?'pos':w.cls==='r'?'neg':''}">${w.win}</b></div><div><small>${w.done?'Should have paid':'Should pay'}</small><b>${w.should}</b></div></div>`:'';
+    const w=m.why,meter=w?`<div class="bs-pay"><div><small>${esc(w.labels?.[0]||`${w.where} pays`)}</small><b class="${w.cls==='g'?'pos':w.cls==='r'?'neg':''}">${w.win}</b></div><div><small>${esc(w.labels?.[1]||'Should pay')}</small><b>${w.should}</b></div></div>`:'';
     const why=w?`<div class="bs-why bs-why-${w.cls}"><p class="bs-why-h">${esc(w.title)}</p><p>${esc(w.text)}</p>${meter}</div>`:'';
     return `<div class="bsheet"><span class="bs-chip bs-${m.chip.cls}">${m.chip.icon?icon(m.chip.icon):''}${esc(m.chip.text)}</span><div class="bs-head">${photo}<div><h2>${esc(m.title)}</h2>${m.bet?`<p class="bs-bet">${esc(m.bet)}</p>`:''}${m.game?`<p class="bs-game">${esc(m.game)}</p>`:''}</div></div>
       <div class="bs-money"><div><small>Price</small><b>${esc(m.price)}</b></div><div><small>${esc(m.moneyLabel||`${m.stake} bet`)}</small><b class="${m.moneyCls||''}">${esc(m.money)}</b></div></div>${m.slip?`<button type="button" class="bs-btn p wide bs-slip" data-bs-slip>${m.slip.inSlip()?'✓ In your slip':'＋ Add to slip'}</button>`:''}${why}${m.statsProp?'<div class="bs-stats" data-bs-stats><p class="bs-loading">Loading the last 10 games…</p></div>':''}${legs}${rows}${chart(m.chart)}${m.note?`<p class="bs-note">${esc(m.note)}</p>`:''}${acts}${m.alert?`<div class="bs-alert"><p><b>${icon('bell')} ${esc(m.alert.title)}</b><span>${esc(m.alert.text)}</span></p><div class="bs-alert-acts"><button type="button" class="bs-btn p" data-bs-alert>Turn on alerts</button>${window.BTGEmailSub?'<button type="button" class="bs-btn" data-bs-email>Email me instead</button>':''}</div></div>`:''}${(m.links||(m.link?[m.link]:[])).map((l,i)=>`<a class="bs-link" ${l.href?`href="${esc(l.href)}"${l.external?' target="_blank" rel="noopener"':''} data-bs-href="${i}"`:`href="#" data-bs-link="${i}"`}>${esc(l.text)}</a>`).join('')}</div>`;
@@ -2828,14 +2832,14 @@ function statsProp(l){
     const game=String(r.team||'').replace(' · @ ',' @ ').replace(' · vs ',' vs '),matchup=game&&typeof compactGameName==='function'?compactGameName(game):game,st=pmStatus(r);
     const note=[pmWin(r.netOdds??r.odds,100,r.result),`Fair chance ${Math.round(r.fair)}%`,r.open===false?`not offered in ${data?.stateName||'your state'}`:''].filter(Boolean).join(' · ');
     const idx=pmRows.push(pmRecord(r))-1;
-    return `<div class="on-row on-${st[0]}-row pm-pick" role="button" tabindex="0" data-pm-i="${idx}" aria-label="${htmlEscape(`Details for ${r.player}`)}"><span class="on-avatar"><span>${htmlEscape(initials)}</span><img loading="lazy" decoding="async" src="/api/player-photo?name=${encodeURIComponent(r.player||'')}" alt="" onerror="this.remove()"></span><span class="on-who"><b>${htmlEscape(r.player)}</b><span>${htmlEscape(bet.charAt(0).toUpperCase()+bet.slice(1))}</span><small>${htmlEscape([matchup,when(r.gameTime)].filter(Boolean).join(' · '))} · ${chip(r.exchange)}</small><i class="on-pm pm-ok">${htmlEscape(note)}</i>${pmLiveSpan(idx)}</span>${pmEnd(r,st)}</div>`;
+    return `<div class="on-row on-${st[0]}-row pm-pick" role="button" tabindex="0" data-pm-i="${idx}" aria-label="${htmlEscape(`Details for ${r.player}`)}"><span class="on-avatar"><span>${htmlEscape(initials)}</span><img loading="lazy" decoding="async" src="/api/player-photo?name=${encodeURIComponent(r.player||'')}" alt="" onerror="this.remove()"></span><span class="on-who"><b>${htmlEscape(r.player)}</b><span>${htmlEscape(bet.charAt(0).toUpperCase()+bet.slice(1))}</span><small>${htmlEscape([matchup,when(r.gameTime)].filter(Boolean).join(' · '))} · ${chip(r.exchange)}</small><i class="on-pm ${r.result==='lost'?'pm-lost':r.result==='push'||r.result==='void'?'pm-push':'pm-ok'}">${htmlEscape(note)}</i>${pmLiveSpan(idx)}</span>${pmEnd(r,st)}</div>`;
   }
   function parlayRow(r){
     const st=pmStatus(r),same=r.legs.some(l=>l.sameGame);
     const legs=r.legs.map(l=>`${l.result==='won'?'✓ ':l.result==='lost'?'✗ ':''}${l.player} ${l.side} ${l.line} ${String(l.market||'').toLowerCase()}`).join(' + ');
     const note=[pmWin(r.odds,parlayStake(),r.result,Number.isFinite(Number(r.money))?Number(r.money)*parlayStake()/25:r.money),same?'same game':'',r.open===false?`not offered in ${data?.stateName||'your state'}`:''].filter(Boolean).join(' · ');
     const idx=pmRows.push(pmRecord(r))-1;
-    return `<div class="on-row on-${st[0]}-row pm-pick" role="button" tabindex="0" data-pm-i="${idx}" aria-label="Details for this parlay"><span class="on-avatar on-parlay">${typeof icon==='function'?icon('layers'):''}</span><span class="on-who"><b>${r.legs.length}-leg parlay</b><span>${htmlEscape(legs)}</span><small>${htmlEscape(when(r.gameTime))} · ${chip(r.exchange)}</small><i class="on-pm pm-ok">${htmlEscape(note)}</i>${pmLiveSpan(idx)}</span>${pmEnd(r,st)}</div>`;
+    return `<div class="on-row on-${st[0]}-row pm-pick" role="button" tabindex="0" data-pm-i="${idx}" aria-label="Details for this parlay"><span class="on-avatar on-parlay">${typeof icon==='function'?icon('layers'):''}</span><span class="on-who"><b>${r.legs.length}-leg parlay</b><span>${htmlEscape(legs)}</span><small>${htmlEscape(when(r.gameTime))} · ${chip(r.exchange)}</small><i class="on-pm ${r.result==='lost'?'pm-lost':r.result==='push'||r.result==='void'?'pm-push':'pm-ok'}">${htmlEscape(note)}</i>${pmLiveSpan(idx)}</span>${pmEnd(r,st)}</div>`;
   }
   // Prediction view's record bar: the prediction record (after fees), singles
   // and parlays apart, tap for every graded pick; the sportsbook record is a tap away.
