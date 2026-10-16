@@ -3143,12 +3143,29 @@ function statsProp(l){
   // legs are placed together as a parlay.
   // Novig's app takes several bets in one link: events/<id>,<id>/<partner>/<amount>
   // (its link table splits the first part on commas). One tap loads the parlay.
+  // One link for the whole parlay, where the book's or app's link can hold
+  // several bets: Novig (its app splits events/<id>,<id>/<partner>/<amount>
+  // on commas), DraftKings (?outcomes=<id>+<id>) and FanDuel
+  // (addToBetslip?marketId[0]=…&selectionId[0]=…). DraftKings and FanDuel
+  // formats aren't confirmed on a phone yet.
   function oneLink(v){
-    if(normalizeBookName(v.name)!=='novig'||!v.legs.every(x=>x.deep))return null;
-    const parts=v.legs.map(x=>{try{const u=new URL(x.url);const m=u.pathname.match(/^\/events\/([^/]+)\/([^/]+)\/([^/]+)$/);return m&&/(^|\.)novig\.com$/.test(u.hostname)?m:null}catch{return null}});
-    if(parts.some(m=>!m))return null;
-    const wager=Math.max(0,Number(String($('#wager')?.value||'').replace(/[^0-9.]/g,''))||0)||parts[0][3];
-    return `https://novig.com/events/${parts.map(m=>m[1]).join(',')}/${parts[0][2]}/${encodeURIComponent(wager)}`;
+    if(!v.legs.every(x=>x.deep))return null;
+    const urls=v.legs.map(x=>{try{return new URL(x.url)}catch{return null}});if(urls.some(u=>!u))return null;
+    const name=normalizeBookName(v.name),host=re=>urls.every(u=>re.test(u.hostname));
+    if(name==='novig'&&host(/(^|\.)novig\.com$/)){
+      const parts=urls.map(u=>u.pathname.match(/^\/events\/([^/]+)\/([^/]+)\/([^/]+)$/));if(parts.some(m=>!m))return null;
+      const wager=Math.max(0,Number(String($('#wager')?.value||'').replace(/[^0-9.]/g,''))||0)||parts[0][3];
+      return `https://novig.com/events/${parts.map(m=>m[1]).join(',')}/${parts[0][2]}/${encodeURIComponent(wager)}`;
+    }
+    if(name==='draftkings'&&host(/^sportsbook\.draftkings\.com$/)){
+      const ids=urls.map(u=>u.searchParams.get('outcomes'));if(ids.some(x=>!x))return null;
+      return `https://sportsbook.draftkings.com/?outcomes=${ids.map(encodeURIComponent).join('+')}`;
+    }
+    if(name==='fanduel'&&host(/^sportsbook\.fanduel\.com$/)){
+      const sel=urls.map(u=>[u.searchParams.get('marketId'),u.searchParams.get('selectionId')]);if(sel.some(([m,x])=>!m||!x))return null;
+      return `https://sportsbook.fanduel.com/addToBetslip?${sel.map(([m,x],k)=>`marketId[${k}]=${encodeURIComponent(m)}&selectionId[${k}]=${encodeURIComponent(x)}`).join('&')}`;
+    }
+    return null;
   }
   function paintBooks(){
     const summary=$('#parlaySummary');if(!summary)return;
