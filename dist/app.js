@@ -446,7 +446,7 @@ function generateMixer(shuffle=false){
 function queueMixer(shuffle=false){document.body.dataset.mixerBusy='true';requestAnimationFrame(()=>generateMixer(shuffle))}
 function setupParlayMixer(){const odds=$('#oddsSlider'),legs=$('#legsSlider'),maxLegs=Math.max(2,Math.min(15,+preferences.maxParlayLegs||8));legs.max=maxLegs;legs.value=Math.max(2,Math.min(+legs.value||5,maxLegs));$('#maxLegLabel').textContent=`${maxLegs} legs`;const updateTracks=()=>{const span=Math.max(1,maxLegs-2);odds.style.setProperty('--slider-fill',`${odds.value}%`);legs.style.setProperty('--slider-fill',`${((+legs.value-2)/span)*100}%`);$('#legsCount').textContent=`${legs.value} legs`};odds.oninput=()=>{updateTracks();queueMixer(false)};legs.oninput=()=>{updateTracks();mixerComboKey='';queueMixer(false)};$('#mixerShuffle').onclick=()=>queueMixer(true);$('#mixerLoad').onclick=()=>{if(!mixerSelection)return;state.slip=mixerSelection.legs.map(p=>({key:slipSelectionKey(p,p.side),p,side:p.side,odds:p.side==='Over'?p.over:p.under}));render();if(innerWidth<=720)showMobilePage('slip',true);else $('#slip').scrollIntoView({behavior:'smooth',block:'start'})};updateTracks();mixerSelection&&parlayMatchesFilters(mixerSelection)?renderMixer():generateMixer(false)}
 function removeSlipLeg(index){if(!Number.isInteger(index)||index<0||index>=state.slip.length)return;state.slip.splice(index,1);render()}
-function renderSlip(){const legs=$('#slipLegs');legs.innerHTML=state.slip.map((x,index)=>`<div class="slip-leg"><div><span>${x.p.sport}</span><strong>${x.p.player} ${x.side} ${x.p.line}</strong><span>${x.p.market} · ${x.pm?`${Math.round(100/americanToDecimal(x.odds))}% on ${htmlEscape(x.pm.exchange)}`:formatOdds(x.odds)}</span></div><button type="button" data-remove-slip="${index}" aria-label="Remove ${htmlEscape(x.p.player)} ${htmlEscape(x.side)} ${htmlEscape(x.p.line)} from slip">×</button></div>`).join('');legs.querySelectorAll('[data-remove-slip]').forEach(button=>button.onclick=()=>removeSlipLeg(Number(button.dataset.removeSlip)));const has=state.slip.length>0;$('#slipEmpty').hidden=has;$('#parlaySummary').hidden=!has;($('#slipCount').textContent=state.slip.length,$('#slipCount').hidden=!state.slip.length);if(has){$('#trackParlay').textContent=state.slip.length===1?'＋ Track this pick':'＋ Track this parlay';calcParlay()}}
+function renderSlip(){const legs=$('#slipLegs');legs.innerHTML=state.slip.map((x,index)=>`<div class="slip-leg"><div><span>${x.p.sport}</span><strong>${x.p.player} ${x.side} ${x.p.line}</strong><span>${x.p.market} · ${x.pm?`${Math.round(100/americanToDecimal(x.odds))}% on ${htmlEscape(x.pm.exchange)}`:formatOdds(x.odds)}</span></div><button type="button" data-remove-slip="${index}" aria-label="Remove ${htmlEscape(x.p.player)} ${htmlEscape(x.side)} ${htmlEscape(x.p.line)} from slip">×</button></div>`).join('');legs.querySelectorAll('[data-remove-slip]').forEach(button=>button.onclick=()=>removeSlipLeg(Number(button.dataset.removeSlip)));const has=state.slip.length>0;$('#slipEmpty').hidden=has;$('#parlaySummary').hidden=!has;($('#slipCount').textContent=state.slip.length,$('#slipCount').hidden=!state.slip.length);if(has)calcParlay()}
 function weeklyStaked(){const cutoff=Date.now()-7*86400000;return trackedParlays.filter(item=>item.createdAt>=cutoff).reduce((sum,item)=>sum+item.wager,0)}
 function calcParlay(){const dec=state.slip.reduce((a,x)=>a*americanToDecimal(x.odds),1),american=decimalToAmerican(dec);$('#combinedOdds').textContent=formatOddsPretty(american);$('#parlayProb').textContent=`${(100/dec)>=10?Math.round(100/dec):(100/dec).toFixed(1)}%`;const wager=Math.max(0,parseFloat($('#wager').value)||0),remaining=Math.max(0,preferences.weeklyBudget-weeklyStaked());$('#payout').textContent=formatMoney(wager*(dec-1));const warning=$('#budgetWarning');warning.hidden=preferences.noWeeklyLimit||!preferences.weeklyBudget||wager<=remaining;warning.textContent=`This exceeds your remaining seven-day entertainment budget of ${formatMoney(remaining)}.`;scheduleShareCard()}
 const playerStatsCache=new Map(),playerStatsPending=new Map();
@@ -702,10 +702,10 @@ $('#stTheme')?.addEventListener('click',e=>{const b=e.target.closest('[data-st-t
 $('#stAccount').onclick=()=>{$('#settingsDialog').close();window.BTGAuth?.open?.(window.BTGAuth?.hasAccount?.()?'account':'signup')};
 // Email alerts: signed-in people manage them in the account; everyone else signs up with just an address.
 $('#stEmail').onclick=()=>{$('#settingsDialog').close();if(window.BTGAuth?.isSignedIn?.()||!window.BTGEmailSub)window.BTGAuth?.open?.(window.BTGAuth?.hasAccount?.()?'account':'signup');else window.BTGEmailSub.open('settings')};
-$('#stRecord').onclick=()=>{$('#settingsDialog').close();window.BTGAuth?.open?.(window.BTGAuth?.isSignedIn?.()?'record':'signup')};
+
 $('#settingsDone').onclick=()=>$('#settingsDialog').close();
 $('#settingsDialog').addEventListener('close',async()=>{if(!settingsDirty)return;settingsDirty=false;$('#wager').value=state.slip.length>1&&state.slipMode==='parlay'?parlayStake():preferences.typicalWager;try{window.BTGRefreshStakes?.()}catch{}$('#legsSlider').max=preferences.maxParlayLegs;$('#legsSlider').value=Math.min(+$('#legsSlider').value,preferences.maxParlayLegs);$('#maxLegLabel').textContent=`${preferences.maxParlayLegs} legs`;mixerCandidateCache.clear();parlayFeeds.forEach(feed=>feed.length=0);calcParlay();await loadLiveProps(true);render()});
-$('#trackParlay').onclick=async()=>{if(!state.slip.length||state.slip.some(leg=>leg.changed||leg.unavailable))return;const button=$('#trackParlay'),decimal=state.slip.reduce((total,leg)=>total*americanToDecimal(leg.odds),1),wager=Math.max(0,+$('#wager').value||0),liveLegs=state.slip.map(leg=>({player:leg.p.player,market:leg.p.market,side:leg.side,line:leg.p.line,odds:leg.odds,eventID:leg.p.eventID,gameStart:leg.p.startsAt,startsAt:leg.p.startsAt,team:leg.p.team,propID:leg.p.id}));button.disabled=true;button.textContent='Saving…';try{const result=await window.BTGAuth?.trackParlay({legs:liveLegs,wager,combinedOdds:decimalToAmerican(decimal),sportsbook:preferences.books[0]||null});if(result){window.BTGLive?.renderCenter();button.textContent='✓ Added to My Picks';window.BTGAuth?.refreshBets();setTimeout(()=>{button.textContent=state.slip.length===1?'＋ Track this pick':'＋ Track this parlay';button.disabled=false},1500)}else{button.textContent=state.slip.length===1?'＋ Track this pick':'＋ Track this parlay';button.disabled=false}}catch(error){button.textContent=error.message||'Could not save';setTimeout(()=>{button.textContent=state.slip.length===1?'＋ Track this pick':'＋ Track this parlay';button.disabled=false},2200)}calcParlay()};
+
 const parlayUiCacheKey='bet-this-guy-parlay-ui-v3';
 function saveParlayUiCache(){try{localStorage.setItem(parlayUiCacheKey,JSON.stringify({at:Date.now(),filters:parlayFilterKey(),feeds:parlayFeeds,mixer:mixerSelection,mixerSize:+$('#legsSlider').value,mixerTarget:targetOddsFromSlider()}))}catch{}}
 function restoreParlayUiCache(){try{const cached=JSON.parse(localStorage.getItem(parlayUiCacheKey)||'null');if(!cached?.at||Date.now()-cached.at>600000||cached.filters!==parlayFilterKey())return;if(Array.isArray(cached.feeds))cached.feeds.forEach((feed,index)=>{if(Array.isArray(feed)&&parlayFeeds[index])parlayFeeds[index].push(...feed.filter(parlayMatchesFilters).filter(r=>r.legs.every(premadeEligible)))});if(parlayMatchesFilters(cached.mixer)&&cached.mixerSize===+$('#legsSlider').value&&cached.mixerTarget===targetOddsFromSlider()){mixerSelection=cached.mixer;mixerComboKey=cached.mixer.key||''}}catch{}}
@@ -1408,9 +1408,6 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
   }
   // One sheet for every official pick (locked, hit, lost, push), built by the
   // shared BTGSheet renderer so board props, picks and parlays all look alike.
-  // "I bet this": one tap copies an official pick into the viewer's own
-  // tracked bets (My Picks), graded automatically like the board picks.
-  const betKey='btg-bet-official',betIds=()=>{try{return new Set(JSON.parse(localStorage.getItem(betKey)||'[]'))}catch{return new Set()}};
   // "Bet at BetMGM": opens the book the pick was locked at (one book for every
   // leg on a parlay), and copies the bet so it's quick to find there.
   function bookAction(r,legs,done){
@@ -1420,18 +1417,8 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     const text=r.kind==='parlay'?legs.map(l=>`${l.player} ${legText(l)}`).join(' + '):`${r.player} ${legText({side:r.side,line:r.line,market:String(r.market||'')})}`;
     return [{label:books[0],icon:"external",wide:true,onClick:()=>{window.btgCount?.('book:'+normalizeBookName(books[0]));try{navigator.clipboard?.writeText(text)}catch{}window.open(url,'_blank','noopener')}}];
   }
-  function betAction(r,legs,done){
-    const start=Date.parse(r.game_time||legs[0]?.gameTime||'');if(done||!(start>Date.now())||!window.BTGAuth?.trackParlay)return [];
-    const tracked=()=>betIds().has(r.id),label=()=>tracked()?'✓ In My Picks':'I bet this';
-    return [{label:label(),primary:true,wide:true,onClick:async b=>{
-      if(tracked())return;
-      const first=legs[0]||{},list=r.kind==='parlay'?legs.map(l=>({player:l.player,market:l.market,side:l.side,line:l.line,odds:l.odds,gameStart:l.gameTime,team:l.team,eventID:l.gameId})):[{player:r.player,market:r.market,side:r.side,line:r.line,odds:r.odds,gameStart:r.game_time||first.gameTime,team:first.team,eventID:first.gameId}];
-      b.disabled=true;b.textContent='Saving…';
-      try{const out=await window.BTGAuth.trackParlay({legs:list,wager:wagerStake(),sportsbook:first.book||null,source:'board'});
-        if(out){const ids=betIds();ids.add(r.id);try{localStorage.setItem(betKey,JSON.stringify([...ids].slice(-200)))}catch{}b.textContent='✓ In My Picks';window.btgCount?.('official:bet');window.BTGAuth.refreshBets?.();window.BTGMyRecord?.()}
-        else{b.textContent=label();b.disabled=false}}
-      catch(error){b.textContent=error?.message||'Couldn’t save. Try again.';b.disabled=false}}}];
-  }
+  // Bet tracking is gone (people track bets in their own apps), so no "I bet this".
+  function betAction(){return []}
   function recordModel(r){
     const legs=recordLegs(r),isParlay=r.kind==='parlay',odds=isParlay?r.combined_odds:r.odds,done=graded(r),d=oddsDecimal(odds),first=legs[0]||{};
     const chip=done?{won:{cls:'g',icon:'check',text:'Hit'},lost:{cls:'r',icon:'over',text:'Lost'},push:{cls:'n',icon:'fair',text:'Push'}}[r.result]:r.status==='provisional'?{cls:'n',icon:'fair',text:'Provisional'}:{cls:'n',icon:'lock',text:r.pm?'Prediction pick · Locked':'Official pick · Locked'};
@@ -2428,18 +2415,6 @@ function statsProp(l){
   window.addEventListener('beforeinstallprompt',event=>{event.preventDefault();if(visits<2)return;toast('<strong>Install Bet This Guy</strong><span>One tap to open picks, with alerts when they post.</span>',()=>{event.prompt();event.userChoice?.then(c=>window.btgCount?.(`a2hs:${c.outcome}`))})});
 })();
 
-/* Personal P/L: signed-in viewers see their own tracked record on home. */
-(()=>{
-  if(typeof document.getElementById!=='function')return;
-  const host=document.getElementById('myRecord');if(!host)return;
-  const dollars=c=>`${c<0?'−':'+'}$${Math.abs(Math.round(c/100)).toLocaleString('en-US')}`;
-  const draw=async()=>{const m=await window.BTGAuth?.myRecord?.().catch(()=>null);if(!m||!m.count){host.hidden=true;return}
-    const decided=m.wins+m.losses+m.pushes;
-    host.innerHTML=`<span class="my-pl-label">Your bets</span>${decided?`<b>${m.wins}–${m.losses}${m.pushes?`–${m.pushes}`:''}</b><span class="my-pl-net ${m.net>=0?'up':'down'}">${dollars(m.net)}</span>`:''}${m.pending?`<span class="my-pl-pending">${m.pending} pending</span>`:''}<span class="my-pl-go" aria-hidden="true">›</span>`;
-    host.setAttribute('aria-label',`Your tracked bets: ${m.wins} wins, ${m.losses} losses${m.pending?`, ${m.pending} pending`:''}. Open My Picks`);host.hidden=false};
-  host.onclick=()=>window.BTGAuth?.open?.('record');
-  window.BTGMyRecord=draw;addEventListener('btg-auth',draw);setTimeout(draw,1200);
-})();
 
 /* Follow players and teams (kept on this device): a Follow button on the
    player screen, a "Following" tag on their board cards, and a Following
@@ -2605,25 +2580,13 @@ function statsProp(l){
       const after=host.querySelector('.bs-stats')||host.querySelector('.bs-why')||host.querySelector('.bs-money');after?.after(table);
       host.querySelector('[data-bs-row="0"]')?.closest('div')?.remove();
     }
-    // "I bet this" (tracked and graded in My Picks) and Follow, under the main action.
+    // Follow, under the main action.
     const start=Date.parse(p.startsAt||'');if(!(start>Date.now())||p.teamMarket)return;
-    const key=`${savedPropKey(p)}|${p.side}|${p.line}`,BKEY='btg-bet-props',ids=()=>{try{return new Set(JSON.parse(localStorage.getItem(BKEY)||'[]'))}catch{return new Set()}};
-    const odds=Number(recommendedOdds(p)),book=String(p.bestBook||p.books?.[p.side]?.[0]?.b||'').replace(/demo/i,'')||null;
+    if(!window.BTGFollow)return;
     const extra=document.createElement('div');extra.className='bs-extra';
     const last=shortPlayerName(p.player),following=()=>window.BTGFollow?.has('players',p.player);
-    extra.innerHTML=`<button type="button" class="bs-btn bs-bet">${ids().has(key)?'✓ In My Picks':'I bet this'}</button>${window.BTGFollow?`<button type="button" class="bs-btn bs-follow" aria-pressed="${following()}">${following()?'✓ Following':`Follow ${htmlEscape(last)}`}</button>`:''}<small>Track it and we grade it for you. Follow to get alerts when a top book has good value on ${htmlEscape(last)}.</small>`;
+    extra.innerHTML=`${window.BTGFollow?`<button type="button" class="bs-btn bs-follow" aria-pressed="${following()}">${following()?'✓ Following':`Follow ${htmlEscape(last)}`}</button>`:''}<small>Follow to get alerts when a top book has good value on ${htmlEscape(last)}.</small>`;
     (host.querySelector('.bs-acts')||host.querySelector('.bsheet'))?.after(extra);
-    const betBtn=extra.querySelector('.bs-bet');
-    betBtn.onclick=async()=>{
-      if(ids().has(key)){document.getElementById('hitDialog')?.close?.();window.BTGAuth?.open?.('record');return}
-      if(!window.BTGAuth?.trackParlay||!Number.isFinite(odds))return;
-      betBtn.disabled=true;betBtn.textContent='Saving…';
-      try{const out=await window.BTGAuth.trackParlay({legs:[{player:p.player,market:p.market,side:p.side,line:p.line,odds,gameStart:p.startsAt,team:p.team,eventID:p.eventID}],wager:wagerStake(),sportsbook:book,source:'board'});
-        if(out){const s=ids();s.add(key);try{localStorage.setItem(BKEY,JSON.stringify([...s].slice(-300)))}catch{}betBtn.textContent='✓ In My Picks';window.btgCount?.('prop:bet');window.BTGAuth.refreshBets?.();window.BTGMyRecord?.()}
-        else{betBtn.textContent='I bet this'}}
-      catch(error){betBtn.textContent=error?.message||'Couldn’t save. Try again.'}
-      betBtn.disabled=false;
-    };
     const fol=extra.querySelector('.bs-follow');
     if(fol)fol.onclick=()=>{const on=window.BTGFollow.toggle('players',{name:p.player,sport:p.sport||'NFL'});fol.setAttribute('aria-pressed',String(on));fol.textContent=on?'✓ Following':`Follow ${last}`};
   };
