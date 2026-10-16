@@ -3969,6 +3969,14 @@ async function novigLinkResearch(env){
     // expo-router's route files: "./events/[id]/oddsapi/[wager].tsx" and the like.
     out.routes=[...new Set([...(out.routes||[]),...[...js.text.matchAll(/"\.\/[A-Za-z0-9_()\[\]\/.+-]{2,120}\.(?:tsx|ts|js|jsx)"/g)].map(m=>m[0])])].slice(0,400);
   }
+  // The app's link table (React Navigation linking config: prefixes, then
+  // config.screens with every screen's path) sits just before 'novigapp://'.
+  // Saved in pieces: the 40 KB before it and every path:'...' in the bundle.
+  out.hits={};
   await setAppSetting(env,'novig-research',JSON.stringify(out).slice(0,90000));
+  for(const src of srcs){const js=await get(src).catch(()=>({text:''}));const i=js.text.indexOf("prefixes:['novigapp://'");if(i<0)continue;
+    await setAppSetting(env,'novig-linking',js.text.slice(Math.max(0,i-40000),i+3000));
+    const paths=[...new Set([...js.text.matchAll(/path:['"]([^'"]{1,120})['"]/g)].map(m=>m[1]))];
+    await setAppSetting(env,'novig-paths',JSON.stringify(paths).slice(0,90000));break}
   return {scripts:out.scripts.length,routes:(out.routes||[]).length};
 }
