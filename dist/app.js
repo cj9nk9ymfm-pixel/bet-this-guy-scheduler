@@ -1765,8 +1765,33 @@ if(typeof fetch==='function')window.btgCountVisit?.('view:home');
   }
   buttons().forEach(button=>button.addEventListener('click',async()=>{
     if(button.dataset.alertsSheet!==undefined)$('#moreSheet')?.close?.();
-    try{const sub=supported()?await current():null;sub?await turnOff(sub):await turnOn()}catch{note('Couldn’t change alerts right now. Try again in a minute.')}
+    try{const sub=supported()?await current():null;sub?await turnOff(sub):chooseAlerts()}catch{note('Couldn’t change alerts right now. Try again in a minute.')}
   }));
+  // How to get alerts: X first (every pick posts there the second it locks,
+  // and its bell works on any phone), then email, then this site's own
+  // notifications (one tap on Android and computers; iPhone needs the Home Screen).
+  function chooseAlerts(){
+    let d=document.getElementById('alertChooser');
+    if(!d){d=document.createElement('dialog');d.id='alertChooser';d.className='alert-chooser';d.setAttribute('aria-labelledby','acTitle');document.body.append(d)}
+    const iphoneWeb=ios&&!standalone();
+    d.innerHTML=`<button type="button" class="ac-x" data-ac-close aria-label="Close">×</button><p class="ac-eyebrow">FREE PICK ALERTS</p><h2 id="acTitle">How do you want your alerts?</h2>
+      <button type="button" class="ac-opt ac-main" data-ac="x"><b>𝕏 Get alerts on X</b><span>Follow <strong>@BetThisGuy</strong>, tap the 🔔 bell and pick <strong>All posts</strong>. Every pick posts there the second it locks.</span></button>
+      <button type="button" class="ac-opt" data-ac="email"><b>✉️ Email me the picks</b><span>No account or app needed. About 3–6 emails a week.</span></button>
+      <button type="button" class="ac-opt" data-ac="site"><b>🔔 Notifications from this site</b><span>${iphoneWeb?'iPhone: add Bet This Guy to your Home Screen first (Share → Add to Home Screen).':'One tap on Android and computers.'}</span></button>`;
+    const close=()=>{try{d.close()}catch{}};
+    d.querySelector('[data-ac-close]').onclick=close;d.onclick=e=>{if(e.target===d)close()};
+    d.querySelector('[data-ac="x"]').onclick=()=>{window.btgCount?.('alerts:x');close();
+      const web='https://x.com/BetThisGuy';
+      // iPhone: the X app's own link opens the app (a web link would open the
+      // site); if X isn't installed, the website opens instead.
+      if(ios){let left=false;const away=()=>{left=true};document.addEventListener('visibilitychange',away,{once:true});location.href='twitter://user?screen_name=BetThisGuy';setTimeout(()=>{document.removeEventListener('visibilitychange',away);if(!left&&document.visibilityState==='visible')window.open(web,'_blank','noopener')},1500)}
+      else window.open(web,'_blank','noopener');
+      note('In X: tap Follow, then the 🔔 bell and choose All posts.')};
+    d.querySelector('[data-ac="email"]').onclick=()=>{window.btgCount?.('alerts:choose-email');close();if(window.BTGEmailSub&&!window.BTGAuth?.isSignedIn?.()){window.BTGEmailSub.open('chooser');return}const auth=window.BTGAuth;auth?.open?.(auth.hasAccount?.()?'account':'signup')};
+    d.querySelector('[data-ac="site"]').onclick=()=>{window.btgCount?.('alerts:choose-site');close();turnOn().catch(()=>note('Couldn’t turn on alerts right now. Try again in a minute.'))};
+    window.btgCount?.('alerts:chooser');
+    try{d.showModal()}catch{d.setAttribute('open','')}
+  }
   // The phone may still hold a subscription we no longer have (expired and
   // removed on send): then alerts read as off, with a note to turn them back on.
   if(supported())current().then(async sub=>{
