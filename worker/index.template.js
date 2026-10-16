@@ -1241,7 +1241,11 @@ async function publicRecord(request, env, ctx) {
         env.DB.prepare("SELECT id, kind, sport, player, market, side, line, odds, combined_odds, edge, game_id, game_time, posted_at, status, result, settled_at, closing_line, closing_odds, closing_captured_at, source, verification_note, legs_json FROM public_recommendations WHERE source = 'market-verified-v2' AND kind IN ('prop','parlay') ORDER BY posted_at DESC LIMIT 500").all(),
         env.DB.prepare("SELECT id, source, legs_json, kind, market, posted_at, odds, combined_odds, result, status FROM public_recommendations WHERE source = 'market-verified-v2' AND kind IN ('prop','parlay') ORDER BY posted_at ASC LIMIT 5000").all(),
       ]);
-      return json({ success: true, summary: summary.results || [], recent: recent.results || [], analytics: analytics.results || [], updatedAt: new Date().toISOString() });
+      // Each pick's X post (timestamp proof on the results page), when it went out on X.
+      let xids = new Map();
+      try { xids = new Map((((await env.DB.prepare("SELECT key, value FROM app_settings WHERE key LIKE 'xid:official|%'").all()).results) || []).map(r => [r.key.slice(4), r.value])); } catch {}
+      const rows = (recent.results || []).map(r => (xids.has(r.id) ? { ...r, x_id: xids.get(r.id) } : r));
+      return json({ success: true, summary: summary.results || [], recent: rows, analytics: analytics.results || [], updatedAt: new Date().toISOString() });
     } catch (error) {
       return json({ success: false, error: "The public record is temporarily unavailable." }, 503);
     }
