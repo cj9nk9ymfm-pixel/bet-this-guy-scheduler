@@ -626,7 +626,9 @@ async function xCardPreview(request, env) {
   if (!env.DB) return new Response("", { status: 404 });
   const seasonRows = (await env.DB.prepare("SELECT kind,posted_at,line,odds,combined_odds,status,result,closing_line,closing_odds,closing_captured_at,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%'").all()).results || [];
   let svg;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(week)) {
+  // ?type=pin shows the pinned alerts graphic with the latest numbers.
+  if (params.get("type") === "pin") svg = xSummarySvg(await xSummaryLoad(env));
+  else if (/^\d{4}-\d{2}-\d{2}$/.test(week)) {
     const rows = await weeklyRows(env, week), info = nflWeekOf(week);
     if (!rows.length) return new Response("", { status: 404 });
     svg = xWeekSvg(xWeekData(rows, weeklySummary(rows), weeklySummary(seasonRows), info ? `Week ${info.week}` : "Last week", weeklyRange(week)));

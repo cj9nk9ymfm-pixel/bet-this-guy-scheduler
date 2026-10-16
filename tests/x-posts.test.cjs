@@ -93,10 +93,10 @@ pick('official|2026-10-06|props|prop|a','Travis Kelce',105,null,new Date(now-20*
   assert.equal((await run(`postResultsToX(env,${kick+6*3600000})`)).posted,0);
   for(const t of posts)assert.ok(t.body.text.length<=280&&!/https?:|\.com/.test(t.body.text),t.body.text);
   // Pinned season summary: goes out once, on the first run with nothing heavier to post.
-  const pins=posts.filter(t=>t.body.text.startsWith('📌'));assert.equal(pins.length,1,'posted once by the X runs');
-  const pin=pins[0].body;assert.ok(pin.media,'with the season graphic');assert.ok(pin.text.length<=280&&!/https?:|\.com/.test(pin.text)&&pin.text.includes('graded in public'),pin.text);
-  run(`__svg=xSummarySvg(xSummaryData([{kind:'prop',odds:110,result:'won',status:'final',posted_at:'2026-09-24T05:00:00Z'}]))`);
-  for(const bit of ['SEASON RECORD','Beat the closing price','Total at $100 a pick','Free picks as they lock','SINCE SEP 24'])assert.ok(run('__svg').includes(bit),bit);
+  const pins=posts.filter(t=>t.body.text.startsWith('🔔 Turn on notifications'));assert.equal(pins.length,1,'posted once by the X runs');
+  const pin=pins[0].body;assert.ok(pin.media,'with the season graphic');assert.ok(pin.text.length<=280&&!/https?:|\.com/.test(pin.text)&&pin.text.includes('losses included'),pin.text);
+  run(`__svg=xSummarySvg(xSummaryData([{kind:'prop',odds:110,result:'won',status:'final',posted_at:'2026-09-24T05:00:00Z'}],[{result:'lost',odds:-110}],[]))`);
+  for(const bit of ['PICK ALERTS','SPORTSBOOKS','Singles 1–0','+$110','PREDICTION APPS','Singles 0–1','-$100','Follow + tap'])assert.ok(run('__svg').includes(bit),bit);
   assert.equal((await run(`postSummaryToX(env,${kick+8*3600000})`)).posted,0,'once');
   db.prepare("INSERT INTO app_settings(key,value) VALUES('x-summary-request','v2')").run();
   assert.equal((await run(`postSummaryToX(env,${kick+9*3600000})`)).posted,1,'a new version posts again');
