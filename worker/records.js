@@ -3993,7 +3993,7 @@ async function prophetxLinkResearch(env){
   const page=await get('/');const out={at:new Date().toISOString(),page:page.status,scripts:[],hits:[]};
   const srcs=[...new Set([...page.text.matchAll(/<script[^>]+src="([^"]+\.js[^"]*)"/g)].map(m=>m[1]).filter(u=>!/^https?:/.test(u)||u.includes('prophetx')))].slice(0,60);
   for(const src of srcs){const js=await get(src).catch(()=>({status:0,text:''}));out.scripts.push(`${src} ${js.status} ${js.text.length}`);
-    for(const w of (req.startsWith('run1')?['addtobetslip','lineID','lineId','line_id','betslip','betSlip']:['share_play_slip','sharePlaySlip','playSlipId','play_slip','slipId','get("action")',"get('action')",'searchParams.get'])){let i=-1,n=0;while(n<12&&(i=js.text.indexOf(w,i+1))>=0){out.hits.push(`${w} @${src.slice(-40)}: ${js.text.slice(Math.max(0,i-(req.startsWith('run1')?220:700)),i+(req.startsWith('run1')?260:900)).replace(/\s+/g,' ')}`);n++}}
+    for(const w of (req.startsWith('run1')?['addtobetslip','lineID','lineId','line_id','betslip','betSlip']:(req.startsWith('run2')?['share_play_slip','sharePlaySlip','playSlipId','play_slip','slipId','get("action")',"get('action')",'searchParams.get']:['share_tradeslip','generateShareTradeslipUrl','decodeShareTradeslipPayload','generateShareTradeUrl','showStake']))){let i=-1,n=0;while(n<12&&(i=js.text.indexOf(w,i+1))>=0){out.hits.push(`${w} @${src.slice(-40)}: ${js.text.slice(Math.max(0,i-(req.startsWith('run1')?220:700)),i+(req.startsWith('run1')?260:900)).replace(/\s+/g,' ')}`);n++}}
     if(out.hits.length>150)break}
   await setAppSetting(env,'prophetx-research',JSON.stringify(out).slice(0,95000));
   return {scripts:out.scripts.length,hits:out.hits.length};
