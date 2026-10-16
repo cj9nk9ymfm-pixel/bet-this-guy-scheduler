@@ -1577,12 +1577,16 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     const legs=recordLegs(r);if(!legs.length)return null;
     if(r.kind==='parlay'){
       const st=legs.map(l=>({l,s:window.BTGLive.legStatus(liveLeg(r,l))}));const live=st.filter(x=>x.s);if(!live.length)return null;
-      const fmt=x=>`${String(x.l.player).split(' ').slice(-1)[0]} ${x.s.value??'–'}`;
-      return {cls:live.some(x=>x.s.key==='miss')?'miss':live.every(x=>x.s.key==='hit')?'hit':'',html:`<b>${htmlEscape(live[0].s.clock)}</b> · ${live.map(x=>`<span class="${x.s.key}">${htmlEscape(fmt(x))}</span>`).join(' · ')}`};
+      // One mark per leg: ✓ Harvey 19 · Waddle 3/4.5 · ✗ Engram 2
+      const last=x=>String(x.l.player).split(' ').filter(w=>!/^(jr|sr|ii|iii|iv)\.?$/i.test(w)).slice(-1)[0],fmt=x=>x.s.key==='hit'?`✓ ${last(x)} ${x.s.value}`:x.s.key==='miss'?`✗ ${last(x)} ${x.s.value??'–'}`:`${last(x)} ${x.s.value??'–'}/${x.l.line}`;
+      return {cls:live.some(x=>x.s.key==='miss')?'miss':live.every(x=>x.s.key==='hit')?'hit':'',html:`<b>${htmlEscape(String(live[0].s.clock).replace(' · ',' '))}</b> · ${live.map(x=>`<span class="${x.s.key}">${htmlEscape(fmt(x))}</span>`).join(' · ')}`};
     }
     const p=liveLeg(r,legs[0]),s=window.BTGLive.legStatus(p);if(!s)return null;
-    const val=s.value===null?(s.loaded?'not tracked live':'loading stats…'):`${s.value} ${Number(s.value)===1?liveUnit(p).replace(/s$/,''):liveUnit(p)}`;
-    return {cls:s.key,html:`<b>${htmlEscape(s.clock)}</b> · <strong>${htmlEscape(val)}</strong>${s.value!==null?` · ${htmlEscape(s.detail)}`:''}`};
+    // Short: ● Q4 10:14 · 16 / 21.5 · 6 to go, with a thin bar under it.
+    const clock=htmlEscape(String(s.clock).replace(' · ',' '));
+    if(s.value===null)return {cls:s.key,html:`<b>${clock}</b> · ${s.loaded?'No stats':'Loading…'}`};
+    const note=s.key==='hit'?'✓ Hit':s.key==='miss'?'✗ Missed':s.detail;
+    return {cls:s.key,html:`<b>${clock}</b> · <strong>${htmlEscape(String(s.value))}</strong> / ${htmlEscape(String(p.line))} · <span class="ol-note">${htmlEscape(note)}</span><span class="ol-bar"><i style="width:${Math.max(0,Math.min(100,s.progress||0)).toFixed(1)}%"></i></span>`};
   }
   function updateOfficialLive(){
     $$('#officialNowList [data-on-live], #parlaysList [data-on-live]').forEach(el=>{const line=liveLine(officialLiveList[+el.dataset.onLive]||{});el.hidden=!line;if(el.previousElementSibling)el.previousElementSibling.hidden=!!line;el.className=`on-live${line?.cls?' '+line.cls:''}`;el.innerHTML=line?line.html:''});
