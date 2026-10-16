@@ -3141,6 +3141,15 @@ function statsProp(l){
   // Parlay tab: where the whole parlay pays most. A book's row opens to one
   // button per leg; each tap adds that leg to the book's own slip, where the
   // legs are placed together as a parlay.
+  // Novig's app takes several bets in one link: events/<id>,<id>/<partner>/<amount>
+  // (its link table splits the first part on commas). One tap loads the parlay.
+  function oneLink(v){
+    if(normalizeBookName(v.name)!=='novig'||!v.legs.every(x=>x.deep))return null;
+    const parts=v.legs.map(x=>{try{const u=new URL(x.url);const m=u.pathname.match(/^\/events\/([^/]+)\/([^/]+)\/([^/]+)$/);return m&&/(^|\.)novig\.com$/.test(u.hostname)?m:null}catch{return null}});
+    if(parts.some(m=>!m))return null;
+    const wager=Math.max(0,Number(String($('#wager')?.value||'').replace(/[^0-9.]/g,''))||0)||parts[0][3];
+    return `https://novig.com/events/${parts.map(m=>m[1]).join(',')}/${parts[0][2]}/${encodeURIComponent(wager)}`;
+  }
   function paintBooks(){
     const summary=$('#parlaySummary');if(!summary)return;
     let box=$('#slipBooks');if(!box){box=document.createElement('div');box.id='slipBooks';box.className='slip-books';($('#shareParlay')||summary.lastChild).before(box)}
@@ -3160,8 +3169,8 @@ function statsProp(l){
     const legName=l=>`${l.p.player} ${l.p.binary?(l.side==='Over'?'Yes':'No'):`${l.side} ${l.p.line}`}`;
     box.hidden=false;
     box.innerHTML=`<div class="slip-books-head"><span>Bet this parlay at</span><small>${wager?`${usd(wager)} wins`:'Odds'}</small></div>${full.slice(0,5).map((v,i)=>`<details class="slip-pbook${i===0?' best':''}"${i===0?' open':''}><summary><span>${htmlEscape(v.name)}${v.mine?' <em>your book</em>':''}</span><b>${pm?`${Math.round(100/v.d)}%`:htmlEscape(formatOdds(amer(v.d)))}${wager?` · ${usd(Math.round(wager*(v.d-1)))}`:''}</b><i aria-hidden="true">›</i></summary>
-      <div class="slip-steps">${v.legs.map((x,n)=>`<a class="slip-step" href="${htmlEscape(x.url)}" target="_blank" rel="noopener sponsored" data-book="${htmlEscape(normalizeBookName(v.name))}" data-bet="${htmlEscape(legName(legs[n]))}" data-app="${htmlEscape(v.name)}"><span>${n+1}</span><strong>${htmlEscape(legName(legs[n]))}</strong><i>${x.deep?'Add ›':'Open ›'}</i></a>`).join('')}
-      <small>${v.legs.every(x=>x.deep)?`Each tap adds one leg to your ${htmlEscape(v.name)} slip. Add them all, then place them there as one parlay.`:`Open ${htmlEscape(v.name)} and add these legs to one parlay.`}${pm?' The app’s parlay price can differ a little after its fee.':''}</small></div></details>`).join('')}${same?'<small>Same-game legs: books price these lower than the multiplied odds.</small>':''}`;
+      <div class="slip-steps">${oneLink(v)?`<a class="slip-step slip-all" href="${htmlEscape(oneLink(v))}" target="_blank" rel="noopener sponsored" data-book="${htmlEscape(normalizeBookName(v.name))}" data-bet="${htmlEscape(`${legs.length}-leg parlay`)}" data-app="${htmlEscape(v.name)}"><span>${icon('layers')}</span><strong>Load all ${legs.length} legs into ${htmlEscape(v.name)}</strong><i>Bet ›</i></a>`:v.legs.map((x,n)=>`<a class="slip-step" href="${htmlEscape(x.url)}" target="_blank" rel="noopener sponsored" data-book="${htmlEscape(normalizeBookName(v.name))}" data-bet="${htmlEscape(legName(legs[n]))}" data-app="${htmlEscape(v.name)}"><span>${n+1}</span><strong>${htmlEscape(legName(legs[n]))}</strong><i>${x.deep?'Add ›':'Open ›'}</i></a>`).join('')}
+      <small>${oneLink(v)?`One tap puts every leg in your ${htmlEscape(v.name)} slip with your amount. Check it there and place it as a parlay.`:v.legs.every(x=>x.deep)?`Each tap adds one leg to your ${htmlEscape(v.name)} slip. Add them all, then place them there as one parlay.`:`Open ${htmlEscape(v.name)} and add these legs to one parlay.`}${pm?' The app’s parlay price can differ a little after its fee.':''}</small></div></details>`).join('')}${same?'<small>Same-game legs: books price these lower than the multiplied odds.</small>':''}`;
     allBtn();
     box.querySelectorAll('[data-book]').forEach(a=>a.addEventListener('click',()=>{a.classList.add('done');window.btgCount?.('book:'+a.dataset.book)}));
   }
