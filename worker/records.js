@@ -3947,3 +3947,28 @@ function goPage(request){
   const body=target?`<p class="k">YOUR BET IS READY</p><h1>Open ${e(name)}</h1>${bet?`<p class="bet">${e(bet)}</p>`:''}<a class="go" href="${e(app||target)}" rel="noopener noreferrer">Open in ${e(name)} ›</a><p class="s">The bet loads into your ${e(name)} slip. Enter your amount and place it there.</p>${app?`<p class="s">No app? <a href="${e(target)}" rel="noopener noreferrer">Open their website</a></p>`:'<p class="s">No app? It opens their website instead.</p>'}<a class="back" href="/">Back to Bet This Guy</a>`:`<h1>Link not found</h1><p class="s">This bet link isn't valid anymore.</p><a class="back" href="/">Back to Bet This Guy</a>`;
   return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Open your bet | Bet This Guy</title><style>body{margin:0;min-height:100vh;background:#0b1530;color:#fff;font:16px/1.45 -apple-system,system-ui,sans-serif;display:flex;align-items:center;justify-content:center}main{max-width:420px;width:100%;padding:32px 20px;text-align:center}.k{font-size:12px;letter-spacing:2px;font-weight:800;color:#2ee6a8;margin:0 0 8px}h1{font-size:28px;margin:0 0 10px}.bet{font-size:17px;font-weight:600;color:#dbe4f0;margin:0 0 22px}.go{display:block;padding:16px;border-radius:14px;background:#2ee6a8;color:#06231a;font-weight:800;font-size:19px;text-decoration:none;margin:0 0 16px}.s{color:#9fb0cc;font-size:14px;margin:0 0 6px}.back{display:inline-block;margin-top:22px;color:#9fb0cc;font-size:14px}.s a{color:#2ee6a8}</style></head><body><main>${body}</main></body></html>`,{status:target?200:400,headers:head});
 }
+
+// One-time research (runs once per value of app_settings novig-research-request):
+// Novig's web app (app.novig.us) is built from the same code as its phone app,
+// so its scripts list the link routes the app understands (novigapp://...).
+// Saves every route-like string near "oddsapi", "parlay" or "slip" to
+// app_settings novig-research. Fetches only app.novig.us.
+async function novigLinkResearch(env){
+  if(!env.DB)return {skipped:true};
+  const req=String((await appSetting(env,'novig-research-request'))||'');if(!req)return {none:true};
+  if((await appSetting(env,'novig-research-done'))===req)return {done:true};
+  await setAppSetting(env,'novig-research-done',req);
+  const base='https://app.novig.us',get=async path=>{const r=await fetch(base+path,{headers:{'user-agent':'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1',accept:'*/*'},signal:AbortSignal.timeout(15000)});return {status:r.status,text:r.ok?await r.text():''}};
+  const out={at:new Date().toISOString(),scripts:[],hits:{}};
+  const page=await get('/');out.page=page.status;
+  const srcs=[...new Set([...page.text.matchAll(/src="(\/_expo\/static\/js\/[^"]+\.js)"/g)].map(m=>m[1]))].slice(0,6);
+  const words=['oddsapi','parlay','Parlay','betslip','betSlip','slip?','legs=','selections','addToSlip','add-to-slip','/events/','event-markets','novigapp'];
+  for(const src of srcs){
+    const js=await get(src).catch(()=>({status:0,text:''}));out.scripts.push(`${src} ${js.status} ${js.text.length}`);
+    for(const w of words){let i=-1,n=0;const list=out.hits[w]||(out.hits[w]=[]);while(n<25&&(i=js.text.indexOf(w,i+1))>=0){list.push(js.text.slice(Math.max(0,i-140),i+160).replace(/\s+/g,' '));n++}}
+    // expo-router's route files: "./events/[id]/oddsapi/[wager].tsx" and the like.
+    out.routes=[...new Set([...(out.routes||[]),...[...js.text.matchAll(/"\.\/[A-Za-z0-9_()\[\]\/.+-]{2,120}\.(?:tsx|ts|js|jsx)"/g)].map(m=>m[0])])].slice(0,400);
+  }
+  await setAppSetting(env,'novig-research',JSON.stringify(out).slice(0,90000));
+  return {scripts:out.scripts.length,routes:(out.routes||[]).length};
+}
