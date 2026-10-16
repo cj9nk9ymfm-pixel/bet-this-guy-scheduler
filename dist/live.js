@@ -193,7 +193,7 @@ function liveLegState(prop,game,row){
     else if(final){const result=BTGStats.grade(side,line,value);key=result==='push'?'pending':hit?'hit':'miss';title=result==='push'?'PUSH':hit?'HIT':'MISSED';detail='Final';}
     else if(irreversible){key='hit';title='HIT';detail='Cleared the line';}
     else if(side==='Under'&&crossed){key='miss';title='MISSED';detail='Went over the line';}
-    else{const needed=side==='Over'?Math.max(0,Math.floor(line+1-value)):Math.max(0,Math.floor(line+1-value));detail=side==='Over'?`${needed} more to hit`:`${Math.max(1,Math.floor(line)+1-value)} more and it misses`;}
+    else{const needed=side==='Over'?Math.max(0,Math.floor(line+1-value)):Math.max(0,Math.floor(line+1-value));detail=side==='Over'?`${needed} to go`:`Loses at ${Math.floor(line)+1}`;}
   }
   return{...metric,key,title,detail,progress:Number.isFinite(value)&&Number.isFinite(line)&&line>0?Math.max(0,Math.min(100,value/line*100)):0};
 }
