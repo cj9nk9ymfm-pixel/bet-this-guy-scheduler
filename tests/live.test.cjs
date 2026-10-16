@@ -110,7 +110,7 @@ const reply = body => Response.json(body);
   assert.equal(vm.runInContext('liveStatValue({rushing_yards:null},"rushing_yards")',client),null);
   assert.equal(vm.runInContext('liveStatValue({rushing_yards:0},"rushing_yards")',client),0);
   assert.equal(vm.runInContext('liveMetric({market:"Rush + Receiving Yards"},{rushing_yards:34,receiving_yards:22}).value',client),56);
-  assert.equal(vm.runInContext('liveLegState({market:"Rushing Yards",side:"Over",line:32.5},{state:"in_progress"},{rushing_yards:34}).title',client),'HIT LIVE');
+  assert.equal(vm.runInContext('liveLegState({market:"Rushing Yards",side:"Over",line:32.5},{state:"in_progress"},{rushing_yards:34}).title',client),'HIT');
   assert.equal(vm.runInContext('liveLegState({market:"Rushing Yards",side:"Under",line:32.5},{state:"in_progress"},{rushing_yards:12}).title',client),'LIVE');
   let clientCalls=0;client.fetch=async()=>{clientCalls++;return reply({games:[],success:true})};client.document.hidden=true;
   await client.tickLiveBoard();await client.refreshCurrentStats();assert.equal(clientCalls,0,'hidden page does not poll');
