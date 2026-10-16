@@ -1460,7 +1460,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
       // Alerts prompt for anyone without alerts or pick emails: right after a hit, or on an open pick.
       alert:document.documentElement.classList.contains('alerts-on')||(()=>{try{return localStorage.getItem('btg-email-sub')==='1'}catch{return false}})()?null:done&&r.result==='won'?{title:'This one hit. Get the next one first.',text:'Picks lock at a price, and the price moves. Alerts get you the next pick the second it posts.'}:!done?{title:'Get the next pick the second it locks',text:'Prices move fast after we post. Free alerts by phone or email, about 3–6 a week.'}:null,
       note:pmOffer?`Partner offer: new to ${r.pm.exchange}? Use code ${pmOffer.code}${pmOffer.offer?`: ${pmOffer.offer}`:''}. Open ${r.pm.exchange} copies the code for you. Age limits and terms apply. We earn a commission on sign-ups; it never changes our picks.`:'',stake:r.kind==='parlay'?`$${(heroStake*share(r)).toLocaleString('en-US',{maximumFractionDigits:2})}`:stakeText(),
-      money:done?money(payout(r)):d?(r.pm?pmPays(heroStake*share(r),d):`wins $${Math.round(heroStake*share(r)*(d-1)).toLocaleString('en-US')}`):'—',moneyCls:done?(r.result==='won'?'pos':r.result==='lost'?'neg':''):'pos',
+      money:done?money(payout(r)):d?(r.pm?pmPays(heroStake*share(r),d):bookPays(heroStake*share(r),d)):'—',moneyCls:done?(r.result==='won'?'pos':r.result==='lost'?'neg':''):'pos',
       rows,legs:legRows,chart:points.length>=2?{label:done?'Price posted → kickoff':'Price since posted',points}:null,
       actions:r.pm?[...betAction(r,legs,done),...(!done&&window.BTGApps?.link(r.pm.exchange)?[{label:`Open ${r.pm.exchange}`,icon:'external',wide:true,onClick:()=>{const app=String(r.pm.exchange).toLowerCase();window.btgCount?.(`app:${app}`);
         // With a partner code, the tap also copies the code for the app's sign-up screen.
@@ -1551,7 +1551,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
   function winLine(r,isParlay,odds,done){
     const stake=heroStake*share(r),d=isParlay?parlayDec(r):oddsDecimal(odds);if(!d)return '';
     const money=n=>`$${Number.isInteger(n)?n:n.toFixed(2).replace(/\.00$/,'')}`;
-    const txt=done?(r.result==='won'?`Won +${money(Math.round(payout(r)))}`:r.result==='lost'?`Lost −${money(stake)}`:'Push · $0'):r.pm?`${money(stake)} ${pmPays(stake,d)}`:`${money(stake)} wins ${money(Math.round(stake*(d-1)))}`;
+    const txt=done?(r.result==='won'?`Won +${money(Math.round(payout(r)))}`:r.result==='lost'?`Lost −${money(stake)}`:'Push · $0'):r.pm?`${money(stake)} ${pmPays(stake,d)}`:`${money(stake)} wins ${money(Math.round(stake*(d-1)))} · pays ${money(Math.round(stake*d))}`;
     return `<i class="on-win ${done?r.result:'open'}">${htmlEscape(txt)}</i>`;
   }
   function officialRow(r,i){
