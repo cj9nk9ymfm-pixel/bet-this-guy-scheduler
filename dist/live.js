@@ -187,13 +187,13 @@ function liveLegState(prop,game,row){
   const snap=game?liveBoard.gameStats.get(String(game.id)):null,loaded=Array.isArray(snap?.stats)&&snap.stats.length>0;
   let metric0=liveMetric(prop,row);const zero=metric0.value===null&&loaded&&liveTracked(prop);if(zero)metric0={...metric0,value:0};
   const metric=metric0,line=BTGStats.number(prop.line),side=String(prop.side||'Over'),value=metric.value,final=game?.state==='final',crossed=Number.isFinite(value)&&Number.isFinite(line)&&(side==='Over'?value>line:value>line),hit=Number.isFinite(value)&&Number.isFinite(line)&&(side==='Over'?value>line:value<line),irreversible=side==='Over'&&hit;
-  let key='pending',title='LIVE',detail='Waiting for a reported stat';
+  let key='pending',title='LIVE',detail='No stats yet';
   if(Number.isFinite(value)&&Number.isFinite(line)){
-    if(final&&zero){title='NO STATS RECORDED';detail='If he didn’t play, sportsbooks void this bet';}
-    else if(final){const result=BTGStats.grade(side,line,value);key=result==='push'?'pending':hit?'hit':'miss';title=result==='push'?'PROVISIONAL PUSH':hit?'PROVISIONAL HIT':'PROVISIONAL MISS';detail='Awaiting final-stat confirmation';}
-    else if(irreversible){key='hit';title='HIT LIVE';detail='Unofficial until game statistics are finalized';}
-    else if(side==='Under'&&crossed){key='miss';title='OVER THE LINE';detail='Currently above your Under line; live statistics can still change';}
-    else{const needed=side==='Over'?Math.max(0,Math.floor(line+1-value)):Math.max(0,Math.floor(line+1-value));detail=side==='Over'?`${needed} more to hit`:`${Math.max(0,line-value).toFixed(line%1?1:0)} below the line`;}
+    if(final&&zero){title='NO STATS';detail='Void if he didn’t play';}
+    else if(final){const result=BTGStats.grade(side,line,value);key=result==='push'?'pending':hit?'hit':'miss';title=result==='push'?'PUSH':hit?'HIT':'MISSED';detail='Final';}
+    else if(irreversible){key='hit';title='HIT';detail='Cleared the line';}
+    else if(side==='Under'&&crossed){key='miss';title='MISSED';detail='Went over the line';}
+    else{const needed=side==='Over'?Math.max(0,Math.floor(line+1-value)):Math.max(0,Math.floor(line+1-value));detail=side==='Over'?`${needed} more to hit`:`${Math.max(1,Math.floor(line)+1-value)} more and it misses`;}
   }
   return{...metric,key,title,detail,progress:Number.isFinite(value)&&Number.isFinite(line)&&line>0?Math.max(0,Math.min(100,value/line*100)):0};
 }
@@ -212,7 +212,7 @@ function boardProgress(prop){
   const game=liveGameFor(gameName(prop),prop.startsAt);
   if(!game||!['in_progress','suspended','final'].includes(game.state))return '';
   const status=liveLegState(prop,game,livePlayerRow(game.id,prop.player)),snapshot=liveBoard.gameStats.get(String(game.id));
-  return `<div class="board-live-progress"><span>${htmlEscape(status.title)} · <strong>${status.value===null?(snapshot?.stats?'Not tracked live':'Loading stats…'):htmlEscape(String(status.value))}</strong></span><small>${htmlEscape(snapshot?.stale?'Stats update delayed':status.detail)}</small><div class="live-progress"><i style="width:${status.progress.toFixed(1)}%"></i></div></div>`;
+  return `<div class="board-live-progress"><span>${htmlEscape(status.title)} · <strong>${status.value===null?(snapshot?.stats?'No stats':'Loading…'):htmlEscape(String(status.value))}</strong></span><small>${htmlEscape(snapshot?.stale?'Stats update delayed':status.detail)}</small><div class="live-progress"><i style="width:${status.progress.toFixed(1)}%"></i></div></div>`;
 }
 function updateBoardProgress(){
   (window.btgLiveHooks||[]).forEach(hook=>{try{hook()}catch{}});
@@ -242,7 +242,7 @@ function renderLiveCenter(){
   const game=games.find(item=>String(item.id)===String(liveBoard.selectedGameID)),empty=$('#liveCenterEmpty'),grid=$('#livePropGrid'),summary=$('#liveCenterSummary'),stamp=$('#liveUpdatedAt');
   const snapshot=game?liveBoard.gameStats.get(String(game.id)):null;stamp.textContent=liveBoard.error?'Feed reconnecting…':liveSnapshotStale()?'Update delayed':liveBoard.updatedAt?`Updated ${Math.max(0,Math.floor((Date.now()-Date.parse(liveBoard.updatedAt))/1000))} sec ago`:'Connecting…';stamp.parentElement.classList.toggle('stale',liveSnapshotStale());
   if(!game){empty.hidden=false;grid.innerHTML='';summary.textContent='Waiting for an NFL game to go live.';$('#liveParlayPanel').hidden=true;return}
-  const gameProps=props.filter(prop=>liveGameFor(gameName(prop),prop.startsAt)?.id===game.id&&!prop.teamMarket),cards=gameProps.map(prop=>livePropCard(prop,game));empty.hidden=!!cards.length;empty.innerHTML=cards.length?'':'<strong>Live game found. Player markets are loading.</strong><span>Stats and prop progress will appear as soon as the connected feed reports them.</span>';grid.innerHTML=cards.join('');summary.textContent=`${liveScoreLabel(game)} · ${liveStatusLabel(game)} · ${gameProps.length} live player props${snapshot?.stale?' · stats delayed':''}`;renderLiveParlay(game);try{window.btgRenderLivePicks?.(game)}catch{}
+  const gameProps=props.filter(prop=>liveGameFor(gameName(prop),prop.startsAt)?.id===game.id&&!prop.teamMarket),cards=gameProps.map(prop=>livePropCard(prop,game));empty.hidden=true;grid.innerHTML=cards.join('');const all=$('#liveAllProps');if(all){all.hidden=!cards.length;const n=all.querySelector('[data-all-count]');if(n)n.textContent=String(cards.length)}summary.textContent=`${liveScoreLabel(game)} · ${liveStatusLabel(game)} · ${gameProps.length} live player props${snapshot?.stale?' · stats delayed':''}`;renderLiveParlay(game);try{window.btgRenderLivePicks?.(game)}catch{}
   grid.querySelectorAll('[data-live-odds]').forEach(button=>button.onclick=()=>{const prop=props.find(item=>item.id===Number(button.dataset.liveOdds));if(prop){toggleLeg(prop,prop.side);renderLiveCenter()}});
 }
 function livePollDelay() {

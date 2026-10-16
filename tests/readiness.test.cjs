@@ -22,7 +22,7 @@ equal(se('gradeRecordSide("Under",.5,0)'),'won','reported zero is valid');
 equal(se('recordMarketValue({market:"Rush + Receiving Yards"},{rushing_yards:20,receiving_yards:null})'),null,'incomplete sum');
 equal(se('recordMarketValue({market:"Anytime Touchdown"},{rushing_touchdowns:0,receiving_touchdowns:0})'),null,'missing returns do not prove no TD');
 equal(c.eval('hitAgainstLine({side:"Over",line:50},50)'),null,'push not miss');
-equal(c.eval('liveLegState({market:"Rushing Yards",side:"Over",line:50},{state:"final"},{rushing_yards:50}).title'),'PROVISIONAL PUSH');
+equal(c.eval('liveLegState({market:"Rushing Yards",side:"Over",line:50},{state:"final"},{rushing_yards:50}).title'),'PUSH');
 equal(se('selectPlayer([{first_name:"Other",last_name:"Allen"}],"Josh Allen","")'),null);
 for(const key of ['propedge-saved','bet-this-guy-preferences','bet-this-guy-tracked'])equal(Boolean(client(390,{[key]:'{invalid'}).error),false,`recover ${key}`);
 c.eval('innerWidth=1280;showDesktopPage("saved")');equal(c.eval('state.view'),'board','retired pages (Watchlist) land on Picks');

@@ -2823,9 +2823,17 @@ function statsProp(l){
     const official=(window.BTGOfficialRows?.()||[]).filter(inGame),pm=[...(data?.pmPicks||[]),...(data?.pmParlays||[])].map(pmRecord).filter(inGame);
     const seen=new Set(),list=[...official,...pm].filter(r=>!seen.has(r.id)&&seen.add(r.id));
     panel.hidden=!list.length;if(!list.length){host.innerHTML='';return}
-    host.innerHTML=list.map((r,i)=>{let legs=[];try{legs=JSON.parse(r.legs_json||'[]')}catch{}const parlay=r.kind==='parlay',title=parlay?`${legs.length}-leg parlay`:r.player,bet=parlay?legs.map(l=>l.player).join(' + '):`${r.side} ${r.line} ${String(r.market||'').toLowerCase()}`;
-      const where=r.pm?chip(r.pm.exchange):htmlEscape(legs[0]?.book||'Sportsbook'),price=r.pm?`${r.pm.pct}%`:htmlEscape(typeof formatOdds==='function'?formatOdds(parlay?r.combined_odds:r.odds):''),line=window.BTGOfficialLive?.(r);
-      return `<button type="button" class="live-pick" data-live-pick="${i}"><span><b>${htmlEscape(title)}</b><small>${htmlEscape(bet)} · ${where}</small>${line?`<em class="on-live ${line.cls||''}">${line.html}</em>`:''}</span><strong>${price}</strong></button>`}).join('');
+    const legState=(r,l)=>{try{return window.BTGLive.legStatus(statsProp({...l,player:l.player||r.player,market:l.market||r.market,line:l.line??r.line,side:l.side||r.side,gameTime:l.gameTime||r.game_time}))}catch{return null}};
+    const pill=s=>s?.key==='hit'?'<b class="lp-pill hit">✓ Hit</b>':s?.key==='miss'?'<b class="lp-pill miss">✗ Missed</b>':s?.final?'<b class="lp-pill">Final</b>':'<b class="lp-pill live"><i></i>Live</b>';
+    const shortMarket=m=>String(m||'').toLowerCase().replace('passing yards','pass yds').replace('receiving yards','rec yds').replace('rushing yards','rush yds').replace('receptions','rec').replace('pass completions','completions');
+    const bar=(s,line)=>`<div class="live-progress"><i style="width:${Math.max(0,Math.min(100,s?.progress||0)).toFixed(1)}%"></i></div>`;
+    host.innerHTML=list.map((r,i)=>{let legs=[];try{legs=JSON.parse(r.legs_json||'[]')}catch{}const parlay=r.kind==='parlay';
+      const where=r.pm?chip(r.pm.exchange):htmlEscape(legs[0]?.book||'Sportsbook'),price=r.pm?`${r.pm.pct}%`:htmlEscape(typeof formatOdds==='function'?formatOdds(parlay?r.combined_odds:r.odds):'');
+      if(parlay){const st=legs.map(l=>({l,s:legState(r,l)})),hit=st.filter(x=>x.s?.key==='hit').length,miss=st.some(x=>x.s?.key==='miss');
+        const status=miss?{key:'miss'}:hit===st.length?{key:'hit'}:{key:'live',final:st.every(x=>x.s?.final)};
+        return `<button type="button" class="lp-card ${status.key}" data-live-pick="${i}"><div class="lp-top"><span><b>${legs.length}-leg parlay</b><small>${where} · ${price} · ${hit} of ${legs.length} hit</small></span>${pill(status)}</div>${st.map(({l,s})=>`<div class="lp-leg ${s?.key||''}"><span>${htmlEscape(l.player)} · ${htmlEscape(`${l.side} ${l.line} ${shortMarket(l.market)}`)}</span><b>${s?.value==null?'–':htmlEscape(String(s.value))}</b><small>${htmlEscape(s?.detail||'')}</small>${bar(s)}</div>`).join('')}</button>`}
+      const s=legState(r,legs[0]||{});
+      return `<button type="button" class="lp-card ${s?.key||''}" data-live-pick="${i}"><div class="lp-top"><span><b>${htmlEscape(r.player)}</b><small>${htmlEscape(`${r.side} ${r.line} ${shortMarket(r.market)}`)} · ${where} ${price}</small></span>${pill(s)}</div><div class="lp-num"><strong>${s?.value==null?'–':htmlEscape(String(s.value))}</strong><span>of ${htmlEscape(String(r.line))}</span><em>${htmlEscape(s?.detail||'')}</em></div>${bar(s)}</button>`}).join('');
     host.querySelectorAll('[data-live-pick]').forEach(b=>b.onclick=()=>window.BTGOpenPick?.(list[+b.dataset.livePick]));
   };
   function bindPmRows(){document.querySelectorAll('[data-pm-i]').forEach(el=>{el.onclick=e=>{const r=pmRows[+el.dataset.pmI];if(e.target.closest('[data-slip-price]')&&r&&(r.legs||r.kind==='parlay'?addParlayToSlip(r):addBetToSlip(r)))return;window.BTGOpenPick?.(r)};el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();el.click()}}});updatePmLive()}
