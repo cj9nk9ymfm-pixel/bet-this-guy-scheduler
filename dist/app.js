@@ -3085,12 +3085,19 @@ function statsProp(l){
   // book's website, never its app. Hand the tap to Safari (/go), where one
   // more tap opens the app with the bet in its slip. Older iPhones that
   // can't switch to Safari open the link as before.
-  const iosHome=()=>(/iPhone|iPad|iPod/.test(navigator.userAgent)||(/Macintosh/.test(navigator.userAgent)&&navigator.maxTouchPoints>1))&&(window.matchMedia?.('(display-mode: standalone)').matches||navigator.standalone===true);
+  const isIOS=()=>/iPhone|iPad|iPod/.test(navigator.userAgent)||(/Macintosh/.test(navigator.userAgent)&&navigator.maxTouchPoints>1),iosHome=()=>isIOS()&&(window.matchMedia?.('(display-mode: standalone)').matches||navigator.standalone===true);
   document.addEventListener('click',e=>{
-    const a=e.target.closest?.('a.slip-pick,a.slip-step');if(!a||!iosHome())return;
+    const a=e.target.closest?.('a.slip-pick,a.slip-step');if(!a)return;
+    let left=false;const away=()=>{left=true};
+    // Novig: its web links never open the app; on iPhone its novigapp://
+    // link opens the app on the bet (the website if the app isn't there).
+    if(/(^|\.)novig\.com$/.test(a.hostname)&&isIOS()){e.preventDefault();window.btgCount?.('go:novig');document.addEventListener('visibilitychange',away,{once:true});
+      location.href=`novigapp://${a.pathname.replace(/^\//,'')}${a.search}`;
+      setTimeout(()=>{document.removeEventListener('visibilitychange',away);if(!left&&document.visibilityState==='visible')window.open(a.href,'_blank','noopener')},1500);return}
+    if(!iosHome())return;
     e.preventDefault();window.btgCount?.('go:safari');
     const q=new URLSearchParams({u:a.href,b:a.dataset.app||'',t:a.dataset.bet||''});
-    let left=false;const away=()=>{left=true};document.addEventListener('visibilitychange',away,{once:true});
+    document.addEventListener('visibilitychange',away,{once:true});
     location.href=`x-safari-https://${location.host}/go?${q}`;
     setTimeout(()=>{document.removeEventListener('visibilitychange',away);if(!left&&document.visibilityState==='visible')window.open(a.href,'_blank','noopener')},1500);
   },true);
