@@ -3202,7 +3202,7 @@ function statsProp(l){
     if(!offer?.code){if(row)row.hidden=true;return}
     if(!row){row=document.createElement('p');row.id='slipPartner';row.className='slip-partner';$('#slipBooks')?.after(row)}
     row.hidden=!state.slip.length;
-    row.innerHTML=`Prefer a prediction app? Novig code <b>${htmlEscape(offer.code)}</b>${offer.offer?`: ${htmlEscape(offer.offer)}`:''}. <a href="${htmlEscape(offer.link||'https://novig.us')}" target="_blank" rel="noopener sponsored">Open Novig</a>`;
+    row.innerHTML=`Prefer a prediction app? Novig code <b>${htmlEscape(offer.code)}</b>${offer.offer?`: ${htmlEscape(offer.offer)}`:''}. <a href="${htmlEscape(offer.link||'https://novig.us')}" target="_blank" rel="noopener sponsored">Open Novig</a> <small class="slip-disclose">We earn a commission if you sign up. It never changes our picks.</small>`;
   }
   // This week's official singles still to play, matched to live props.
   function weekPicks(){
