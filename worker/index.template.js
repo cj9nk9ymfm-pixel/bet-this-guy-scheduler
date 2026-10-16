@@ -1442,6 +1442,7 @@ async function routeRequest(request, env, ctx) {
     if (url.pathname === "/api/x-status") return json(await xStatus(env), 200, { "cache-control": "no-store" });
     if (url.pathname === "/api/x-card.png") return xCardPreview(request, env);
     if (url.pathname === "/api/hit") return usageHit(request, env, ctx);
+    if (url.pathname === "/go") return goPage(request);
     if (url.pathname === "/api/affiliate") return affiliateApi(request, env);
     if (url.pathname.startsWith("/api/alerts/")) return alertsApi(request, env);
     if (url.pathname === "/api/email-alerts/unsubscribe") return emailUnsubscribe(request, env);

@@ -2539,7 +2539,7 @@ async function trustSnapshot(env,now=Date.now()){
 
 // Anonymous usage counts: daily totals per metric. No cookies, IP addresses or
 // per-person identifiers are stored; unknown metric names are ignored.
-const USAGE_METRICS=new Set(['card:stats','a2hs:shown','alerts:banner-hide','alerts:fromweek','alerts:lapsed','alerts:denied','alerts:unsupported','board:browse','board:value','empty:alerts','email:pitch','hero:picks','official:bet','prop:bet','slip:addpicks','view:nba','sheet:alerts','sheet:email','sheet:xproof','email:subscribe','email:open','reply:copy','reply:image','partner:novig:copy','app:novig','app:prophetx','app:kalshi','app:polymarket','app:betopenly','welcome:shown','welcome:alerts','welcome:account','welcome:skip','welcome:close','welcome:reopen','view:home','view:trust','view:picks','view:week','visit:new','visit:return','card:open','slip:add','parlay:add','share','hit:open','profile:open','affiliate:click','alerts:on','alerts:off','gate:shown','gate:signup','gate:login','nudge:shown','nudge:alerts','nudge:signup','alerts:email','view:post','post:copy','post:open','post:image','src:reddit','src:x','src:google','src:social','src:other','src:direct']);
+const USAGE_METRICS=new Set(['card:stats','go:safari','a2hs:shown','alerts:banner-hide','alerts:fromweek','alerts:lapsed','alerts:denied','alerts:unsupported','board:browse','board:value','empty:alerts','email:pitch','hero:picks','official:bet','prop:bet','slip:addpicks','view:nba','sheet:alerts','sheet:email','sheet:xproof','email:subscribe','email:open','reply:copy','reply:image','partner:novig:copy','app:novig','app:prophetx','app:kalshi','app:polymarket','app:betopenly','welcome:shown','welcome:alerts','welcome:account','welcome:skip','welcome:close','welcome:reopen','view:home','view:trust','view:picks','view:week','visit:new','visit:return','card:open','slip:add','parlay:add','share','hit:open','profile:open','affiliate:click','alerts:on','alerts:off','gate:shown','gate:signup','gate:login','nudge:shown','nudge:alerts','nudge:signup','alerts:email','view:post','post:copy','post:open','post:image','src:reddit','src:x','src:google','src:social','src:other','src:direct']);
 const USAGE_BOTS=/bot|crawl|spider|slurp|preview|facebookexternalhit|curl|wget|python|headless|lighthouse/i;
 async function countUsage(env,metrics,request){
   // The owner's own devices (opted out with /?me=1) are never counted.
@@ -3923,3 +3923,24 @@ self.addEventListener('notificationclick',event=>{event.notification.close();eve
 })())});
 `;
 const WEB_MANIFEST=JSON.stringify({name:'Bet This Guy',short_name:'Bet This Guy',description:'NFL and NBA player prop picks, locked before the game and graded in public.',start_url:'/?source=home-screen',scope:'/',display:'standalone',background_color:'#0e1013',theme_color:'#0e1013',icons:[{src:'/icon-192.png',sizes:'192x192',type:'image/png',purpose:'any'},{src:'/icon-512.png',sizes:'512x512',type:'image/png',purpose:'any'}]});
+
+// Bet hand-off page. A home-screen (installed) web app on iPhone opens links
+// in a browser panel, where sportsbook links load the website instead of the
+// app. The app sends those taps here in Safari (x-safari-https://), and a tap
+// on this page's button opens the book's app with the bet in its slip.
+// Only links to known books and apps are allowed (no open redirect).
+const GO_HOSTS=['draftkings.com','fanduel.com','betmgm.com','betrivers.com','caesars.com','fanatics.com','novig.com','novig.us','prophetx.co','kalshi.com','polymarket.com','espnbet.com','thescore.bet','hardrock.bet','bet365.com','betopenly.com'];
+function goTarget(raw){
+  let u;try{u=new URL(String(raw||''))}catch{return null}
+  if(u.protocol!=='https:'||u.username||u.password||u.port)return null;
+  const host=u.hostname.toLowerCase();
+  return GO_HOSTS.some(d=>host===d||host.endsWith(`.${d}`))?u.toString():null;
+}
+function goPage(request){
+  const url=new URL(request.url),target=goTarget(url.searchParams.get('u'));
+  const name=String(url.searchParams.get('b')||'').replace(/[^\w .&'-]/g,'').slice(0,30)||'the app',bet=String(url.searchParams.get('t')||'').slice(0,120);
+  const head={'content-type':'text/html; charset=utf-8','cache-control':'no-store','x-robots-tag':'noindex','referrer-policy':'no-referrer'};
+  const e=weeklyEscape;
+  const body=target?`<p class="k">YOUR BET IS READY</p><h1>Open ${e(name)}</h1>${bet?`<p class="bet">${e(bet)}</p>`:''}<a class="go" href="${e(target)}" rel="noopener noreferrer">Open in ${e(name)} ›</a><p class="s">The bet loads into your ${e(name)} slip. Enter your amount and place it there.</p><p class="s">No app? It opens their website instead.</p><a class="back" href="/">Back to Bet This Guy</a>`:`<h1>Link not found</h1><p class="s">This bet link isn't valid anymore.</p><a class="back" href="/">Back to Bet This Guy</a>`;
+  return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Open your bet | Bet This Guy</title><style>body{margin:0;min-height:100vh;background:#0b1530;color:#fff;font:16px/1.45 -apple-system,system-ui,sans-serif;display:flex;align-items:center;justify-content:center}main{max-width:420px;width:100%;padding:32px 20px;text-align:center}.k{font-size:12px;letter-spacing:2px;font-weight:800;color:#2ee6a8;margin:0 0 8px}h1{font-size:28px;margin:0 0 10px}.bet{font-size:17px;font-weight:600;color:#dbe4f0;margin:0 0 22px}.go{display:block;padding:16px;border-radius:14px;background:#2ee6a8;color:#06231a;font-weight:800;font-size:19px;text-decoration:none;margin:0 0 16px}.s{color:#9fb0cc;font-size:14px;margin:0 0 6px}.back{display:inline-block;margin-top:22px;color:#9fb0cc;font-size:14px}</style></head><body><main>${body}</main></body></html>`,{status:target?200:400,headers:head});
+}
