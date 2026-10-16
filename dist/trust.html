@@ -408,7 +408,7 @@ function recordSheet(row,sport='NFL'){
 function legSheet(l,row,sport,back,pm=null){
   const o=pm?(l.netOdds??l.odds):l.odds,d=decimal(o),e=Number(l.edge),need=d?100/d:null,fair=pm&&Number.isFinite(Number(l.fair))?Number(l.fair):need!=null&&Number.isFinite(e)?need+e:null;
   return {chip:{c:'n',i:'fair',t:`Leg of a ${parsedLegs(row).length||row.legs?.length||''}-leg parlay`},title:l.player,photo:l.player,sport,bet:betText(l),game:[String(l.team||'').replace(' · ',' '),whenText(l.gameTime||row.game_time||row.gameTime)].filter(Boolean).join(' · '),
-    price:pm?(need?`${Math.round(need)}%`:'—'):fmtOdds(o),stake:'$100',money:d?`wins $${Math.round(100*(d-1))}`:'—',moneyCls:'pos',won:l.result==='won',
+    price:pm?(need?`${Math.round(need)}%`:'—'):fmtOdds(o),stake:'$100',money:d?(pm?`pays $${Math.round(100*d)}`:`wins $${Math.round(100*(d-1))}`):'—',moneyCls:'pos',won:l.result==='won',
     why:(betWhy({need,fair,where:pm||l.book||'The book',price:fmtOdds(o),pm:!!pm,done:true})),
     stats:{sport,player:l.player,team:l.team||'',market:l.market,side:l.side,line:l.line,binary:/touchdown/i.test(l.market||'')&&Number(l.line)===.5,gameTime:l.gameTime||row.game_time||row.gameTime,odds:l.odds},
     rows:l.result?[['Result',l.result==='won'?'Hit':l.result==='lost'?'Missed':l.result,l.result==='won'?'pos':l.result==='lost'?'neg':'']]:[],back,
