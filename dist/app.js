@@ -3088,8 +3088,8 @@ function statsProp(l){
     return list.filter(x=>x.url).map(x=>({...x,mine:mine(x.name)})).sort((a,b)=>(b.mine-a.mine)||dec(b.odds)-dec(a.odds));
   }
 
-  const noBooksNote=pm=>!pm&&window.BTGWhere?.noSportsbooks?.()?`<p class="slip-nobooks">Sportsbooks don’t take bets in ${htmlEscape(window.BTGWhere.stateName()||'your state')}, so these only open the book. Switch to prediction view to bet it on an app.</p>`:'';
-  const pickLinks=(places,pm,bet='')=>`${noBooksNote(pm)}<p class="slip-where">${pm?'Bet it on':'Bet it at'}${places[0]?`<span>${usd(wagerAmt())} wins ${usd(Math.round(wagerAmt()*(dec(places[0].odds)-1)))}</span>`:''}</p><div class="slip-picks">${places.slice(0,5).map((o,i)=>`<a class="slip-pick${i===0?' best':''}" href="${htmlEscape(o.url)}" target="_blank" rel="noopener sponsored" data-book="${htmlEscape(normalizeBookName(o.name))}" data-bet="${htmlEscape(bet)}" data-app="${htmlEscape(o.name)}"><span>${htmlEscape(o.name)}${o.mine?' <em>your book</em>':''}</span><b>${pm?`${Math.round(100/dec(o.odds))}%`:htmlEscape(formatOdds(o.odds))}</b><i>${o.deep?'Bet ›':'Open ›'}</i></a>`).join('')}</div>`;
+  const noBooksNote=(pm,app)=>!pm&&window.BTGWhere?.noSportsbooks?.()?`<p class="slip-nobooks">Sportsbooks don’t take bets in ${htmlEscape(window.BTGWhere.stateName()||'your state')}, so these only open the book.${app?' Use the purple button to bet it on a prediction app.':' This bet isn’t on a prediction app at this line.'}</p>`:'';
+  const pickLinks=(places,pm,bet='',app=false)=>`${noBooksNote(pm,app)}<p class="slip-where">${pm?'Bet it on':'Bet it at'}${places[0]?`<span>${usd(wagerAmt())} wins ${usd(Math.round(wagerAmt()*(dec(places[0].odds)-1)))}</span>`:''}</p><div class="slip-picks">${places.slice(0,5).map((o,i)=>`<a class="slip-pick${i===0?' best':''}" href="${htmlEscape(o.url)}" target="_blank" rel="noopener sponsored" data-book="${htmlEscape(normalizeBookName(o.name))}" data-bet="${htmlEscape(bet)}" data-app="${htmlEscape(o.name)}"><span>${htmlEscape(o.name)}${o.mine?' <em>your book</em>':''}</span><b>${pm?`${Math.round(100/dec(o.odds))}%`:htmlEscape(formatOdds(o.odds))}</b><i>${o.deep?'Bet ›':'Open ›'}</i></a>`).join('')}</div>`;
   const openLink=book=>{const url=sportsbookDestination(book);return url?`<a class="slip-open" href="${htmlEscape(url)}" target="_blank" rel="noopener sponsored">Open ${htmlEscape(book)}</a>`:''};
   // iPhone home-screen app: links open in a browser panel that loads the
   // book's website, never its app. Hand the tap to Safari (/go), where one
@@ -3111,13 +3111,29 @@ function statsProp(l){
     location.href=`x-safari-https://${location.host}/go?${q}`;
     setTimeout(()=>{document.removeEventListener('visibilitychange',away);if(!left&&document.visibilityState==='visible')window.open(a.href,'_blank','noopener')},1500);
   },true);
+  // A sportsbook bet can move to a prediction app: the same player, side and
+  // line at an app open in the visitor's state (best price first). For
+  // someone in a state without sportsbooks (California), it's the way to bet it.
+  function appOptions(leg){
+    const rows=linkRows(leg),seen=new Map();
+    for(const x of rows||[])if(APPS.has(x[0])&&Number(x[5])>-1900){const o=Number(x[5]);if(!seen.has(x[1])||dec(o)>dec(seen.get(x[1])))seen.set(x[1],o)}
+    const hit=window.BTGPmBoard?.hit?.({...leg.p,side:leg.side});if(hit&&!seen.has(hit.exchange))seen.set(hit.exchange,Number(hit.odds));
+    return [...seen].map(([exchange,odds])=>({exchange,odds})).sort((a,b)=>dec(b.odds)-dec(a.odds));
+  }
+  const toPmButton=(a,kind,n)=>`<button type="button" class="slip-topm${window.BTGWhere?.noSportsbooks?.()?' main':''}" data-topm="${kind}">${kind==='all'?`Bet this parlay on ${htmlEscape(a.exchange)} instead`:'Bet it on a prediction app instead'}<b>${htmlEscape(a.exchange)} ${Math.round(100/(kind==='all'?a.d:dec(a.odds)))}% ›</b></button>`;
+  function moveToApp(legs,exchange){
+    for(const leg of legs){const a=appOptions(leg).find(x=>x.exchange===exchange);if(!a)continue;leg.pm={exchange,odds:a.odds};leg.odds=a.odds}
+    renderSlip();window.btgCount?.('slip:topm');
+    try{slipToast(`${icon('check')} Moved to ${htmlEscape(exchange)} · now in prediction app prices`)}catch{}
+  }
   function paintLegs(){
     $$('#slipLegs .slip-leg').forEach(el=>{
       el.querySelector('.slip-book')?.remove();
       const leg=state.slip[Number(el.querySelector('[data-remove-slip]')?.dataset.removeSlip)];if(!leg||leg.unavailable||leg.changed)return;
-      const places=placesFor(leg);if(!places.length)return;
-      const row=document.createElement('div');row.className='slip-book slip-places';row.innerHTML=pickLinks(places,Boolean(leg.pm),`${leg.p.player} ${leg.p.binary?(leg.side==='Over'?'Yes':'No'):`${leg.side} ${leg.p.line}`} ${leg.p.market||''}`.trim());
+      const places=placesFor(leg),apps=leg.pm?[]:appOptions(leg);if(!places.length&&!apps.length)return;
+      const row=document.createElement('div');row.className='slip-book slip-places';row.innerHTML=(apps.length?toPmButton(apps[0],'leg'):'')+(places.length?pickLinks(places,Boolean(leg.pm),`${leg.p.player} ${leg.p.binary?(leg.side==='Over'?'Yes':'No'):`${leg.side} ${leg.p.line}`} ${leg.p.market||''}`.trim(),apps.length>0):'');
       row.querySelectorAll('[data-book]').forEach(a=>a.addEventListener('click',()=>window.btgCount?.('book:'+a.dataset.book)));
+      row.querySelector('[data-topm]')?.addEventListener('click',()=>{moveToApp([leg],apps[0].exchange)});
       el.append(row);
     });
   }
@@ -3131,17 +3147,22 @@ function statsProp(l){
     const legs=state.slip;if(legs.length<2||legs.some(l=>l.unavailable||l.changed)){box.hidden=true;return}
     const wager=Math.max(0,Number(String($('#wager')?.value||'').replace(/[^0-9.]/g,''))||0),same=new Set(legs.map(l=>l.p.eventID)).size<legs.length;
     const pm=legs.some(l=>l.pm);
+    // Every leg on one app: the whole parlay can move there in one tap.
+    let allApp=null;if(!pm){const opts=legs.map(appOptions),names=opts[0].map(a=>a.exchange).filter(n=>opts.every(o=>o.some(a=>a.exchange===n)));
+      allApp=names.map(n=>({exchange:n,d:opts.reduce((d,o)=>d*dec(o.find(a=>a.exchange===n).odds),1)})).sort((a,b)=>b.d-a.d)[0]||null}
+    const allBtn=()=>{if(!allApp)return;box.insertAdjacentHTML('afterbegin',toPmButton(allApp,'all'));box.querySelector('[data-topm="all"]').onclick=()=>moveToApp(legs,allApp.exchange)};
     if(pm&&!legs.every(l=>l.pm)){box.hidden=false;box.innerHTML='<p class="slip-books-none">These legs mix a prediction app and sportsbooks, and a parlay has to be on one. Bet them as singles, or keep the legs from one place.</p>';return}
     // Every place that has every leg, with that leg's price and link there.
     const places=new Map();
     legs.forEach((leg,i)=>placesFor(leg).forEach(x=>{const k=normalizeBookName(x.name);if(!places.has(k))places.set(k,{name:x.name,mine:x.mine,legs:[]});places.get(k).legs[i]=x}));
     const full=[...places.values()].filter(v=>legs.every((_,i)=>v.legs[i])).map(v=>({...v,d:v.legs.reduce((d,x)=>d*dec(x.odds),1)})).sort((a,b)=>(b.mine-a.mine)||b.d-a.d);
-    if(!full.length){box.hidden=false;box.innerHTML=`<p class="slip-books-none">No single ${pm?'app':'book'} lists every leg at these lines. Try fewer legs.</p>`;return}
+    if(!full.length){box.hidden=false;box.innerHTML=`<p class="slip-books-none">No single ${pm?'app':'book'} lists every leg at these lines. Try fewer legs.</p>`;allBtn();return}
     const legName=l=>`${l.p.player} ${l.p.binary?(l.side==='Over'?'Yes':'No'):`${l.side} ${l.p.line}`}`;
     box.hidden=false;
     box.innerHTML=`<div class="slip-books-head"><span>Bet this parlay at</span><small>${wager?`${usd(wager)} wins`:'Odds'}</small></div>${full.slice(0,5).map((v,i)=>`<details class="slip-pbook${i===0?' best':''}"${i===0?' open':''}><summary><span>${htmlEscape(v.name)}${v.mine?' <em>your book</em>':''}</span><b>${pm?`${Math.round(100/v.d)}%`:htmlEscape(formatOdds(amer(v.d)))}${wager?` · ${usd(Math.round(wager*(v.d-1)))}`:''}</b><i aria-hidden="true">›</i></summary>
       <div class="slip-steps">${v.legs.map((x,n)=>`<a class="slip-step" href="${htmlEscape(x.url)}" target="_blank" rel="noopener sponsored" data-book="${htmlEscape(normalizeBookName(v.name))}" data-bet="${htmlEscape(legName(legs[n]))}" data-app="${htmlEscape(v.name)}"><span>${n+1}</span><strong>${htmlEscape(legName(legs[n]))}</strong><i>${x.deep?'Add ›':'Open ›'}</i></a>`).join('')}
       <small>${v.legs.every(x=>x.deep)?`Each tap adds one leg to your ${htmlEscape(v.name)} slip. Add them all, then place them there as one parlay.`:`Open ${htmlEscape(v.name)} and add these legs to one parlay.`}${pm?' The app’s parlay price can differ a little after its fee.':''}</small></div></details>`).join('')}${same?'<small>Same-game legs: books price these lower than the multiplied odds.</small>':''}`;
+    allBtn();
     box.querySelectorAll('[data-book]').forEach(a=>a.addEventListener('click',()=>{a.classList.add('done');window.btgCount?.('book:'+a.dataset.book)}));
   }
   // Two or more legs: a Parlay tab and a Bet singles tab. A premade parlay

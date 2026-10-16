@@ -2242,3 +2242,5 @@ body.light .lp-card{background:#fff;border-color:#d9e2ec}body.light .lp-top smal
 body.light .on-live .ol-note{color:#0f172a}body.light .on-live .ol-bar{background:#e2e6ec}
 .slip-nobooks{margin:4px 0 8px;padding:8px 10px;border-radius:10px;background:rgba(245,158,11,.12);color:#fbbf24;font-size:12.5px;line-height:1.4}body.light .slip-nobooks{background:#fef3c7;color:#92400e}
 .pp-oddbtns button small{display:block;margin-top:-2px;font-size:9.5px;font-weight:600;color:#98a1ad;line-height:1}.pp-oddbtns button:has(small){height:44px}
+.slip-topm{display:flex;width:100%;justify-content:space-between;align-items:center;gap:8px;margin:2px 0 8px;padding:9px 12px;border-radius:10px;border:1px solid rgba(167,139,250,.45);background:rgba(167,139,250,.08);color:#c4b5fd;font:600 13px "DM Sans",sans-serif;text-align:left;cursor:pointer}.slip-topm b{white-space:nowrap;color:#ddd6fe}.slip-topm.main{background:#7c3aed;border-color:#7c3aed;color:#fff}.slip-topm.main b{color:#fff}
+body.light .slip-topm{background:#f5f3ff;color:#6d28d9}body.light .slip-topm b{color:#5b21b6}body.light .slip-topm.main{background:#7c3aed;color:#fff}body.light .slip-topm.main b{color:#fff}
