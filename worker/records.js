@@ -3256,53 +3256,58 @@ function xWeekData(rows,s,season,name,range){
     picks:graded.map(r=>r.kind==='parlay'?{res:r.result,text:`${recordLegs(r).length}-leg parlay`,odds:weeklyOdds(r.combined_odds)}:{res:r.result,text:`${r.player} · ${weeklyLegText(r)}`,odds:weeklyOdds(r.odds)}),
     season:season&&season.wins+season.losses>=5?`${season.wins}–${season.losses} · ${weeklyMoney(season.profit)}`:''};
 }
-// Pinned season summary: one post with a graphic of the whole record, meant
-// to be pinned on the profile. It posts once per version; setting the
-// app_settings value x-summary-request to a new value posts a fresh one.
+// Pinned alerts post: one graphic with the whole record (sportsbooks and
+// prediction apps), meant to be pinned on the profile. It posts once per
+// version; setting the app_settings value x-summary-request to a new value
+// posts a fresh one with the latest numbers.
+const XBELL='<path d="M50 6c-3.6 0-6.5 2.9-6.5 6.5v3.4C30.8 18.9 22 30.4 22 44v19L12 75v5h76v-5L78 63V44c0-13.6-8.8-25.1-21.5-28.1v-3.4C56.5 8.9 53.6 6 50 6zM38 85a12 12 0 0 0 24 0z"/>';
 function xSummarySvg(d){
-  const M='#2ee6a8',F={g:'BTG Grotesk',xb:'BTG Inter XB',sb:'BTG Inter SB'},X=526,R=1200-56;
-  const tone=v=>v>=0?M:'#f87171';
-  const tile=(x,y,big,label,color)=>`<rect x="${x}" y="${y}" width="290" height="150" rx="18" fill="#16203a" stroke="#ffffff" stroke-opacity=".08"/><text x="${x+24}" y="${y+72}" font-family="${F.g}" font-size="${xFit(big,250,54,.6)}" fill="${color||'#ffffff'}">${xEsc(big)}</text><text x="${x+24}" y="${y+112}" font-family="${F.sb}" font-size="21" fill="#9fb0cc">${xEsc(label)}</text>`;
+  const M='#2ee6a8',L='#c4b5fd',F={g:'BTG Grotesk',xb:'BTG Inter XB',sb:'BTG Inter SB'},X=526,R=1200-56;
+  const row=(y,label,money,v)=>`<text x="${X}" y="${y}" font-family="${F.sb}" font-size="30" fill="#dbe4f0">${xEsc(label)}</text><text x="${R}" y="${y}" text-anchor="end" font-family="${F.xb}" font-size="30" fill="${v<0?'#f87171':M}">${xEsc(money)}</text>`;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675" viewBox="0 0 1200 675">
 <defs><linearGradient id="tm" x1="0" y1="0" x2="0.45" y2="1"><stop offset="0" stop-color="#1d4ed8"/><stop offset="1" stop-color="#0b1530"/></linearGradient></defs>
 <rect width="1200" height="675" fill="#0b1530"/><rect width="470" height="675" fill="url(#tm)"/>
-<text x="56" y="112" font-family="${F.xb}" font-size="22" letter-spacing="4" fill="#ffffff" fill-opacity=".8">${xEsc(d.title)}</text>
-<text x="50" y="250" font-family="${F.g}" font-size="${xFit(d.record,380,128,.62)}" fill="#ffffff">${xEsc(d.record)}</text>
-<text x="56" y="306" font-family="${F.g}" font-size="44" fill="${tone(d.profit)}">${xEsc(weeklyMoney(d.profit))}</text>
-<text x="56" y="346" font-family="${F.sb}" font-size="24" fill="#ffffff" fill-opacity=".75">on props at $100 a pick</text>
-${xLogo(56,520,56)}<text x="128" y="558" font-family="${F.g}" font-size="30" fill="#ffffff">Bet This Guy</text>
-<text x="56" y="643" font-family="${F.xb}" font-size="20" letter-spacing="2.5" fill="#ffffff" fill-opacity=".85">${xEsc(d.since)} · 21+</text>
-<text x="${X}" y="104" font-family="${F.xb}" font-size="22" letter-spacing="3" fill="#cfe0f5">EVERY PICK, GRADED IN PUBLIC</text>
-${tile(X,140,d.parlays,`Parlays · ${weeklyMoney(d.parlayProfit)}`)}
-${tile(X+328,140,d.clv,d.clvLabel,M)}
-${tile(X,318,weeklyMoney(d.total),'Total at $100 a pick',tone(d.total))}
-${tile(X+328,318,String(d.picks),'Picks, all graded')}
-<text x="${X}" y="530" font-family="${F.sb}" font-size="21" fill="#9fb0cc">Locked before kickoff at the best price we found.</text>
-<text x="${X}" y="558" font-family="${F.sb}" font-size="21" fill="#9fb0cc">Wins and losses, every one on the site.</text>
+<text x="56" y="100" font-family="${F.xb}" font-size="20" letter-spacing="4" fill="#ffffff" fill-opacity=".85">PICK ALERTS</text>
+<g transform="translate(52 128) scale(1.05)" fill="#fbbf24">${XBELL}</g>
+<text x="56" y="300" font-family="${F.g}" font-size="50" fill="#ffffff">Turn on</text>
+<text x="56" y="352" font-family="${F.g}" font-size="50" fill="#ffffff">notifications.</text>
+${['Every pick posts here the second','it locks, so you get our price','before it moves.'].map((t,k)=>`<text x="56" y="${402+k*31}" font-family="${F.sb}" font-size="24" fill="#ffffff" fill-opacity=".8">${t}</text>`).join('')}
+${xLogo(56,563,56)}<text x="128" y="601" font-family="${F.g}" font-size="30" fill="#ffffff">Bet This Guy</text>
+<text x="${X}" y="96" font-family="${F.xb}" font-size="15" letter-spacing="2.5" fill="${M}">SPORTSBOOKS</text>
+${row(140,`Singles ${d.sb.wins}–${d.sb.losses}`,d.m(d.sb.profit),d.sb.profit)}${row(184,`Parlays ${d.sb.parlayWins}–${d.sb.parlayLosses}`,d.m(d.sb.parlayProfit),d.sb.parlayProfit)}
+<text x="${X}" y="246" font-family="${F.xb}" font-size="15" letter-spacing="2.5" fill="${L}">PREDICTION APPS</text><rect x="${X+178}" y="230" width="56" height="22" rx="11" fill="#2a3355"/><text x="${X+206}" y="246" text-anchor="middle" font-family="${F.xb}" font-size="12" letter-spacing="1" fill="${L}">NEW</text>
+${row(290,`Singles ${d.pm.wins}–${d.pm.losses}`,d.m(d.pm.profit),d.pm.profit)}${row(334,`Parlays ${d.pp.wins}–${d.pp.losses}`,d.m(d.pp.profit),d.pp.profit)}
+${d.sb.tracked?`<text x="${X}" y="404" font-family="${F.sb}" font-size="24" fill="#dbe4f0"><tspan font-family="${F.xb}" fill="${M}">${d.sb.beat} of ${d.sb.tracked}</tspan> sportsbook picks beat the kickoff price</text>`:''}
+<text x="${X}" y="446" font-family="${F.sb}" font-size="18" fill="#dbe4f0" fill-opacity=".75">$100 singles · $25 parlays · every loss included · 21+</text>
 <rect x="470" y="589" width="730" height="86" fill="${M}"/>
-<text x="${X}" y="643" font-family="${F.g}" font-size="29" fill="#06231a">Free picks as they lock</text>
+<text x="${X}" y="643" font-family="${F.g}" font-size="27" fill="#06231a">Follow + tap</text><g transform="translate(${X+168} 615) scale(.3)" fill="#06231a">${XBELL}</g>
 <text x="${R-38}" y="644" text-anchor="end" font-family="${F.g}" font-size="31" fill="#06231a">betthisguy.com</text><path d="M1118 633h24m-9-9 9 9-9 9" fill="none" stroke="#06231a" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>`;
 }
-function xSummaryData(rows,now=Date.now()){
-  const s=weeklySummary(rows),graded=rows.filter(weeklyGraded),first=rows.map(r=>r.posted_at).filter(Boolean).sort()[0];
-  const year=new Date(now).getUTCFullYear(),pct=s.tracked?Math.round(100*s.beat/s.tracked):null;
-  return {title:`${year} SEASON RECORD`,record:`${s.wins}–${s.losses}${s.pushes?`–${s.pushes}`:''}`,profit:s.profit,parlays:`${s.parlayWins}–${s.parlayLosses}`,parlayProfit:s.parlayProfit,total:s.profit+s.parlayProfit,
-    clv:pct==null?'—':`${pct}%`,clvLabel:'Beat the closing price',picks:graded.length,since:first?`SINCE ${new Date(first).toLocaleDateString('en-US',{month:'short',day:'numeric',timeZone:'America/New_York'}).toUpperCase()}`:'',s,pct};
+function xSummaryData(rows,pmRows=[],ppRows=[]){
+  const sb=weeklySummary(rows),pm=predictionRecord(pmRows),pp=predictionParlayRecord(ppRows);
+  return {sb,pm,pp,m:v=>Math.round(v)===0?'$0':weeklyMoney(v)};
 }
-function xSummaryText(d){
-  const s=d.s;
-  return xShort(`📌 Every pick locked before kickoff and graded in public.\n\n${new Date().getUTCFullYear()}: ${s.wins}–${s.losses} on props (${weeklyMoney(s.profit)}), parlays ${s.parlayWins}–${s.parlayLosses} (${weeklyMoney(s.parlayProfit)}) at $100 a pick.${d.pct!=null?`\nOur price beat the close on ${d.pct}% of picks.`:''}\n\nTurn on 🔔 to get picks the moment they lock. Free board: link in bio. 21+`);
+async function xSummaryLoad(env){
+  const rows=(await env.DB.prepare("SELECT kind,posted_at,line,odds,combined_odds,status,result,closing_line,closing_odds,closing_captured_at,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%'").all()).results||[];
+  const pm=(await env.DB.prepare('SELECT result,odds,net_odds,close_odds FROM prediction_picks').all().catch(()=>({results:[]}))).results||[];
+  const pp=(await env.DB.prepare('SELECT result,odds,legs_json,posted_at FROM prediction_parlays').all().catch(()=>({results:[]}))).results||[];
+  return xSummaryData(rows,pm,pp);
+}
+function xSummaryText(d,now=Date.now()){
+  const {sb,pm,pp,m}=d,pw=pm.wins+pp.wins,pl=pm.losses+pp.losses;
+  // NBA picks start Tue Oct 20; the line drops off once they have.
+  const nba=now<Date.parse('2026-10-20T23:00:00Z')?' NBA starts Tuesday.':'';
+  return xShort(`🔔 Turn on notifications to get every pick the second it locks.\n\nSportsbook singles: ${sb.wins}–${sb.losses} (${m(sb.profit)})${pw+pl?`\nPrediction-app picks (new): ${pw}–${pl} (${m(pm.profit+pp.profit)})`:''}${sb.tracked?`\n${sb.beat} of ${sb.tracked} beat the kickoff price`:''}\n\nEvery pick posted before the game, losses included.${nba}\n\nLink in bio · 21+`);
 }
 async function postSummaryToX(env,now=Date.now()){
   if(!env.DB||!xReady(env))return {posted:0,disabled:true};
   const version=(await appSetting(env,'x-summary-request'))||'v1',key=`x-summary:${version}`;
   if(!(await xClaim(env,key,now)))return {posted:0,done:true};
-  const rows=(await env.DB.prepare("SELECT kind,posted_at,line,odds,combined_odds,status,result,closing_line,closing_odds,closing_captured_at,posted_at,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%'").all()).results||[];
-  const d=xSummaryData(rows,now);let mediaId=null;
+  const d=await xSummaryLoad(env);let mediaId=null;
   try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(xSummarySvg(d)))}
   catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} summary graphic: ${error.message}`).catch(()=>{})}
-  try{const sent=await xPost(env,xSummaryText(d),mediaId);await xDone(env,key,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} summary ${version} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,graphic:Boolean(mediaId)}}
+  try{const sent=await xPost(env,xSummaryText(d,now),mediaId);await xDone(env,key,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} summary ${version} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,graphic:Boolean(mediaId)}}
   catch(error){console.warn('x_summary_failed',error.message);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
 }
 // Everything the X cron run posts, in order, within the run's request limit:
