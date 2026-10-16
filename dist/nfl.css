@@ -2014,7 +2014,7 @@ html body .has-rail #heroBanner .hero-title{font-size:16px!important;white-space
 .on-addall{margin-left:auto;padding:6px 12px;border:1px solid #2b3846;border-radius:999px;background:transparent;color:#7fb4ff;font:700 12px 'DM Sans',sans-serif;cursor:pointer;white-space:nowrap}
 body.light .slip-books{border-color:#d2e0ee;background:#f7fafc}body.light .slip-books-row{border-color:#e3ebf3}body.light .slip-book b{color:#0b1d3f}body.light .on-addall{border-color:#c9d6e3;color:#1f6feb}
 #slipLegs .slip-leg{flex-wrap:wrap}#slipLegs .slip-leg>.slip-book{flex:1 0 100%;order:5}
-#parlaySummary .slip-books{display:block!important;grid-column:1/-1}
+#parlaySummary .slip-books{display:block!important;grid-column:1/-1}#parlaySummary .slip-books[hidden]{display:none!important}
 #parlaySummary .slip-books>div,#parlaySummary .slip-books-row{display:grid!important;grid-template-columns:1fr auto auto;align-items:center;gap:8px;padding:7px 0;margin:0;background:none;border-radius:0}
 #parlaySummary .slip-books>.slip-books-head{display:flex!important;justify-content:space-between;padding:0 0 4px}
 #parlaySummary .slip-books-row b{font-size:13px;white-space:nowrap}#parlaySummary .slip-books-row span{font-size:13px}
@@ -2240,3 +2240,5 @@ body.light .lp-card{background:#fff;border-color:#d9e2ec}body.light .lp-top smal
 .on-live{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.on-live .ol-note{color:#cfd8e3;font-weight:700}.on-live.hit .ol-note{color:#22c55e}.on-live.miss .ol-note{color:#f06060}
 .on-live .ol-bar{display:block;height:4px;margin-top:5px;max-width:220px;border-radius:999px;background:#2a313c;overflow:hidden}.on-live .ol-bar i{display:block;height:100%;border-radius:999px;background:#2563eb}.on-live.hit .ol-bar i{background:#22c55e}.on-live.miss .ol-bar i{background:#f06060}
 body.light .on-live .ol-note{color:#0f172a}body.light .on-live .ol-bar{background:#e2e6ec}
+.slip-nobooks{margin:4px 0 8px;padding:8px 10px;border-radius:10px;background:rgba(245,158,11,.12);color:#fbbf24;font-size:12.5px;line-height:1.4}body.light .slip-nobooks{background:#fef3c7;color:#92400e}
+.pp-oddbtns button small{display:block;margin-top:-2px;font-size:9.5px;font-weight:600;color:#98a1ad;line-height:1}.pp-oddbtns button:has(small){height:44px}
