@@ -57,6 +57,8 @@ const upgradePreferences=p=>{if(!p.wagerDefault100&&Number(p.typicalWager)===10)
   // prop rating always needs 3 sportsbooks (no longer a setting).
   if(!p.limitOptIn&&Number(p.weeklyBudget)===100)p.noWeeklyLimit=true;p.limitOptIn=true;p.minBookCoverage=3;return p};
 function wagerStake(){return Math.max(1,Number(preferences?.typicalWager)||100)}
+// Default parlay bet (Settings); left blank, a quarter of the default bet, as our record's $25 parlays.
+function parlayStake(){const v=preferences?.parlayWager;return v!==null&&v!==undefined&&v!==''&&Number(v)>0?Number(v):wagerStake()/4}
 function wagerLabel(){return '$'+wagerStake().toLocaleString('en-US',{maximumFractionDigits:2})}
 let preferences=upgradePreferences({...preferenceDefaults,...readStored('bet-this-guy-preferences',{})});
 try{localStorage.setItem('bet-this-guy-preferences',JSON.stringify(preferences))}catch{}
@@ -691,8 +693,8 @@ function updateBookCount(){const picked=[...($('#bookPreferences')?.querySelecto
 function syncWeeklyLimitControl(){const on=$('#weeklyLimitOn')?.checked,row=$('#weeklyBudgetRow');if(row)row.hidden=!on}
 function paintSegments(){const v=window.BTGPriceView?.view?.()||'odds',t=themeMode();$$('#stView [data-st-view]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.stView===v)));$$('#stTheme [data-st-theme]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.stTheme===t)))}
 function paintAccount(){const signed=window.BTGAuth?.isSignedIn?.(),email=window.BTGAuth?.email?.()||'';$('#stAccountLabel').textContent=signed?(email||'Your account'):'Sign in or create a free account';$('#stAccountSub').textContent=signed?'Signed in. Your settings follow you.':'Sync your picks and settings across devices';$('#stEmailSub').textContent=signed?'Set in your account':'No account needed'}
-function openSettings(){$('#bookPreferences').innerHTML=SETTINGS_BOOKS.map(([book,color])=>`<label class="st-row st-book"><span class="st-text"><span class="st-label"><i class="st-dot" style="background:${color}" aria-hidden="true"></i>${book}</span></span><input class="st-switch" type="checkbox" role="switch" value="${book}" ${preferences.books.some(saved=>normalizeBookName(saved)===normalizeBookName(book))?'checked':''}/></label>`).join('');$('#riskPreference').value=preferences.risk;$('#typicalWager').value=preferences.typicalWager;$('#maxParlayLegs').value=String([4,6,8,10].reduce((a,b)=>Math.abs(b-preferences.maxParlayLegs)<Math.abs(a-preferences.maxParlayLegs)?b:a));$('#weeklyBudget').value=preferences.weeklyBudget||100;$('#weeklyLimitOn').checked=!preferences.noWeeklyLimit;$('#bookPings').checked=preferences.bookPings!==false;syncWeeklyLimitControl();updateBookCount();paintSegments();paintAccount();$('#settingsSaveStatus').textContent='Changes save automatically';$('#settingsSaveStatus').classList.remove('st-saved');$('.st-body')?.scrollTo({top:0});$('#settingsDialog').showModal()}
-async function commitSettings(){preferences={...preferences,books:[...$('#bookPreferences').querySelectorAll('input:checked')].map(input=>input.value),risk:$('#riskPreference').value,typicalWager:Math.max(0,+$('#typicalWager').value||0),maxParlayLegs:Math.max(2,Math.min(10,+$('#maxParlayLegs').value||8)),weeklyBudget:Math.max(0,+$('#weeklyBudget').value||0),noWeeklyLimit:!$('#weeklyLimitOn').checked,bookPings:$('#bookPings').checked};try{localStorage.setItem('bet-this-guy-preferences',JSON.stringify(preferences))}catch{}settingsDirty=true;window.BTGSyncAlertBooks?.();const status=$('#settingsSaveStatus');status.textContent=window.BTGAuth?.isSignedIn()?'Saved to your account ✓':'Saved on this device ✓';status.classList.add('st-saved');clearTimeout(savedFlash);savedFlash=setTimeout(()=>status.classList.remove('st-saved'),1800);if(window.BTGAuth?.isSignedIn())await savePreferences()?.catch?.(()=>{})}
+function openSettings(){$('#bookPreferences').innerHTML=SETTINGS_BOOKS.map(([book,color])=>`<label class="st-row st-book"><span class="st-text"><span class="st-label"><i class="st-dot" style="background:${color}" aria-hidden="true"></i>${book}</span></span><input class="st-switch" type="checkbox" role="switch" value="${book}" ${preferences.books.some(saved=>normalizeBookName(saved)===normalizeBookName(book))?'checked':''}/></label>`).join('');$('#riskPreference').value=preferences.risk;$('#typicalWager').value=preferences.typicalWager;if($('#parlayWager')){$('#parlayWager').value=preferences.parlayWager>0?preferences.parlayWager:'';$('#parlayWager').placeholder=String(Math.round(wagerStake()/4*100)/100)}$('#maxParlayLegs').value=String([4,6,8,10].reduce((a,b)=>Math.abs(b-preferences.maxParlayLegs)<Math.abs(a-preferences.maxParlayLegs)?b:a));$('#weeklyBudget').value=preferences.weeklyBudget||100;$('#weeklyLimitOn').checked=!preferences.noWeeklyLimit;$('#bookPings').checked=preferences.bookPings!==false;syncWeeklyLimitControl();updateBookCount();paintSegments();paintAccount();$('#settingsSaveStatus').textContent='Changes save automatically';$('#settingsSaveStatus').classList.remove('st-saved');$('.st-body')?.scrollTo({top:0});$('#settingsDialog').showModal()}
+async function commitSettings(){preferences={...preferences,books:[...$('#bookPreferences').querySelectorAll('input:checked')].map(input=>input.value),risk:$('#riskPreference').value,typicalWager:Math.max(0,+$('#typicalWager').value||0),parlayWager:$('#parlayWager')&&+$('#parlayWager').value>0?+$('#parlayWager').value:null,maxParlayLegs:Math.max(2,Math.min(10,+$('#maxParlayLegs').value||8)),weeklyBudget:Math.max(0,+$('#weeklyBudget').value||0),noWeeklyLimit:!$('#weeklyLimitOn').checked,bookPings:$('#bookPings').checked};try{localStorage.setItem('bet-this-guy-preferences',JSON.stringify(preferences))}catch{}settingsDirty=true;window.BTGSyncAlertBooks?.();const status=$('#settingsSaveStatus');status.textContent=window.BTGAuth?.isSignedIn()?'Saved to your account ✓':'Saved on this device ✓';status.classList.add('st-saved');clearTimeout(savedFlash);savedFlash=setTimeout(()=>status.classList.remove('st-saved'),1800);if(window.BTGAuth?.isSignedIn())await savePreferences()?.catch?.(()=>{})}
 $('#settingsBtn').onclick=openSettings;
 $('#settingsDialog').addEventListener('change',event=>{const t=event.target;if(t.closest('#alertKinds')&&t.id!=='bookPings')return;if(t.closest('[data-pm-state]')||t.matches('[data-pm-state]'))return;if(t.id==='weeklyLimitOn')syncWeeklyLimitControl();if(t.closest('#bookPreferences'))updateBookCount();commitSettings()});
 $('#stView')?.addEventListener('click',e=>{const b=e.target.closest('[data-st-view]');if(!b)return;window.BTGPriceView?.set?.(b.dataset.stView);paintSegments()});
@@ -702,7 +704,7 @@ $('#stAccount').onclick=()=>{$('#settingsDialog').close();window.BTGAuth?.open?.
 $('#stEmail').onclick=()=>{$('#settingsDialog').close();if(window.BTGAuth?.isSignedIn?.()||!window.BTGEmailSub)window.BTGAuth?.open?.(window.BTGAuth?.hasAccount?.()?'account':'signup');else window.BTGEmailSub.open('settings')};
 $('#stRecord').onclick=()=>{$('#settingsDialog').close();window.BTGAuth?.open?.(window.BTGAuth?.isSignedIn?.()?'record':'signup')};
 $('#settingsDone').onclick=()=>$('#settingsDialog').close();
-$('#settingsDialog').addEventListener('close',async()=>{if(!settingsDirty)return;settingsDirty=false;$('#wager').value=preferences.typicalWager;$('#legsSlider').max=preferences.maxParlayLegs;$('#legsSlider').value=Math.min(+$('#legsSlider').value,preferences.maxParlayLegs);$('#maxLegLabel').textContent=`${preferences.maxParlayLegs} legs`;mixerCandidateCache.clear();parlayFeeds.forEach(feed=>feed.length=0);calcParlay();await loadLiveProps(true);render()});
+$('#settingsDialog').addEventListener('close',async()=>{if(!settingsDirty)return;settingsDirty=false;$('#wager').value=state.slip.length>1&&state.slipMode==='parlay'?parlayStake():preferences.typicalWager;try{window.BTGRefreshStakes?.()}catch{}$('#legsSlider').max=preferences.maxParlayLegs;$('#legsSlider').value=Math.min(+$('#legsSlider').value,preferences.maxParlayLegs);$('#maxLegLabel').textContent=`${preferences.maxParlayLegs} legs`;mixerCandidateCache.clear();parlayFeeds.forEach(feed=>feed.length=0);calcParlay();await loadLiveProps(true);render()});
 $('#trackParlay').onclick=async()=>{if(!state.slip.length||state.slip.some(leg=>leg.changed||leg.unavailable))return;const button=$('#trackParlay'),decimal=state.slip.reduce((total,leg)=>total*americanToDecimal(leg.odds),1),wager=Math.max(0,+$('#wager').value||0),liveLegs=state.slip.map(leg=>({player:leg.p.player,market:leg.p.market,side:leg.side,line:leg.p.line,odds:leg.odds,eventID:leg.p.eventID,gameStart:leg.p.startsAt,startsAt:leg.p.startsAt,team:leg.p.team,propID:leg.p.id}));button.disabled=true;button.textContent='Saving…';try{const result=await window.BTGAuth?.trackParlay({legs:liveLegs,wager,combinedOdds:decimalToAmerican(decimal),sportsbook:preferences.books[0]||null});if(result){window.BTGLive?.renderCenter();button.textContent='✓ Added to My Picks';window.BTGAuth?.refreshBets();setTimeout(()=>{button.textContent=state.slip.length===1?'＋ Track this pick':'＋ Track this parlay';button.disabled=false},1500)}else{button.textContent=state.slip.length===1?'＋ Track this pick':'＋ Track this parlay';button.disabled=false}}catch(error){button.textContent=error.message||'Could not save';setTimeout(()=>{button.textContent=state.slip.length===1?'＋ Track this pick':'＋ Track this parlay';button.disabled=false},2200)}calcParlay()};
 const parlayUiCacheKey='bet-this-guy-parlay-ui-v3';
 function saveParlayUiCache(){try{localStorage.setItem(parlayUiCacheKey,JSON.stringify({at:Date.now(),filters:parlayFilterKey(),feeds:parlayFeeds,mixer:mixerSelection,mixerSize:+$('#legsSlider').value,mixerTarget:targetOddsFromSlider()}))}catch{}}
@@ -1326,11 +1328,12 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
   const currentWeek=(now=Date.now())=>{if(NBA)return new Date(now-6*3600000).toISOString().slice(0,10);const d=new Date(now-12*3600000);d.setUTCHours(0,0,0,0);d.setUTCDate(d.getUTCDate()-(d.getUTCDay()+5)%7);return d.toISOString().slice(0,10)};
   const recordLegs=r=>{try{const legs=JSON.parse(r.legs_json||'[]');return Array.isArray(legs)?legs:[]}catch{return []}};
   // Everything is shown at the viewer's usual wager ($100 unless changed in Settings).
-  let heroStake=100;
+  let heroStake=100,heroParlay=25;
   const viewerStake=()=>Math.max(1,Number(preferences?.typicalWager)||100);
   const stakeText=()=>`$${heroStake.toLocaleString('en-US',{maximumFractionDigits:2})}`;
   // Parlays posted from Oct 12, 2026 on are a quarter unit; earlier ones a full unit.
-  const share=r=>r.kind==='parlay'&&String(r.posted_at||'')>='2026-10-12T18:00:00Z'?.25:1;
+  // Shown at the viewer's default parlay bet (Settings), so a full-unit parlay is 4 of them.
+  const share=r=>r.kind==='parlay'?(String(r.posted_at||'')>='2026-10-12T18:00:00Z'?1:4)*parlayStake()/heroStake:1;
   // Same rule as the server's recordPay: a pushed parlay leg drops out of the
   // price; the same-game cut stays only while two remaining legs share a game.
   // Prediction parlays keep their after-fee price (the app's parlay fee isn't in the legs).
@@ -1463,7 +1466,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
       slip:boardP?{inSlip:()=>state.slip.some(x=>x.key===slipSelectionKey(boardP,r.side==='Under'?'Under':'Over')),toggle:()=>toggleLeg(boardP,r.side==='Under'?'Under':'Over',slipPmOf(r))}:isParlay&&!done&&parlayLegsFor(r)?{inSlip:()=>Boolean(parlayLegsFor(r)?.every(l=>state.slip.some(x=>x.key===slipSelectionKey(l.p,l.side)))),toggle:()=>addParlayToSlip(r)}:null,bet,game,price:r.pm?`${r.pm.pct}%`:formatOdds(odds),
       // Alerts prompt for anyone without alerts or pick emails: right after a hit, or on an open pick.
       alert:document.documentElement.classList.contains('alerts-on')||(()=>{try{return localStorage.getItem('btg-email-sub')==='1'}catch{return false}})()?null:done&&r.result==='won'?{title:'This one hit. Get the next one first.',text:'Picks lock at a price, and the price moves. Alerts get you the next pick the second it posts.'}:!done?{title:'Get the next pick the second it locks',text:'Prices move fast after we post. Free alerts by phone or email, about 3–6 a week.'}:null,
-      note:pmOffer?`Partner offer: new to ${r.pm.exchange}? Use code ${pmOffer.code}${pmOffer.offer?`: ${pmOffer.offer}`:''}. Open ${r.pm.exchange} copies the code for you. Age limits and terms apply. We earn a commission on sign-ups; it never changes our picks.`:'',stake:share(r)<1?`$${(heroStake*share(r)).toLocaleString('en-US',{maximumFractionDigits:2})} ($25)`:stakeText(),
+      note:pmOffer?`Partner offer: new to ${r.pm.exchange}? Use code ${pmOffer.code}${pmOffer.offer?`: ${pmOffer.offer}`:''}. Open ${r.pm.exchange} copies the code for you. Age limits and terms apply. We earn a commission on sign-ups; it never changes our picks.`:'',stake:r.kind==='parlay'?`$${(heroStake*share(r)).toLocaleString('en-US',{maximumFractionDigits:2})}`:stakeText(),
       money:done?money(payout(r)):d?`wins $${Math.round(heroStake*share(r)*(d-1)).toLocaleString('en-US')}`:'—',moneyCls:done?(r.result==='won'?'pos':r.result==='lost'?'neg':''):'pos',
       rows,legs:legRows,chart:points.length>=2?{label:done?'Price posted → kickoff':'Price since posted',points}:null,
       actions:r.pm?[...betAction(r,legs,done),...(!done&&window.BTGApps?.link(r.pm.exchange)?[{label:`Open ${r.pm.exchange}`,icon:'external',wide:true,onClick:()=>{const app=String(r.pm.exchange).toLowerCase();window.btgCount?.(`app:${app}`);
@@ -1625,6 +1628,8 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
   async function loadHero(){
     // The home page HTML usually carries the rows already (window.BTG_HOME),
     // so the banner and hits draw with the page instead of popping in later.
+    // Settings changed a default bet: redraw the record and this week's picks at the new amounts.
+    window.BTGRefreshStakes=()=>{if(!heroRows)return;heroParlay=parlayStake();renderHero(summarise(heroRows,Date.now(),viewerStake()));renderOfficialNow(heroRows)};
     if(!NBA&&Array.isArray(window.BTG_HOME)){heroRows=window.BTG_HOME;heroSeason=window.BTG_SEASON||null;renderHero(summarise(heroRows,Date.now(),viewerStake()));renderOfficialNow(heroRows);return}
     try{
       const response=await fetch(`/api/record?view=home${NBA?'&sport=NBA':''}`,{signal:AbortSignal.timeout(10000)});
@@ -1658,7 +1663,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     renderBeforeFirstImpression();
     document.body.classList.toggle('no-slip-legs',!(state.slip||[]).length);
     document.body.classList.toggle('hero-off',state.view!=='board');
-    if(heroRows&&viewerStake()!==heroStake)renderHero(summarise(heroRows,Date.now(),viewerStake()));
+    if(heroRows&&(viewerStake()!==heroStake||parlayStake()!==heroParlay)){heroParlay=parlayStake();renderHero(summarise(heroRows,Date.now(),viewerStake()))}
     const title=$('#viewTitle'),count=$('#resultCount');
     if(title&&count&&title.textContent==='No one’s earned a Bet This Guy yet'){
       const updated=count.textContent.split(' · ').pop(),next=kickoffIn();
@@ -2860,7 +2865,7 @@ function statsProp(l){
   function parlayRow(r){
     const st=pmStatus(r),same=r.legs.some(l=>l.sameGame);
     const legs=r.legs.map(l=>`${l.result==='won'?'✓ ':l.result==='lost'?'✗ ':''}${l.player} ${l.side} ${l.line} ${String(l.market||'').toLowerCase()}`).join(' + ');
-    const note=[pmWin(r.odds,25,r.result,r.money),same?'same game':'',r.open===false?`not offered in ${data?.stateName||'your state'}`:''].filter(Boolean).join(' · ');
+    const note=[pmWin(r.odds,parlayStake(),r.result,Number.isFinite(Number(r.money))?Number(r.money)*parlayStake()/25:r.money),same?'same game':'',r.open===false?`not offered in ${data?.stateName||'your state'}`:''].filter(Boolean).join(' · ');
     const idx=pmRows.push(pmRecord(r))-1;
     return `<div class="on-row on-${st[0]}-row pm-pick" role="button" tabindex="0" data-pm-i="${idx}" aria-label="Details for this parlay"><span class="on-avatar on-parlay">${typeof icon==='function'?icon('layers'):''}</span><span class="on-who"><b>${r.legs.length}-leg parlay</b><span>${htmlEscape(legs)}</span><small>${htmlEscape(when(r.gameTime))} · ${chip(r.exchange)}</small><i class="on-pm pm-ok">${htmlEscape(note)}</i>${pmLiveSpan(idx)}</span>${pmEnd(r,st)}</div>`;
   }
@@ -3198,6 +3203,11 @@ function statsProp(l){
     let tabs=$('#slipTabs');if(!tabs){tabs=document.createElement('div');tabs.id='slipTabs';tabs.className='slip-tabs';tabs.setAttribute('role','tablist');legsBox.before(tabs)}
     const many=state.slip.length>1;if(!state.slip.length)state.slipMode=null;
     const mode=many?(state.slipMode||'singles'):'single';
+    // The wager box starts at the default for what's on screen: the parlay bet
+    // on the Parlay tab, the regular bet otherwise (an amount typed stays until the tab changes).
+    const kind=mode==='parlay'?'parlay':'single',w=$('#wager');
+    if(w&&slip.dataset.wagerKind&&slip.dataset.wagerKind!==kind){w.value=String(kind==='parlay'?parlayStake():wagerStake());w.dispatchEvent(new Event('input',{bubbles:true}))}
+    slip.dataset.wagerKind=kind;
     tabs.hidden=!many;slip.classList.toggle('mode-parlay',mode==='parlay');slip.classList.toggle('mode-singles',mode==='singles');
     if(many){tabs.innerHTML=`<button type="button" role="tab" aria-selected="${mode==='parlay'}" data-slip-mode="parlay">Parlay <small>${state.slip.length} legs</small></button><button type="button" role="tab" aria-selected="${mode==='singles'}" data-slip-mode="singles">Bet singles <small>${state.slip.length} bets</small></button>`;
       tabs.querySelectorAll('[data-slip-mode]').forEach(b=>b.onclick=()=>{state.slipMode=b.dataset.slipMode;renderSlip()})}
