@@ -60,6 +60,9 @@ function wagerStake(){return Math.max(1,Number(preferences?.typicalWager)||100)}
 // Prediction apps show what a bet pays back in total ($10 at 44% pays $23),
 // sportsbooks what it wins on top (+$13). Our prediction prices follow the apps.
 function pmPays(stake,dec){return dec?`pays $${Math.round(stake*dec).toLocaleString('en-US')}`:'—'}
+// Sportsbook price: the win on top, then the total back with the stake.
+function bookPays(stake,dec){return dec?`wins $${Math.round(stake*(dec-1)).toLocaleString('en-US')} · pays $${Math.round(stake*dec).toLocaleString('en-US')}`:'—'}
+const stakeText=v=>`$${Number.isInteger(v)?v.toLocaleString('en-US'):v.toFixed(2)}`;
 // Default parlay bet (Settings); left blank, a quarter of the default bet, as our record's $25 parlays.
 function parlayStake(){const v=preferences?.parlayWager;return v!==null&&v!==undefined&&v!==''&&Number(v)>0?Number(v):wagerStake()/4}
 function wagerLabel(){return '$'+wagerStake().toLocaleString('en-US',{maximumFractionDigits:2})}
@@ -707,7 +710,7 @@ $('#stAccount').onclick=()=>{$('#settingsDialog').close();window.BTGAuth?.open?.
 $('#stEmail').onclick=()=>{$('#settingsDialog').close();if(window.BTGAuth?.isSignedIn?.()||!window.BTGEmailSub)window.BTGAuth?.open?.(window.BTGAuth?.hasAccount?.()?'account':'signup');else window.BTGEmailSub.open('settings')};
 
 $('#settingsDone').onclick=()=>$('#settingsDialog').close();
-$('#settingsDialog').addEventListener('close',async()=>{if(!settingsDirty)return;settingsDirty=false;$('#wager').value=state.slip.length>1&&state.slipMode==='parlay'?parlayStake():preferences.typicalWager;try{window.BTGRefreshStakes?.()}catch{}$('#legsSlider').max=preferences.maxParlayLegs;$('#legsSlider').value=Math.min(+$('#legsSlider').value,preferences.maxParlayLegs);$('#maxLegLabel').textContent=`${preferences.maxParlayLegs} legs`;mixerCandidateCache.clear();parlayFeeds.forEach(feed=>feed.length=0);calcParlay();await loadLiveProps(true);render()});
+$('#settingsDialog').addEventListener('close',async()=>{if(!settingsDirty)return;settingsDirty=false;$('#wager').value=state.slip.length>1&&state.slipMode==='parlay'?parlayStake():preferences.typicalWager;try{window.BTGRefreshStakes?.();document.dispatchEvent(new Event('btg:stake'))}catch{}$('#legsSlider').max=preferences.maxParlayLegs;$('#legsSlider').value=Math.min(+$('#legsSlider').value,preferences.maxParlayLegs);$('#maxLegLabel').textContent=`${preferences.maxParlayLegs} legs`;mixerCandidateCache.clear();parlayFeeds.forEach(feed=>feed.length=0);calcParlay();await loadLiveProps(true);render()});
 
 const parlayUiCacheKey='bet-this-guy-parlay-ui-v3';
 function saveParlayUiCache(){try{localStorage.setItem(parlayUiCacheKey,JSON.stringify({at:Date.now(),filters:parlayFilterKey(),feeds:parlayFeeds,mixer:mixerSelection,mixerSize:+$('#legsSlider').value,mixerTarget:targetOddsFromSlider()}))}catch{}}
@@ -1473,7 +1476,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     const sp=statsProp({...l,sport:r.sport||(String(r.id||'').startsWith('nba|')?'NBA':'NFL')}),bp=graded(r)?null:boardPropFor(l),side=l.side==='Under'?'Under':'Over';
     window.BTGSheet.open({chip:{cls:'n',icon:'layers',text:`Leg of a ${recordLegs(r).length}-leg parlay`},title:l.player,photo:l.player,sport:sp.sport,
       bet:(t=>t.charAt(0).toUpperCase()+t.slice(1))(legText({...l,market:String(l.market||'').toLowerCase()})),game:[String(l.team||'').replace(' · ',' '),when(l.gameTime||r.game_time)].filter(Boolean).join(' · '),
-      price:pm?(need?`${Math.round(need)}%`:'—'):formatOdds(o),stake:'$100',moneyLabel:'As a single, $100',money:d0?(pm?pmPays(100,d0):`wins $${Math.round(100*(d0-1))}`):'—',moneyCls:'pos',
+      price:pm?(need?`${Math.round(need)}%`:'—'):formatOdds(o),stake:stakeText(wagerStake()),moneyLabel:`As a single, ${stakeText(wagerStake())}`,money:d0?(pm?pmPays(wagerStake(),d0):bookPays(wagerStake(),d0)):'—',moneyCls:'pos',
       why:(betWhy({need,fair,where:pm?r.pm.exchange:(l.book||'The book'),price:formatOdds(o),pm})),statsProp:sp,
       slip:bp?{inSlip:()=>state.slip.some(x=>x.key===slipSelectionKey(bp,side)),toggle:()=>toggleLeg(bp,side)}:null,
       rows:l.result?[['Result',l.result==='won'?'Hit':l.result==='lost'?'Missed':l.result,l.result==='won'?'pos':l.result==='lost'?'neg':'']]:[],
@@ -1973,7 +1976,7 @@ function openLeanSheet(x,pm=false){
   const bet=`${x.side} ${x.line} ${String(x.market||'').toLowerCase()}`;
   const when=betWhen(x.gameTime);
   window.BTGSheet.open({chip:{cls:'n',icon:'fair',text:'Just missed · not a pick'},title:x.player,photo:x.player,sport,bet:bet.charAt(0).toUpperCase()+bet.slice(1),
-    game:[String(x.team||'').replace(' · ',' '),when].filter(Boolean).join(' · '),price:pm?(need?`${Math.round(need)}%`:'—'):formatOdds(o),stake:'$100',money:d0?(pm?pmPays(100,d0):`wins $${Math.round(100*(d0-1))}`):'—',moneyCls:'pos',
+    game:[String(x.team||'').replace(' · ',' '),when].filter(Boolean).join(' · '),price:pm?(need?`${Math.round(need)}%`:'—'):formatOdds(o),stake:stakeText(wagerStake()),money:d0?(pm?pmPays(wagerStake(),d0):bookPays(wagerStake(),d0)):'—',moneyCls:'pos',
     why:(betWhy({need,fair,where:pm?x.exchange:(x.book||'The best book'),price:formatOdds(o),pm})),statsProp:sp,
     slip:bp?{inSlip:()=>state.slip.some(l=>l.key===slipSelectionKey(bp,side)),toggle:()=>toggleLeg(bp,side,pm?slipPmOf(x):null)}:null,
     rows:[['Best price',pm?`${x.exchange} · ${need?Math.round(need)+'%':''}`:(x.book||'—'),'']],
@@ -2667,10 +2670,10 @@ function statsProp(l){
   if(typeof document.getElementById!=='function'||!document.getElementById('leansNow')||typeof fetch!=='function')return;
   const when=iso=>{const d=new Date(iso);return Number.isFinite(d.getTime())?d.toLocaleString([],{weekday:'short',hour:'numeric',minute:'2-digit'}):''};
   let leans=[];
-  // "$100 wins $110": what a $100 bet wins at a price (American odds), for both Worth a look lists.
-  // Prediction prices: what $100 pays back in total, as the apps show it.
-  window.BTGPays=(odds,stake=100)=>{const o=Number(odds),d=o>=100?1+o/100:o<=-100?1+100/-o:null;return d?`$${stake} ${pmPays(stake,d)}`:''};
-  window.BTGWins=(odds,stake=100)=>{const o=Number(odds),d=o>=100?1+o/100:o<=-100?1+100/-o:null;return d?`$${stake} wins $${Math.round(stake*(d-1))}`:''};
+  // "$100 wins $110 · pays $210" at the bet amount set in Settings, for both Just missed lists.
+  // Prediction prices: what the bet pays back in total, as the apps show it.
+  window.BTGPays=(odds,stake=wagerStake())=>{const o=Number(odds),d=o>=100?1+o/100:o<=-100?1+100/-o:null;return d?`${stakeText(stake)} ${pmPays(stake,d)}`:''};
+  window.BTGWins=(odds,stake=wagerStake())=>{const o=Number(odds),d=o>=100?1+o/100:o<=-100?1+100/-o:null;return d?`${stakeText(stake)} ${bookPays(stake,d)}`:''};
   function row(l,i){
     const initials=String(l.player||'').split(' ').map(x=>x[0]||'').join('').slice(0,3);
     // Short stat names so player and bet share one line.
@@ -2696,6 +2699,8 @@ function statsProp(l){
   }
   async function load(){try{const r=await fetch(`/api/leans${LEAGUE==='NBA'?'?sport=NBA':''}`);const body=await r.json();if(!r.ok||!Array.isArray(body?.leans))return;leans=body.leans;render()}catch{}}
   load();setInterval(load,5*60000);
+  // A new bet amount in Settings repaints the amounts.
+  document.addEventListener?.('btg:stake',()=>{if(leans.length)render()});
   // Form loads separately; repaint once it's in.
   let tries=0;const wait=setInterval(()=>{if(++tries>20||!leans.length){if(tries>20)clearInterval(wait);return}if(window.BTGForm?.get?.({player:leans[0].player,market:leans[0].market,side:leans[0].side,line:Number(leans[0].line)})){render();clearInterval(wait)}},1500);
 })();
@@ -2981,6 +2986,7 @@ function statsProp(l){
   const boardNote=()=>{const host=document.getElementById('propList');if(!host)return;const cards=host.querySelectorAll('.prop-card'),shown=[...cards].filter(c=>!c.classList.contains('pm-hide')).length;let n=document.getElementById('pmBoardEmpty');const want=view()==='predictions'&&cards.length&&!shown&&[...boardPrices.keys()].length;if(want&&!n){n=document.createElement('p');n.id='pmBoardEmpty';n.className='pm-empty';n.textContent='None of these props are on prediction markets right now. Prediction markets list receptions, yards, passing TDs, anytime TDs, rush attempts and completions.';host.after(n)}if(n)n.hidden=!want};
   setInterval(boardNote,1500);
   const boardHost=document.getElementById('propList');if(boardHost)new MutationObserver(()=>{clearTimeout(boardTimer);boardTimer=setTimeout(paintBoard,60)}).observe(boardHost,{childList:true});
+  document.addEventListener?.('btg:stake',()=>{if(data)render()});
   function render(){
     const banner=document.getElementById('pmBanner'),section=document.getElementById('pmNow'),toggle=document.getElementById('priceView');
     const d=data||{mode:'unknown'},v=view(),now=Date.now(),pickKeys=new Set((d.pmPicks||[]).map(r=>`${r.eventId||r.event_id||''}|${String(r.player||'').toLowerCase()}`)),value=(d.value||[]).filter(x=>Date.parse(x.gameTime)>now&&!pickKeys.has(`${x.eventId}|${String(x.player||'').toLowerCase()}`)),names=apps(d);
