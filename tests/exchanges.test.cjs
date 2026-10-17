@@ -99,7 +99,6 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
   db.prepare("UPDATE public_recommendations SET legs_json=json_set(legs_json,'$[0].exchanges[1].odds',-140)").run();
   const pickRow=db.prepare('SELECT * FROM public_recommendations').get();
   assert.equal(run(`exchangeLine(${JSON.stringify(pickRow)})`),'Kalshi 51%','only good-value prices');assert.equal(run(`exchangeLine(${JSON.stringify(pickRow)},null,3,true)`),'Kalshi 51% · Novig 58%','chances, best first');
-  assert.ok(run(`xPickText(${JSON.stringify(pickRow)})`).includes('\n📈 Also on Kalshi at 51%'));
   assert.ok(run(`emailPickText(${JSON.stringify(pickRow)})`).endsWith('; prediction markets: Kalshi 51%'));
   // Push alerts: a phone set to prediction markets gets chances for its state.
   const ep='https://fcm.googleapis.com/fcm/send/abc';
@@ -112,7 +111,6 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
   assert.equal(alert.body,'Tre Tucker Under 3.5 receptions: good value on Kalshi 51%','Novig is out in Connecticut');
   db.prepare("UPDATE public_recommendations SET legs_json=json_set(legs_json,'$[0].edge',1.5)").run();
   alert=J(await run(`latestAlert(env,${now+60000},${JSON.stringify(ep)})`));assert.equal(alert.body,'Tre Tucker Under 3.5 receptions: Kalshi 51% is worse than fair, skip on prediction markets (+105 at sportsbooks)');
-  assert.ok(!run(`xPickText(${JSON.stringify(db.prepare('SELECT * FROM public_recommendations').get())})`).includes('Also on'),'X only names good-value prices');
   await sub({endpoint:ep,keys,priceView:'odds',state:'CT'});
   alert=J(await run(`latestAlert(env,${now+60000},${JSON.stringify(ep)})`));assert.equal(alert.body,'Tre Tucker Under 3.5 receptions (+105)');
   await sub({endpoint:ep,keys,priceView:'predictions',state:'XX'});
@@ -141,7 +139,7 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
   run(`renderCardPng=async svg=>{globalThis.lastCard=svg;return new Uint8Array([1])};xUploadImage=async()=>'m1'`);
   const xp=J(await run(`postPredictionPicksToX(env,${now+60000})`));assert.deepEqual([xp.posted,xp.graphic],[1,true],'posts with the card graphic');
   const card=run('lastCard');assert.ok(card.includes('PREDICTION PICK')&&card.includes('47%')&&card.includes('Tre Tucker'),'prediction card shows the pill, chance and player');
-  assert.ok(tweets[0].startsWith('📈 Prediction market pick: Tre Tucker Over 3.5 receptions\n@novig at 47% · fair chance 50%, after fees')&&tweets[0].length<=280&&!/https?:/.test(tweets[0]),tweets[0]);
+  assert.ok(tweets[0].startsWith('🔒 Official pick · Prediction app\nTre Tucker Over 3.5 receptions\n47% on @novig (fair 50%)')&&tweets[0].length<=280&&!/https?:/.test(tweets[0]),tweets[0]);
   assert.equal(J(await run(`postPredictionPicksToX(env,${now+120000})`)).posted,0,'once per pick');
   db.prepare("INSERT INTO app_settings (key,value) VALUES ('x-tag:Novig','off')").run();assert.equal(await run("xAppTag(env,'Novig')"),'Novig','tag can be switched off');db.prepare("UPDATE app_settings SET value='@NovigApp' WHERE key='x-tag:Novig'").run();assert.equal(await run("xAppTag(env,'Novig')"),'@NovigApp','handle can be overridden');
   context.fetch=oldFetch;for(const k of ['X_API_KEY','X_API_SECRET','X_ACCESS_TOKEN','X_ACCESS_SECRET'])delete context.env[k];
