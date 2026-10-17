@@ -28,10 +28,10 @@ pick('official|2026-10-06|props|prop|a','Travis Kelce',105,null,new Date(now-20*
   assert.equal(out.posted,1);assert.equal(posts.length,1);
   const text=posts[0].body.text;
   assert.deepEqual(posts[0].body.media,{media_ids:['m1']},'posted with the uploaded graphic');
-  assert.ok(text.startsWith('🔒 Official pick: Travis Kelce Over 4.5 receptions (+105, FanDuel)\nChiefs @ Bills · '),text);
+  assert.ok(text.startsWith('🔒 Official pick · Sportsbook\nTravis Kelce Over 4.5 receptions\n+105 at FanDuel · Chiefs @ Bills · ')&&text.includes('\n\nRecord: sportsbooks 4–2 (+$280)\n\n'),text);
   assert.ok(text.includes('link in bio')&&!/https?:|\.com/.test(text)&&text.includes('21+'),text);
   const svg=run('__svg');
-  for(const bit of ['Travis Kelce','Under 4.5 receptions'.replace('Under','Over'),'+105','at FanDuel · +2.4% vs fair','4–2 · +','Today’s full board, free','betthisguy.com','OFFICIAL PICK'])assert.ok(svg.includes(bit),bit);
+  for(const bit of ['Travis Kelce','Under 4.5 receptions'.replace('Under','Over'),'+105','at FanDuel · +2.4% vs fair','SPORTSBOOKS','4–2','+$280','Every pick, free','betthisguy.com','SPORTSBOOK PICK'])assert.ok(svg.includes(bit),bit);
   assert.ok(text.length<=280);assert.match(posts[0].auth,/^OAuth oauth_consumer_key="xvz1evFS4wEEPTGEFPHBog"/);
   // Once per pick, even across runs.
   out=await run(`postPicksToX(env,${now+600000})`);assert.equal(out.posted,0);assert.equal(posts.length,1);
@@ -43,7 +43,7 @@ pick('official|2026-10-06|props|prop|a','Travis Kelce',105,null,new Date(now-20*
   pick('official|2026-10-06|props|prop|c','Cole Kmet',110,null,new Date(now).toISOString(),'2026-10-09T00:15:00Z');
   uploadFail=true;for(let i=0;i<2;i++)assert.equal((await run(`postPicksToX(env,${now+(3+i)*600000})`)).posted,0);
   out=await run(`postPicksToX(env,${now+5*600000})`);assert.equal(out.posted,1);
-  assert.ok(!posts.at(-1).body.media&&posts.at(-1).body.text.includes('Cole Kmet')&&posts.at(-1).body.text.includes('Season: 4–2'),'text fallback');
+  assert.ok(!posts.at(-1).body.media&&posts.at(-1).body.text.includes('Cole Kmet')&&posts.at(-1).body.text.includes('Record: sportsbooks 4–2'),'text fallback');
   // A pick already posted as text earlier is not posted as text again.
   pick('official|2026-10-06|props|prop|d','Old Text',110,null,new Date(now).toISOString(),'2026-10-09T00:15:00Z');db.prepare("INSERT INTO app_settings(key,value) VALUES('x:official|2026-10-06|props|prop|d','x')").run();
   const before=posts.length;for(let i=0;i<3;i++)await run(`postPicksToX(env,${now+(6+i)*600000})`);assert.equal(posts.length,before);uploadFail=false;
@@ -80,7 +80,7 @@ pick('official|2026-10-06|props|prop|a','Travis Kelce',105,null,new Date(now-20*
   const won=posts.at(-1).body;
   assert.ok(won.text.startsWith('✅ Cashed: Travis Kelce Over 4.5 receptions (+105)\nFinal: had 7 receptions.')&&won.text.includes('Season: 5–3'),won.text);
   assert.deepEqual(won.reply,{in_reply_to_tweet_id:closeId},'the result continues the thread under the closing-line post');assert.ok(won.media);
-  for(const bit of ['WINNER','Had 7 receptions · +\u0024105','See every pick graded'])assert.ok(run('__svg').includes(bit),bit);
+  for(const bit of ['WINNER','Had 7 receptions · +\u0024105','Every pick graded','SPORTSBOOKS'])assert.ok(run('__svg').includes(bit),bit);
   // Losses post the same way, on the next run.
   out=await run(`runXPosts(env,${kick+5*3600000+600000})`);assert.equal(out.results.posted,1);
   assert.deepEqual(posts.at(-1).body.reply,{in_reply_to_tweet_id:db.prepare("SELECT value FROM app_settings WHERE key='xid:official|2026-10-06|props|prop|b'").get().value},'no closing post: the result answers the pick');
