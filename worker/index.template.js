@@ -648,20 +648,19 @@ async function xCardPreview(request, env) {
 async function playerPhoto(request) {
   const params = new URL(request.url).searchParams;
   const name = params.get("name")?.trim() || "";
-  const league = params.get("sport") === "NBA" ? "nba" : "nfl";
+  const sport = params.get("sport") === "NBA" ? "NBA" : "NFL";
   if (!/^[A-Za-z .'-]{2,80}$/.test(name)) return new Response("", { status: 404 });
-  try {
-    const response = await fetch(`https://site.web.api.espn.com/apis/search/v2?query=${encodeURIComponent(name)}&limit=8`, { headers: { accept: "application/json" } });
-    if (!response.ok) throw new Error("Search unavailable");
-    const payload = await response.json();
-    const imageURL = espnImageFrom(payload, name, league);
-    if (!imageURL) throw new Error("No image");
-    const image = await fetch(imageURL);
-    if (!image.ok) throw new Error("Image unavailable");
-    return new Response(image.body, { headers: { "content-type": image.headers.get("content-type") || "image/png", "cache-control": "public, max-age=604800, stale-while-revalidate=86400" } });
-  } catch {
-    return new Response("", { status: 404, headers: { "cache-control": "public, max-age=3600" } });
-  }
+  // Same lookup as the X cards (saved ESPN ids, then ESPN search with the
+  // headers it now requires; plain requests got 403s, so the site showed no
+  // photos). Each photo is cached a week, and a miss for an hour.
+  const cache = typeof caches !== "undefined" ? caches.default : null, key = new Request(`https://cache.betthisguy.com/player-photo/${sport}/${encodeURIComponent(normalizedName(name))}`);
+  try { const hit = await cache?.match(key); if (hit) return hit; } catch {}
+  const shot = await playerHeadshot(name, sport).catch(() => null);
+  const response = shot
+    ? new Response(shot.bytes, { headers: { "content-type": shot.type, "cache-control": "public, max-age=604800, stale-while-revalidate=86400" } })
+    : new Response("", { status: 404, headers: { "cache-control": "public, max-age=3600" } });
+  try { await cache?.put(key, response.clone()); } catch {}
+  return response;
 }
 
 __LIVE_SERVER__
