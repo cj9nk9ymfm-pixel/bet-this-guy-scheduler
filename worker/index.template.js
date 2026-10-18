@@ -504,6 +504,14 @@ let headshotTrace = [];
 // app_settings espn-ids:<league> and refreshed weekly; loadEspnIds fills
 // this before a run draws cards.
 let espnIdMaps = {};
+// The saved ids only (no refresh), for the site's photo requests: a fresh
+// Worker has none loaded, and ESPN refuses the search fallback.
+async function savedEspnIds(env, league) {
+  if (!env?.DB || espnIdMaps[league]) return;
+  const read = async key => { try { return JSON.parse((await env.DB.prepare("SELECT value FROM app_settings WHERE key = ?").bind(key).first())?.value || "null"); } catch { return null; } };
+  const [saved, roster, extra] = await Promise.all([read(`espn-ids:${league}`), read(`espn-roster-ids:${league}`), read(`espn-ids-extra:${league}`)]);
+  espnIdMaps[league] = { ...(saved?.ids || {}), ...(roster?.ids || {}), ...(extra && typeof extra === "object" ? extra : {}) };
+}
 async function loadEspnIds(env, now = Date.now()) {
   if (!env?.DB) return espnIdMaps;
   for (const league of ["nfl", "nba"]) {
@@ -645,7 +653,7 @@ async function xCardPreview(request, env) {
   return new Response(png, { headers: { "content-type": "image/png", "cache-control": "public, max-age=600" } });
 }
 
-async function playerPhoto(request) {
+async function playerPhoto(request, env) {
   const params = new URL(request.url).searchParams;
   const name = params.get("name")?.trim() || "";
   const sport = params.get("sport") === "NBA" ? "NBA" : "NFL";
@@ -655,6 +663,7 @@ async function playerPhoto(request) {
   // photos). Each photo is cached a week, and a miss for an hour.
   const cache = typeof caches !== "undefined" ? caches.default : null, key = new Request(`https://cache.betthisguy.com/player-photo/${sport}/${encodeURIComponent(normalizedName(name))}`);
   try { const hit = await cache?.match(key); if (hit) return hit; } catch {}
+  await savedEspnIds(env, sport === "NBA" ? "nba" : "nfl").catch(() => {});
   const shot = await playerHeadshot(name, sport).catch(() => null);
   const response = shot
     ? new Response(shot.bytes, { headers: { "content-type": shot.type, "cache-control": "public, max-age=604800, stale-while-revalidate=86400" } })
@@ -1440,7 +1449,7 @@ async function routeRequest(request, env, ctx) {
     if (url.pathname === "/api/live-games") return liveGames(request, env, ctx);
     if (url.pathname === "/api/live-player") return livePlayer(request, env, ctx);
     if (url.pathname === "/api/live-game-stats") return liveGameStats(request, env, ctx);
-    if (url.pathname === "/api/player-photo") return playerPhoto(request);
+    if (url.pathname === "/api/player-photo") return playerPhoto(request, env);
     if (url.pathname === "/api/feed-status") return json({ configured: Boolean(env.THE_ODDS_API_KEY), provider: "The Odds API" });
     if (url.pathname === "/api/record") return publicRecord(request, env, ctx);
     if (url.pathname === "/api/engine") return engineStatus(env);
