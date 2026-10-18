@@ -1505,7 +1505,9 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     $('#heroTitle').innerHTML=`${htmlEscape(periodText(s.label))} <b>${s.wins}–${s.losses}${s.pushes?`–${s.pushes}`:''}</b> <span class="hero-profit ${s.profit>=0?'up':'down'}">${htmlEscape(money(s.profit))}</span>`;
     // Lead with the season once it has real volume; last week opens below.
     const season=heroSeason&&heroSeason.wins+heroSeason.losses>=5?heroSeason:null,weekTitle=$('#heroTitle').innerHTML;
-    if(season){const net=season.profit*heroStake/100;$('#heroTitle').innerHTML=`<span class="hs-long">Season record</span><span class="hs-short">Record</span> <b>${season.wins}–${season.losses}${season.pushes?`–${season.pushes}`:''}</b> <span class="hero-profit ${net>=0?'up':'down'}">${htmlEscape(money(net))}</span>`}
+    if(season){const net=season.profit*heroStake/100,pn=(season.parlayProfit||0)*parlayStake()/25,pl=(season.parlayWins||0)+(season.parlayLosses||0);
+      // Singles and parlays side by side, the same split as the X cards.
+      $('#heroTitle').innerHTML=`Singles <b>${season.wins}–${season.losses}${season.pushes?`–${season.pushes}`:''}</b> <span class="hero-profit ${net>=0?'up':'down'}">${htmlEscape(money(net))}</span>${pl?`<span class="hero-sep">·</span>Parlays <b>${season.parlayWins}–${season.parlayLosses}</b> <span class="hero-profit ${pn>=0?'up':'down'}">${htmlEscape(money(pn))}</span>`:''}`}
     const stats=[[money(s.profit),`betting ${stakeText()} a pick`,s.profit>=0?'up':'down']];
     if(s.tracked)stats.push([`${s.beat} of ${s.tracked}`,'beat the kickoff price','']);
     if(s.parlayWins+s.parlayLosses)stats.push([`${s.parlayWins}–${s.parlayLosses}`,`parlays · ${money(s.parlayProfit)}`,s.parlayProfit>=0?'up':'down']);
@@ -2890,7 +2892,9 @@ function statsProp(l){
     if(!w&&!l){title.innerHTML='Prediction record <b>First picks grading now</b>';panel.hidden=true;hero.classList.remove('open');return}
     // Lead with the full track record (sportsbook picks, the long sample), then
     // the newer prediction-app record, both labeled.
-    const sea=window.BTG_SEASON,lead=sea&&sea.wins+sea.losses>=10?`<span class="pm-lead">Our record <b>${sea.wins}–${sea.losses}${sea.pushes?`–${sea.pushes}`:''}</b> <span class="hero-profit ${sea.profit>=0?'up':'down'}">${htmlEscape(money(sea.profit*wagerStake()/100))}</span><small>sportsbook picks${sea.tracked?` · beat the kickoff price ${sea.beat} of ${sea.tracked}`:''}</small></span>`:'';
+    const sea=window.BTG_SEASON,spl=sea?(sea.parlayWins||0)+(sea.parlayLosses||0):0,row=(label,w,l,p,v)=>`<span class="pm-row">${label} <b>${w}–${l}${p?`–${p}`:''}</b> <span class="hero-profit ${v>=0?'up':'down'}">${htmlEscape(money(v))}</span></span>`;
+    // Sportsbooks first (the long sample): singles and parlays on their own rows, like the X cards.
+    const lead=sea&&sea.wins+sea.losses>=10?`<span class="pm-lead"><small class="pm-cap">Sportsbooks${sea.tracked?` · beat the kickoff price ${sea.beat} of ${sea.tracked}`:''}</small>${row('Singles',sea.wins,sea.losses,sea.pushes,sea.profit*wagerStake()/100)}${spl?row('Parlays',sea.parlayWins,sea.parlayLosses,0,(sea.parlayProfit||0)*parlayStake()/25):''}</span>`:'';
     title.innerHTML=`${lead}<button type="button" class="hero-toggle${lead?' pm-second':''}" id="pmHeroToggle" aria-expanded="${!panel.hidden}" aria-controls="pmHeroPicks">${lead?'Prediction-app picks':'Prediction record'} <b>${w}–${l}${pu?`–${pu}`:''}</b> <span class="hero-profit ${net>=0?'up':'down'}">${htmlEscape(money(net))}</span>${lead&&w+l<20?'<em class="pm-new">new</em>':''}<i aria-hidden="true"><svg class="ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></i></button>`;
     const stat=(value,label,tone='')=>`<div><strong class="${tone}">${htmlEscape(value)}</strong><span>${htmlEscape(label)}</span></div>`;
     const graded=[...(data.pmPicks||[]),...(data.pmParlays||[])].filter(r=>['won','lost','push'].includes(r.result)).sort((a,b)=>String(b.gameTime).localeCompare(String(a.gameTime)));
