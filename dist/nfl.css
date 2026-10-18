@@ -2269,3 +2269,9 @@ body.light .alert-chooser{background:#fff;color:#0f172a;border-color:#e2e6ec}bod
 /* Player screen on phones: the name fits one line and both Follow buttons sit side by side. */
 @media(max-width:480px){.pp-head{gap:12px;padding-right:36px}.pp-head h2{font-size:21px}.pp-head .follow-row{gap:6px;margin-top:8px}.pp-head .follow-btn{height:28px;padding:0 9px;font-size:12px}.pp-head .follow-row{flex-wrap:nowrap}}
 #pmHero .pm-lead .pm-row{display:block;line-height:1.3}#pmHero .pm-lead .pm-cap{margin:0 0 2px;text-transform:uppercase;letter-spacing:.06em;font-size:11px}
+/* Newest picks: NEW tag, and the pick an alert opened flashes */
+.on-new{display:inline-block;margin-left:7px;padding:1px 7px;border-radius:999px;background:#2ee6a822;color:#2ee6a8;font:800 10.5px/1.5 "DM Sans",sans-serif;letter-spacing:.03em;vertical-align:2px;white-space:nowrap}
+body.light .on-new{background:#d1fae5;color:#047857}
+.pm-pick .on-new{background:#a78bfa26;color:#c4b5fd}body.light .pm-pick .on-new{background:#ede9fe;color:#6d28d9}
+@keyframes onFlash{0%,100%{box-shadow:inset 0 0 0 2px transparent}20%,70%{box-shadow:inset 0 0 0 2px #2ee6a8;background:#2ee6a812}}
+.on-row.on-flash{animation:onFlash 2.4s ease 2;border-radius:12px}
