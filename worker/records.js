@@ -828,10 +828,10 @@ async function gradePredictionNow(env,now=Date.now()){
   for(const r of parlays){
     let legs=[];try{legs=JSON.parse(r.legs_json)}catch{continue}
     if(!legs.some(l=>Date.parse(l.gameTime)<=now))continue;
-    const rec={kind:'parlay',sport:'NFL',legs_json:JSON.stringify(legs.map(l=>({player:l.player,market:l.market,side:l.side,line:l.line,team:l.team,gameTime:l.gameTime,sport:'NFL'})))};
+    const rec={kind:'parlay',sport:'NFL',legs_json:JSON.stringify(legs.map(l=>({player:l.player,market:l.market,side:l.side,line:l.line,team:l.team,gameTime:l.gameTime,sport:'NFL',...(l.voided?{voided:true}:{})})))};
     const final=await gradePublicRecord(rec,env,cache).catch(()=>null),out=rec.gradedLegs||[];let changed=false;
     legs.forEach((l,i)=>{const g=out[i];if(!l.result&&g&&['won','lost','push'].includes(g.result)&&(g.boxScoreFinal||g.decidedEarly)){l.result=g.result;l.actual=g.actualValue??null;if(g.decidedEarly)l.decidedEarly=true;changed=true}});
-    const result=final||(legs.some(l=>l.result==='lost')?'lost':legs.every(l=>l.result==='won')?'won':null);
+    const result=final||(legs.some(l=>l.result==='lost')?'lost':legs.every(l=>['won','push'].includes(l.result))?(legs.every(l=>l.result==='push')?'push':'won'):null);
     if(changed||result){statements.push(env.DB.prepare('UPDATE prediction_parlays SET legs_json=?,result=?,graded_at=? WHERE id=? AND result IS NULL').bind(JSON.stringify(legs),result,result?stamp:null,r.id));if(result)graded++}
   }
   if(statements.length)await env.DB.batch(statements);
@@ -935,6 +935,44 @@ async function refreshInjuries(env,now=Date.now()){
 async function injuryMap(env,sport='NFL'){
   const rows=(await env.DB.prepare('SELECT player,team,position,status,detail,reported_at FROM injuries WHERE id LIKE ?').bind(`${sport}|%`).all().catch(()=>({results:[]}))).results||[];
   return new Map(rows.map(r=>[normalizedName(r.player),r]));
+}
+// A player ruled Out before kickoff never plays, so his bet is void (stake
+// back, no win or loss), as at the books; a parlay drops that leg. Final
+// inactives come out about 90 minutes before kickoff. Only a report dated
+// before kickoff counts, so an injury during the game never voids a bet.
+const VOID_LEAD=100*60000;
+const voidReason=i=>`Ruled out${i.detail?` (${String(i.detail).replace(/\b\w/g,c=>c.toUpperCase())})`:''}`;
+async function voidRuledOut(env,now=Date.now()){
+  if(!env.DB)return {voided:0};
+  const maps={NFL:await injuryMap(env,'NFL'),NBA:await injuryMap(env,'NBA')};
+  const ruledOut=(sport,player,gameTime)=>{
+    const kick=Date.parse(gameTime);if(!Number.isFinite(kick)||kick-now>VOID_LEAD||now-kick>36*3600000)return null;
+    const i=maps[String(sport||'').toUpperCase()==='NBA'?'NBA':'NFL'].get(normalizedName(player));
+    if(!i||injuryClass(i.status)!=='out'||!/^out$/i.test(String(i.status).trim()))return null;
+    const at=Date.parse(i.reported_at||'');return Number.isFinite(at)&&at<kick?i:null;
+  };
+  const stamp=new Date(now).toISOString(),soon=new Date(now+VOID_LEAD).toISOString(),old=new Date(now-36*3600000).toISOString(),statements=[],voided=[];
+  const markLegs=(legs,sportOf)=>{let n=0;for(const l of legs){if(l.voided||['won','lost','push'].includes(l.result))continue;const i=ruledOut(sportOf(l),l.player,l.gameTime);if(i){Object.assign(l,{voided:true,voidReason:voidReason(i),result:'push'});voided.push(l.player);n++}}return n};
+  const official=(await env.DB.prepare("SELECT id,kind,sport,player,game_time,legs_json FROM public_recommendations WHERE status IN ('pending','provisional') AND game_time<=? AND game_time>?").bind(soon,old).all().catch(()=>({results:[]}))).results||[];
+  for(const r of official){
+    let legs;try{legs=JSON.parse(r.legs_json||'[]')}catch{continue}
+    if(!legs.length)legs=[{player:r.player,sport:r.sport,gameTime:r.game_time}];
+    if(!markLegs(legs,l=>l.sport||r.sport))continue;
+    // A single settles now; a parlay grades on its other legs.
+    if(r.kind==='parlay')statements.push(env.DB.prepare("UPDATE public_recommendations SET legs_json=? WHERE id=? AND status IN ('pending','provisional')").bind(JSON.stringify(legs),r.id));
+    else statements.push(env.DB.prepare("UPDATE public_recommendations SET status='final',result='push',settled_at=?,legs_json=? WHERE id=? AND status IN ('pending','provisional')").bind(stamp,JSON.stringify(legs),r.id));
+  }
+  const picks=(await env.DB.prepare('SELECT id,player,game_time FROM prediction_picks WHERE result IS NULL AND game_time<=? AND game_time>?').bind(soon,old).all().catch(()=>({results:[]}))).results||[];
+  for(const r of picks){const i=ruledOut('NFL',r.player,r.game_time);if(!i)continue;voided.push(r.player);statements.push(env.DB.prepare('UPDATE prediction_picks SET result=?,void_reason=?,graded_at=? WHERE id=? AND result IS NULL').bind('void',voidReason(i),stamp,r.id))}
+  const parlays=(await env.DB.prepare('SELECT id,legs_json FROM prediction_parlays WHERE result IS NULL AND game_time>?').bind(old).all().catch(()=>({results:[]}))).results||[];
+  for(const r of parlays){
+    let legs;try{legs=JSON.parse(r.legs_json||'[]')}catch{continue}
+    if(!markLegs(legs,()=>'NFL'))continue;
+    const result=legs.every(l=>l.result==='push')?'push':null;
+    statements.push(env.DB.prepare('UPDATE prediction_parlays SET legs_json=?,result=?,graded_at=? WHERE id=? AND result IS NULL').bind(JSON.stringify(legs),result,result?stamp:null,r.id));
+  }
+  if(statements.length)await env.DB.batch(statements);
+  return {voided:voided.length,players:[...new Set(voided)]};
 }
 // Boards without the props of players listed Out or Doubtful, so no pick,
 // lean or test lands on someone who isn't expected to play.
@@ -1861,14 +1899,14 @@ async function postPredictionWeekToX(env,now=Date.now()){
 // prediction pick and parlay (not limited to a state), singles and parlays
 // apart, after each app's fee, plus a split by app.
 async function predictionRecordData(env){
-  const picks=(await env.DB.prepare('SELECT id,exchange,player,team,market,side,line,odds,net_odds,fair_pct,game_time,posted_at,result,actual,close_odds,early FROM prediction_picks ORDER BY game_time DESC,posted_at DESC LIMIT 500').all()).results||[];
+  const picks=(await env.DB.prepare('SELECT id,exchange,player,team,market,side,line,odds,net_odds,fair_pct,game_time,posted_at,result,actual,close_odds,early,void_reason FROM prediction_picks ORDER BY game_time DESC,posted_at DESC LIMIT 500').all()).results||[];
   const parlays=(await env.DB.prepare('SELECT id,tier,exchange,legs_json,odds,game_time,posted_at,result FROM prediction_parlays ORDER BY game_time DESC,posted_at DESC LIMIT 300').all().catch(()=>({results:[]}))).results||[];
   const singles=predictionRecord(picks),combos=predictionParlayRecord(parlays),apps={};
   const pay=r=>r.result==='won'?100*(recordDecimal(r.net_odds??r.odds)-1):r.result==='lost'?-100:0;
   for(const r of picks){const a=apps[r.exchange]||={wins:0,losses:0,pushes:0,profit:0,plays:0};a.plays++;if(r.result==='won')a.wins++;else if(r.result==='lost')a.losses++;else if(r.result==='push')a.pushes++;a.profit+=pay(r)}
   for(const r of parlays){const a=apps[r.exchange]||={wins:0,losses:0,pushes:0,profit:0,plays:0};a.plays++;if(r.result==='won')a.wins++;else if(r.result==='lost')a.losses++;else if(r.result==='push')a.pushes++;a.profit+=predictionParlayPay(r)}
   for(const a of Object.values(apps))a.profit=Math.round(a.profit);
-  const plays=[...picks.map(r=>({id:r.id,kind:'single',exchange:r.exchange,player:r.player,team:r.team||'',market:r.market,side:r.side,line:r.line,odds:r.odds,netOdds:r.net_odds,fair:r.fair_pct,gameTime:r.game_time,postedAt:r.posted_at,result:r.result,actual:r.actual,closeOdds:r.close_odds,early:Boolean(r.early),money:Math.round(pay(r))})),
+  const plays=[...picks.map(r=>({id:r.id,kind:'single',exchange:r.exchange,player:r.player,team:r.team||'',market:r.market,side:r.side,line:r.line,odds:r.odds,netOdds:r.net_odds,fair:r.fair_pct,gameTime:r.game_time,postedAt:r.posted_at,result:r.result,actual:r.actual,closeOdds:r.close_odds,early:Boolean(r.early),...(r.void_reason?{voidReason:r.void_reason}:{}),money:Math.round(pay(r))})),
     ...parlays.map(r=>{let legs=[];try{legs=JSON.parse(r.legs_json)}catch{}return {id:r.id,kind:'parlay',exchange:r.exchange,odds:r.odds,gameTime:r.game_time,postedAt:r.posted_at,result:r.result,money:Math.round(predictionParlayPay(r)),legs:legs.map(l=>({player:l.player,market:l.market,side:l.side,line:l.line,team:l.team,result:l.result||null,actual:l.actual??null}))}})]
     .sort((a,b)=>String(b.gameTime).localeCompare(String(a.gameTime))||String(b.postedAt).localeCompare(String(a.postedAt)));
   return {singles,parlays:combos,apps,plays};
@@ -3219,7 +3257,8 @@ const xPayout=r=>recordPay(r);
 function xResultText(r,season){
   const legs=recordLegs(r),look=XRESULT[r.result],record=season&&season.wins+season.losses>=5?`Season: ${season.wins}–${season.losses}, ${weeklyMoney(season.profit)} at $100 a pick.`:'';
   const head=r.kind==='parlay'
-    ?`${look.emoji} ${look.word}: ${legs.length}-leg parlay (${weeklyOdds(r.combined_odds)})\n${legs.map(l=>`${l.result==='won'?'✅':l.result==='lost'?'❌':'➖'} ${l.player} ${weeklyLegText(l)}`).join('\n')}`
+    ?`${look.emoji} ${look.word}: ${legs.length}-leg parlay (${weeklyOdds(r.combined_odds)})\n${legs.map(l=>`${l.result==='won'?'✅':l.result==='lost'?'❌':'➖'} ${l.player} ${weeklyLegText(l)}${l.voided?' (ruled out, leg voided)':''}`).join('\n')}`
+    :legs[0]?.voided?`➖ Void: ${r.player} ${weeklyLegText(r)} (${weeklyOdds(r.odds)})\n${legs[0].voidReason||'Ruled out'} before kickoff, so the bet is void and the stake comes back.`
     :`${look.emoji} ${look.word}: ${r.player} ${weeklyLegText(r)} (${weeklyOdds(r.odds)})${xActual(legs[0])?(r.status==='provisional'?`\n${r.player} already ${xActual(legs[0])}, with the game still on.`:`\nFinal: ${xActual(legs[0])}.`):''}`;
   const tail=r.result==='lost'?'We post every loss too.':'Every pick graded in public.';
   return xShort(`${head}\n\n${tail}${record?` ${record}`:''}\n21+`);
@@ -3248,7 +3287,8 @@ async function postResultsToX(env,now=Date.now(),limit=1){
     const tries=Number(await appSetting(env,`xrtry:${r.id}`)||0)+1;await setAppSetting(env,`xrtry:${r.id}`,String(tries));
     if(!season)season=weeklySummary((await env.DB.prepare("SELECT kind,posted_at,line,odds,combined_odds,status,result,closing_line,closing_odds,closing_captured_at,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%'").all()).results||[]);
     let mediaId=null;
-    try{if(tries<=3&&typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(xCardSvg(await xResultData(env,r,season))))}
+    // A void posts as text only.
+    try{if(tries<=3&&!(r.kind!=='parlay'&&recordLegs(r)[0]?.voided)&&typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(xCardSvg(await xResultData(env,r,season))))}
     catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} result graphic: ${error.message}`).catch(()=>{})}
     try{
       const sent=await xPost(env,xResultText(r,season),mediaId,await xThreadTail(env,r.id));

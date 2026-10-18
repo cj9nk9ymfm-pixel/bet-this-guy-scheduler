@@ -265,8 +265,10 @@ function renderSummaryTable(){
   const list=summaryRows.filter(row=>summaryKind==='all'||row.kind===summaryKind).sort((a,b)=>String(b.game_time||b.posted_at||'').localeCompare(String(a.game_time||a.posted_at||'')));
   // Graded picks first; picks still to play fold into one row at the top.
   const rowHtml=row=>{const legs=parsedLegs(row),isProp=row.kind==='prop',done=confirmed(row),grade=done?row.result:row.status==='provisional'?'provisional':'pending',p=done?profit(row):null,odds=isProp?row.odds:row.combined_odds;
-    const title=isProp?row.player:`${legs.length}-leg parlay`,sub=isProp?legName(row):legs.map(leg=>leg.player).join(' + ');
-    const tag={won:'Won',lost:'Lost',push:'Push',provisional:'Decided early',pending:'Pending'}[grade];
+    // Ruled out before kickoff: the bet is void, stake back.
+    const vo=done&&isProp&&row.result==='push'&&legs[0]?.voided?legs[0].voidReason||'Ruled out':null;
+    const title=isProp?row.player:`${legs.length}-leg parlay`,sub=isProp?`${legName(row)}${vo?` · ${vo}, bet voided`:''}`:legs.map(leg=>`${leg.player}${leg.voided?' (out, void)':''}`).join(' + ');
+    const tag=vo?'No action':{won:'Won',lost:'Lost',push:'Push',provisional:'Decided early',pending:'Pending'}[grade];
     return `<button type="button" class="sum-row" data-record="${escape(row.id)}"><span class="sum-date">${escape(shortDate(row.game_time||row.posted_at))}</span><span class="sum-pick"><b><span class="sum-name">${escape(title)}</span>${isProp&&closingValue(row)?.edge>0.05?'<em class="sum-clv" title="Our price beat the closing price">Beat close</em>':''}${/^\d{5,25}$/.test(String(row.x_id||''))?'<em class="sum-x" title="Posted on X before kickoff">On X ✓</em>':''}</b><small>${escape(sub)}</small></span><span class="sum-odds">${escape(Number(odds)>0?'+'+odds:odds)}</span><span class="sum-tag sum-${grade}">${tag}</span><span class="sum-net ${p>0?'pos':p<0?'neg':''}">${p===null?'—':escape(dollars(p))}</span></button>`};
   const waiting=list.filter(row=>!confirmed(row)&&row.status!=='provisional'),graded=list.filter(row=>!waiting.includes(row));
   host.innerHTML=list.length?(waiting.length?`<details class="sum-pending"><summary>Still to play <b>${waiting.length}</b></summary>${waiting.map(rowHtml).join('')}</details>`:'')+graded.map(rowHtml).join(''):'<p class="subtle" style="padding:14px">No official picks in this view yet.</p>';
@@ -304,11 +306,13 @@ const whenText=iso=>{const d=new Date(iso);return Number.isNaN(d.getTime())?'':d
 const betText=leg=>{const m=String(leg.market||'').toLowerCase();if(/touchdown/.test(m)&&Number(leg.line)===0.5){const t=(leg.side==='Under'?'no ':'')+m;return t.charAt(0).toUpperCase()+t.slice(1)}return `${leg.side||''} ${leg.line??''} ${m}`.replace(/\s+/g,' ').trim()};
 function sheetModel(row){
   const legs=parsedLegs(row),isProp=row.kind==='prop',first=legs[0]||{},odds=isProp?row.odds:row.combined_odds,done=confirmed(row),d=decimal(odds),stake=standardStake()*unitShare(row);
-  const chip=done?{won:{c:'g',i:'check',t:'Hit'},lost:{c:'r',i:'over',t:'Lost'},push:{c:'n',i:'fair',t:'Push'}}[row.result]:row.status==='provisional'?{c:'n',i:'fair',t:'Provisional'}:{c:'n',i:'lock',t:String(row.id||'').startsWith('official|')?'Official pick · Locked':'Pending'};
+  const vo=done&&isProp&&row.result==='push'&&first.voided?first.voidReason||'Ruled out':null;
+  const chip=done?{won:{c:'g',i:'check',t:'Hit'},lost:{c:'r',i:'over',t:'Lost'},push:{c:'n',i:'fair',t:vo?'Void':'Push'}}[row.result]:row.status==='provisional'?{c:'n',i:'fair',t:'Provisional'}:{c:'n',i:'lock',t:String(row.id||'').startsWith('official|')?'Official pick · Locked':'Pending'};
   const rows=[];
   if(isProp){
     const posted=[first.book,whenText(row.posted_at)].filter(Boolean).join(' · ');
-    if(done||row.status==='provisional'){rows.push(['Result',first.actualValue!=null?`${first.minimumOnly?'At least ':''}${first.actualValue} ${String(row.market||'').toLowerCase()}`:'—',row.result==='won'?'pos':row.result==='lost'?'neg':'']);rows.push(['Posted at',posted,'']);
+    if(vo){rows.push(['Result',`${vo} before kickoff · bet voided, stake back`,'']);rows.push(['Posted at',posted,''])}
+    else if(done||row.status==='provisional'){rows.push(['Result',first.actualValue!=null?`${first.minimumOnly?'At least ':''}${first.actualValue} ${String(row.market||'').toLowerCase()}`:'—',row.result==='won'?'pos':row.result==='lost'?'neg':'']);rows.push(['Posted at',posted,'']);
       const move=row.closing_captured_at?lineMove(row.line,row.closing_line,row.side):null,c=closingValue(row);
       if(move)rows.push(['Closing line',`${move.line} · ${move.ourWay?'moved our way':'moved against us'}`,move.ourWay?'pos':'']);
       else if(c)rows.push(['Closing price',`${fmtOdds(row.closing_odds)} · ${c.edge>.05?'we beat the close':c.edge<-.05?'close was better':'same as the close'}`,c.edge>.05?'pos':'']);
@@ -417,7 +421,7 @@ function legSheet(l,row,sport,back,pm=null){
     price:pm?(need?`${Math.round(need)}%`:'—'):fmtOdds(o),stake:'$100',money:d?(pm?`pays $${Math.round(100*d)}`:`wins $${Math.round(100*(d-1))}`):'—',moneyCls:'pos',won:l.result==='won',
     why:(betWhy({need,fair,where:pm||l.book||'The book',price:fmtOdds(o),pm:!!pm,done:true})),
     stats:{sport,player:l.player,team:l.team||'',market:l.market,side:l.side,line:l.line,binary:/touchdown/i.test(l.market||'')&&Number(l.line)===.5,gameTime:l.gameTime||row.game_time||row.gameTime,odds:l.odds},
-    rows:l.result?[['Result',l.result==='won'?'Hit':l.result==='lost'?'Missed':l.result,l.result==='won'?'pos':l.result==='lost'?'neg':'']]:[],back,
+    rows:l.result?[['Result',l.voided?`${l.voidReason||'Ruled out'} · leg voided`:l.result==='won'?'Hit':l.result==='lost'?'Missed':l.result,l.result==='won'?'pos':l.result==='lost'?'neg':'']]:[],back,
     share:`Bet This Guy parlay leg: ${l.player} ${betText(l)} · ${location.origin}/trust`};
 }
 // A prediction-app pick or parlay on the bet screen.
@@ -426,7 +430,8 @@ function pmSheet(r){
   const chip=done?{won:{c:'g',i:'check',t:'Hit'},lost:{c:'r',i:'over',t:'Lost'},push:{c:'n',i:'fair',t:'Push'},void:{c:'n',i:'fair',t:'No action'}}[r.result]:{c:'n',i:'lock',t:'Prediction pick · Locked'};
   const bet=single?`${r.side} ${r.line} ${String(r.market||'').toLowerCase()}`:r.legs.map(l=>l.player).join(' + ');
   const rows=[['App',r.exchange,''],['Locked at',whenText(r.postedAt),'']];
-  if(single&&r.actual!=null&&done)rows.unshift(['Result',`${r.actual} ${String(r.market||'').toLowerCase()}`,r.result==='won'?'pos':r.result==='lost'?'neg':'']);
+  if(single&&r.voidReason)rows.unshift(['Result',`${r.voidReason} before kickoff · bet voided, stake back`,'']);
+  else if(single&&r.actual!=null&&done)rows.unshift(['Result',`${r.actual} ${String(r.market||'').toLowerCase()}`,r.result==='won'?'pos':r.result==='lost'?'neg':'']);
   if(single&&r.closeOdds!=null&&done){const a=decimal(r.odds),c=decimal(r.closeOdds),e=a&&c?(a/c-1)*100:0;rows.push(['App price at kickoff',`${Math.round(100/c)}% · ${e>.05?'we beat the close':e<-.05?'close was better':'same as the close'}`,e>.05?'pos':''])}
   return {chip,title:single?r.player:`${r.legs.length}-leg parlay`,photo:single?r.player:null,sport:'NFL',bet:bet.charAt(0).toUpperCase()+bet.slice(1),game:[single?String(r.team||'').replace(' · ',' '):`${r.legs.length} legs`,whenText(r.gameTime),done?'Final':''].filter(Boolean).join(' · '),
     price:d?`${Math.round(100/d)}%`:'—',stake:`$${stake}`,money:done?(Math.round(r.money)===0?'$0':dollars(r.money)):d?`pays $${Math.round(stake*d)}`:'—',moneyCls:done?(r.money>0?'pos':r.money<0?'neg':''):'pos',won:r.result==='won',
@@ -482,7 +487,7 @@ function renderPredictionRecord(){const d=pmRecordData;if(!d)return;
   // Beat the close: the app's own price at kickoff, same side and line (singles).
   const rows=d.plays.map(r=>{const single=r.kind!=='parlay',g=grade(r),edge=single&&r.closeOdds!=null&&g!=='pending'&&dec(r.odds)&&dec(r.closeOdds)?100*(dec(r.odds)/dec(r.closeOdds)-1):null;
     return {src:r,id:r.id,date:r.gameTime||r.postedAt,kind:single?'prop':'parlay',grade:g,net:g==='pending'?null:Number(r.money)||0,price:pmPct(single?(r.netOdds??r.odds):r.odds),clv:edge!=null&&edge>.05,edge,
-      title:single?r.player:`${r.legs.length}-leg parlay`,sub:single?`${r.side} ${r.line} ${String(r.market||'').toLowerCase()} · ${r.exchange}`:`${r.legs.map(l=>mark(l)+l.player).join(' + ')} · ${r.exchange}`}});
+      title:single?r.player:`${r.legs.length}-leg parlay`,sub:single?`${r.side} ${r.line} ${String(r.market||'').toLowerCase()} · ${r.voidReason?`${r.voidReason}, bet voided`:r.exchange}`:`${r.legs.map(l=>mark(l)+l.player+(l.voided?' (out, void)':'')).join(' + ')} · ${r.exchange}`}});
   const tracked=rows.filter(r=>r.edge!=null);
   recordBoard('pm',{rows,clv:{beat:tracked.filter(r=>r.edge>.05).length,of:tracked.length,avg:tracked.length?tracked.reduce((t,r)=>t+r.edge,0)/tracked.length:0},open:pmSheet,stakeText:'Singles at $100, parlays at $25, after each app’s fee',empty:'No graded prediction picks yet.',totals:{prop:d.singles.profit,parlay:d.parlays.profit}});
   resultNode('#pmApps').innerHTML=Object.entries(d.apps).sort((a,b)=>b[1].plays-a[1].plays).map(([n,a])=>`<span class="pm-app"><i style="background:${pmColors[n]||'#8a93a0'}"></i><b>${escape(n)}</b> ${a.wins}–${a.losses} · ${escape(pmMoney(a.profit))}</span>`).join('');
