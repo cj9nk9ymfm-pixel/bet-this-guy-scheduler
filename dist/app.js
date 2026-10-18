@@ -1521,7 +1521,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     const season=heroSeason&&heroSeason.wins+heroSeason.losses>=5?heroSeason:null,weekTitle=$('#heroTitle').innerHTML;
     if(season){const net=season.profit,pn=season.parlayProfit||0,pl=(season.parlayWins||0)+(season.parlayLosses||0);
       // Singles and parlays side by side, the same split as the X cards.
-      $('#heroTitle').innerHTML=`Singles <b>${season.wins}–${season.losses}${season.pushes?`–${season.pushes}`:''}</b> <span class="hero-profit ${net>=0?'up':'down'}">${htmlEscape(money(net))}</span>${pl?`<span class="hero-sep">·</span>Parlays <b>${season.parlayWins}–${season.parlayLosses}</b> <span class="hero-profit ${pn>=0?'up':'down'}">${htmlEscape(money(pn))}</span>`:''}`}
+      $('#heroTitle').innerHTML=`<span class="hero-lines"><span class="hero-line">Singles <b>${season.wins}–${season.losses}${season.pushes?`–${season.pushes}`:''}</b> <span class="hero-profit ${net>=0?'up':'down'}">${htmlEscape(money(net))}</span></span>${pl?`<span class="hero-line">Parlays <b>${season.parlayWins}–${season.parlayLosses}</b> <span class="hero-profit ${pn>=0?'up':'down'}">${htmlEscape(money(pn))}</span></span>`:''}</span>`}
     const stats=[[money(s.profit),`betting ${stakeText()} a pick`,s.profit>=0?'up':'down']];
     if(s.tracked)stats.push([`${s.beat} of ${s.tracked}`,'beat the kickoff price','']);
     if(s.parlayWins+s.parlayLosses)stats.push([`${s.parlayWins}–${s.parlayLosses}`,`parlays · ${money(s.parlayProfit)}`,s.parlayProfit>=0?'up':'down']);

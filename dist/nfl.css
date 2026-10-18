@@ -2266,6 +2266,9 @@ body.light .alert-chooser{background:#fff;color:#0f172a;border-color:#e2e6ec}bod
 
 /* Record bar: singles · parlays */
 .hero-sep{margin:0 6px;color:var(--muted);font-weight:600}
+/* Singles and parlays each get their own line so neither is cut off. */
+.hero-lines{display:flex;flex-direction:column;gap:4px;min-width:0}
+.hero-line{display:block}
 /* Player screen on phones: the name fits one line and both Follow buttons sit side by side. */
 @media(max-width:480px){.pp-head{gap:12px;padding-right:36px}.pp-head h2{font-size:21px}.pp-head .follow-row{gap:6px;margin-top:8px}.pp-head .follow-btn{height:28px;padding:0 9px;font-size:12px}.pp-head .follow-row{flex-wrap:nowrap}}
 #pmHero .pm-lead .pm-row{display:block;line-height:1.3}#pmHero .pm-lead .pm-cap{margin:0 0 2px;text-transform:uppercase;letter-spacing:.06em;font-size:11px}
