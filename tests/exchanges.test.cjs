@@ -163,5 +163,12 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
   assert.deepEqual(bp.prices.find(p=>p[2]==='Over'),['Tre Tucker','Receptions','Over',3.5,'Novig',130],'live price after kickoff');
   bp=await liveBoard(live+60000);assert.equal(urls.length-before,1,'one live fetch per 3 minutes');
   assert.equal((await pred(null,{country:'US',regionCode:'TX'})).predictions.draftkings,true);assert.equal((await pred('DE',{})).predictions.draftkings,false);
+  // One direction per player per game across sportsbook and prediction picks (Bo Melton, Oct 18).
+  const gt=new Date(Date.now()+86400000).toISOString();
+  db.prepare("INSERT INTO public_recommendations(id,kind,player,market,side,line,odds,game_time,legs_json,posted_at,status,source) VALUES(?,?,?,?,?,?,?,?,?,?,?,'market-verified-v2')").run('official|x|props|prop|bo','prop','Bo Melton','Receptions','Over',1.5,112,gt,JSON.stringify([{player:'Bo Melton',market:'Receptions',side:'Over',line:1.5,odds:112,gameId:'NFL--g9'}]),new Date().toISOString(),'pending');
+  const dirs=await run('pickDirections(env)');context.__d=dirs;
+  assert.equal(run("sameDirection(__d,'NFL--g9','Bo Melton','Under')"),false,'an Under on a sportsbook Over player is blocked');
+  assert.equal(run("sameDirection(__d,'NFL--g9','Bo Melton','Over')"),true,'the same direction is fine');
+  assert.equal(run("sameDirection(__d,'NFL--g1','Bo Melton','Under')"),true,'other games are not affected');
   console.log('PASS: exchange prices are compared with the sportsbook fair price, logged and throttled; the visitor\'s state picks sportsbooks or prediction markets');
 })().catch(error=>{console.error(error);process.exit(1)});

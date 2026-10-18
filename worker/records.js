@@ -165,6 +165,24 @@ const RETIRED_SHADOWS=new Set(['line','bump','book','live','game','nba']);
 // NBA), so one miss can't sink several parlays at once.
 const PARLAYS_PER_PLAYER=1;
 const sideKey=(game,player,market)=>`${game}|${normalizedName(player)}|${String(market||'').toLowerCase()}`;
+// One direction per player per game, across every pick we post: sportsbook
+// singles and parlay legs, prediction picks and prediction parlay legs. Bo
+// Melton Over 1.5 receptions (sportsbook) and Bo Melton Under receiving yards
+// (prediction app) pulled against each other on Oct 18; a player who is an
+// Over anywhere in a game is never an Under in it, and the other way round.
+const directionKey=(game,player)=>`${game}|${normalizedName(player)}`;
+async function pickDirections(env,now=Date.now()){
+  const dirs=new Map(),add=(game,player,side)=>{if(game&&player&&side&&!dirs.has(directionKey(game,player)))dirs.set(directionKey(game,player),side)};
+  const since=new Date(now-6*3600000).toISOString(),parse=v=>{try{return JSON.parse(v||'[]')}catch{return []}};
+  const official=(await env.DB.prepare("SELECT legs_json FROM public_recommendations WHERE source='market-verified-v2' AND result IS NULL AND game_time>?").bind(since).all().catch(()=>({results:[]}))).results||[];
+  official.forEach(r=>parse(r.legs_json).forEach(l=>add(l.gameId,l.player,l.side)));
+  const picks=(await env.DB.prepare('SELECT event_id,player,side FROM prediction_picks WHERE result IS NULL AND game_time>?').bind(since).all().catch(()=>({results:[]}))).results||[];
+  picks.forEach(r=>add(r.event_id,r.player,r.side));
+  const parlays=(await env.DB.prepare('SELECT legs_json FROM prediction_parlays WHERE result IS NULL AND game_time>?').bind(since).all().catch(()=>({results:[]}))).results||[];
+  parlays.forEach(r=>parse(r.legs_json).forEach(l=>add(l.eventId,l.player,l.side)));
+  return dirs;
+}
+const sameDirection=(dirs,game,player,side)=>{const was=dirs.get(directionKey(game,player));return !was||was===side};
 const statFamily=m=>/touchdown|tds\b/i.test(m)?'td':/kick|field goal|extra point/i.test(m)?'kick':/pass|interception/i.test(m)?'passing':/recep/i.test(m)?'receiving':/rush/i.test(m)?'rushing':'other';
 // Players on different teams (known from saved form): any pair, touchdown
 // props included, as long as each leg qualifies on its own price. Same team or
@@ -386,8 +404,9 @@ async function publishNbaPicks(request,env,ctx,now=Date.now()){
   for(const night of nights){
     const cfg=nbaConfig(night),tonight=boards.filter(b=>nbaNight(Date.parse(b.commence_time))===night);
     const existing=(await env.DB.prepare('SELECT * FROM public_recommendations WHERE id>=? AND id<?').bind(cfg.prefix,cfg.prefix+'\uffff').all()).results||[];
-    const stats={},candidates=core(officialCandidates(tonight,Date.now(),stats));
-    const nextTier=withTeams(core(officialCandidates(tonight,Date.now(),{},{min:.5,below:1})),await playerTeams(env));
+    const dirs=await pickDirections(env),ok=p=>sameDirection(dirs,p.gameId,p.player,p.side);
+    const stats={},candidates=core(officialCandidates(tonight,Date.now(),stats)).filter(ok);
+    const nextTier=withTeams(core(officialCandidates(tonight,Date.now(),{},{min:.5,below:1})).filter(ok),await playerTeams(env));
     const plan=officialPlan(candidates,existing,night,Date.now(),nextTier,cfg);
     posted+=Number(await writeOfficialPlan(plan,night,env,cfg))||0;
     const trail=officialTrailStatements(tonight,existing,env,Date.now());if(trail.length)await env.DB.batch(trail);
@@ -1473,11 +1492,13 @@ function predictionCandidates(board,exchangeBoard,fairs,now=Date.now(),opts={}){
       }}}
   return [...best.values()].sort((a,b)=>b.edge-a.edge);
 }
-async function recordPredictionPicks(env,board,exchangeBoard,fairs,now=Date.now()){
+async function recordPredictionPicks(env,board,exchangeBoard,fairs,now=Date.now(),dirs=null){
   const gameId=board.eventID||`NFL--${board.id}`;
   const have=((await env.DB.prepare('SELECT player FROM prediction_picks WHERE event_id=?').bind(gameId).all()).results||[]).map(r=>normalizedName(r.player));
   const room=PREDICTION_PER_GAME-have.length;if(room<=0)return [];
-  const picks=predictionCandidates(board,exchangeBoard,fairs,now).filter(p=>!have.includes(normalizedName(p.player))).slice(0,room),stamp=new Date(now).toISOString();
+  dirs||=await pickDirections(env,now);
+  const picks=predictionCandidates(board,exchangeBoard,fairs,now).filter(p=>!have.includes(normalizedName(p.player))&&sameDirection(dirs,p.eventId,p.player,p.side)).slice(0,room),stamp=new Date(now).toISOString();
+  picks.forEach(p=>dirs.set(directionKey(p.eventId,p.player),p.side));
   return picks.map(p=>env.DB.prepare('INSERT OR IGNORE INTO prediction_picks (id,exchange,event_id,player,team,market,side,line,odds,net_odds,fair_pct,edge,game_time,posted_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(`pm|${gameId}|${normalizedName(p.player)}`,p.exchange,gameId,p.player,p.team,p.market,p.side,p.line,p.odds,p.netOdds,+p.fair.toFixed(2),+p.edge.toFixed(2),p.gameTime,stamp));
 }
 async function gradePredictionPicks(env,now=Date.now(),limit=30){
@@ -1618,7 +1639,8 @@ async function recordPredictionParlays(env,pool,now=Date.now()){
   if(!env.DB||pool.length<2)return {posted:0};
   const week=officialWeek(now),existing=(await env.DB.prepare('SELECT tier,legs_json FROM prediction_parlays WHERE week=?').bind(week).all()).results||[];
   const picks=new Set((((await env.DB.prepare('SELECT event_id,player FROM prediction_picks WHERE game_time>?').bind(new Date(now).toISOString()).all()).results)||[]).map(r=>`${r.event_id}|${normalizedName(r.player)}`));
-  const teams=await playerTeams(env),plan=predictionParlayPlan(withTeams(pool.filter(p=>!picks.has(`${p.eventId}|${normalizedName(p.player)}`)),teams),existing,week,now),stamp=new Date(now).toISOString();
+  const dirs=await pickDirections(env,now);
+  const teams=await playerTeams(env),plan=predictionParlayPlan(withTeams(pool.filter(p=>!picks.has(`${p.eventId}|${normalizedName(p.player)}`)&&sameDirection(dirs,p.eventId,p.player,p.side)),teams),existing,week,now),stamp=new Date(now).toISOString();
   const statements=[];
   for(const p of plan){const legs=p.legs.map(({team,...l})=>({...l,team}));const id=`pmp|${week}|${p.tier}|${p.exchange}|${p.legs.map(l=>`${l.eventId}:${normalizedName(l.player)}:${l.market}`).sort().join(',')}`;
     statements.push(env.DB.prepare('INSERT OR IGNORE INTO prediction_parlays (id,week,tier,exchange,legs_json,odds,game_time,posted_at) VALUES (?,?,?,?,?,?,?,?)').bind(id.slice(0,480),week,p.tier,p.exchange,JSON.stringify(legs),p.odds,p.legs.map(l=>l.gameTime).sort().at(-1),stamp))}
@@ -1681,13 +1703,13 @@ async function recordExchangeProps(env,boards,now=Date.now()){
   const fairs2=new Map([...sportsbookFairs(boards,now,2)].filter(([k])=>!fairs.has(k)));let picks2=0;
   const fairsTd=new Map([...tdYesFairs(boards,now)].filter(([k])=>!fairs.has(k)&&!fairs2.has(k)));
   const fetchedAt=new Map(((await env.DB.prepare('SELECT event_id,updated_at FROM exchange_prices WHERE game_time>?').bind(stamp).all().catch(()=>({results:[]}))).results||[]).map(r=>[r.event_id,Date.parse(r.updated_at)]));
-  let far=0;
+  let far=0;const dirs=await pickDirections(env,now).catch(()=>new Map());
   for(const board of boards){
     const kick=Date.parse(board.commence_time);if(!(kick>now+5*60000)||kick-now>EXCHANGE_AHEAD)continue;
     if(kick-now>48*3600000){const at=fetchedAt.get(board.eventID||`NFL--${board.id}`);if(now-at<2*3600000-60000||far>=6)continue;far++}
     let ex;try{ex=await fetchExchangeOdds(board.id,env.THE_ODDS_API_KEY)}catch{continue}
     games++;const out=exchangePropCandidates(board,ex,fairs,now);
-    statements.push(...await recordPredictionPicks(env,board,ex,fairs,now).catch(()=>[]));
+    statements.push(...await recordPredictionPicks(env,board,ex,fairs,now,dirs).catch(()=>[]));
     pmPool.push(...predictionCandidates(board,ex,fairs,now,{min:.5,max:1,perExchange:true}));
     statements.push(env.DB.prepare('INSERT OR REPLACE INTO exchange_prices (event_id,game_time,prices_json,updated_at) VALUES (?,?,?,?)').bind(board.eventID||`NFL--${board.id}`,new Date(kick).toISOString(),JSON.stringify(exchangePriceList(ex)),stamp));
     for(const [k,c] of Object.entries(out.coverage)){const t=coverage[k]||={lines:0,matched:0};t.lines+=c.lines;t.matched+=c.matched}
@@ -2132,9 +2154,10 @@ async function publishOfficialPicks(request,env,ctx,opts={}){
     // Players listed Out or Doubtful are taken off the boards first.
     const injuries=await injuryMap(env).catch(()=>new Map());boards.splice(0,boards.length,...withoutInjured(boards,injuries));
     if(!opts.soonOnly)jobStep('publish','plan');const existing=await env.DB.prepare('SELECT * FROM public_recommendations WHERE id>=? AND id<?').bind(prefix,prefix+'\uffff').all();
-    const stats={};const candidates=officialCandidates(boards,Date.now(),stats);
+    const dirs=await pickDirections(env),ok=p=>sameDirection(dirs,p.gameId,p.player,p.side);
+    const stats={};const candidates=officialCandidates(boards,Date.now(),stats).filter(ok);
     // Parlay legs come from the next tier down (0.5% to just under 1%), not from the singles.
-    const nextTier=withTeams(officialCandidates(boards,Date.now(),{},{min:.5,below:1}),await playerTeams(env));
+    const nextTier=withTeams(officialCandidates(boards,Date.now(),{},{min:.5,below:1}).filter(ok),await playerTeams(env));
     const plan=officialPlan(candidates,existing.results||[],week,Date.now(),nextTier);
     const posted=await writeOfficialPlan(plan,week,env);
     await stampExchangePrices(env,Date.now()).catch(error=>console.warn('exchange_stamp_failed',error.message));
