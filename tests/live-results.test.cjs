@@ -6,7 +6,7 @@ const {read}=require('./helpers/client.cjs');
 const context=vm.createContext({URL,URLSearchParams,Request,Response,Headers,AbortSignal,Date,console,setTimeout,clearTimeout,crypto:webcrypto,TextEncoder,btoa,atob});
 const t=read('worker/index.template.js');
 vm.runInContext(t.slice(t.indexOf('const API_BASE')).replace('__MOVEMENT_SERVER__',read('worker/movement.js')).replace('__LIVE_SERVER__',read('worker/live.js')).replace('__STATS_SHARED__',read('dist/stats.js')).replace('__RECORDS_SERVER__',read('worker/records.js')).replace('__ACCOUNTS_SERVER__',read('worker/accounts.js')).replace('export default {','this.worker={'),context);
-const db=new DatabaseSync(':memory:');for(const f of fs.readdirSync('drizzle').filter(f=>/^000[0-2]_|0006_|0028_|0030_|0032_/.test(f)).sort())db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''));
+const db=new DatabaseSync(':memory:');for(const f of fs.readdirSync('drizzle').filter(f=>/^000[0-2]_|0006_|0028_|0030_|0032_|0036_/.test(f)).sort())db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''));
 const wrap=(sql,args=[])=>({bind(...v){return wrap(sql,v)},async first(){return db.prepare(sql).get(...args)||null},async all(){return{results:db.prepare(sql).all(...args)}},async run(){const r=db.prepare(sql).run(...args);return{success:true,meta:{changes:Number(r.changes)}}}});
 context.env={DB:{prepare:sql=>wrap(sql),async batch(l){for(const s of l)await s.run()}},BALLDONTLIE_API_KEY:'b'};
 const gt='2026-10-13T00:15:00.000Z',now=Date.parse('2026-10-13T01:00:00Z');
