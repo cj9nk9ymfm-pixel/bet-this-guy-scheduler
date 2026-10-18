@@ -312,7 +312,7 @@ function sheetModel(row){
   if(isProp){
     const posted=[first.book,whenText(row.posted_at)].filter(Boolean).join(' · ');
     if(vo){rows.push(['Result',`${vo} before kickoff · bet voided, stake back`,'']);rows.push(['Posted at',posted,''])}
-    else if(done||row.status==='provisional'){rows.push(['Result',first.actualValue!=null?`${first.minimumOnly?'At least ':''}${first.actualValue} ${String(row.market||'').toLowerCase()}`:'—',row.result==='won'?'pos':row.result==='lost'?'neg':'']);rows.push(['Posted at',posted,'']);
+    else if(done||row.status==='provisional'){rows.push(['Result',first.actualValue!=null?`${first.minimumOnly?'At least ':''}${first.actualValue} ${String(row.market||'').toLowerCase()}${first.noStats?' · played, no stats recorded':''}`:'—',row.result==='won'?'pos':row.result==='lost'?'neg':'']);rows.push(['Posted at',posted,'']);
       const move=row.closing_captured_at?lineMove(row.line,row.closing_line,row.side):null,c=closingValue(row);
       if(move)rows.push(['Closing line',`${move.line} · ${move.ourWay?'moved our way':'moved against us'}`,move.ourWay?'pos':'']);
       else if(c)rows.push(['Closing price',`${fmtOdds(row.closing_odds)} · ${c.edge>.05?'we beat the close':c.edge<-.05?'close was better':'same as the close'}`,c.edge>.05?'pos':'']);
