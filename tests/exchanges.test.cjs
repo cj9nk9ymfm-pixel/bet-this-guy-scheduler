@@ -40,7 +40,7 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
   // Picks and parlay legs lock only inside 24 hours of kickoff.
   {const fairs=run(`sportsbookFairs(boards,${now})`),ex={bookmakers:[book('novig',105,-125)]},b=(h)=>({...context.boards[0],commence_time:new Date(now+h*3600000).toISOString()});
    context.fairs=fairs;const cand=(h,o='{}')=>J(run(`predictionCandidates(${JSON.stringify(b(h))},${JSON.stringify(ex)},fairs,${now},${o})`));
-   assert.equal(cand(5).length,1,'a 1-2 point edge locks close to the game');
+   assert.equal(cand(5).length,0,'a 1.2-point edge is under the 1.5-point bar');assert.equal(cand(5,'{min:1}').length,1,'a 1-2 point edge locks close to the game at a lower bar');
    assert.equal(cand(30).length,0,'nothing locks more than 24 hours out');
    assert.equal(cand(30,'{min:0,max:5}').length,0,'no parlay legs from games more than 24 hours out');
    assert.equal(cand(5,'{min:0,max:5}').length,1);

@@ -67,5 +67,14 @@ pick('d','Brock Purdy',110,'2026-10-13T00:15:00.000Z');pick('e','Old Pick',150,'
   assert.equal(proof.posted,1);assert.equal(proof.beat,9);assert.equal(proof.tracked,12);assert.equal(posts.length,before+1);
   const xt=posts.at(-1);assert.ok(xt.text.startsWith('📈 9 of 12 of our picks this season beat the closing line')&&xt.text.includes('Free alerts')&&xt.text.length<=280&&!xt.media,xt.text);
   assert.equal((await run(`postProofToX(env,${Date.parse('2026-10-12T02:10:00Z')})`)).done,true,'once per request');
+  // Only strong picks get their own post; the rest are on cards, and a catch-up card covers any pick not on X yet.
+  const late=Date.parse('2026-10-12T23:30:00Z');
+  assert.equal((await run(`postPicksToX(env,${late})`)).posted,0,'a pick under the 1.5-point bar gets no post of its own');
+  const n0=posts.length,cu=await run(`postCatchUpToX(env,${late})`);
+  assert.equal(cu.posted,1);assert.equal(cu.picks,1,'Brock Purdy was never on X: caught up before his game');
+  assert.ok(posts.at(-1).text.startsWith('🔒 Just locked: 1 more pick before kickoff')&&posts.at(-1).text.length<=280&&posts.length===n0+1,posts.at(-1).text);
+  assert.ok(run('globalThis.__svg').includes('Brock Purdy')&&run('globalThis.__svg').includes('JUST LOCKED'));
+  assert.equal((await run(`postCatchUpToX(env,${late+600000})`)).covered,true,'never twice');
+  assert.equal((await run(`postCatchUpToX(env,${Date.parse('2026-10-11T16:30:00Z')})`)).covered,true,'picks already on the slate card are covered');
   console.log('PASS: slate post sends the day\'s pending picks on one graphic, once, from 16 hours before kickoff, a 9 AM ET morning update when new picks locked, and a final card 75 minutes out');
 })().catch(error=>{console.error(error);process.exit(1)});
