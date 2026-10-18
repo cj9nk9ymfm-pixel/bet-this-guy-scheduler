@@ -96,8 +96,8 @@ const OFFICIAL_CAPS={props:100,reasonable:15,swing:10,moonshot:3};
 // At most two official props per game: picks in one game win or lose
 // together, so a third goes to the leans list instead.
 const OFFICIAL_PER_GAME=2;
-// Top picks: an edge this big gets past the full limits (one more pick in a
-// game, past the daily X limit) and posts as ⭐ Top pick. Through Oct 18, 3 of
+// Top picks: an edge this big has no limit (any number in a game, past the
+// daily X limit) and posts as ⭐ Top pick. Through Oct 18, 3 of
 // 42 graded sportsbook singles had 2+ points; no prediction pick had 2.5.
 const TOP_PICK={sb:2,pm:2.5};
 // Picks can lock any time before kickoff in the official week.
@@ -208,7 +208,7 @@ function officialPlan(candidates,existing,week,now=Date.now(),pool=candidates,cf
   const saved=existing.map(r=>({...r,legs:recordLegs(r)})),counts=Object.fromEntries(Object.keys(CAPS).map(t=>[t,saved.filter(r=>r.id.startsWith(`${prefix}${t}|`)).length]));
   const plan=[],singles=saved.filter(r=>r.kind==='prop'),games=new Map(),used=new Set(singles.flatMap(r=>r.legs.map(officialPlayer)));
   singles.forEach(r=>games.set(r.game_id,(games.get(r.game_id)||0)+1));
-  for(const p of candidates){if(counts.props>=CAPS.props)break;if(used.has(p.playerKey)||(games.get(p.gameId)||0)>=PER_GAME+(Number(p.edge)>=TOP_PICK.sb?1:0))continue;plan.push({tier:'props',legs:[p]});counts.props++;used.add(p.playerKey);games.set(p.gameId,(games.get(p.gameId)||0)+1)}
+  for(const p of candidates){if(counts.props>=CAPS.props)break;if(used.has(p.playerKey)||((games.get(p.gameId)||0)>=PER_GAME&&!(Number(p.edge)>=TOP_PICK.sb)))continue;plan.push({tier:'props',legs:[p]});counts.props++;used.add(p.playerKey);games.set(p.gameId,(games.get(p.gameId)||0)+1)}
   const prior=saved.filter(r=>r.kind==='parlay').map(r=>r.legs.map(officialPlayer)),exposure=new Map();prior.flat().forEach(k=>exposure.set(k,(exposure.get(k)||0)+1));
   const sides=new Map(),perGame=new Map();
   saved.forEach(r=>r.legs.forEach(l=>sides.set(sideKey(l.gameId,l.player,l.market),l.side)));
@@ -1501,11 +1501,10 @@ function predictionCandidates(board,exchangeBoard,fairs,now=Date.now(),opts={}){
 async function recordPredictionPicks(env,board,exchangeBoard,fairs,now=Date.now(),dirs=null){
   const gameId=board.eventID||`NFL--${board.id}`;
   const have=((await env.DB.prepare('SELECT player FROM prediction_picks WHERE event_id=?').bind(gameId).all()).results||[]).map(r=>normalizedName(r.player));
-  if(have.length>PREDICTION_PER_GAME)return [];
   dirs||=await pickDirections(env,now);
-  // A full game still takes one top pick.
+  // A full game still takes every top pick.
   const picks=[],stamp=new Date(now).toISOString();let n=have.length;
-  for(const p of predictionCandidates(board,exchangeBoard,fairs,now).filter(p=>!have.includes(normalizedName(p.player))&&sameDirection(dirs,p.eventId,p.player,p.side)))if(n<PREDICTION_PER_GAME||(p.edge>=TOP_PICK.pm&&n<PREDICTION_PER_GAME+1)){picks.push(p);n++}
+  for(const p of predictionCandidates(board,exchangeBoard,fairs,now).filter(p=>!have.includes(normalizedName(p.player))&&sameDirection(dirs,p.eventId,p.player,p.side)))if(n<PREDICTION_PER_GAME||p.edge>=TOP_PICK.pm){picks.push(p);n++}
   picks.forEach(p=>dirs.set(directionKey(p.eventId,p.player),p.side));
   return picks.map(p=>env.DB.prepare('INSERT OR IGNORE INTO prediction_picks (id,exchange,event_id,player,team,market,side,line,odds,net_odds,fair_pct,edge,game_time,posted_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(`pm|${gameId}|${normalizedName(p.player)}`,p.exchange,gameId,p.player,p.team,p.market,p.side,p.line,p.odds,p.netOdds,+p.fair.toFixed(2),+p.edge.toFixed(2),p.gameTime,stamp));
 }
