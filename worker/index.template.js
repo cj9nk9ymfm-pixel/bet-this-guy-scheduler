@@ -581,7 +581,7 @@ async function refreshEspnIds(env, league, now = Date.now()) {
 // A player's ESPN headshot as raw bytes (for the X pick graphics), or null.
 // ESPN's search can miss hyphenated or punctuated names, so it retries with
 // the punctuation as spaces, then the last name alone.
-async function playerHeadshot(name, sport = "NFL") {
+async function playerHeadshot(name, sport = "NFL", small = false) {
   try {
     const league = sport === "NBA" ? "nba" : "nfl";
     const plain = String(name).replace(/[-'.]/g, " ").replace(/\s+/g, " ").trim();
@@ -589,7 +589,8 @@ async function playerHeadshot(name, sport = "NFL") {
     let url = null;
     headshotTrace = [];
     const known = espnIdMaps[league]?.[normalizedName(name)];
-    if (known) { url = `https://a.espncdn.com/i/headshots/${league}/players/full/${known}.png`; headshotTrace.push({ source: "espn-id", id: known }); }
+    // small: ESPN's resized copy for the site's round avatars (about 20 KB, not 300 KB).
+    if (known) { url = small ? `https://a.espncdn.com/combiner/i?img=/i/headshots/${league}/players/full/${known}.png&w=160&h=116` : `https://a.espncdn.com/i/headshots/${league}/players/full/${known}.png`; headshotTrace.push({ source: "espn-id", id: known }); }
     // ESPN refuses requests with no browser headers (403); two search
     // addresses, and one that refuses is skipped for the rest of the lookup.
     const headers = { accept: "application/json", "user-agent": "BetThisGuy/1.0 (https://betthisguy.com; support@betthisguy.com)" };
@@ -661,10 +662,10 @@ async function playerPhoto(request, env) {
   // Same lookup as the X cards (saved ESPN ids, then ESPN search with the
   // headers it now requires; plain requests got 403s, so the site showed no
   // photos). Each photo is cached a week, and a miss for an hour.
-  const cache = typeof caches !== "undefined" ? caches.default : null, key = new Request(`https://cache.betthisguy.com/player-photo/${sport}/${encodeURIComponent(normalizedName(name))}`);
+  const cache = typeof caches !== "undefined" ? caches.default : null, key = new Request(`https://cache.betthisguy.com/player-photo-v2/${sport}/${encodeURIComponent(normalizedName(name))}`);
   try { const hit = await cache?.match(key); if (hit) return hit; } catch {}
   await savedEspnIds(env, sport === "NBA" ? "nba" : "nfl").catch(() => {});
-  const shot = await playerHeadshot(name, sport).catch(() => null);
+  const shot = await playerHeadshot(name, sport, true).catch(() => null);
   const response = shot
     ? new Response(shot.bytes, { headers: { "content-type": shot.type, "cache-control": "public, max-age=604800, stale-while-revalidate=86400" } })
     : new Response("", { status: 404, headers: { "cache-control": "public, max-age=3600" } });
