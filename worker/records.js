@@ -2970,7 +2970,7 @@ function xRecordRows(rec){
   if(pm&&pm.wins+pm.losses)rows.push({label:'PREDICTION APPS',color:'#c4b5fd',s:[pm.wins,pm.losses,pm.profit],p:pp.wins+pp.losses?[pp.wins,pp.losses,pp.profit]:null});
   return rows;
 }
-const XSHORT_MARKETS=[[/^over /i,'O '],[/^under /i,'U '],[/interceptions thrown/i,'INTs'],[/passing touchdowns/i,'pass TDs'],[/rush \+ receiving yards/i,'rush+rec yds'],[/receiving yards/i,'rec yds'],[/rushing yards/i,'rush yds'],[/passing yards/i,'pass yds'],[/pass completions/i,'completions'],[/pass attempts/i,'pass att'],[/receptions/i,'rec'],[/anytime touchdown/i,'anytime TD']];
+const XSHORT_MARKETS=[[/^over /i,'O '],[/^under /i,'U '],[/interceptions thrown/i,'INTs'],[/passing touchdowns/i,'pass TDs'],[/rush \+ receiving yards/i,'rush+rec yds'],[/receiving yards/i,'rec yds'],[/rushing yards/i,'rush yds'],[/passing yards/i,'pass yds'],[/pass completions/i,'completions'],[/pass attempts/i,'pass att'],[/receptions/i,'rec'],[/anytime touchdown/i,'anytime TD'],[/rush attempts/i,'rush att'],[/field goals made/i,'FGs'],[/kicking points/i,'kick pts'],[/extra points/i,'XPs']];
 const xShortLeg=t=>XSHORT_MARKETS.reduce((v,[re,to])=>v.replace(re,to),String(t));
 const xShortWhen=iso=>weeklyDay(iso).replace(/^(\w+), \w+ \d+, /,'$1 ');
 const xLast=name=>{const w=String(name||'').trim().split(/\s+/);return w.length>1&&/^(jr\.?|sr\.?|ii|iii|iv)$/i.test(w.at(-1))?w.slice(-2).join(' '):w.at(-1)||''};
@@ -3352,7 +3352,33 @@ async function announceNow(env){
 }
 // Slate post: the day's pending official picks on one graphic, once per game
 // day, from 16 hours before the first of them kicks off.
+// A big card (more than 8 picks): full width, two columns, one row per pick
+// (parlay legs fold into the parlay's sub line), growing taller to fit up to 40.
+function xSlateGridSvg(d){
+  const M='#2ee6a8',F={g:'BTG Grotesk',xb:'BTG Inter XB',sb:'BTG Inter SB'},L=56,R=1200-56,CW=(R-L-40)/2;
+  const short=t=>xShortLeg(String(t).replace(/^(.*?) · /,(m,who)=>`${who} · `));
+  const items=[];for(const p of d.picks){if(p.leg&&items.length){const last=items.at(-1);last.legs=(last.legs||[]).concat(String(p.text).replace(/ · .*/,''));continue}items.push({...p})}
+  const picks=items.slice(0,40),more=items.length-picks.length,per=Math.ceil(picks.length/2),RH=60,top=d.records?262:212;
+  const H=top+per*RH+(more>0?36:0)+24+86;
+  const mark=(res,x,y)=>res==='won'?`<circle cx="${x}" cy="${y}" r="9" fill="${M}"/>`:res==='lost'?`<circle cx="${x}" cy="${y}" r="9" fill="#f87171"/>`:res==='push'?`<circle cx="${x}" cy="${y}" r="9" fill="#cbd5e1"/>`:`<circle cx="${x}" cy="${y}" r="5" fill="${M}"/>`;
+  const rows=picks.map((p,i)=>{const col=i<per?0:1,x=L+col*(CW+40),y=top+(i%per)*RH+24,text=short(p.text),sub=p.legs?p.legs.join(' + '):p.sub||'';
+    return `${mark(p.res,x+8,y-7)}<text x="${x+26}" y="${y}" font-family="${F.sb}" font-size="${Math.max(15,Math.min(22,Math.floor((CW-110)/(text.length*.56))))}" fill="#ffffff">${xEsc(text)}</text><text x="${x+CW}" y="${y}" text-anchor="end" font-family="${F.xb}" font-size="22" fill="${p.res==='lost'?'#f87171':p.res==='push'?'#cbd5e1':p.color||M}">${xEsc(p.odds)}</text><text x="${x+26}" y="${y+24}" font-family="${F.sb}" font-size="${Math.max(12,Math.min(16,Math.floor((CW-30)/(sub.length*.55))))}" fill="#9fb0cc">${xEsc(sub)}</text>`}).join('');
+  const recs=d.records?d.records.map((r,i)=>{const x=L+i*(CW+40);return `<text x="${x}" y="196" font-family="${F.xb}" font-size="14" letter-spacing="2.5" fill="${r.color||'#ffffff'}">${xEsc(r.label)}</text>${r.lines.map((l,j)=>`<text x="${x+j*262}" y="224" font-family="${F.sb}" font-size="20" fill="#ffffff">${xEsc(l)}</text>`).join('')}`}).join(''):'';
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="${H}" viewBox="0 0 1200 ${H}">
+<defs><linearGradient id="tm" x1="0" y1="0" x2="1" y2="0.4"><stop offset="0" stop-color="#1d4ed8"/><stop offset="1" stop-color="#0b1530"/></linearGradient></defs>
+<rect width="1200" height="${H}" fill="#0b1530"/><rect width="1200" height="${d.records?166:150}" fill="url(#tm)"/>
+<text x="${L}" y="58" font-family="${F.xb}" font-size="18" letter-spacing="4" fill="#ffffff" fill-opacity=".8">${xEsc(d.kicker||(d.final?'LOCKED SO FAR':'OFFICIAL PICKS'))}</text>
+<text x="${L-4}" y="128" font-family="${F.g}" font-size="${xFit(d.day,520,70,.62)}" fill="${d.dayColor||'#ffffff'}">${xEsc(d.day)}</text>
+<text x="${R}" y="96" text-anchor="end" font-family="${F.sb}" font-size="24" fill="#ffffff" fill-opacity=".8">${xEsc(d.dateLine||`${d.date} · ${d.picks.filter(p=>!p.leg).length} picks${d.final?'':' so far'}`)}</text>
+<text x="${R}" y="128" text-anchor="end" font-family="${F.sb}" font-size="20" fill="#ffffff" fill-opacity=".6">${xEsc(d.note||(d.final?`More can drop until kickoff · ${d.kick}`:'More can drop up to kickoff'))}</text>
+${recs}${rows}${more>0?`<text x="${L+26}" y="${top+per*RH+24}" font-family="${F.sb}" font-size="20" fill="#9fb0cc">+ ${more} more on the site</text>`:''}
+<rect y="${H-86}" width="1200" height="86" fill="${M}"/>
+${xLogo(L,H-66,46)}<text x="${L+62}" y="${H-32}" font-family="${F.g}" font-size="27" fill="#06231a">${xEsc(d.cta||'Graded in public')} · 21+</text>
+<text x="${R-38}" y="${H-31}" text-anchor="end" font-family="${F.g}" font-size="31" fill="#06231a">betthisguy.com</text><path d="M1118 ${H-42}h24m-9-9 9 9-9 9" fill="none" stroke="#06231a" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
+}
 function xSlateSvg(d){
+  if(d.picks.filter(p=>!p.leg).length>8)return xSlateGridSvg(d);
   const M='#2ee6a8',F={g:'BTG Grotesk',xb:'BTG Inter XB',sb:'BTG Inter SB'},X=526,R=1200-56,W=R-X;
   // Every pick fits: past 7 the card grows taller (X shows the whole image when opened).
   // Short market names so long props don't run into the price.
@@ -3419,7 +3445,11 @@ async function postSlateToX(env,now=Date.now(),final=false,morning=false){
   const season=weeklySummary(all);
   const picks=rows.map(r=>{const legs=recordLegs(r),f=legs[0]||{};return r.kind==='parlay'?{text:`${legs.length}-leg parlay`,odds:weeklyOdds(r.combined_odds),sub:legs.map(l=>l.player).join(' + '),line:`• ${legs.length}-leg parlay (${weeklyOdds(r.combined_odds)})`}:{text:`${r.player} · ${weeklyLegText(r)}`,odds:weeklyOdds(r.odds),sub:[xMatchup(f.team),f.book,exchangeLine(r,null,1)].filter(Boolean).join(' · '),line:`• ${r.player} ${weeklyLegText(r)} (${weeklyOdds(r.odds)})`}});
   const dayName=etDate(first,{weekday:'long'}),kick=`${etDate(first,{hour:'numeric',minute:'2-digit'})} ET`;
-  const text=morning?xShort(`☀️ ${dayName} morning: ${rows.length} official picks locked so far\n${picks.map(p=>p.line).join('\n')}\n\nMore can drop up to kickoff: turn on alerts, link in bio. 21+`):final?xShort(`🔒 Locked so far for ${dayName}: ${rows.length} pick${rows.length===1?'':'s'}\n${picks.map(p=>p.line).join('\n')}\n\nMore can drop until kickoff (${kick}): turn on alerts, link in bio. 21+`):xShort(`🔒 ${dayName}’s official picks so far\n${picks.map(p=>p.line).join('\n')}\n\nMore can drop up to kickoff: turn on alerts, link in bio. 21+`);
+  // The caption counts the picks (the card shows every one), so it never runs long.
+  const singles=rows.filter(r=>r.kind!=='parlay').length,parlays=rows.length-singles,rec=await xRecords(env).catch(()=>null);
+  const counts=`${singles} single${singles===1?'':'s'}${parlays?` + ${parlays} parlay${parlays===1?'':'s'}`:''}, every one on the card 👇`;
+  const head=morning?`☀️ ${dayName} morning: ${rows.length} official pick${rows.length===1?'':'s'} so far`:final?`🔒 Locked for ${dayName}: ${rows.length} official pick${rows.length===1?'':'s'} so far`:`🔒 ${dayName}’s official picks: ${rows.length} so far`;
+  const text=xPostText({head,lines:[counts,final?`First kickoff ${kick}. More can drop until then: turn on alerts.`:'More can drop up to kickoff: turn on alerts.'],rec});
   let mediaId=null;
   try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(xSlateSvg({final,kick,day:dayName,date:etDate(first,{month:'short',day:'numeric'}),picks,records:await xCardRecords(env).catch(()=>null),season:season.wins+season.losses>=5?`${season.wins}–${season.losses} · ${weeklyMoney(season.profit)}`:''})))}
   catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} slate graphic: ${error.message}`).catch(()=>{})}
