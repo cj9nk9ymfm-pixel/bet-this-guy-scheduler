@@ -824,8 +824,12 @@ async function postCustomToX(env,now=Date.now()){
   let req;try{req=JSON.parse(raw)}catch{return {posted:0,invalid:true}}
   const text=String(req.text||'').trim();if(!text||[...text].length>280)return {posted:0,invalid:true};
   const quote=req.quoteKey?await appSetting(env,String(req.quoteKey)):null;if(req.quoteKey&&!quote)return {posted:0,waiting:true};
+  // at: post no earlier than this time. svgKey: an app_settings key holding a card SVG to attach.
+  if(req.at&&now<Date.parse(req.at))return {posted:0,waiting:true};
+  const svg=req.svgKey?await appSetting(env,String(req.svgKey)):null;if(req.svgKey&&!svg)return {posted:0,invalid:true};
   const claim=await env.DB.prepare('DELETE FROM app_settings WHERE key=? AND value=?').bind('x-custom-post',raw).run();if(!Number(claim?.meta?.changes??claim?.changes))return {posted:0,claimed:false};
-  try{const sent=await xPost(env,text,null,null,quote);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} custom ${sent?.data?.id||''}`).catch(()=>{});return {posted:1}}
+  try{const mediaId=svg&&typeof renderCardPng==='function'?await xUploadImage(env,await renderCardPng(svg)):null;
+    const sent=await xPost(env,text,mediaId,null,quote);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} custom ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,graphic:Boolean(mediaId)}}
   catch(error){await setAppSetting(env,'x-custom-post',raw).catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} custom: ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
 }
 async function runXResults(env,now=Date.now()){
