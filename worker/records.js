@@ -3365,11 +3365,11 @@ function xSlateGridSvg(d){
   let split=0,acc=0,best=Infinity;for(let i=0;i<=picks.length;i++){const m=Math.max(acc,total-acc);if(m<best){best=m;split=i}acc+=hs[i]||0}
   const colH=Math.max(hs.slice(0,split).reduce((a,b)=>a+b,0),hs.slice(split).reduce((a,b)=>a+b,0));
   const H=top+colH+(more>0?36:0)+24+86;
-  const mark=(res,x,y)=>res==='won'?`<circle cx="${x}" cy="${y}" r="9" fill="${M}"/>`:res==='lost'?`<circle cx="${x}" cy="${y}" r="9" fill="#f87171"/>`:res==='push'?`<circle cx="${x}" cy="${y}" r="9" fill="#cbd5e1"/>`:`<circle cx="${x}" cy="${y}" r="5" fill="${M}"/>`;
+  const mark=(res,x,y,color)=>res==='won'?`<circle cx="${x}" cy="${y}" r="9" fill="${M}"/>`:res==='lost'?`<circle cx="${x}" cy="${y}" r="9" fill="#f87171"/>`:res==='push'?`<circle cx="${x}" cy="${y}" r="9" fill="#cbd5e1"/>`:`<circle cx="${x}" cy="${y}" r="5" fill="${color||M}"/>`;
   const fit=(t,w,max,min,em)=>Math.max(min,Math.min(max,Math.floor(w/(Math.max(1,String(t).length)*em))));
   let y0=[top,top];
   const rows=picks.map((p,i)=>{const col=i<split?0:1,x=L+col*(CW+40),y=y0[col]+24;y0[col]+=hs[i];const text=short(p.text);
-    const head=`${mark(p.res,x+8,y-7)}<text x="${x+26}" y="${y}" font-family="${F.sb}" font-size="${fit(text,CW-110,22,15,.56)}" fill="#ffffff">${xEsc(text)}</text><text x="${x+CW}" y="${y}" text-anchor="end" font-family="${F.xb}" font-size="22" fill="${p.res==='lost'?'#f87171':p.res==='push'?'#cbd5e1':p.color||M}">${xEsc(p.odds)}</text>`;
+    const head=`${mark(p.res,x+8,y-7,p.color)}<text x="${x+26}" y="${y}" font-family="${F.sb}" font-size="${fit(text,CW-110,22,15,.56)}" fill="#ffffff">${xEsc(text)}</text><text x="${x+CW}" y="${y}" text-anchor="end" font-family="${F.xb}" font-size="22" fill="${p.res==='lost'?'#f87171':p.res==='push'?'#cbd5e1':p.color||M}">${xEsc(p.odds)}</text>`;
     if(p.legLines?.length)return head+p.legLines.map((l,j)=>{const t=xShortLeg(l.text),ly=y+26+j*LH;return `<text x="${x+26}" y="${ly}" font-family="${F.sb}" font-size="${fit(t,CW-120,17,13,.55)}" fill="#cfe0f5">${xEsc(t)}</text>${l.odds?`<text x="${x+CW}" y="${ly}" text-anchor="end" font-family="${F.sb}" font-size="16" fill="#9fb0cc">${xEsc(l.odds)}</text>`:''}`}).join('');
     const sub=p.sub||'';return head+`<text x="${x+26}" y="${y+24}" font-family="${F.sb}" font-size="${fit(sub,CW-30,16,12,.55)}" fill="#9fb0cc">${xEsc(sub)}</text>`}).join('');
   const recs=d.records?d.records.map((r,i)=>{const x=L+i*(CW+40);return `<text x="${x}" y="196" font-family="${F.xb}" font-size="14" letter-spacing="2.5" fill="${r.color||'#ffffff'}">${xEsc(r.label)}</text>${r.lines.map((l,j)=>`<text x="${x+j*262}" y="224" font-family="${F.sb}" font-size="20" fill="#ffffff">${xEsc(l)}</text>`).join('')}`}).join(''):'';
@@ -3382,12 +3382,13 @@ function xSlateGridSvg(d){
 <text x="${R}" y="128" text-anchor="end" font-family="${F.sb}" font-size="20" fill="#ffffff" fill-opacity=".6">${xEsc(d.note||(d.final?`More can drop until kickoff · ${d.kick}`:'More can drop up to kickoff'))}</text>
 ${recs}${rows}${more>0?`<text x="${L+26}" y="${top+colH+24}" font-family="${F.sb}" font-size="20" fill="#9fb0cc">+ ${more} more on the site</text>`:''}
 <rect y="${H-86}" width="1200" height="86" fill="${M}"/>
-${xLogo(L,H-66,46)}<text x="${L+62}" y="${H-32}" font-family="${F.g}" font-size="27" fill="#06231a">${xEsc(d.cta||'Graded in public')} · 21+</text>
+${xLogo(L,H-66,46)}<text x="${L+62}" y="${H-32}" font-family="${F.g}" font-size="27" fill="#06231a">${xEsc(d.cta||'Graded in public')} · ${xEsc(d.age||'21+')}</text>
 <text x="${R-38}" y="${H-31}" text-anchor="end" font-family="${F.g}" font-size="31" fill="#06231a">betthisguy.com</text><path d="M1118 ${H-42}h24m-9-9 9 9-9 9" fill="none" stroke="#06231a" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>`;
 }
 function xSlateSvg(d){
   if(d.picks.filter(p=>!p.leg).length>8)return xSlateGridSvg(d);
+  if(d.picks.some(p=>p.legLines))d={...d,picks:d.picks.flatMap(p=>p.legLines?[{...p,sub:p.legLines.length?'':p.sub},...p.legLines.map(l=>({leg:true,color:p.color,text:l.text,odds:l.odds}))]:[p])};
   const M='#2ee6a8',F={g:'BTG Grotesk',xb:'BTG Inter XB',sb:'BTG Inter SB'},X=526,R=1200-56,W=R-X;
   // Every pick fits: past 7 the card grows taller (X shows the whole image when opened).
   // Short market names so long props don't run into the price.
@@ -3442,6 +3443,37 @@ async function xCardRecords(env){
 // A fresh slate post on request (after deleting one, say): app_settings
 // x-slate-request set to a new value (2026-10-18, 2026-10-18#2) posts the
 // card now, once per value, with the picks still to play.
+// Prediction-app slate: the day's prediction picks and parlays on one card,
+// 20 minutes after that day's sportsbook slate went out (or on request:
+// x-pm-slate-request set to a new value posts it now, once per value).
+async function postPredictionSlateToX(env,now=Date.now()){
+  if(!env.DB||!xReady(env))return {posted:0,disabled:true};
+  const soon=new Date(now+5*60000).toISOString(),until=new Date(now+40*3600000).toISOString();
+  const picks=(await env.DB.prepare('SELECT * FROM prediction_picks WHERE result IS NULL AND game_time>? AND game_time<? ORDER BY game_time').bind(soon,until).all().catch(()=>({results:[]}))).results||[];
+  const parlays=(await env.DB.prepare('SELECT * FROM prediction_parlays WHERE result IS NULL AND game_time>? AND game_time<? ORDER BY game_time').bind(soon,until).all().catch(()=>({results:[]}))).results||[];
+  const firstAll=[...picks,...parlays].map(r=>Date.parse(r.game_time)).sort((a,b)=>a-b)[0];if(!firstAll)return {posted:0,empty:true};
+  const ymd=t=>etDate(t,{year:'numeric',month:'2-digit',day:'2-digit'}),day=ymd(firstAll),same=r=>ymd(Date.parse(r.game_time))===day;
+  const P=picks.filter(same),PP=parlays.filter(same),date=new Date(firstAll).toISOString().slice(0,10);
+  const req=String((await appSetting(env,'x-pm-slate-request'))||'');let key=`x-pm-slate:${date}`;
+  if(/^\d{4}-\d{2}-\d{2}(#\w{1,8})?$/.test(req)&&!(await appSetting(env,`x-pm-slate-req:${req}`)))key=`x-pm-slate-req:${req}`;
+  else{
+    // Due 20 minutes after the sportsbook slate for the same day.
+    const sbDone=[await appSetting(env,`x-slate:${date}`),await appSetting(env,`x-slate-req:${await appSetting(env,'x-slate-request')}`)].map(v=>Date.parse(String(v||''))).filter(Number.isFinite);
+    const last=Math.max(...sbDone);if(!sbDone.length||now-last<20*60000||now-last>12*3600000)return {posted:0,due:false};
+  }
+  if(P.length+PP.length<2)return {posted:0,empty:true};
+  if(!(await xClaimable(env,key,now))||!(await xClaim(env,key,now)))return {posted:0,done:true};
+  const C='#c4b5fd',legsOf=r=>{try{return JSON.parse(r.legs_json)}catch{return []}};
+  const rows=[...P.map(r=>({t:Date.parse(r.game_time),color:C,text:`${r.player} · ${weeklyLegText(r)}`,odds:`${exchangePct(r.odds)}%`,sub:[xMatchup(r.team),r.exchange,`fair ${Math.round(r.fair_pct)}%`].filter(Boolean).join(' · ')})),
+    ...PP.map(r=>{const legs=legsOf(r);return {t:Date.parse(r.game_time),color:C,text:`${legs.length}-leg parlay`,odds:`${exchangePct(r.odds)}%`,sub:`${r.exchange} · $25`,legLines:legs.map(l=>({text:`${l.player} ${weeklyLegText(l)}`,odds:`${exchangePct(l.netOdds??l.odds)}%`}))}})].sort((a,b)=>a.t-b.t);
+  const dayName=etDate(firstAll,{weekday:'long'}),rec=await xRecords(env).catch(()=>null),n=P.length+PP.length;
+  const text=xPostText({head:`🔒 ${dayName}’s prediction-app picks: ${n} so far`,lines:[`${P.length} single${P.length===1?'':'s'}${PP.length?` + ${PP.length} parlay${PP.length===1?'':'s'}`:''}, every one on the card 👇`,'Priced after each app’s fee. More can drop up to kickoff.'],rec,age:'18+/21+ by app'});
+  let mediaId=null;
+  try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(xSlateSvg({kicker:'PREDICTION APP PICKS',day:dayName,dayColor:C,date:etDate(firstAll,{month:'short',day:'numeric'}),dateLine:`${etDate(firstAll,{month:'short',day:'numeric'})} · ${n} picks so far`,note:'Chances after each app’s fee',picks:rows,records:await xCardRecords(env).catch(()=>null),cta:'Graded after fees',age:'18+/21+',foot:'PRICED AFTER FEES · 18+/21+'})))}
+  catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} pm slate graphic: ${error.message}`).catch(()=>{})}
+  try{const sent=await xPost(env,text,mediaId);await xDone(env,key,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} pm-slate ${key} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,picks:n,graphic:Boolean(mediaId)}}
+  catch(error){await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
+}
 async function postSlateRequestToX(env,now=Date.now()){
   if(!env.DB||!xReady(env))return {posted:0,disabled:true};
   const req=String((await appSetting(env,'x-slate-request'))||'');if(!/^\d{4}-\d{2}-\d{2}(#\w{1,8})?$/.test(req))return {posted:0,none:true};
@@ -3814,7 +3846,8 @@ async function runXPosts(env,now=Date.now()){
   const final=picks.posted||predictions.posted||weekly.posted||combo.posted?{posted:0,waiting:true}:await postSlateToX(env,now,true);
   const morning=picks.posted||predictions.posted||combo.posted||weekly.posted||final.posted?{posted:0,waiting:true}:await postSlateToX(env,now,false,true);
   const slate=picks.posted||predictions.posted||combo.posted||weekly.posted||final.posted||morning.posted?{posted:0,waiting:true}:await postSlateRequestToX(env,now).then(r=>r.posted?r:postSlateToX(env,now));
-  const pin=picks.posted||predictions.posted||combo.posted||weekly.posted||final.posted||slate.posted?{posted:0,waiting:true}:await postAlertsPinToX(env,now);
+  const pmSlate=picks.posted||predictions.posted||combo.posted||weekly.posted||final.posted||morning.posted||slate.posted?{posted:0,waiting:true}:await postPredictionSlateToX(env,now).catch(error=>({posted:0,error:error.message}));
+  const pin=picks.posted||predictions.posted||combo.posted||weekly.posted||final.posted||slate.posted||pmSlate.posted?{posted:0,waiting:true}:await postAlertsPinToX(env,now);
   const recap=picks.posted||predictions.posted||combo.posted||weekly.posted||final.posted||slate.posted||pin.posted?{posted:0,waiting:true}:await postDayRecapToX(env,now);
   const proof=await postProofToX(env,now);
   const nbaLaunch=await postNbaLaunchToX(env,now).catch(error=>({posted:0,error:error.message}));
@@ -3822,7 +3855,7 @@ async function runXPosts(env,now=Date.now()){
   const results=picks.posted||predictions.posted||combo.posted||weekly.posted||final.posted||slate.posted||pin.posted||recap.posted?{posted:0,waiting:true}:await postResultsToX(env,now);
   // The pinned summary waits for a run with nothing else heavy.
   const summary=picks.posted||predictions.posted||combo.posted||weekly.posted||final.posted||slate.posted||pin.posted||recap.posted||results.posted?{posted:0,waiting:true}:await postSummaryToX(env,now);
-  return {picks,weekly,closing,combo,final,slate,pin,recap,proof,nbaLaunch,nba,predictions,results,summary};
+  return {picks,weekly,closing,combo,final,slate,pmSlate,pin,recap,proof,nbaLaunch,nba,predictions,results,summary};
 }
 // "My book" alerts: a good-value price at one of someone's own sportsbooks.
 // The fair price always comes from every book (3+ pricing both sides, the same
