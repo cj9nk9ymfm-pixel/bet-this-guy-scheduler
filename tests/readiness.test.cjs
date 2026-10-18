@@ -42,8 +42,9 @@ equal(trust.eval('verified({kind:"parlay",source:"historical-replay"})'),false,'
 equal(trust.eval('verified({kind:"prop",source:null})'),false,'exclude unauthenticated legacy');
 equal(trust.eval('profit({result:"won",combined_odds:300,legs:[{odds:100,result:"won"},{odds:100,result:"push"}]})'),100,'push leg voided for estimated payout at the $100 default');
 trust.eval('localStorage.setItem("bet-this-guy-preferences",JSON.stringify({typicalWager:25}))');
-equal(trust.eval('profit({result:"won",odds:200})'),50,'custom stake pays correct plus-odds net');
-equal(trust.eval('profit({result:"lost",odds:-150})'),-25,'loss subtracts the custom stake');
+equal(trust.eval('profit({result:"won",odds:200})'),200,'the record stays at $100 a single whatever the viewer bets');
+equal(trust.eval('profit({result:"lost",odds:-150})'),-100,'a loss is the $100 stake');
+equal(trust.eval('profit({result:"lost",kind:"parlay",combined_odds:300,posted_at:"2026-10-15T00:00:00Z"})'),-25,'a parlay is $25');
 equal(trust.eval('profit({result:"push",odds:100})'),0,'push has no net gain or loss');
 equal(trust.eval('sectionProfit([{result:"won",status:"final",odds:100},{result:"lost",status:"provisional",odds:100}]).includes("Including picks decided early")'),true,'separate provisional total');
 trust.eval('localStorage.removeItem("bet-this-guy-preferences")');
