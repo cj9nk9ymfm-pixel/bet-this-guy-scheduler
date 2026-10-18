@@ -1645,13 +1645,16 @@ async function postPredictionPicksToX(env,now=Date.now()){
 // price to take it at.
 // At most 3 a week (2 short, 1 mid; no long shots), down from 9.
 const PM_PARLAY_TIERS=[['long',4,5,2501,15000,0],['mid',3,4,1000,2500,1],['short',2,3,100,999,2]];
+// At most this many prediction parlays per game day (Eastern), on top of the weekly tier caps.
+const PM_PARLAYS_PER_DAY=2;
+const pmParlayDay=times=>{const t=times.map(x=>Date.parse(x)).filter(Number.isFinite);return t.length?new Date(Math.max(...t)-4*3600000).toISOString().slice(0,10):null};
 function predictionParlayPlan(pool,existing,week,now=Date.now()){
   const prior=existing.map(r=>{try{return JSON.parse(r.legs_json).map(l=>`${l.eventId}|${normalizedName(l.player)}`)}catch{return []}});
   const exposure=new Map();prior.flat().forEach(k=>exposure.set(k,(exposure.get(k)||0)+1));
   const counts=Object.fromEntries(PM_PARLAY_TIERS.map(([t])=>[t,existing.filter(r=>r.tier===t).length])),plan=[];
   const key=l=>`${l.eventId}|${normalizedName(l.player)}`;
-  const sides=new Map(),perGame=new Map();
-  existing.forEach(r=>{let legs=[];try{legs=JSON.parse(r.legs_json)}catch{}legs.forEach(l=>sides.set(sideKey(l.eventId,l.player,l.market),l.side));new Set(legs.map(l=>l.eventId)).forEach(g=>perGame.set(g,(perGame.get(g)||0)+1))});
+  const sides=new Map(),perGame=new Map(),perDay=new Map();
+  existing.forEach(r=>{let legs=[];try{legs=JSON.parse(r.legs_json)}catch{}const d=pmParlayDay([r.game_time,...legs.map(l=>l.gameTime)]);if(d)perDay.set(d,(perDay.get(d)||0)+1);legs.forEach(l=>sides.set(sideKey(l.eventId,l.player,l.market),l.side));new Set(legs.map(l=>l.eventId)).forEach(g=>perGame.set(g,(perGame.get(g)||0)+1))});
   for(const exName of [...new Set(pool.map(p=>p.exchange))]){
     const legsOn=pool.filter(p=>p.exchange===exName&&Date.parse(p.gameTime)>now+5*60000);if(legsOn.length<2)continue;
     for(const [tier,min,max,low,high,cap] of PM_PARLAY_TIERS){
@@ -1668,9 +1671,10 @@ function predictionParlayPlan(pool,existing,week,now=Date.now()){
         if(legs.length!==size)continue;
         const exKey=Object.keys(EXCHANGES).find(k=>EXCHANGES[k]===exName),priced=legs.map(l=>({gameId:l.eventId,odds:l.netOdds})),odds=recordAmerican(predictionParlayNet(exKey,parlayDecimal(priced))),keys=legs.map(key);
         if(odds<low||odds>high||prior.some(p=>p.filter(k=>keys.includes(k)).length>1))continue;
+        const day=pmParlayDay(legs.map(l=>l.gameTime));if((perDay.get(day)||0)>=PM_PARLAYS_PER_DAY)continue;
         const same=new Set(legs.map(l=>l.eventId)).size<legs.length;
         legs.forEach(l=>sides.set(sideKey(l.eventId,l.player,l.market),l.side));new Set(legs.map(l=>l.eventId)).forEach(g=>perGame.set(g,(perGame.get(g)||0)+1));
-        plan.push({tier,exchange:exName,odds,legs:legs.map(l=>({...l,sameGame:same&&legs.some(o=>o!==l&&o.eventId===l.eventId)}))});counts[tier]++;prior.push(keys);keys.forEach(k=>exposure.set(k,(exposure.get(k)||0)+1));
+        perDay.set(day,(perDay.get(day)||0)+1);plan.push({tier,exchange:exName,odds,legs:legs.map(l=>({...l,sameGame:same&&legs.some(o=>o!==l&&o.eventId===l.eventId)}))});counts[tier]++;prior.push(keys);keys.forEach(k=>exposure.set(k,(exposure.get(k)||0)+1));
       }
     }
   }
@@ -1678,7 +1682,7 @@ function predictionParlayPlan(pool,existing,week,now=Date.now()){
 }
 async function recordPredictionParlays(env,pool,now=Date.now()){
   if(!env.DB||pool.length<2)return {posted:0};
-  const week=officialWeek(now),existing=(await env.DB.prepare('SELECT tier,legs_json FROM prediction_parlays WHERE week=?').bind(week).all()).results||[];
+  const week=officialWeek(now),existing=(await env.DB.prepare('SELECT tier,legs_json,game_time FROM prediction_parlays WHERE week=?').bind(week).all()).results||[];
   const picks=new Set((((await env.DB.prepare('SELECT event_id,player FROM prediction_picks WHERE game_time>?').bind(new Date(now).toISOString()).all()).results)||[]).map(r=>`${r.event_id}|${normalizedName(r.player)}`));
   const dirs=await pickDirections(env,now);
   const teams=await playerTeams(env),plan=predictionParlayPlan(withTeams(pool.filter(p=>!picks.has(`${p.eventId}|${normalizedName(p.player)}`)&&sameDirection(dirs,p.eventId,p.player,p.side)),teams),existing,week,now),stamp=new Date(now).toISOString();
