@@ -183,11 +183,11 @@ const verified=row=>row.source==='market-verified-v2'&&['prop','parlay'].include
 const parsedLegs=row=>{try{return Array.isArray(row.legs)?row.legs:JSON.parse(row.legs_json||'[]')}catch{return[]}};
 const money=value=>{const v=Math.abs(value);return `${value>=0?'+':'−'}$${v.toLocaleString('en-US',v>=100?{maximumFractionDigits:0}:{minimumFractionDigits:2,maximumFractionDigits:2})}`};
 const decimal=odds=>Number(odds)>0?1+Number(odds)/100:Number(odds)<0?1+100/Math.abs(Number(odds)):null;
-const standardStake=()=>{try{const raw=JSON.parse(localStorage.getItem('bet-this-guy-preferences')||'{}').typicalWager;if(raw===null||raw===undefined||raw===''||typeof raw==='boolean')return 100;const stored=JSON.parse(localStorage.getItem('bet-this-guy-preferences')||'{}'),amount=Number(raw);if(amount===10&&!stored.wagerDefault100)return 100;return Number.isFinite(amount)&&amount>=0?amount:100}catch{return 100}};
+// The record is always at $100 a single and $25 a parlay, whatever the viewer's own bet.
+const standardStake=()=>100;
 const stakeLabel=()=>'$'+standardStake().toLocaleString('en-US',{maximumFractionDigits:2});
 // Parlays posted from Oct 12, 2026 on are a quarter unit; earlier ones a full unit.
-// Shown at the viewer's default parlay bet (Settings; blank is a quarter of the default bet).
-const parlayStandard=()=>{try{const v=Number(JSON.parse(localStorage.getItem('bet-this-guy-preferences')||'{}').parlayWager);return v>0?v:standardStake()/4}catch{return standardStake()/4}};
+const parlayStandard=()=>25;
 const unitShare=row=>row.kind==='parlay'?(String(row.posted_at||'')>='2026-10-12T18:00:00Z'?1:4)*(standardStake()>0?parlayStandard()/standardStake():.25):1;
 const profit=(row,stake0=standardStake())=>{const stake=stake0*unitShare(row);const legs=parsedLegs(row),settled=legs.length&&legs.every(leg=>['won','push'].includes(leg.result)),dec0=settled?legs.reduce((total,leg)=>total*(leg.result==='push'?1:decimal(leg.odds)||1),1):null,dec=dec0!==null?((live=>new Set(live.map(leg=>leg.gameId||leg.team||leg.player)).size<live.length)(legs.filter(leg=>leg.result==='won'))?1+(dec0-1)*.8:dec0):decimal(row.combined_odds??row.odds);return row.result==='won'&&dec?stake*(dec-1):row.result==='lost'?-stake:0};
 const tierFor=odds=>{const value=Number(odds);if(!Number.isFinite(value))return{key:'unknown',label:'Unpriced'};if(value>=1000&&value<=2500)return{key:'swing',label:'Mid-price parlays'};if(value>2500)return{key:'moonshot',label:'Long-shot parlays'};return{key:'reasonable',label:'Shorter parlays'}};
