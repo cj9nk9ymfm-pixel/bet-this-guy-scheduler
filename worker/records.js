@@ -1457,7 +1457,7 @@ const exchangeInsert=(env,p,stamp)=>env.DB.prepare('INSERT OR IGNORE INTO exchan
 // chance points on a price with chance p (0-1): Kalshi's taker fee is
 // 0.07*p*(1-p) per contract; Polymarket is assumed the same; ProphetX 2% of
 // net winnings; BetOpenly about 1 point; Novig none (pre-game). A price qualifies when its chance plus
-// the fee is 1-12 points under the sportsbooks' fair chance.
+// the fee is 1.5-12 points under the sportsbooks' fair chance.
 // From each app's published fee pages (Oct 2026): Novig charges nothing on
 // pre-game straight trades and 0.10 x P x (1 - P) per contract on parlays;
 // ProphetX takes 2% of net winnings on straight trades and nothing on
@@ -1469,7 +1469,9 @@ const PREDICTION_WIN_FEES={prophetx:.02};
 const PREDICTION_PARLAY_FEES={novig:p=>10*p*(1-p)};
 // A parlay's after-fee price on its app, from its combined decimal price.
 function predictionParlayNet(key,decimal){const p=1/decimal,fee=(PREDICTION_PARLAY_FEES[key]||(()=>0))(p)/100;return 1/Math.min(.99,p+fee)}
-const PREDICTION_MIN=1,PREDICTION_MAX=12,PREDICTION_PER_GAME=2;
+// Oct 18: 1 point and 2 a game made 23 prediction picks on one Sunday; now
+// 1.5 points and one a game.
+const PREDICTION_MIN=1.5,PREDICTION_MAX=12,PREDICTION_PER_GAME=1;
 // Picks and parlay legs lock only inside 24 hours of kickoff: earlier prices
 // beat the app's own closing price far less often (41% at 24-48 hours out vs
 // 66% inside 6 hours in the price test).
@@ -1571,20 +1573,11 @@ async function xPredictionMedia(env,r,parlay,rec=null){
 }
 async function postPredictionPicksToX(env,now=Date.now()){
   if(!env.DB||!xReady(env))return {posted:0,disabled:true};
-  // Prediction parlays first-come with picks: one post per run.
-  const parlays=(await env.DB.prepare('SELECT * FROM prediction_parlays WHERE posted_at>? AND game_time>? ORDER BY posted_at LIMIT 40').bind(new Date(now-24*3600000).toISOString(),new Date(now).toISOString()).all().catch(()=>({results:[]}))).results||[];
-  for(const r of parlays){
-    const key=`xpmp:${r.id}`;if(!(await xClaimable(env,key,now)))continue;if(!(await xClaim(env,key,now)))continue;
-    let legs=[];try{legs=JSON.parse(r.legs_json)}catch{}
-    const same=legs.some(l=>l.sameGame);
-    const tag=await xAppTag(env,r.exchange),rec=await xRecords(env).catch(()=>null);
-    const text=xPostText({head:'🔒 Official parlay · Prediction app · $25',lines:[[`${exchangePct(r.odds)}% on ${tag}${same?' · same-game: take it at that chance or lower':''}`,`${exchangePct(r.odds)}% on ${tag}${same?' · same-game':''}`]],legs,rec,age:'18+/21+ by app'});
-    const mediaId=await xPredictionMedia(env,r,true,rec);
-    try{const sent=await xPost(env,text,mediaId);await xDone(env,key,now);if(sent?.data?.id)await setAppSetting(env,`xid:${r.id}`,String(sent.data.id)).catch(()=>{});await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} prediction-parlay ${mediaId?'graphic':'text'} ${r.id} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,parlay:true,graphic:Boolean(mediaId)}}
-    catch(error){await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});return {posted:0,error:error.message}}
-  }
+  // Prediction parlays go on the pick cards, not posts of their own.
   const rows=(await env.DB.prepare('SELECT * FROM prediction_picks WHERE posted_at>? AND game_time>? ORDER BY posted_at LIMIT 40').bind(new Date(now-24*3600000).toISOString(),new Date(now).toISOString()).all()).results||[];
+  if((await xHeadCount(env,'xpm:pm|',now))>=X_HEAD.pm.day)return {posted:0,dayFull:true};
   for(const r of rows){
+    if(!(Number(r.edge)>=X_HEAD.pm.edge))continue;
     const key=`xpm:${r.id}`;if(!(await xClaimable(env,key,now)))continue;
     if(!(await xClaim(env,key,now)))continue;
     const rec=await xRecords(env).catch(()=>null);
@@ -1603,7 +1596,8 @@ async function postPredictionPicksToX(env,now=Date.now()){
 // after-fee price (the same-game cut when two legs share a game); graded at a
 // quarter unit. Each app's own combo price may differ, so posts say the
 // price to take it at.
-const PM_PARLAY_TIERS=[['long',4,5,2501,15000,1],['mid',3,4,1000,2500,3],['short',2,3,100,999,5]];
+// At most 3 a week (2 short, 1 mid; no long shots), down from 9.
+const PM_PARLAY_TIERS=[['long',4,5,2501,15000,0],['mid',3,4,1000,2500,1],['short',2,3,100,999,2]];
 function predictionParlayPlan(pool,existing,week,now=Date.now()){
   const prior=existing.map(r=>{try{return JSON.parse(r.legs_json).map(l=>`${l.eventId}|${normalizedName(l.player)}`)}catch{return []}});
   const exposure=new Map();prior.flat().forEach(k=>exposure.set(k,(exposure.get(k)||0)+1));
@@ -3039,6 +3033,15 @@ const xSetTail=(env,id,sent)=>sent?.data?.id?setAppSetting(env,`xtail:${id}`,Str
 // Each new official pick is posted once with its graphic. If the graphic
 // can't be made or uploaded three runs in a row, the text version posts
 // instead (unless that text was already posted), so a pick is never lost.
+// Only the strongest picks get their own X post the moment they lock: sportsbook
+// singles with a 1.5-point edge (3 a day) and prediction singles with a 2-point
+// edge (2 a day). Every other pick goes out on the day's pick card, or on a
+// catch-up card before its game, so every pick is still on X before kickoff.
+const X_HEAD={sb:{edge:1.5,day:3},pm:{edge:2,day:2}};
+async function xHeadCount(env,prefix,now){
+  const midnight=Date.parse(`${etDate(now,{year:'numeric',month:'2-digit',day:'2-digit'}).replace(/(\d+)\/(\d+)\/(\d+)/,'$3-$1-$2')}T00:00:00-05:00`);
+  return Number((await env.DB.prepare("SELECT count(*) n FROM app_settings WHERE key LIKE ? AND value>=? AND value NOT LIKE 'pending%'").bind(`${prefix}%`,new Date(midnight-3600000).toISOString()).first().catch(()=>null))?.n||0);
+}
 async function postPicksToX(env,now=Date.now()){
   if(!env.DB||!xReady(env))return {posted:0,disabled:true};
   const since=new Date(now-24*3600000).toISOString(),start=new Date(now).toISOString();
@@ -3047,8 +3050,11 @@ async function postPicksToX(env,now=Date.now()){
   // Picks already on X are skipped below, so a busy day (more than a handful
   // of picks in 24 hours) never leaves the newest one out.
   const seasonRows=(await env.DB.prepare("SELECT kind,posted_at,line,odds,combined_odds,status,result,closing_line,closing_odds,closing_captured_at,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%'").all()).results||[];
-  const season=weeklySummary(seasonRows),rec=await xRecords(env).catch(()=>null);let posted=0,attempts=0;
+  const season=weeklySummary(seasonRows),rec=await xRecords(env).catch(()=>null);let posted=0,attempts=0,today=await xHeadCount(env,'xi:official|',now);
   for(const r of picks){
+    // Parlays and smaller edges ride the pick cards instead.
+    if(r.kind!=='prop'||!(Number(recordLegs(r)[0]?.edge)>=X_HEAD.sb.edge))continue;
+    if(today>=X_HEAD.sb.day)break;
     if(!(await xClaimable(env,`xi:${r.id}`,now)))continue;
     // At most two picks per run: each uses about a dozen requests.
     if(++attempts>2)break;
@@ -3070,7 +3076,7 @@ async function postPicksToX(env,now=Date.now()){
       // The post id lets the closing-line and result posts reply under the pick.
       if(sent?.data?.id)await setAppSetting(env,`xid:${r.id}`,String(sent.data.id)).catch(()=>{});
       await xDone(env,`xi:${r.id}`,now);
-      posted++;await setAppSetting(env,'x-last-post',`${start} ${mediaId?'graphic':'text'} ${r.id}`).catch(()=>{});
+      posted++;today++;await setAppSetting(env,'x-last-post',`${start} ${mediaId?'graphic':'text'} ${r.id}`).catch(()=>{});
       if(imageError)await setAppSetting(env,'x-last-error',`${start} graphic: ${imageError}`).catch(()=>{});
     }catch(error){
       console.warn('x_post_failed',error.message);
@@ -3470,6 +3476,36 @@ async function xCardRecords(env){
 // A fresh slate post on request (after deleting one, say): app_settings
 // x-slate-request set to a new value (2026-10-18, 2026-10-18#2) posts the
 // card now, once per value, with the picks still to play.
+// A pick that's been on X (its own post, or on a card): xc:<id> marks the cards.
+async function xCovered(env,ids,now){const at=new Date(now).toISOString();if(ids.length)await env.DB.batch(ids.map(id=>env.DB.prepare('INSERT OR IGNORE INTO app_settings(key,value) VALUES(?,?)').bind(`xc:${id}`,at))).catch(()=>{})}
+// Catch-up card: picks inside 75 minutes of their game that haven't been on
+// X yet (locked after the day's cards went out), all on one card.
+async function postCatchUpToX(env,now=Date.now()){
+  if(!env.DB||!xReady(env))return {posted:0,disabled:true};
+  const a=new Date(now+5*60000).toISOString(),b=new Date(now+75*60000).toISOString(),q=sql=>env.DB.prepare(sql).bind(a,b).all().then(r=>r.results||[]).catch(()=>[]);
+  const sb=await q("SELECT * FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND result IS NULL AND game_time>? AND game_time<? ORDER BY game_time");
+  const pm=await q('SELECT * FROM prediction_picks WHERE result IS NULL AND game_time>? AND game_time<? ORDER BY game_time'),pp=await q('SELECT * FROM prediction_parlays WHERE result IS NULL AND game_time>? AND game_time<? ORDER BY game_time');
+  const all=[...sb.map(r=>({r,keys:[`xi:${r.id}`,`xc:${r.id}`]})),...pm.map(r=>({r,pm:true,keys:[`xpm:${r.id}`,`xc:${r.id}`]})),...pp.map(r=>({r,pm:true,parlay:true,keys:[`xpmp:${r.id}`,`xc:${r.id}`]}))];
+  if(!all.length)return {posted:0,none:true};
+  const keys=all.flatMap(x=>x.keys),have=new Set();
+  for(let i=0;i<keys.length;i+=90){const part=keys.slice(i,i+90);((await env.DB.prepare(`SELECT key FROM app_settings WHERE key IN (${part.map(()=>'?').join(',')})`).bind(...part).all().catch(()=>({results:[]}))).results||[]).forEach(r=>have.add(r.key))}
+  const open=all.filter(x=>!x.keys.some(k=>have.has(k)));if(!open.length)return {posted:0,covered:true};
+  const key=`x-catch:${open[0].r.id}`;if(!(await xClaimable(env,key,now))||!(await xClaim(env,key,now)))return {posted:0,done:true};
+  const C='#c4b5fd',legsOf=r=>{try{return JSON.parse(r.legs_json)}catch{return []}};
+  const rows=open.map(({r,pm,parlay})=>{
+    if(parlay){const legs=legsOf(r);return {color:C,text:`${legs.length}-leg parlay`,odds:`${exchangePct(r.odds)}%`,sub:`${r.exchange} · $25`,legLines:legs.map(l=>({text:`${l.player} ${weeklyLegText(l)}`,odds:`${exchangePct(l.netOdds??l.odds)}%`}))}}
+    if(pm)return {color:C,text:`${r.player} · ${weeklyLegText(r)}`,odds:`${exchangePct(r.odds)}%`,sub:[xMatchup(r.team),r.exchange,`fair ${Math.round(r.fair_pct)}%`].join(' · ')};
+    const legs=recordLegs(r),f=legs[0]||{};
+    return r.kind==='parlay'?{text:`${legs.length}-leg parlay`,odds:weeklyOdds(r.combined_odds),legLines:legs.map(l=>({text:`${l.player} ${weeklyLegText(l)}`,odds:weeklyOdds(l.odds)}))}:{text:`${r.player} · ${weeklyLegText(r)}`,odds:weeklyOdds(r.odds),sub:[xMatchup(f.team),f.book].filter(Boolean).join(' · ')}});
+  const first=Math.min(...open.map(x=>Date.parse(x.r.game_time))),n=open.length,anyPm=open.some(x=>x.pm),rec=await xRecords(env).catch(()=>null);
+  const books=open.filter(x=>!x.pm).length,apps=n-books,kick=`${etDate(first,{hour:'numeric',minute:'2-digit'})} ET`;
+  const text=xPostText({head:`🔒 Just locked: ${n} more pick${n===1?'':'s'} before kickoff`,lines:[[books?`${books} sportsbook`:'',apps?`${apps} prediction app`:''].filter(Boolean).join(' + ')+`, every one on the card 👇`,`First game ${kick}.`],rec,age:anyPm?'18+/21+ by app':'21+'});
+  let mediaId=null;
+  try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(xSlateSvg({final:true,kicker:'JUST LOCKED',day:etDate(first,{weekday:'long'}),dateLine:`${n} more pick${n===1?'':'s'} · first game ${kick}`,note:'Posted before kickoff',picks:rows,records:await xCardRecords(env).catch(()=>null),age:anyPm?'18+/21+':'21+'})))}
+  catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} catch-up graphic: ${error.message}`).catch(()=>{})}
+  try{const sent=await xPost(env,text,mediaId);await xDone(env,key,now);await xCovered(env,open.map(x=>x.r.id),now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} catch-up ${n} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,picks:n,graphic:Boolean(mediaId)}}
+  catch(error){await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
+}
 // Prediction-app slate: the day's prediction picks and parlays on one card,
 // 20 minutes after that day's sportsbook slate went out (or on request:
 // x-pm-slate-request set to a new value posts it now, once per value).
@@ -3498,7 +3534,7 @@ async function postPredictionSlateToX(env,now=Date.now()){
   let mediaId=null;
   try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(xSlateSvg({kicker:'PREDICTION APP PICKS',day:dayName,dayColor:C,date:etDate(firstAll,{month:'short',day:'numeric'}),dateLine:`${etDate(firstAll,{month:'short',day:'numeric'})} · ${n} picks so far`,note:'Chances after each app’s fee',picks:rows,records:await xCardRecords(env).catch(()=>null),cta:'Graded after fees',age:'18+/21+',foot:'PRICED AFTER FEES · 18+/21+'})))}
   catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} pm slate graphic: ${error.message}`).catch(()=>{})}
-  try{const sent=await xPost(env,text,mediaId);await xDone(env,key,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} pm-slate ${key} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,picks:n,graphic:Boolean(mediaId)}}
+  try{const sent=await xPost(env,text,mediaId);await xDone(env,key,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} pm-slate ${key} ${sent?.data?.id||''}`).catch(()=>{});await xCovered(env,[...P,...PP].map(r=>r.id),now);return {posted:1,picks:n,graphic:Boolean(mediaId)}}
   catch(error){await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
 }
 async function postSlateRequestToX(env,now=Date.now()){
@@ -3531,7 +3567,7 @@ async function postSlateToX(env,now=Date.now(),final=false,morning=false,request
   let mediaId=null;
   try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(xSlateSvg({final,kick,day:dayName,date:etDate(first,{month:'short',day:'numeric'}),picks,records:await xCardRecords(env).catch(()=>null),season:season.wins+season.losses>=5?`${season.wins}–${season.losses} · ${weeklyMoney(season.profit)}`:''})))}
   catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} slate graphic: ${error.message}`).catch(()=>{})}
-  try{await xPost(env,text,mediaId);await xDone(env,key,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} slate ${key}`).catch(()=>{});return {posted:1,final,morning,picks:rows.length,graphic:Boolean(mediaId)}}
+  try{await xPost(env,text,mediaId);await xDone(env,key,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} slate ${key}`).catch(()=>{});await xCovered(env,rows.map(r=>r.id),now);return {posted:1,final,morning,picks:rows.length,graphic:Boolean(mediaId)}}
   catch(error){console.warn('x_slate_failed',error.message);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});return {posted:0,error:error.message}}
 }
 // Alerts post to pin: a day's locked picks as proof, and why alerts matter
@@ -3871,9 +3907,10 @@ async function runXPosts(env,now=Date.now()){
   // The day's slate graphic waits for a run that didn't post a pick or the weekly.
   const combo=picks.posted||predictions.posted||weekly.posted?{posted:0,waiting:true}:await postComboToX(env,now).catch(error=>({posted:0,error:error.message}));
   const final=picks.posted||predictions.posted||weekly.posted||combo.posted?{posted:0,waiting:true}:await postSlateToX(env,now,true);
-  const morning=picks.posted||predictions.posted||combo.posted||weekly.posted||final.posted?{posted:0,waiting:true}:await postSlateToX(env,now,false,true);
-  const slate=picks.posted||predictions.posted||combo.posted||weekly.posted||final.posted||morning.posted?{posted:0,waiting:true}:await postSlateRequestToX(env,now).then(r=>r.posted?r:postSlateToX(env,now));
-  const pmSlate=picks.posted||predictions.posted||combo.posted||weekly.posted||final.posted||morning.posted||slate.posted?{posted:0,waiting:true}:await postPredictionSlateToX(env,now).catch(error=>({posted:0,error:error.message}));
+  const catchUp=picks.posted||predictions.posted||combo.posted||weekly.posted||final.posted?{posted:0,waiting:true}:await postCatchUpToX(env,now).catch(error=>({posted:0,error:error.message}));
+  const morning=picks.posted||predictions.posted||combo.posted||weekly.posted||final.posted||catchUp.posted?{posted:0,waiting:true}:await postSlateToX(env,now,false,true);
+  const slate=picks.posted||predictions.posted||combo.posted||weekly.posted||final.posted||catchUp.posted||morning.posted?{posted:0,waiting:true}:await postSlateRequestToX(env,now).then(r=>r.posted?r:postSlateToX(env,now));
+  const pmSlate=picks.posted||predictions.posted||combo.posted||weekly.posted||final.posted||catchUp.posted||morning.posted||slate.posted?{posted:0,waiting:true}:await postPredictionSlateToX(env,now).catch(error=>({posted:0,error:error.message}));
   const pin=picks.posted||predictions.posted||combo.posted||weekly.posted||final.posted||slate.posted||pmSlate.posted?{posted:0,waiting:true}:await postAlertsPinToX(env,now);
   const recap=picks.posted||predictions.posted||combo.posted||weekly.posted||final.posted||slate.posted||pin.posted?{posted:0,waiting:true}:await postDayRecapToX(env,now);
   const proof=await postProofToX(env,now);
@@ -3882,7 +3919,7 @@ async function runXPosts(env,now=Date.now()){
   const results=picks.posted||predictions.posted||combo.posted||weekly.posted||final.posted||slate.posted||pin.posted||recap.posted?{posted:0,waiting:true}:await postResultsToX(env,now);
   // The pinned summary waits for a run with nothing else heavy.
   const summary=picks.posted||predictions.posted||combo.posted||weekly.posted||final.posted||slate.posted||pin.posted||recap.posted||results.posted?{posted:0,waiting:true}:await postSummaryToX(env,now);
-  return {picks,weekly,closing,combo,final,slate,pmSlate,pin,recap,proof,nbaLaunch,nba,predictions,results,summary};
+  return {picks,weekly,closing,combo,final,catchUp,slate,pmSlate,pin,recap,proof,nbaLaunch,nba,predictions,results,summary};
 }
 // "My book" alerts: a good-value price at one of someone's own sportsbooks.
 // The fair price always comes from every book (3+ pricing both sides, the same
