@@ -1779,7 +1779,7 @@ if(typeof fetch==='function')window.btgCountVisit?.('view:home');
     const iphoneWeb=ios&&!standalone();
     d.innerHTML=`<button type="button" class="ac-x" data-ac-close aria-label="Close">×</button><p class="ac-eyebrow">FREE PICK ALERTS</p><h2 id="acTitle">How do you want your alerts?</h2>
       <button type="button" class="ac-opt ac-main" data-ac="x"><b>𝕏 Get alerts on X</b><span>Follow <strong>@BetThisGuy</strong>, tap the 🔔 bell and pick <strong>All posts</strong>. Every pick posts there the second it locks.</span></button>
-      <button type="button" class="ac-opt" data-ac="email"><b>✉️ Email me the picks</b><span>No account or app needed. About 3–6 emails a week.</span></button>
+      <button type="button" class="ac-opt" data-ac="email"><b>✉️ Email me the picks</b><span>No account or app needed. Picks that lock together come in one email.</span></button>
       <button type="button" class="ac-opt" data-ac="site"><b>🔔 Notifications from this site</b><span>${iphoneWeb?'iPhone: add Bet This Guy to your Home Screen first (Share → Add to Home Screen).':'One tap on Android and computers.'}</span></button>`;
     const close=()=>{try{d.close()}catch{}};
     d.querySelector('[data-ac-close]').onclick=close;d.onclick=e=>{if(e.target===d)close()};
@@ -2938,7 +2938,7 @@ function statsProp(l){
   // counts alike, so a count never promises props the list then hides.
   // Where the visitor is betting from: no legal sportsbooks there (California,
   // say) means a sportsbook link can't load a bet, so the slip says Open.
-  window.BTGWhere={noSportsbooks:()=>Boolean(data&&data.mode!=='unknown'&&data.sportsbooks===false),stateName:()=>data?.stateName||''};
+  window.BTGWhere={noSportsbooks:()=>Boolean(data&&data.mode!=='unknown'&&data.sportsbooks===false),stateName:()=>data?.stateName||'',stateCode:()=>String(data?.state||'').toLowerCase()};
   window.BTGPmBoard={
     active:()=>view()==='predictions',
     // The app price shown for a board prop (best in the visitor's state, or the app chosen in Settings).
@@ -3083,10 +3083,12 @@ function statsProp(l){
   // Fetched once per game and market when the slip shows (/api/bet-links).
   const APPS=new Set(['kalshi','polymarket','novig','prophetx','betopenly']),linkReq=new Map(),nk=v=>String(v||'').toLowerCase().replace(/[^a-z]/g,'');
   const marketKeysFor=label=>{const base=Object.keys(marketLabels).filter(k=>/^player_/.test(k)&&!/_alternate$/.test(k)&&marketLabels[k]===label);return [...new Set(base.flatMap(k=>[k,`${k}_alternate`]))].slice(0,3)};
-  const stateCode=()=>{try{return String(localStorage.getItem('btg-state')||'').toLowerCase()}catch{return ''}};
+  // The state the visitor picked, else the one we detected (BetMGM and BetRivers links need it).
+  const stateCode=()=>{let s='';try{s=String(localStorage.getItem('btg-state')||'').toLowerCase()}catch{}return s||window.BTGWhere?.stateCode?.()||''};
   const wagerAmt=()=>Math.max(1,Math.round(Number(String($('#wager')?.value||'').replace(/[^0-9.]/g,''))||100));
-  // Links can carry {state} and {wager}; one we can't fill opens the book's home page instead.
-  const fillLink=u=>{if(!u)return null;const st=stateCode();if(/\{state\}/.test(u)&&!st)return null;const out=String(u).replace(/\{state\}/g,st).replace(/\{wager(Amount)?\}/g,String(wagerAmt()));return /\{[a-zA-Z]+\}/.test(out)?null:out};
+  // Links can carry {state}, {wager} and (BetRivers, Kambi coupons) {pickType}; one we
+  // can't fill opens the book's home page instead.
+  const fillLink=u=>{if(!u)return null;const st=stateCode();if(/\{state\}/.test(u)&&!st)return null;const out=String(u).replace(/\{state\}/g,st).replace(/\{wager(Amount)?\}/g,String(wagerAmt())).replace(/\{pickType\}/g,'single');return /\{[a-zA-Z]+\}/.test(out)?null:out};
   function linkRows(leg){
     const p=leg.current||leg.p,keys=marketKeysFor(p?.market);if(!p?.eventID||!keys.length)return null;
     const k=`${p.eventID}|${keys.join(',')}`;
@@ -3108,7 +3110,7 @@ function statsProp(l){
   }
 
   const noBooksNote=(pm,app)=>!pm&&window.BTGWhere?.noSportsbooks?.()?`<p class="slip-nobooks">Sportsbooks don’t take bets in ${htmlEscape(window.BTGWhere.stateName()||'your state')}, so these only open the book.${app?' Use the purple button to bet it on a prediction app.':' This bet isn’t on a prediction app at this line.'}</p>`:'';
-  const pickLinks=(places,pm,bet='',app=false)=>`${noBooksNote(pm,app)}<p class="slip-where">${pm?'Bet it on':'Bet it at'}${places[0]?`<span>${usd(wagerAmt())} ${pm?'pays':'wins'} ${usd(Math.round(wagerAmt()*(dec(places[0].odds)-(pm?0:1))))}</span>`:''}</p><div class="slip-picks">${places.slice(0,5).map((o,i)=>`<a class="slip-pick${i===0?' best':''}" href="${htmlEscape(o.url)}" target="_blank" rel="noopener sponsored" data-book="${htmlEscape(normalizeBookName(o.name))}" data-bet="${htmlEscape(bet)}" data-app="${htmlEscape(o.name)}"><span>${htmlEscape(o.name)}${o.mine?' <em>your book</em>':''}</span><b>${pm?`${Math.round(100/dec(o.odds))}%`:htmlEscape(formatOdds(o.odds))}</b><i>${o.deep?'Bet ›':'Open ›'}</i></a>`).join('')}</div>`;
+  const pickLinks=(places,pm,bet='',app=false)=>`${noBooksNote(pm,app)}<p class="slip-where">${pm?'Bet it on':'Bet it at'}${places[0]?`<span>${usd(wagerAmt())} ${pm?'pays':'wins'} ${usd(Math.round(wagerAmt()*(dec(places[0].odds)-(pm?0:1))))}</span>`:''}</p><div class="slip-picks">${places.slice(0,5).map((o,i)=>`<a class="slip-pick${i===0?' best':''}" href="${htmlEscape(o.url)}" target="_blank" rel="noopener sponsored" data-book="${htmlEscape(normalizeBookName(o.name))}" data-bet="${htmlEscape(bet)}" data-app="${htmlEscape(o.name)}" data-deep="${o.deep?1:0}"><span>${htmlEscape(o.name)}${o.mine?' <em>your book</em>':''}</span><b>${pm?`${Math.round(100/dec(o.odds))}%`:htmlEscape(formatOdds(o.odds))}</b><i>${o.deep?'Bet ›':'Open ›'}</i></a>`).join('')}</div>`;
   const openLink=book=>{const url=sportsbookDestination(book);return url?`<a class="slip-open" href="${htmlEscape(url)}" target="_blank" rel="noopener sponsored">Open ${htmlEscape(book)}</a>`:''};
   // iPhone home-screen app: links open in a browser panel that loads the
   // book's website, never its app. Hand the tap to Safari (/go), where one
@@ -3117,6 +3119,8 @@ function statsProp(l){
   const isIOS=()=>/iPhone|iPad|iPod/.test(navigator.userAgent)||(/Macintosh/.test(navigator.userAgent)&&navigator.maxTouchPoints>1),iosHome=()=>isIOS()&&(window.matchMedia?.('(display-mode: standalone)').matches||navigator.standalone===true);
   document.addEventListener('click',e=>{
     const a=e.target.closest?.('a.slip-pick,a.slip-step');if(!a)return;
+    // No bet link at this book (Fanatics, say): copy the bet to paste in its search.
+    if(a.dataset.deep==='0'&&a.dataset.bet){try{navigator.clipboard?.writeText(a.dataset.bet);slipToast(`${icon('check')} Copied “${htmlEscape(a.dataset.bet)}”: paste it in the ${htmlEscape(a.dataset.app||'book')} search`)}catch{}window.btgCount?.('slip:copy')}
     let left=false;const away=()=>{left=true};
     // Novig: its web links never open the app; on iPhone its novigapp://
     // link opens the app on the bet (the website if the app isn't there).
