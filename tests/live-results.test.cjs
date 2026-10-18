@@ -44,5 +44,12 @@ db.prepare("INSERT INTO prediction_parlays(id,week,tier,exchange,legs_json,odds,
   db.prepare("INSERT INTO app_settings(key,value) VALUES('xid:x-pm-week:w','777')").run();
   assert.equal((await vm.runInContext('postCustomToX(env)',context)).posted,1);assert.deepEqual(sentX,[['Hello @novig','777']]);
   assert.equal((await vm.runInContext('postCustomToX(env)',context)).posted,0,'posts once');
+  // A scheduled post with an attached card: waits for its time, then posts with the image.
+  const uploads=[];context.renderCardPng=async svg=>{uploads.push(svg);return new Uint8Array([1])};context.xUploadImage=async()=>'m9';
+  const sentM=[];context.xPost=async(env,text,m)=>{sentM.push([text,m]);return {data:{id:'56'}}};
+  db.prepare("INSERT INTO app_settings(key,value) VALUES('x-card:test','<svg/>')").run();
+  db.prepare("INSERT INTO app_settings(key,value) VALUES('x-custom-post',?)").run(JSON.stringify({text:'Spotlight',at:'2026-10-18T16:00:00Z',svgKey:'x-card:test'}));
+  assert.equal((await vm.runInContext(`postCustomToX(env,${Date.parse('2026-10-18T15:55:00Z')})`,context)).waiting,true,'waits for its time');
+  assert.equal((await vm.runInContext(`postCustomToX(env,${Date.parse('2026-10-18T16:01:00Z')})`,context)).graphic,true);assert.deepEqual(sentM,[['Spotlight','m9']]);assert.deepEqual(uploads,['<svg/>']);
   console.log('PASS: prediction picks and parlays are decided mid-game when an Over clears or an Under is passed; Unders that hold wait for the final');
 })().catch(e=>{console.error(e);process.exit(1)});
