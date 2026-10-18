@@ -98,8 +98,10 @@ const OFFICIAL_CAPS={props:100,reasonable:15,swing:10,moonshot:3};
 const OFFICIAL_PER_GAME=2;
 // Top picks: an edge this big has no limit (any number in a game, past the
 // daily X limit) and posts as ⭐ Top pick. Through Oct 18, 3 of
-// 42 graded sportsbook singles had 2+ points; no prediction pick had 2.5.
-const TOP_PICK={sb:2,pm:2.5};
+// 42 graded sportsbook singles had 2+ points. Prediction edges run bigger
+// (thinner app prices, staler overnight): 2.5 let 5 through on one night,
+// so prediction top picks need 3 (2 of 33 picks so far).
+const TOP_PICK={sb:2,pm:3};
 // Picks can lock any time before kickoff in the official week.
 const OFFICIAL_HORIZON=8*86400000,LOW_ODDS_CREDITS=250000;
 function officialWeek(time){const d=new Date(Number(time)-12*3600000);d.setUTCHours(0,0,0,0);d.setUTCDate(d.getUTCDate()-(d.getUTCDay()+5)%7);return d.toISOString().slice(0,10)}
