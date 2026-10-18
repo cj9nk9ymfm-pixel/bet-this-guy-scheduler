@@ -1526,7 +1526,9 @@ async function gradePredictionPicks(env,now=Date.now(),limit=30){
   return {graded:statements.length,checked:rows.length};
 }
 const predictionPickText=r=>`${r.player} ${weeklyLegText(r)}: ${r.exchange} ${exchangePct(r.odds)}% (fair chance ${Math.round(r.fair_pct)}%)`;
-function predictionAlert(rows){return {title:rows.length===1?'📈 New prediction market pick':`📈 ${rows.length} new prediction market picks`,body:rows.map(predictionPickText).join('\n'),url:'/'}}
+// Alerts link to the newest pick: the site scrolls to it and highlights it.
+const pickUrl=(id,extra='')=>id?`/?${extra}pick=${encodeURIComponent(id)}`:'/';
+function predictionAlert(rows){return {title:rows.length===1?'📈 New prediction market pick':`📈 ${rows.length} new prediction market picks`,body:rows.map(predictionPickText).join('\n'),url:pickUrl(rows[0]?.id,'view=predictions&')}}
 // Emails for prediction picks: people who ticked "Also email prediction
 // market picks" get one email per batch of new ones.
 async function sendPredictionEmails(env,now=Date.now()){
@@ -2635,17 +2637,17 @@ async function latestAlert(env,now=Date.now(),endpoint=null){
   // NBA picks newer than any NFL pick (posted in the last 3 hours): that's what this phone was pinged for.
   if(!sub||sub.alert_nba!==0){
     const nfl=(await env.DB.prepare("SELECT MAX(posted_at) AS at FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%'").all()).results?.[0]?.at||'';
-    const nba=(await env.DB.prepare("SELECT kind,player,market,side,line,odds,combined_odds,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'nba|%' AND posted_at>=? AND posted_at>? ORDER BY posted_at DESC LIMIT 3").bind(new Date(now-3*3600000).toISOString(),nfl).all()).results||[];
-    if(nba.length)return {title:nba.length===1?'🏀 New NBA pick':`🏀 ${nba.length} new NBA picks`,body:nba.map(r=>{const legs=recordLegs(r),f=legs[0]||{};return r.kind==='parlay'?`${legs.length}-leg parlay (${weeklyOdds(r.combined_odds)}): ${legs.map(l=>l.player).join(' + ')}`:`${r.player} ${weeklyLegText(r)} (${weeklyOdds(r.odds)}${f.book?`, ${f.book}`:''})`}).join('\n'),url:'/?league=NBA'};
+    const nba=(await env.DB.prepare("SELECT id,kind,player,market,side,line,odds,combined_odds,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'nba|%' AND posted_at>=? AND posted_at>? ORDER BY posted_at DESC LIMIT 3").bind(new Date(now-3*3600000).toISOString(),nfl).all()).results||[];
+    if(nba.length)return {title:nba.length===1?'🏀 New NBA pick':`🏀 ${nba.length} new NBA picks`,body:nba.map(r=>{const legs=recordLegs(r),f=legs[0]||{};return r.kind==='parlay'?`${legs.length}-leg parlay (${weeklyOdds(r.combined_odds)}): ${legs.map(l=>l.player).join(' + ')}`:`${r.player} ${weeklyLegText(r)} (${weeklyOdds(r.odds)}${f.book?`, ${f.book}`:''})`}).join('\n'),url:pickUrl(nba[0].id,'league=NBA&')};
   }
-  const picks=wantSb?((await env.DB.prepare("SELECT kind,player,market,side,line,odds,combined_odds,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND posted_at>=? ORDER BY posted_at DESC LIMIT 3").bind(new Date(now-3*3600000).toISOString()).all()).results||[]):[];
+  const picks=wantSb?((await env.DB.prepare("SELECT id,kind,player,market,side,line,odds,combined_odds,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND posted_at>=? ORDER BY posted_at DESC LIMIT 3").bind(new Date(now-3*3600000).toISOString()).all()).results||[]):[];
   // A newer prediction pick or parlay than any official pick: that's what this phone was pinged for.
   if(wantPm){
     const newest=picks.length?(await env.DB.prepare("SELECT MAX(posted_at) AS at FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%'").first())?.at||'':'';
     const fresh=(await env.DB.prepare('SELECT * FROM prediction_picks WHERE posted_at>=? AND posted_at>? ORDER BY posted_at DESC LIMIT 3').bind(new Date(now-3*3600000).toISOString(),newest).all()).results||[];
     if(fresh.length)return predictionAlert(fresh);
     const fp=(await env.DB.prepare('SELECT * FROM prediction_parlays WHERE posted_at>=? AND posted_at>? ORDER BY posted_at DESC LIMIT 2').bind(new Date(now-3*3600000).toISOString(),newest).all().catch(()=>({results:[]}))).results||[];
-    if(fp.length)return {title:fp.length===1?'📈 New prediction market parlay':`📈 ${fp.length} new prediction market parlays`,body:fp.map(predictionParlayText).join('\n'),url:'/'};
+    if(fp.length)return {title:fp.length===1?'📈 New prediction market parlay':`📈 ${fp.length} new prediction market parlays`,body:fp.map(predictionParlayText).join('\n'),url:pickUrl(fp[0].id,'view=predictions&')};
   }
   if(!picks.length)return wantSb?{title:'New Bet This Guy picks',body:'Fresh official picks are on the board.',url:'/'}:{title:'New prediction market picks',body:'Fresh prediction app picks are on the board.',url:'/'};
   // A phone set to prediction markets gets each pick's prediction-market chances
@@ -2654,7 +2656,7 @@ async function latestAlert(env,now=Date.now(),endpoint=null){
   const line=r=>{if(r.kind==='parlay')return `${recordLegs(r).length}-leg parlay (${weeklyOdds(r.combined_odds)}): ${recordLegs(r).map(l=>l.player).join(' + ')}`;
     if(pm){const ex=exchangeLine(r,sub.state||null),any=exchangeLine(r,sub.state||null,1,true);return `${r.player} ${weeklyLegText(r)}: ${ex?`good value on ${ex}`:any?`${any} is worse than fair, skip on prediction markets (${weeklyOdds(r.odds)} at sportsbooks)`:`not on prediction markets yet (${weeklyOdds(r.odds)} at sportsbooks)`}`}
     return `${r.player} ${weeklyLegText(r)} (${weeklyOdds(r.odds)})`};
-  return {title:picks.length===1?'✅ New Bet This Guy pick':`✅ ${picks.length} new Bet This Guy picks`,body:picks.map(line).join('\n'),url:'/'};
+  return {title:picks.length===1?'✅ New Bet This Guy pick':`✅ ${picks.length} new Bet This Guy picks`,body:picks.map(line).join('\n'),url:pickUrl(picks[0].id,pm?'view=predictions&':'')};
 }
 // only: resend to just these endpoints (a retry), without the 15-minute batching.
 async function sendPickAlerts(env,now=Date.now(),only=null){

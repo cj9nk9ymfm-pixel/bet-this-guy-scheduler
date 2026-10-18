@@ -119,7 +119,7 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
   // Prediction picks: a phone set to prediction markets is pinged for them, and X gets one post each.
   await sub({endpoint:ep,keys,priceView:'predictions',state:'TX'});
   alert=J(await run(`latestAlert(env,${now+60000},${JSON.stringify(ep)})`));
-  assert.deepEqual(alert,{title:'📈 New prediction market pick',body:'Tre Tucker Over 3.5 receptions: Novig 47% (fair chance 50%)',url:'/'});
+  assert.deepEqual(alert,{title:'📈 New prediction market pick',body:'Tre Tucker Over 3.5 receptions: Novig 47% (fair chance 50%)',url:'/?view=predictions&pick=pm%7CNFL--g1%7Ctretucker'},'the alert opens on that pick');
   // The two alert checkboxes: prediction pings on the sportsbook view, or off on the prediction view.
   await sub({endpoint:ep,keys,priceView:'odds',state:'TX',alertSportsbook:true,alertPredictions:true});
   assert.deepEqual({...db.prepare('SELECT alert_sportsbook,alert_predictions FROM push_subscriptions').get()},{alert_sportsbook:1,alert_predictions:1});

@@ -65,7 +65,7 @@ const run=c=>vm.runInContext(c,context),req='new Request("https://betthisguy.com
   db.prepare("INSERT INTO push_subscriptions (endpoint,p256dh,auth,created_at) VALUES ('https://fcm.googleapis.com/fcm/send/a','x','y','2026-10-01')").run();
   db.prepare("INSERT INTO push_subscriptions (endpoint,p256dh,auth,created_at,alert_nba) VALUES ('https://fcm.googleapis.com/fcm/send/b','x','y','2026-10-01',0)").run();
   const alert=await run(`latestAlert(env,${now},'https://fcm.googleapis.com/fcm/send/a')`);
-  assert.equal(alert.title,'🏀 2 new NBA picks');assert.match(alert.body,/Jayson Tatum Over 27.5 points \(\+115, DraftKings\)/);assert.equal(alert.url,'/?league=NBA');
+  assert.equal(alert.title,'🏀 2 new NBA picks');assert.match(alert.body,/Jayson Tatum Over 27.5 points \(\+115, DraftKings\)/);assert.match(alert.url,/^\/\?league=NBA&pick=nba%7C/,'the alert opens on the newest NBA pick');
   assert.notEqual((await run(`latestAlert(env,${now},'https://fcm.googleapis.com/fcm/send/b')`)).title,'🏀 2 new NBA picks','NBA alerts off');
   // Email: one batched NBA email to accounts with email alerts and NBA on.
   for(const [id,nba] of [['u1',1],['u2',0]]){db.prepare("INSERT INTO user_profiles (auth_user_id,email,created_at,updated_at) VALUES (?,?,'2026-10-01','2026-10-01')").run(id,id+'@example.com');db.prepare("INSERT INTO email_alerts (auth_user_id,enabled,token,created_at,updated_at,nba) VALUES (?,1,?,'2026-10-01','2026-10-01',?)").run(id,'t'+id,nba)}

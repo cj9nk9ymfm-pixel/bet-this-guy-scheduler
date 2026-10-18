@@ -41,6 +41,16 @@ const NBA_BETA=true;
 // game (Tuesday, Wednesday, Friday, Saturday, Eastern time) once the season starts.
 const LEAGUE=(()=>{try{const asked=new URLSearchParams(location.search).get('league');if(asked==='NBA'||asked==='NFL')localStorage.setItem('btg-league',asked);const saved=localStorage.getItem('btg-league');if(saved==='NBA'||saved==='NFL')return saved}catch{}
   const now=Date.now(),day=new Date(now-4*3600000).getUTCDay();return now>=Date.parse('2026-10-20T14:00:00Z')&&[2,3,5,6].includes(day)?'NBA':'NFL'})();
+// An alert's link can open the prediction view (?view=predictions).
+try{const v=new URLSearchParams(location.search).get('view');if(v==='predictions'||v==='odds')localStorage.setItem('btg-price-view',v)}catch{}
+// Newest picks: a NEW tag (with how long ago) for 3 hours, until the game starts.
+function newTag(posted,start,now=Date.now()){const t=Date.parse(posted||''),m=Math.round((now-t)/60000);if(!t||m>180||Date.parse(start||'')<=now)return '';return `<em class="on-new">NEW · ${m<1?'just now':m<60?`${m}m ago`:`${Math.round(m/60)}h ago`}</em>`}
+// An alert opens /?pick=<id>: that pick is revealed, scrolled to and highlighted, once.
+function focusPick(){let id='';try{id=new URLSearchParams(location.search).get('pick')||''}catch{}if(!id||focusPick.done)return;
+  const el=[...document.querySelectorAll('[data-pick-id]')].find(e=>e.dataset.pickId===id);if(!el)return;focusPick.done=true;
+  for(let p=el.parentElement;p&&p!==document.body;p=p.parentElement)if(p.hidden){p.hidden=false;const b=p.previousElementSibling;if(b?.matches?.('[data-on-toggle]'))b.setAttribute('aria-expanded','true')}
+  el.classList.add('on-flash');setTimeout(()=>el.scrollIntoView({behavior:'smooth',block:'center'}),350);setTimeout(()=>el.classList.remove('on-flash'),5000);
+  try{const u=new URL(location.href);u.searchParams.delete('pick');u.searchParams.delete('view');history.replaceState(null,'',u.pathname+u.search+u.hash)}catch{}}
 const leagueParam=(prefix='?')=>LEAGUE==='NBA'?`${prefix}sport=NBA`:'';
 function switchLeague(league){try{localStorage.setItem('btg-league',league==='NBA'?'NBA':'NFL')}catch{}location.reload()}
 let state={sport:LEAGUE,game:'All',team:'All',day:'All',timeSlot:'All',market:'All',side:'All',move:'All',minEdge:0,minConf:0,oddsType:'All',sort:'edge',search:'',high:false,heat:null,view:'board',boardSport:LEAGUE,boardMarket:'All',boardGame:'All',saved:new Set(readStored('propedge-saved',[]).filter(value=>typeof value==='string'&&value.startsWith('['))),slip:[]};
@@ -1541,11 +1551,12 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
   const officialDone=r=>['won','lost','push','void'].includes(r.result);
   function officialNow(rows,now=Date.now()){
     const current=currentWeek(now);
-    // In play first, then upcoming by kickoff; graded picks go last (newest
-    // first) under a "Final" label, still in the list and in the record.
-    const group=r=>officialDone(r)?2:Date.parse(r.game_time||'')<=now?0:1,t=r=>String(r.game_time||'');
+    // Still to play, newest posted first (the pick an alert just sent is on
+    // top); then games in play; graded picks go last (newest first) under a
+    // "Final" label, still in the list and in the record.
+    const group=r=>officialDone(r)?2:Date.parse(r.game_time||'')<=now?1:0,t=r=>String(r.game_time||'');
     // NBA: tonight plus any later night already posted (picks can lock a day early).
-    return rows.filter(r=>(NBA?weekOf(r)>=current:weekOf(r)===current)&&(r.kind==='prop'||r.kind==='parlay')).sort((a,b)=>group(a)-group(b)||(group(a)===2?t(b).localeCompare(t(a)):t(a).localeCompare(t(b)))||String(a.posted_at||'').localeCompare(String(b.posted_at||'')));
+    return rows.filter(r=>(NBA?weekOf(r)>=current:weekOf(r)===current)&&(r.kind==='prop'||r.kind==='parlay')).sort((a,b)=>group(a)-group(b)||(group(a)===0?String(b.posted_at||'').localeCompare(String(a.posted_at||'')):group(a)===2?t(b).localeCompare(t(a)):t(a).localeCompare(t(b)))||String(a.posted_at||'').localeCompare(String(b.posted_at||'')));
   }
   const kickoff=iso=>{const d=new Date(iso);return Number.isFinite(d.getTime())?d.toLocaleString([],{weekday:'short',hour:'numeric',minute:'2-digit'}):''};
   // Under each pick: what the stake wins ($100 singles, $25 parlays, or the
@@ -1569,7 +1580,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     const why=edges.length?(isParlay?`Every leg beats fair`:`${Math.max(...edges).toFixed(1)}% better than fair`):'';
     const game=String(legs[0]?.team||'').replace(' · @ ',' @ ').replace(' · vs ',' vs '),matchup=isParlay?'':game&&typeof compactGameName==='function'?compactGameName(game):game;
     // Compact row: the book rides in the small line (the section already says these are official).
-    return `<button type="button" class="on-row on-${status[0]}-row" data-on="${i}" data-on-player="${htmlEscape(isParlay?'':r.player||'')}" data-on-team="${htmlEscape(isParlay?'':legs[0]?.team||'')}" aria-label="Details for ${htmlEscape(title)}">${avatar}<span class="on-who"><b>${htmlEscape(title)}</b><span>${htmlEscape(sub)}</span><small>${htmlEscape([matchup,kickoff(r.game_time),books.length===1?books[0]:''].filter(Boolean).join(' · '))}</small>${winLine(r,isParlay,odds,done)}${why?`<i class="on-why">${htmlEscape(why)}</i>`:''}<i class="on-form" data-on-form="${i}" hidden></i><i class="on-wx" data-wx="${htmlEscape(r.game_id||legs[0]?.gameId||'')}" hidden></i><em class="on-live" data-on-live="${i}" hidden></em>${isParlay?'':`<i class="on-pm" data-pm="${htmlEscape(r.id||'')}" data-pm-odds="${htmlEscape(String(odds))}" data-pm-status="${htmlEscape(status[0])}" hidden></i>`}</span><span class="on-end"><b class="on-price"${status[0]!=='won'&&status[0]!=='lost'?' data-slip-price title="Add to slip"':''}>${htmlEscape(formatOdds(odds))}</b><span class="on-tag on-${status[0]}"${status[0]==='locked'?' title="Posted at this price before kickoff"':''}>${tag}</span></span></button>`;
+    return `<button type="button" class="on-row on-${status[0]}-row" data-on="${i}" data-pick-id="${htmlEscape(r.id||'')}" data-on-player="${htmlEscape(isParlay?'':r.player||'')}" data-on-team="${htmlEscape(isParlay?'':legs[0]?.team||'')}" aria-label="Details for ${htmlEscape(title)}">${avatar}<span class="on-who"><b>${htmlEscape(title)}${done?'':newTag(r.posted_at,r.game_time)}</b><span>${htmlEscape(sub)}</span><small>${htmlEscape([matchup,kickoff(r.game_time),books.length===1?books[0]:''].filter(Boolean).join(' · '))}</small>${winLine(r,isParlay,odds,done)}${why?`<i class="on-why">${htmlEscape(why)}</i>`:''}<i class="on-form" data-on-form="${i}" hidden></i><i class="on-wx" data-wx="${htmlEscape(r.game_id||legs[0]?.gameId||'')}" hidden></i><em class="on-live" data-on-live="${i}" hidden></em>${isParlay?'':`<i class="on-pm" data-pm="${htmlEscape(r.id||'')}" data-pm-odds="${htmlEscape(String(odds))}" data-pm-status="${htmlEscape(status[0])}" hidden></i>`}</span><span class="on-end"><b class="on-price"${status[0]!=='won'&&status[0]!=='lost'?' data-slip-price title="Add to slip"':''}>${htmlEscape(formatOdds(odds))}</b><span class="on-tag on-${status[0]}"${status[0]==='locked'?' title="Posted at this price before kickoff"':''}>${tag}</span></span></button>`;
   }
   // Live progress for locked picks, refreshed with the live board (every 5s in games).
   let officialLiveList=[];
@@ -1617,7 +1628,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     fill('#parlaysList',parlays,'parlay',NBA?'<div class="on-empty"><strong>No NBA parlays yet tonight.</strong><span>Up to 2 a night, when two or more props that just missed line up.</span></div>':'<div class="on-empty"><strong>No parlays yet this week.</strong><span>They post when two or more props that just missed line up.</span></div>');
     // Tap the row for the bet screen; tap a single's price to add it to the slip.
     $$('#officialNowList button[data-on], #parlaysList button[data-on]').forEach(b=>b.onclick=e=>{const r=list[+b.dataset.on];if(e.target.closest('[data-slip-price]')&&r&&!['won','lost','push'].includes(r.result)&&(r.kind==='parlay'?addParlayToSlip(r):addBetToSlip(r)))return;openPick(r)});
-    officialLiveList=list;updateOfficialLive();window.btgOfficialForm?.(list);
+    officialLiveList=list;updateOfficialLive();window.btgOfficialForm?.(list);focusPick();
     $$('#officialNowList [data-on-player]').forEach(row=>{const player=row.dataset.onPlayer;if(!player||typeof playerStatsFor!=='function')return;const r=list[+row.dataset.on];playerStatsFor({sport:r?.sport||'NFL',player,team:row.dataset.onTeam}).then(payload=>window.BTGPaintTeam?.(row,payload?.player?.team,r?.sport||'NFL')).catch(()=>{})});
     host.hidden=false;if($('#parlaysNow')){$('#parlaysNow').hidden=!parlays.length;$('#parlaysNow').dataset.empty=parlays.length?'':'1'}
   }
@@ -2872,14 +2883,14 @@ function statsProp(l){
     const game=String(r.team||'').replace(' · @ ',' @ ').replace(' · vs ',' vs '),matchup=game&&typeof compactGameName==='function'?compactGameName(game):game,st=pmStatus(r);
     const note=[pmWin(r.netOdds??r.odds,100,r.result),`Hit chance ${Math.round(r.fair)}%`,r.open===false?`not offered in ${data?.stateName||'your state'}`:''].filter(Boolean).join(' · ');
     const idx=pmRows.push(pmRecord(r))-1;
-    return `<div class="on-row on-${st[0]}-row pm-pick" role="button" tabindex="0" data-pm-i="${idx}" aria-label="${htmlEscape(`Details for ${r.player}`)}"><span class="on-avatar"><span>${htmlEscape(initials)}</span><img loading="lazy" decoding="async" src="/api/player-photo?name=${encodeURIComponent(r.player||'')}" alt="" onerror="this.remove()"></span><span class="on-who"><b>${htmlEscape(r.player)}</b><span>${htmlEscape(bet.charAt(0).toUpperCase()+bet.slice(1))}</span><small>${htmlEscape([matchup,when(r.gameTime)].filter(Boolean).join(' · '))} · ${chip(r.exchange)}</small><i class="on-pm ${r.result==='lost'?'pm-lost':r.result==='push'||r.result==='void'?'pm-push':'pm-ok'}">${htmlEscape(note)}</i>${pmLiveSpan(idx)}</span>${pmEnd(r,st)}</div>`;
+    return `<div class="on-row on-${st[0]}-row pm-pick" role="button" tabindex="0" data-pm-i="${idx}" data-pick-id="${htmlEscape(r.id||'')}" aria-label="${htmlEscape(`Details for ${r.player}`)}"><span class="on-avatar"><span>${htmlEscape(initials)}</span><img loading="lazy" decoding="async" src="/api/player-photo?name=${encodeURIComponent(r.player||'')}" alt="" onerror="this.remove()"></span><span class="on-who"><b>${htmlEscape(r.player)}${r.result?'':newTag(r.postedAt,r.gameTime)}</b><span>${htmlEscape(bet.charAt(0).toUpperCase()+bet.slice(1))}</span><small>${htmlEscape([matchup,when(r.gameTime)].filter(Boolean).join(' · '))} · ${chip(r.exchange)}</small><i class="on-pm ${r.result==='lost'?'pm-lost':r.result==='push'||r.result==='void'?'pm-push':'pm-ok'}">${htmlEscape(note)}</i>${pmLiveSpan(idx)}</span>${pmEnd(r,st)}</div>`;
   }
   function parlayRow(r){
     const st=pmStatus(r),same=r.legs.some(l=>l.sameGame);
     const legs=r.legs.map(l=>`${l.result==='won'?'✓ ':l.result==='lost'?'✗ ':''}${l.player} ${l.side} ${l.line} ${String(l.market||'').toLowerCase()}`).join(' + ');
     const note=[pmWin(r.odds,parlayStake(),r.result,Number.isFinite(Number(r.money))?Number(r.money)*parlayStake()/25:r.money),same?'same game':'',r.open===false?`not offered in ${data?.stateName||'your state'}`:''].filter(Boolean).join(' · ');
     const idx=pmRows.push(pmRecord(r))-1;
-    return `<div class="on-row on-${st[0]}-row pm-pick" role="button" tabindex="0" data-pm-i="${idx}" aria-label="Details for this parlay"><span class="on-avatar on-parlay">${typeof icon==='function'?icon('layers'):''}</span><span class="on-who"><b>${r.legs.length}-leg parlay</b><span>${htmlEscape(legs)}</span><small>${htmlEscape(when(r.gameTime))} · ${chip(r.exchange)}</small><i class="on-pm ${r.result==='lost'?'pm-lost':r.result==='push'||r.result==='void'?'pm-push':'pm-ok'}">${htmlEscape(note)}</i>${pmLiveSpan(idx)}</span>${pmEnd(r,st)}</div>`;
+    return `<div class="on-row on-${st[0]}-row pm-pick" role="button" tabindex="0" data-pm-i="${idx}" data-pick-id="${htmlEscape(r.id||'')}" aria-label="Details for this parlay"><span class="on-avatar on-parlay">${typeof icon==='function'?icon('layers'):''}</span><span class="on-who"><b>${r.legs.length}-leg parlay${r.result?'':newTag(r.postedAt,r.gameTime)}</b><span>${htmlEscape(legs)}</span><small>${htmlEscape(when(r.gameTime))} · ${chip(r.exchange)}</small><i class="on-pm ${r.result==='lost'?'pm-lost':r.result==='push'||r.result==='void'?'pm-push':'pm-ok'}">${htmlEscape(note)}</i>${pmLiveSpan(idx)}</span>${pmEnd(r,st)}</div>`;
   }
   // Prediction view's record bar: the prediction record (after fees), singles
   // and parlays apart, tap for every graded pick; the sportsbook record is a tap away.
@@ -2916,7 +2927,9 @@ function statsProp(l){
     // This week only, like the sportsbook picks: the pick week starts Tuesday noon UTC
     // (the server sends five days, so Monday night's picks would linger into Wednesday).
     const weekStart=(()=>{const d=new Date(Date.now()-12*3600000);d.setUTCHours(0,0,0,0);d.setUTCDate(d.getUTCDate()-(d.getUTCDay()+5)%7);return d.getTime()+12*3600000})(),thisWeek=r=>Date.parse(r.gameTime)>=weekStart;
-    const list=(data?.pmPicks||[]).filter(thisWeek),parlays=(data?.pmParlays||[]).filter(thisWeek),rec=data?.pmRecord,pr=data?.pmParlayRecord;host.hidden=v!=='predictions'||!data||data.mode==='unknown';
+    // Still to play, newest posted first; then in play and graded, by kickoff.
+    const nowT=Date.now(),order=(a,b)=>{const ga=a.result?2:Date.parse(a.gameTime)<=nowT?1:0,gb=b.result?2:Date.parse(b.gameTime)<=nowT?1:0;return ga-gb||(ga===0?String(b.postedAt||'').localeCompare(String(a.postedAt||'')):String(a.gameTime).localeCompare(String(b.gameTime)))};
+    const list=(data?.pmPicks||[]).filter(thisWeek).sort(order),parlays=(data?.pmParlays||[]).filter(thisWeek).sort(order),rec=data?.pmRecord,pr=data?.pmParlayRecord;host.hidden=v!=='predictions'||!data||data.mode==='unknown';
     const ph=document.getElementById('pmParlaysNow');if(ph)ph.hidden=host.hidden||!parlays.length;if(host.hidden)return;
     const pl=document.getElementById('pmParlaysList'),pcount=document.getElementById('pmParlaysCount');
     if(pl)pl.innerHTML=parlays.length?parlays.map(parlayRow).join(''):'<div class="on-empty"><strong>No parlays yet this week.</strong><span>They post when two or more props that just missed line up on one app.</span></div>';
@@ -2924,8 +2937,8 @@ function statsProp(l){
     const pc=document.getElementById('pmPicksCount');if(pc)pc.textContent=list.length?String(list.length):'';
     // The record lives in the bar at the top; this line explains the prices.
     document.getElementById('pmPicksRecord').textContent='Priced as each app’s chance after its fee: 60% means you pay 60¢ to win $1, so lower is better. Singles $100, parlays $25.';
-    document.getElementById('pmPicksList').innerHTML=list.length?list.map(pickRow).join(''):'<div class="on-empty"><strong>No picks yet this week.</strong><span>They post when an app’s price beats the sportsbooks’ fair chance by 1+ point after its fee.</span></div>';
-    bindPmRows();
+    document.getElementById('pmPicksList').innerHTML=list.length?list.map(pickRow).join(''):'<div class="on-empty"><strong>No picks yet this week.</strong><span>They post when an app’s price beats the sportsbooks’ fair chance by 1.5+ points after its fee.</span></div>';
+    bindPmRows();focusPick();
   }
   // Board: every prop's best prediction-market chance in the visitor's state.
   const boardPrices=new Map(),boardWanted=new Set();let boardTimer=null;
