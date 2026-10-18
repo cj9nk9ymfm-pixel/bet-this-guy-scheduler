@@ -25,6 +25,8 @@ pick('d','Brock Purdy',110,'2026-10-13T00:15:00.000Z');pick('e','Old Pick',150,'
   const svg=run('globalThis.__svg');assert.ok(svg.includes('Sunday')&&svg.includes('Carnell Tate')&&svg.includes('Texans @ Titans · FanDuel'));
   // A big day: every pick on the card, two columns, nothing cut.
   const big=run(`xSlateSvg({day:'Sunday',date:'Oct 18',picks:Array.from({length:30},(_,i)=>({text:'Player '+i+' · Over 1.5 receptions',odds:'+110',sub:'Bills @ Jets · FanDuel'}))})`);
+  const legs=run(`xSlateSvg({day:'Sunday',date:'Oct 18',picks:[...Array.from({length:9},(_,i)=>({text:'Player '+i+' · Over 1.5 receptions',odds:'+110',sub:'Bills @ Jets'})),{text:'2-leg parlay',odds:'+433',legLines:[{text:'Ryan Fitzgerald Under 1.5 extra points',odds:'+160'},{text:'Daniel Carlson Over 7.5 kicking points',odds:'+105'}]}]})`);
+  assert.ok(legs.includes('Ryan Fitzgerald Under 1.5 XPs')&&legs.includes('Daniel Carlson Over 7.5 kick pts')&&legs.includes('+160'),'parlay legs spelled out');
   assert.ok(big.includes('Player 0 ·')&&big.includes('Player 29 ·')&&!big.includes('more on the site')&&/height="(\d+)"/.exec(big)[1]>675,'all 30 picks fit');
   assert.equal((await run(`postSlateToX(env,${Date.parse('2026-10-11T02:05:00Z')})`)).done,true,'once per game day');assert.equal(posts.length,1);
   // Morning update: 9 AM Eastern on game day, only when picks locked after the night post.

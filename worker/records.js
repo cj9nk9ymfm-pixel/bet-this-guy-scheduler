@@ -3357,12 +3357,21 @@ async function announceNow(env){
 function xSlateGridSvg(d){
   const M='#2ee6a8',F={g:'BTG Grotesk',xb:'BTG Inter XB',sb:'BTG Inter SB'},L=56,R=1200-56,CW=(R-L-40)/2;
   const short=t=>xShortLeg(String(t).replace(/^(.*?) · /,(m,who)=>`${who} · `));
-  const items=[];for(const p of d.picks){if(p.leg&&items.length){const last=items.at(-1);last.legs=(last.legs||[]).concat(String(p.text).replace(/ · .*/,''));continue}items.push({...p})}
-  const picks=items.slice(0,40),more=items.length-picks.length,per=Math.ceil(picks.length/2),RH=60,top=d.records?262:212;
-  const H=top+per*RH+(more>0?36:0)+24+86;
+  // Parlay legs (given as legLines, or as leg rows after the parlay) list one per line under it.
+  const items=[];for(const p of d.picks){if(p.leg&&items.length){const last=items.at(-1);last.legLines=(last.legLines||[]).concat({text:String(p.text).replace(' · ',' '),odds:p.odds||''});continue}items.push({...p})}
+  const picks=items.slice(0,40),more=items.length-picks.length,top=d.records?262:212,LH=24;
+  const hOf=p=>p.legLines?.length?34+p.legLines.length*LH+10:60,hs=picks.map(hOf),total=hs.reduce((a,b)=>a+b,0);
+  // Split into two columns as evenly as the order allows.
+  let split=0,acc=0,best=Infinity;for(let i=0;i<=picks.length;i++){const m=Math.max(acc,total-acc);if(m<best){best=m;split=i}acc+=hs[i]||0}
+  const colH=Math.max(hs.slice(0,split).reduce((a,b)=>a+b,0),hs.slice(split).reduce((a,b)=>a+b,0));
+  const H=top+colH+(more>0?36:0)+24+86;
   const mark=(res,x,y)=>res==='won'?`<circle cx="${x}" cy="${y}" r="9" fill="${M}"/>`:res==='lost'?`<circle cx="${x}" cy="${y}" r="9" fill="#f87171"/>`:res==='push'?`<circle cx="${x}" cy="${y}" r="9" fill="#cbd5e1"/>`:`<circle cx="${x}" cy="${y}" r="5" fill="${M}"/>`;
-  const rows=picks.map((p,i)=>{const col=i<per?0:1,x=L+col*(CW+40),y=top+(i%per)*RH+24,text=short(p.text),sub=p.legs?p.legs.join(' + '):p.sub||'';
-    return `${mark(p.res,x+8,y-7)}<text x="${x+26}" y="${y}" font-family="${F.sb}" font-size="${Math.max(15,Math.min(22,Math.floor((CW-110)/(text.length*.56))))}" fill="#ffffff">${xEsc(text)}</text><text x="${x+CW}" y="${y}" text-anchor="end" font-family="${F.xb}" font-size="22" fill="${p.res==='lost'?'#f87171':p.res==='push'?'#cbd5e1':p.color||M}">${xEsc(p.odds)}</text><text x="${x+26}" y="${y+24}" font-family="${F.sb}" font-size="${Math.max(12,Math.min(16,Math.floor((CW-30)/(sub.length*.55))))}" fill="#9fb0cc">${xEsc(sub)}</text>`}).join('');
+  const fit=(t,w,max,min,em)=>Math.max(min,Math.min(max,Math.floor(w/(Math.max(1,String(t).length)*em))));
+  let y0=[top,top];
+  const rows=picks.map((p,i)=>{const col=i<split?0:1,x=L+col*(CW+40),y=y0[col]+24;y0[col]+=hs[i];const text=short(p.text);
+    const head=`${mark(p.res,x+8,y-7)}<text x="${x+26}" y="${y}" font-family="${F.sb}" font-size="${fit(text,CW-110,22,15,.56)}" fill="#ffffff">${xEsc(text)}</text><text x="${x+CW}" y="${y}" text-anchor="end" font-family="${F.xb}" font-size="22" fill="${p.res==='lost'?'#f87171':p.res==='push'?'#cbd5e1':p.color||M}">${xEsc(p.odds)}</text>`;
+    if(p.legLines?.length)return head+p.legLines.map((l,j)=>{const t=xShortLeg(l.text),ly=y+26+j*LH;return `<text x="${x+26}" y="${ly}" font-family="${F.sb}" font-size="${fit(t,CW-120,17,13,.55)}" fill="#cfe0f5">${xEsc(t)}</text>${l.odds?`<text x="${x+CW}" y="${ly}" text-anchor="end" font-family="${F.sb}" font-size="16" fill="#9fb0cc">${xEsc(l.odds)}</text>`:''}`}).join('');
+    const sub=p.sub||'';return head+`<text x="${x+26}" y="${y+24}" font-family="${F.sb}" font-size="${fit(sub,CW-30,16,12,.55)}" fill="#9fb0cc">${xEsc(sub)}</text>`}).join('');
   const recs=d.records?d.records.map((r,i)=>{const x=L+i*(CW+40);return `<text x="${x}" y="196" font-family="${F.xb}" font-size="14" letter-spacing="2.5" fill="${r.color||'#ffffff'}">${xEsc(r.label)}</text>${r.lines.map((l,j)=>`<text x="${x+j*262}" y="224" font-family="${F.sb}" font-size="20" fill="#ffffff">${xEsc(l)}</text>`).join('')}`}).join(''):'';
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="${H}" viewBox="0 0 1200 ${H}">
 <defs><linearGradient id="tm" x1="0" y1="0" x2="1" y2="0.4"><stop offset="0" stop-color="#1d4ed8"/><stop offset="1" stop-color="#0b1530"/></linearGradient></defs>
@@ -3371,7 +3380,7 @@ function xSlateGridSvg(d){
 <text x="${L-4}" y="128" font-family="${F.g}" font-size="${xFit(d.day,520,70,.62)}" fill="${d.dayColor||'#ffffff'}">${xEsc(d.day)}</text>
 <text x="${R}" y="96" text-anchor="end" font-family="${F.sb}" font-size="24" fill="#ffffff" fill-opacity=".8">${xEsc(d.dateLine||`${d.date} · ${d.picks.filter(p=>!p.leg).length} picks${d.final?'':' so far'}`)}</text>
 <text x="${R}" y="128" text-anchor="end" font-family="${F.sb}" font-size="20" fill="#ffffff" fill-opacity=".6">${xEsc(d.note||(d.final?`More can drop until kickoff · ${d.kick}`:'More can drop up to kickoff'))}</text>
-${recs}${rows}${more>0?`<text x="${L+26}" y="${top+per*RH+24}" font-family="${F.sb}" font-size="20" fill="#9fb0cc">+ ${more} more on the site</text>`:''}
+${recs}${rows}${more>0?`<text x="${L+26}" y="${top+colH+24}" font-family="${F.sb}" font-size="20" fill="#9fb0cc">+ ${more} more on the site</text>`:''}
 <rect y="${H-86}" width="1200" height="86" fill="${M}"/>
 ${xLogo(L,H-66,46)}<text x="${L+62}" y="${H-32}" font-family="${F.g}" font-size="27" fill="#06231a">${xEsc(d.cta||'Graded in public')} · 21+</text>
 <text x="${R-38}" y="${H-31}" text-anchor="end" font-family="${F.g}" font-size="31" fill="#06231a">betthisguy.com</text><path d="M1118 ${H-42}h24m-9-9 9 9-9 9" fill="none" stroke="#06231a" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
@@ -3430,20 +3439,30 @@ async function xCardRecords(env){
   const m=v=>Math.round(v)===0?'$0':weeklyMoney(v);
   return [{label:'SPORTSBOOKS',color:'#2ee6a8',lines:[`Singles ${sb.wins}–${sb.losses} · ${m(sb.profit)}`,`Parlays ${sb.parlayWins}–${sb.parlayLosses} · ${m(sb.parlayProfit)}`]},{label:'PREDICTION APPS',color:'#c4b5fd',lines:[`Singles ${pm.wins}–${pm.losses} · ${m(pm.profit)}`,`Parlays ${pp.wins}–${pp.losses} · ${m(pp.profit)}`]}];
 }
-async function postSlateToX(env,now=Date.now(),final=false,morning=false){
+// A fresh slate post on request (after deleting one, say): app_settings
+// x-slate-request set to a new value (2026-10-18, 2026-10-18#2) posts the
+// card now, once per value, with the picks still to play.
+async function postSlateRequestToX(env,now=Date.now()){
+  if(!env.DB||!xReady(env))return {posted:0,disabled:true};
+  const req=String((await appSetting(env,'x-slate-request'))||'');if(!/^\d{4}-\d{2}-\d{2}(#\w{1,8})?$/.test(req))return {posted:0,none:true};
+  if(await appSetting(env,`x-slate-req:${req}`)&&!(await xClaimable(env,`x-slate-req:${req}`,now)))return {posted:0,done:true};
+  return postSlateToX(env,now,false,false,req);
+}
+async function postSlateToX(env,now=Date.now(),final=false,morning=false,request=''){
   if(!env.DB||!xReady(env))return {posted:0,disabled:true};
   const {rows,first}=await slatePicks(env,now),date=first?new Date(first).toISOString().slice(0,10):'';
-  if(morning){
+  if(request){if(!rows.length)return {posted:0,empty:true}}
+  else if(morning){
     const ymd=t=>etDate(t,{year:'numeric',month:'2-digit',day:'2-digit'});
     if(rows.length<2||ymd(now)!==ymd(first)||Number(etDate(now,{hour:'numeric',hourCycle:'h23'}))!==9||first-now<90*60000||await appSetting(env,`x-final:${date}`))return {posted:0,due:false};
     const night=Date.parse(String(await appSetting(env,`x-slate:${date}`)||'').replace(/^pending /,''));
     if(Number.isFinite(night)&&!rows.some(r=>Date.parse(r.posted_at)>night))return {posted:0,nothingNew:true};
   }else if(rows.length<(final?1:2)||(final?(first-now>80*60000||first-now<65*60000):first-now>16*3600000))return {posted:0,due:false};
-  const key=`x-${final?'final':morning?'morning':'slate'}:${date}`;
+  const key=request?`x-slate-req:${request}`:`x-${final?'final':morning?'morning':'slate'}:${date}`;
   if(!(await xClaim(env,key,now)))return {posted:0,done:true};
   const all=(await env.DB.prepare("SELECT kind,posted_at,line,odds,combined_odds,status,result,closing_line,closing_odds,closing_captured_at,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%'").all()).results||[];
   const season=weeklySummary(all);
-  const picks=rows.map(r=>{const legs=recordLegs(r),f=legs[0]||{};return r.kind==='parlay'?{text:`${legs.length}-leg parlay`,odds:weeklyOdds(r.combined_odds),sub:legs.map(l=>l.player).join(' + '),line:`• ${legs.length}-leg parlay (${weeklyOdds(r.combined_odds)})`}:{text:`${r.player} · ${weeklyLegText(r)}`,odds:weeklyOdds(r.odds),sub:[xMatchup(f.team),f.book,exchangeLine(r,null,1)].filter(Boolean).join(' · '),line:`• ${r.player} ${weeklyLegText(r)} (${weeklyOdds(r.odds)})`}});
+  const picks=rows.map(r=>{const legs=recordLegs(r),f=legs[0]||{};return r.kind==='parlay'?{text:`${legs.length}-leg parlay`,odds:weeklyOdds(r.combined_odds),sub:legs.map(l=>l.player).join(' + '),legLines:legs.map(l=>({text:`${l.player} ${weeklyLegText(l)}`,odds:weeklyOdds(l.odds)}))}:{text:`${r.player} · ${weeklyLegText(r)}`,odds:weeklyOdds(r.odds),sub:[xMatchup(f.team),f.book,exchangeLine(r,null,1)].filter(Boolean).join(' · ')}});
   const dayName=etDate(first,{weekday:'long'}),kick=`${etDate(first,{hour:'numeric',minute:'2-digit'})} ET`;
   // The caption counts the picks (the card shows every one), so it never runs long.
   const singles=rows.filter(r=>r.kind!=='parlay').length,parlays=rows.length-singles,rec=await xRecords(env).catch(()=>null);
@@ -3794,7 +3813,7 @@ async function runXPosts(env,now=Date.now()){
   const combo=picks.posted||predictions.posted||weekly.posted?{posted:0,waiting:true}:await postComboToX(env,now).catch(error=>({posted:0,error:error.message}));
   const final=picks.posted||predictions.posted||weekly.posted||combo.posted?{posted:0,waiting:true}:await postSlateToX(env,now,true);
   const morning=picks.posted||predictions.posted||combo.posted||weekly.posted||final.posted?{posted:0,waiting:true}:await postSlateToX(env,now,false,true);
-  const slate=picks.posted||predictions.posted||combo.posted||weekly.posted||final.posted||morning.posted?{posted:0,waiting:true}:await postSlateToX(env,now);
+  const slate=picks.posted||predictions.posted||combo.posted||weekly.posted||final.posted||morning.posted?{posted:0,waiting:true}:await postSlateRequestToX(env,now).then(r=>r.posted?r:postSlateToX(env,now));
   const pin=picks.posted||predictions.posted||combo.posted||weekly.posted||final.posted||slate.posted?{posted:0,waiting:true}:await postAlertsPinToX(env,now);
   const recap=picks.posted||predictions.posted||combo.posted||weekly.posted||final.posted||slate.posted||pin.posted?{posted:0,waiting:true}:await postDayRecapToX(env,now);
   const proof=await postProofToX(env,now);
