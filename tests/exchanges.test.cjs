@@ -79,6 +79,9 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
    assert.ok(plan.every(p=>{const g=new Map();p.legs.forEach(l=>g.set(l.eventId,(g.get(l.eventId)||0)+1));return [...g.values()].every(n=>n<=2)}),'at most two legs a game');
    assert.ok(plan.flatMap(p=>p.legs.map(l=>l.player)).every((n,i,all)=>all.indexOf(n)===i),'each player rides in one parlay only');
    const sg=plan.find(p=>p.legs.filter(l=>l.eventId==='NFL--g1').length===2);if(sg)assert.ok(sg.legs.filter(l=>l.eventId==='NFL--g1').every(l=>l.sameGame));
+   assert.ok(plan.length<=2,'at most 2 prediction parlays a day');
+   const full=[0,1].map(i=>({tier:'short',game_time:'2026-10-18T17:00:00.000Z',legs_json:JSON.stringify([{eventId:'NFL--x'+i,player:'Z'+i,market:'Receptions',side:'Over',gameTime:'2026-10-18T17:00:00.000Z'}])}));
+   assert.equal(J(run(`predictionParlayPlan(${JSON.stringify(pool)},${JSON.stringify(full)},'2026-10-13',${now})`)).length,0,'a day with 2 parlays gets no more');
    assert.equal(run(`predictionParlayPay({result:'won',odds:300,legs_json:'[]'})`),75,'graded at a quarter unit');}
   // Saved prices feed /api/predictions, filtered to the visitor's state.
   const saved=JSON.parse(db.prepare("SELECT prices_json FROM exchange_prices WHERE event_id='NFL--g1'").get().prices_json);
