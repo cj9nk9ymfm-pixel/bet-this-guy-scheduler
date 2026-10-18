@@ -189,8 +189,8 @@ function liveLegState(prop,game,row){
   const metric=metric0,line=BTGStats.number(prop.line),side=String(prop.side||'Over'),value=metric.value,final=game?.state==='final',crossed=Number.isFinite(value)&&Number.isFinite(line)&&(side==='Over'?value>line:value>line),hit=Number.isFinite(value)&&Number.isFinite(line)&&(side==='Over'?value>line:value<line),irreversible=side==='Over'&&hit;
   let key='pending',title='LIVE',detail='No stats yet';
   if(Number.isFinite(value)&&Number.isFinite(line)){
-    if(final&&zero){title='NO STATS';detail='Void if he didn’t play';}
-    else if(final){const result=BTGStats.grade(side,line,value);key=result==='push'?'pending':hit?'hit':'miss';title=result==='push'?'PUSH':hit?'HIT':'MISSED';detail='Final';}
+    // Played with nothing recorded counts as 0 (a player ruled out is voided before kickoff).
+    if(final){const result=BTGStats.grade(side,line,value);key=result==='push'?'pending':hit?'hit':'miss';title=result==='push'?'PUSH':hit?'HIT':'MISSED';detail=zero?'Final · no stats recorded':'Final';}
     else if(irreversible){key='hit';title='HIT';detail='Cleared the line';}
     else if(side==='Under'&&crossed){key='miss';title='MISSED';detail='Went over the line';}
     else{const needed=side==='Over'?Math.max(0,Math.floor(line+1-value)):Math.max(0,Math.floor(line+1-value));detail=side==='Over'?`${needed} to go`:`Loses at ${Math.floor(line)+1}`;}

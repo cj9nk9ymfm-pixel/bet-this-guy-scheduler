@@ -945,6 +945,11 @@ async function gradePublicRecord(record, env, statsCache, signal) {
       const playValue=await playByPlayMarketValue(leg,row,env,signal,statsCache);
       if(playValue!==null)observedValue=playValue;
     }
+    // NFL: a player who wasn't ruled out but has no row in a full final box
+    // score played without recording a stat (books grade any snap as action),
+    // so he has 0. Wait 4 hours after kickoff so late box-score fixes land.
+    let noStats=false;
+    if(!nba&&finished&&observedValue===null&&row?.missingPlayerStats&&row.boxMatches===0&&Number(row.boxRowCount)>=20&&BTGStats.supports(leg)&&Date.now()-Date.parse(leg.gameTime)>4*3600000){observedValue=0;noStats=true}
     // Stats that only go up (not yards: a loss of yards can lower them): once
     // the live box score passes the line, the bet is decided, so it settles
     // now (Under lost, Over won) instead of waiting for the final.
@@ -969,7 +974,7 @@ async function gradePublicRecord(record, env, statsCache, signal) {
     const pendingReason=!provisional?(Date.parse(leg.gameTime)>Date.now()?'Game not started':!row?'Player stats not available':!finished?'Game in progress':!BTGStats.supports(leg)?'Market needs play-by-play verification':'Required stat not reported'):null;
     // A short, stat-free note on why a finished leg could not be graded.
     const evidence=pendingReason&&row?{box:row.missingPlayerStats?`no unique row (${row.boxMatches??'?'} of ${row.boxRowCount??'?'})`:'matched',playerId:row.player_id??row.player?.id??null,statFields:Object.keys(row).filter(key=>/field_goal|extra_point|recept|kicking|total_points/.test(key)).map(key=>`${key}=${row[key]}`).slice(0,8),plays:row.game?.id?(await recordGamePlays(row,env,signal,statsCache))?.length??null:null}:undefined;
-    record.gradedLegs.push({...leg, result:provisional||'pending', actualValue:observedValue, minimumOnly,...(decidedEarly?{decidedEarly}:{}),pendingReason,...(evidence?{evidence}:{}),...(voided?{voided}:{}),boxScoreFinal:gameFinal(row)});
+    record.gradedLegs.push({...leg, result:provisional||'pending', actualValue:observedValue, minimumOnly,...(decidedEarly?{decidedEarly}:{}),pendingReason,...(evidence?{evidence}:{}),...(voided?{voided}:{}),...(noStats?{noStats}:{}),boxScoreFinal:gameFinal(row)});
   }
   const aggregate=values=>values.includes('lost')?'lost':values.every(value=>value==='push')?'push':values.every(value=>value==='won'||value==='push')?'won':null;
   record.provisionalResult=record.kind==='parlay'?aggregate(provisionalResults):provisionalResults[0];

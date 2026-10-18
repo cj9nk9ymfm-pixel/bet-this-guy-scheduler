@@ -48,8 +48,13 @@ db.prepare("INSERT INTO prediction_parlays(id,week,tier,exchange,legs_json,odds,
   context.recordPlayerStats=async()=>({player:{first_name:'Jonathan',last_name:'Taylor'},rushing_yards:95,scoreboardFinal:true,game:{status:'Final'}});
   const res=await vm.runInContext('gradePublicRecord',context)(graded,context.env,new Map());
   assert.equal(res,'won');assert.equal(graded.gradedLegs[0].voided,true);
+  // Played but recorded nothing (not ruled out, no row in a full final box score): 0, so an Under wins.
+  context.recordPlayerStats=async()=>({missingPlayerStats:true,boxMatches:0,boxRowCount:66,scoreboardFinal:true,game:{status:'Final'}});
+  const sk={kind:'prop',player:'Cam Skattebo',market:'Rush Attempts',side:'Under',line:14.5,odds:-110,sport:'NFL',game_time:'2026-10-11T17:00:00.000Z',legs_json:JSON.stringify([leg('Cam Skattebo','Rush Attempts','Under',14.5)].map(l=>({...l,gameTime:'2026-10-11T17:00:00.000Z'})))};
+  assert.equal(await vm.runInContext('gradePublicRecord',context)(sk,context.env,new Map()),'won');
+  assert.deepEqual([sk.gradedLegs[0].actualValue,sk.gradedLegs[0].noStats],[0,true]);
   // The X reply says why.
   const text=vm.runInContext('xResultText',context)({kind:'prop',player:'Tyler Warren',market:'Receptions',side:'Over',line:4.5,odds:-120,result:'push',status:'final',legs_json:w.legs_json},null);
   assert.match(text,/^➖ Void: Tyler Warren .*\nRuled out \(Groin\) before kickoff/);
-  console.log('PASS: players ruled out before kickoff void their bets (singles, parlay legs, prediction picks) with the reason, and in-game injuries never void');
+  console.log('PASS: players ruled out before kickoff void their bets (singles, parlay legs, prediction picks) with the reason, and in-game injuries never void; a player with no stats who played has 0');
 })().catch(error=>{console.error(error);process.exit(1)});
