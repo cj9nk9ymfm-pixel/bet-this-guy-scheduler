@@ -96,6 +96,10 @@ const OFFICIAL_CAPS={props:100,reasonable:15,swing:10,moonshot:3};
 // At most two official props per game: picks in one game win or lose
 // together, so a third goes to the leans list instead.
 const OFFICIAL_PER_GAME=2;
+// Top picks: an edge this big gets past the full limits (one more pick in a
+// game, past the daily X limit) and posts as ⭐ Top pick. Through Oct 18, 3 of
+// 42 graded sportsbook singles had 2+ points; no prediction pick had 2.5.
+const TOP_PICK={sb:2,pm:2.5};
 // Picks can lock any time before kickoff in the official week.
 const OFFICIAL_HORIZON=8*86400000,LOW_ODDS_CREDITS=250000;
 function officialWeek(time){const d=new Date(Number(time)-12*3600000);d.setUTCHours(0,0,0,0);d.setUTCDate(d.getUTCDate()-(d.getUTCDay()+5)%7);return d.toISOString().slice(0,10)}
@@ -204,7 +208,7 @@ function officialPlan(candidates,existing,week,now=Date.now(),pool=candidates,cf
   const saved=existing.map(r=>({...r,legs:recordLegs(r)})),counts=Object.fromEntries(Object.keys(CAPS).map(t=>[t,saved.filter(r=>r.id.startsWith(`${prefix}${t}|`)).length]));
   const plan=[],singles=saved.filter(r=>r.kind==='prop'),games=new Map(),used=new Set(singles.flatMap(r=>r.legs.map(officialPlayer)));
   singles.forEach(r=>games.set(r.game_id,(games.get(r.game_id)||0)+1));
-  for(const p of candidates){if(counts.props>=CAPS.props)break;if(used.has(p.playerKey)||(games.get(p.gameId)||0)>=PER_GAME)continue;plan.push({tier:'props',legs:[p]});counts.props++;used.add(p.playerKey);games.set(p.gameId,(games.get(p.gameId)||0)+1)}
+  for(const p of candidates){if(counts.props>=CAPS.props)break;if(used.has(p.playerKey)||(games.get(p.gameId)||0)>=PER_GAME+(Number(p.edge)>=TOP_PICK.sb?1:0))continue;plan.push({tier:'props',legs:[p]});counts.props++;used.add(p.playerKey);games.set(p.gameId,(games.get(p.gameId)||0)+1)}
   const prior=saved.filter(r=>r.kind==='parlay').map(r=>r.legs.map(officialPlayer)),exposure=new Map();prior.flat().forEach(k=>exposure.set(k,(exposure.get(k)||0)+1));
   const sides=new Map(),perGame=new Map();
   saved.forEach(r=>r.legs.forEach(l=>sides.set(sideKey(l.gameId,l.player,l.market),l.side)));
@@ -1497,9 +1501,11 @@ function predictionCandidates(board,exchangeBoard,fairs,now=Date.now(),opts={}){
 async function recordPredictionPicks(env,board,exchangeBoard,fairs,now=Date.now(),dirs=null){
   const gameId=board.eventID||`NFL--${board.id}`;
   const have=((await env.DB.prepare('SELECT player FROM prediction_picks WHERE event_id=?').bind(gameId).all()).results||[]).map(r=>normalizedName(r.player));
-  const room=PREDICTION_PER_GAME-have.length;if(room<=0)return [];
+  if(have.length>PREDICTION_PER_GAME)return [];
   dirs||=await pickDirections(env,now);
-  const picks=predictionCandidates(board,exchangeBoard,fairs,now).filter(p=>!have.includes(normalizedName(p.player))&&sameDirection(dirs,p.eventId,p.player,p.side)).slice(0,room),stamp=new Date(now).toISOString();
+  // A full game still takes one top pick.
+  const picks=[],stamp=new Date(now).toISOString();let n=have.length;
+  for(const p of predictionCandidates(board,exchangeBoard,fairs,now).filter(p=>!have.includes(normalizedName(p.player))&&sameDirection(dirs,p.eventId,p.player,p.side)))if(n<PREDICTION_PER_GAME||(p.edge>=TOP_PICK.pm&&n<PREDICTION_PER_GAME+1)){picks.push(p);n++}
   picks.forEach(p=>dirs.set(directionKey(p.eventId,p.player),p.side));
   return picks.map(p=>env.DB.prepare('INSERT OR IGNORE INTO prediction_picks (id,exchange,event_id,player,team,market,side,line,odds,net_odds,fair_pct,edge,game_time,posted_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(`pm|${gameId}|${normalizedName(p.player)}`,p.exchange,gameId,p.player,p.team,p.market,p.side,p.line,p.odds,p.netOdds,+p.fair.toFixed(2),+p.edge.toFixed(2),p.gameTime,stamp));
 }
@@ -1575,15 +1581,15 @@ async function postPredictionPicksToX(env,now=Date.now()){
   if(!env.DB||!xReady(env))return {posted:0,disabled:true};
   // Prediction parlays go on the pick cards, not posts of their own.
   const rows=(await env.DB.prepare('SELECT * FROM prediction_picks WHERE posted_at>? AND game_time>? ORDER BY posted_at LIMIT 40').bind(new Date(now-24*3600000).toISOString(),new Date(now).toISOString()).all()).results||[];
-  if((await xHeadCount(env,'xpm:pm|',now))>=X_HEAD.pm.day)return {posted:0,dayFull:true};
+  const today=await xHeadCount(env,'xpm:pm|',now);
   for(const r of rows){
-    if(!(Number(r.edge)>=X_HEAD.pm.edge))continue;
+    if(!(Number(r.edge)>=X_HEAD.pm.edge)||(today>=X_HEAD.pm.day&&!(Number(r.edge)>=TOP_PICK.pm)))continue;
     const key=`xpm:${r.id}`;if(!(await xClaimable(env,key,now)))continue;
     if(!(await xClaim(env,key,now)))continue;
     const rec=await xRecords(env).catch(()=>null);
     // A partner code (its X code if it has one) rides along on that app's picks.
     const partner=(await partnerOffers(env).catch(()=>({})))[r.exchange],promo=partner?`New to ${r.exchange}? Code ${partner.xCode||partner.code}${partner.offer?`: ${partner.offer}`:''}. Terms apply.`:'';
-    const text=xPostText({head:'🔒 Official pick · Prediction app',lines:[`${r.player} ${weeklyLegText(r)}`,[`${exchangePct(r.odds)}% on ${await xAppTag(env,r.exchange)} (fair ${Math.round(r.fair_pct)}%)`,xMatchup(r.team),xShortWhen(r.game_time)].filter(Boolean).join(' · ')],extra:promo,rec,age:'18+/21+ by app'});
+    const text=xPostText({head:`${Number(r.edge)>=TOP_PICK.pm?'⭐ Top pick':'🔒 Official pick'} · Prediction app`,lines:[`${r.player} ${weeklyLegText(r)}`,[`${exchangePct(r.odds)}% on ${await xAppTag(env,r.exchange)} (fair ${Math.round(r.fair_pct)}%)`,xMatchup(r.team),xShortWhen(r.game_time)].filter(Boolean).join(' · ')],extra:promo,rec,age:'18+/21+ by app'});
     const mediaId=await xPredictionMedia(env,r,false,rec);
     try{const sent=await xPost(env,text,mediaId);await xDone(env,key,now);if(sent?.data?.id)await setAppSetting(env,`xid:${r.id}`,String(sent.data.id)).catch(()=>{});await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} prediction ${mediaId?'graphic':'text'} ${r.id} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,graphic:Boolean(mediaId)}}
     catch(error){console.warn('x_prediction_failed',error.message);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
@@ -3010,7 +3016,7 @@ function xSportsbookText(r,rec){
   const legs=recordLegs(r),first=legs[0]||{},when=xShortWhen(r.game_time||first.gameTime),matchup=xMatchup(first.team);
   if(r.kind==='parlay'){const odds=weeklyOdds(r.combined_odds),same=legs.some(l=>l.sameGame);
     return xPostText({head:`🔒 Official parlay · Sportsbook${recordShare(r)<1?' · $25':''}`,lines:[[`${odds} · ${legs.length} legs${same?` · same-game: bet it at ${odds} or better`:''}`,`${odds} · ${legs.length} legs${same?' · same-game':''}`]],legs,rec});}
-  return xPostText({head:'🔒 Official pick · Sportsbook',lines:[`${r.player} ${weeklyLegText(r)}`,[`${weeklyOdds(r.odds)}${first.book?` at ${first.book}`:''}`,matchup,when].filter(Boolean).join(' · ')],rec});
+  return xPostText({head:`${Number(first.edge)>=TOP_PICK.sb?'⭐ Top pick':'🔒 Official pick'} · Sportsbook`,lines:[`${r.player} ${weeklyLegText(r)}`,[`${weeklyOdds(r.odds)}${first.book?` at ${first.book}`:''}`,matchup,when].filter(Boolean).join(' · ')],rec});
 }
 // X post claims read "pending <time>" while a post is in flight and the post
 // time once it's confirmed. A run cut off mid-post (Tez Johnson's result,
@@ -3054,7 +3060,7 @@ async function postPicksToX(env,now=Date.now()){
   for(const r of picks){
     // Parlays and smaller edges ride the pick cards instead.
     if(r.kind!=='prop'||!(Number(recordLegs(r)[0]?.edge)>=X_HEAD.sb.edge))continue;
-    if(today>=X_HEAD.sb.day)break;
+    if(today>=X_HEAD.sb.day&&!(Number(recordLegs(r)[0]?.edge)>=TOP_PICK.sb))continue;
     if(!(await xClaimable(env,`xi:${r.id}`,now)))continue;
     // At most two picks per run: each uses about a dozen requests.
     if(++attempts>2)break;
@@ -3759,7 +3765,7 @@ async function xFindPost(env,key,match,now){
   const hit=(await xOwnPosts(env,now).catch(()=>[])).find(p=>match(p.text));
   if(hit)await setAppSetting(env,`xid:${key}`,hit.id).catch(()=>{});return hit?.id||null;
 }
-const pmPickMatch=r=>t=>(t.startsWith('📈 Prediction market pick:')||t.startsWith('🔒 Official pick · Prediction app'))&&t.includes(r.player)&&t.includes(weeklyLegText(r));
+const pmPickMatch=r=>t=>(t.startsWith('📈 Prediction market pick:')||/^(🔒 Official|⭐ Top) pick · Prediction app/.test(t))&&t.includes(r.player)&&t.includes(weeklyLegText(r));
 const pmParlayMatch=legs=>t=>(t.startsWith('📈 Prediction market parlay')||t.startsWith('🔒 Official parlay · Prediction app'))&&legs.every(l=>t.includes(xLast(l.player)));
 // Prediction picks and parlays we posted: a result reply under each post once
 // it's graded (text, so a few fit in one run).
