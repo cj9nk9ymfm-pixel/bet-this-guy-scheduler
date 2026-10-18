@@ -33,10 +33,10 @@ pick('official|2026-10-06|props|prop|a','Travis Kelce',105,null,new Date(now-20*
   // A 2.4-point edge is a top pick; under 2 points it's an ordinary official pick.
   const plain=run(`xSportsbookText({kind:'prop',player:'Josh Allen',market:'Passing Yards',side:'Over',line:250.5,odds:-110,game_time:'2026-10-09T00:15:00Z',legs_json:JSON.stringify([{player:'Josh Allen',edge:1.6,book:'FanDuel',team:'Buffalo Bills · @ Miami Dolphins'}])},null)`);
   assert.ok(plain.startsWith('🔒 Official pick · Sportsbook'),plain);
-  // A full game (2 singles) still takes a top pick, never a third ordinary one.
+  // A full game (2 singles) still takes every top pick, never a third ordinary one.
   const P=(k,edge)=>({playerKey:k,gameId:'G',player:k,market:'Receptions',side:'Over',line:4.5,odds:110,edge});
   const plan=run(`officialPlan(${JSON.stringify([P('a',1.2),P('b',1.1),P('c',1.05),P('d',2.3),P('e',2.2)])},[],'2026-10-13',${now},[])`);
-  assert.deepEqual(JSON.parse(JSON.stringify(plan.map(x=>x.legs[0].playerKey))),['a','b','d'],'third pick in a game only for a top pick');
+  assert.deepEqual(JSON.parse(JSON.stringify(plan.map(x=>x.legs[0].playerKey))),['a','b','d','e'],'past two in a game only for top picks, as many as there are');
   const svg=run('__svg');
   for(const bit of ['Travis Kelce','Under 4.5 receptions'.replace('Under','Over'),'+105','at FanDuel · +2.4% vs fair','SPORTSBOOKS','4–2','+$280','Every pick, free','betthisguy.com','SPORTSBOOK PICK'])assert.ok(svg.includes(bit),bit);
   assert.ok(text.length<=280);assert.match(posts[0].auth,/^OAuth oauth_consumer_key="xvz1evFS4wEEPTGEFPHBog"/);
