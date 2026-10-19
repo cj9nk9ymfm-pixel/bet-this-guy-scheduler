@@ -52,7 +52,9 @@ function focusPick(){let id='';try{id=new URLSearchParams(location.search).get('
   el.classList.add('on-flash');setTimeout(()=>el.scrollIntoView({behavior:'smooth',block:'center'}),350);setTimeout(()=>el.classList.remove('on-flash'),5000);
   try{const u=new URL(location.href);u.searchParams.delete('pick');u.searchParams.delete('view');history.replaceState(null,'',u.pathname+u.search+u.hash)}catch{}}
 const leagueParam=(prefix='?')=>LEAGUE==='NBA'?`${prefix}sport=NBA`:'';
-function switchLeague(league){try{localStorage.setItem('btg-league',league==='NBA'?'NBA':'NFL')}catch{}location.reload()}
+// The URL's ?league= wins over the saved choice, so switching rewrites it
+// (a reload of /?league=NBA would otherwise land on NBA again).
+function switchLeague(league){const l=league==='NBA'?'NBA':'NFL';try{localStorage.setItem('btg-league',l)}catch{}const u=new URL(location.href);u.searchParams.set('league',l);location.assign(u.toString())}
 let state={sport:LEAGUE,game:'All',team:'All',day:'All',timeSlot:'All',market:'All',side:'All',move:'All',minEdge:0,minConf:0,oddsType:'All',sort:'edge',search:'',high:false,heat:null,view:'board',boardSport:LEAGUE,boardMarket:'All',boardGame:'All',saved:new Set(readStored('propedge-saved',[]).filter(value=>typeof value==='string'&&value.startsWith('['))),slip:[]};
 const initializedPages=new Set(['props']);
 let mixerSetup=false,selectedPlayer='',propRenderLimit=24,visiblePropTotal=0;
