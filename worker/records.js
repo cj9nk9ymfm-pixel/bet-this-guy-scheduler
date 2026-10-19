@@ -1523,12 +1523,15 @@ const PREDICTION_MIN=1.5,PREDICTION_MAX=12,PREDICTION_PER_GAME=1;
 // 66% inside 6 hours in the price test).
 const PREDICTION_LOCK=24*3600000;
 function predictionNet(key,odds){const d=recordDecimal(odds),p=1/d,win=PREDICTION_WIN_FEES[key],cost=Math.min(.99,win?1/(1+(d-1)*(1-win)):p+(PREDICTION_FEES[key]||(()=>1))(p)/100);return {chance:100*p,netChance:100*cost,netOdds:recordAmerican(1/cost)}}
+// Markets left out of prediction picks and parlays: pass completions went
+// 0–6 on the apps (Oct 2026), and our sportsbook side never posts it.
+const PREDICTION_PAUSED=new Set(['Pass Completions']);
 function predictionCandidates(board,exchangeBoard,fairs,now=Date.now(),opts={}){
   const gameId=board.eventID||`NFL--${board.id}`,kick=Date.parse(board.commence_time),best=new Map();
   if(!(kick>now+5*60000)||kick-now>PREDICTION_LOCK)return [];
   const min=opts.min??PREDICTION_MIN,max=opts.max??PREDICTION_MAX;
   for(const ex of exchangeBoard.bookmakers||[]){if(!EXCHANGES[ex.key])continue;
-    for(const m of ex.markets||[]){const label=recordLabels[m.key];if(!label)continue;
+    for(const m of ex.markets||[]){const label=recordLabels[m.key];if(!label||PREDICTION_PAUSED.has(label))continue;
       for(const o of m.outcomes||[]){
         const {side,player,line,odds}=exchangeOutcome(o);
         if(!player||line===null||odds===null||!['over','under'].includes(side)||odds<-250||odds>300)continue;
