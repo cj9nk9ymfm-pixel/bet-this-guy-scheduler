@@ -1383,7 +1383,10 @@ async function gradeBookShadow(env,now=Date.now(),limit=30){
 // read as Over/Under 0.5, the way the board and grading store them.
 function exchangeOutcome(o){const name=String(o.name||'').toLowerCase(),yesNo=name==='yes'||name==='no';return {side:yesNo?(name==='yes'?'over':'under'):name,player:String(o.description||'').trim(),line:yesNo?.5:BTGStats.number(o.point),odds:BTGStats.number(o.price)}}
 const EXCHANGES={kalshi:'Kalshi',polymarket:'Polymarket',novig:'Novig',prophetx:'ProphetX',betopenly:'BetOpenly'};
-const EXCHANGE_PROP_MARKETS=['player_receptions','player_reception_yds','player_rush_yds','player_pass_yds','player_pass_tds','player_rush_attempts','player_pass_completions','player_anytime_td'];
+// Kickers and interceptions added Oct 19: our best sportsbook markets, and
+// Novig and ProphetX both list them (exchange-market-probe). Pass
+// completions dropped (paused for picks), so a call is 10 credits.
+const EXCHANGE_PROP_MARKETS=['player_receptions','player_reception_yds','player_rush_yds','player_pass_yds','player_pass_tds','player_rush_attempts','player_anytime_td','player_field_goals','player_kicking_points','player_pass_interceptions'];
 async function fetchExchangeOdds(eventId,apiKey){
   const q=new URLSearchParams({apiKey,regions:'us_ex',markets:EXCHANGE_PROP_MARKETS.join(','),oddsFormat:'american',dateFormat:'iso'});
   const r=await fetch(`${API_BASE}/sports/${SPORTS[0].key}/events/${eventId}/odds?${q}`,{headers:{accept:'application/json'}});
@@ -1769,7 +1772,7 @@ function predictionRecord(rows){
     profit:Math.round(graded.reduce((s,r)=>s+(r.result==='won'?100*(dec(r.net_odds)-1):r.result==='lost'?-100:0),0)),
     beat:closes.filter(r=>dec(r.odds)>dec(r.close_odds)).length,tracked:closes.length,pending:rows.filter(r=>!r.result).length};
 }
-// Player props on exchanges: one us_ex call per game (8 credits) every 30
+// Player props on exchanges: one us_ex call per game (10 credits) every 30
 // minutes within 48 hours of kickoff, and every 2 hours (at most 6 games a
 // run) from 48 to 96 hours out, so the prediction board fills earlier in
 // the week without blowing a run's request limit.
