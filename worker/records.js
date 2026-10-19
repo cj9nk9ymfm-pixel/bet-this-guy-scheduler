@@ -1526,6 +1526,9 @@ function predictionNet(key,odds){const d=recordDecimal(odds),p=1/d,win=PREDICTIO
 // Markets left out of prediction picks and parlays: pass completions went
 // 0–6 on the apps (Oct 2026), and our sportsbook side never posts it.
 const PREDICTION_PAUSED=new Set(['Pass Completions']);
+// Higher bars by app and market: Novig receptions, our biggest prediction
+// market, beat the kickoff price only 51% of the time (Oct 2026).
+const PREDICTION_MIN_BY={'Novig|Receptions':2.5};
 function predictionCandidates(board,exchangeBoard,fairs,now=Date.now(),opts={}){
   const gameId=board.eventID||`NFL--${board.id}`,kick=Date.parse(board.commence_time),best=new Map();
   if(!(kick>now+5*60000)||kick-now>PREDICTION_LOCK)return [];
@@ -1537,6 +1540,7 @@ function predictionCandidates(board,exchangeBoard,fairs,now=Date.now(),opts={}){
         if(!player||line===null||odds===null||!['over','under'].includes(side)||odds<-250||odds>300)continue;
         const fair=fairs.get(`${gameId}|${normalizedName(player)}|${label}|${line}`);if(fair===undefined)continue;
         const f=100*(side==='over'?fair:1-fair),n=predictionNet(ex.key,odds),edge=f-n.netChance;
+        if(opts.min===undefined&&edge<(PREDICTION_MIN_BY[`${EXCHANGES[ex.key]}|${label}`]??min))continue;
         if(edge<min||(opts.max!==undefined?edge>=max:edge>max))continue;
         const row={exchange:EXCHANGES[ex.key],eventId:gameId,player,team:`${board.away_team} · @ ${board.home_team}`,market:label,side:side==='over'?'Over':'Under',line,odds,netOdds:n.netOdds,fair:f,edge,gameTime:new Date(kick).toISOString()};
         const k=opts.perExchange?`${ex.key}|${normalizedName(player)}`:normalizedName(player);if(!best.has(k)||best.get(k).edge<edge)best.set(k,row);
@@ -1652,6 +1656,9 @@ async function postPredictionPicksToX(env,now=Date.now()){
 const PM_PARLAY_TIERS=[['long',4,5,2501,15000,0],['mid',3,4,1000,2500,1],['short',2,3,100,999,2]];
 // At most this many prediction parlays per game day (Eastern), on top of the weekly tier caps.
 const PM_PARLAYS_PER_DAY=2;
+// Prediction parlays go on ProphetX: no parlay fee (Novig charges one) and
+// the softest prices in our log.
+const PM_PARLAY_APPS=new Set(['ProphetX']);
 const pmParlayDay=times=>{const t=times.map(x=>Date.parse(x)).filter(Number.isFinite);return t.length?new Date(Math.max(...t)-4*3600000).toISOString().slice(0,10):null};
 function predictionParlayPlan(pool,existing,week,now=Date.now()){
   const prior=existing.map(r=>{try{return JSON.parse(r.legs_json).map(l=>`${l.eventId}|${normalizedName(l.player)}`)}catch{return []}});
@@ -1660,7 +1667,7 @@ function predictionParlayPlan(pool,existing,week,now=Date.now()){
   const key=l=>`${l.eventId}|${normalizedName(l.player)}`;
   const sides=new Map(),perGame=new Map(),perDay=new Map();
   existing.forEach(r=>{let legs=[];try{legs=JSON.parse(r.legs_json)}catch{}const d=pmParlayDay([r.game_time,...legs.map(l=>l.gameTime)]);if(d)perDay.set(d,(perDay.get(d)||0)+1);legs.forEach(l=>sides.set(sideKey(l.eventId,l.player,l.market),l.side));new Set(legs.map(l=>l.eventId)).forEach(g=>perGame.set(g,(perGame.get(g)||0)+1))});
-  for(const exName of [...new Set(pool.map(p=>p.exchange))]){
+  for(const exName of [...new Set(pool.map(p=>p.exchange))].filter(x=>PM_PARLAY_APPS.has(x))){
     const legsOn=pool.filter(p=>p.exchange===exName&&Date.parse(p.gameTime)>now+5*60000);if(legsOn.length<2)continue;
     for(const [tier,min,max,low,high,cap] of PM_PARLAY_TIERS){
       for(let attempt=0;attempt<300&&counts[tier]<cap;attempt++){
@@ -1743,8 +1750,24 @@ function predictionRecord(rows){
 // run) from 48 to 96 hours out, so the prediction board fills earlier in
 // the week without blowing a run's request limit.
 const EXCHANGE_AHEAD=96*3600000;
+// Owner check: app_settings exchange-market-probe (any value) makes the next
+// run ask the apps for kicker, interception and defense props on the next
+// game (one call), saving which apps list which to exchange-market-probe-result.
+const EXCHANGE_PROBE_MARKETS=['player_field_goals','player_kicking_points','player_pats','player_pass_interceptions','player_sacks','player_tackles_assists','player_longest_reception','player_rush_reception_yds'];
+async function exchangeMarketProbe(env,boards,now=Date.now()){
+  if(!(await appSetting(env,'exchange-market-probe').catch(()=>null)))return null;
+  await env.DB.prepare("DELETE FROM app_settings WHERE key='exchange-market-probe'").run();
+  const next=[...boards].filter(b=>Date.parse(b.commence_time)>now+30*60000).sort((a,b)=>Date.parse(a.commence_time)-Date.parse(b.commence_time))[0];
+  if(!next)return setAppSetting(env,'exchange-market-probe-result',JSON.stringify({at:new Date(now).toISOString(),error:'no game'}));
+  const q=new URLSearchParams({apiKey:env.THE_ODDS_API_KEY,regions:'us_ex',markets:EXCHANGE_PROBE_MARKETS.join(','),oddsFormat:'american',dateFormat:'iso'});
+  const r=await fetch(`${API_BASE}/sports/${SPORTS[0].key}/events/${next.id}/odds?${q}`,{headers:{accept:'application/json'},signal:AbortSignal.timeout(15000)}).catch(error=>({ok:false,status:error.message}));
+  const out={at:new Date(now).toISOString(),game:`${next.away_team} @ ${next.home_team}`,status:r.status,apps:{}};
+  if(r.ok){const d=await r.json();for(const b of d.bookmakers||[])for(const m of b.markets||[]){const a=out.apps[b.key]||={};a[m.key]=(m.outcomes||[]).length}}
+  await setAppSetting(env,'exchange-market-probe-result',JSON.stringify(out));return out;
+}
 async function recordExchangeProps(env,boards,now=Date.now()){
   if(!env.DB||!env.THE_ODDS_API_KEY)return {};
+  await exchangeMarketProbe(env,boards,now).catch(()=>null);
   const last=Number(await appSetting(env,'exchange-props-at')||0);
   if(now-last<29*60000)return {skipped:true};
   await setAppSetting(env,'exchange-props-at',String(now));
@@ -1787,15 +1810,18 @@ async function recordExchangeProps(env,boards,now=Date.now()){
 }
 async function gradeExchangeShadow(env,now=Date.now(),limit=30){
   if(!env.DB||!env.BALLDONTLIE_API_KEY)return {graded:0};
-  const rows=(await env.DB.prepare('SELECT * FROM exchange_shadow WHERE result IS NULL AND game_time<? AND game_time>? ORDER BY game_time LIMIT ?').bind(new Date(now-4*3600000).toISOString(),new Date(now-14*86400000).toISOString(),limit).all()).results||[];
+  const rows=(await env.DB.prepare("SELECT * FROM exchange_shadow WHERE result IS NULL AND game_time<? AND (game_time>? OR (kind='td1' AND game_time>?)) ORDER BY game_time LIMIT ?").bind(new Date(now-4*3600000).toISOString(),new Date(now-14*86400000).toISOString(),new Date(now-45*86400000).toISOString(),limit).all()).results||[];
   if(!rows.length)return {graded:0};
-  const statements=[],stamp=new Date(now).toISOString(),cache=new Map();
+  const statements=[],stamp=new Date(now).toISOString(),cache=new Map(),tdCache=new Map();
   const games=rows.some(r=>r.kind==='game')?await finalGames(rows,env):[];
   for(const r of rows){
     if(r.kind==='game'){const g=games.find(g=>normalizedName(g.home_team?.full_name)===normalizedName(r.home)&&normalizedName(g.visitor_team?.full_name)===normalizedName(r.away));
       if(!g||nflGameState(g)!=='final')continue;const hs=Number(g.home_team_score),as=Number(g.visitor_team_score);if(!Number.isFinite(hs)||!Number.isFinite(as))continue;
       statements.push(env.DB.prepare('UPDATE exchange_shadow SET home_score=?,away_score=?,result=?,graded_at=? WHERE id=?').bind(hs,as,gameLineResult(r,hs,as),stamp,r.id));continue}
     const record={sport:'NFL',player:r.player,team:r.team,gameTime:r.game_time,market:r.market,side:r.side,line:r.line};
+    // Anytime TD: the box score leaves 0 TDs blank, so use the official grader (play-by-play).
+    if(r.market==='Anytime Touchdown'&&typeof gradePublicRecord==='function'){const rec={kind:'prop',sport:'NFL',player:r.player,market:r.market,side:r.side,line:r.line,odds:r.odds,game_time:r.game_time,legs_json:JSON.stringify([{...record,odds:r.odds}])};
+      const res=await gradePublicRecord(rec,env,tdCache).catch(()=>null);if(['won','lost','push'].includes(res))statements.push(env.DB.prepare('UPDATE exchange_shadow SET actual=?,result=?,graded_at=? WHERE id=?').bind(rec.gradedLegs?.[0]?.actualValue??null,res,stamp,r.id));continue}
     const stat=await recordPlayerStats(record,env,undefined,cache).catch(()=>null);
     if(shadowVoid(stat,r.game_time,now)){statements.push(env.DB.prepare('UPDATE exchange_shadow SET result=?,graded_at=? WHERE id=?').bind('void',stamp,r.id));continue}
     if(!stat||stat.missingPlayerStats||!(stat.scoreboardFinal||nflGameState(stat.game||{})==='final'))continue;

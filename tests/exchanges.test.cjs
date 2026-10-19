@@ -72,10 +72,11 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
   w=where({country:'US',regionCode:'NV'});assert.ok(!w.exchanges.includes('Kalshi')&&!w.exchanges.includes('Novig'));
   assert.equal(where({country:'CA',regionCode:'ON'}).mode,'unknown');
   // Prediction parlays: one app, 2-5 legs, never a prediction-pick player, same-game legs unlinked and cut 20%.
-  {const leg=(player,game,market,netOdds,team)=>({exchange:'Novig',eventId:'NFL--'+game,player,team:'A · @ B',market,side:'Over',line:3.5,odds:netOdds,netOdds,edge:.7,gameTime:'2026-10-18T17:00:00.000Z',playerTeam:team});
+  {const leg=(player,game,market,netOdds,team)=>({exchange:'ProphetX',eventId:'NFL--'+game,player,team:'A · @ B',market,side:'Over',line:3.5,odds:netOdds,netOdds,edge:.7,gameTime:'2026-10-18T17:00:00.000Z',playerTeam:team});
    const pool=[leg('A One','g1','Receptions',100,'T1'),leg('B Two','g2','Rushing Yards',110,'T2'),leg('C Three','g3','Receiving Yards',105,'T3'),leg('D Four','g4','Receptions',120,'T4'),leg('E Five','g1','Rushing Yards',100,'T5')];
    const plan=J(run(`predictionParlayPlan(${JSON.stringify(pool)},[],'2026-10-13',${now})`));
-   assert.ok(plan.length>0&&plan.every(p=>p.exchange==='Novig'&&p.legs.length>=2&&p.legs.length<=5),'parlays of 2-5 legs on one app');
+   assert.equal(J(run(`predictionParlayPlan(${JSON.stringify(pool.map(l=>({...l,exchange:'Novig'})))},[],'2026-10-13',${now})`)).length,0,'no parlays on Novig (parlay fee)');
+   assert.ok(plan.length>0&&plan.every(p=>p.exchange==='ProphetX'&&p.legs.length>=2&&p.legs.length<=5),'parlays of 2-5 legs on one app');
    assert.ok(plan.every(p=>{const g=new Map();p.legs.forEach(l=>g.set(l.eventId,(g.get(l.eventId)||0)+1));return [...g.values()].every(n=>n<=2)}),'at most two legs a game');
    assert.ok(plan.flatMap(p=>p.legs.map(l=>l.player)).every((n,i,all)=>all.indexOf(n)===i),'each player rides in one parlay only');
    const sg=plan.find(p=>p.legs.filter(l=>l.eventId==='NFL--g1').length===2);if(sg)assert.ok(sg.legs.filter(l=>l.eventId==='NFL--g1').every(l=>l.sameGame));
@@ -83,6 +84,7 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
    const full=[0,1].map(i=>({tier:'short',game_time:'2026-10-18T17:00:00.000Z',legs_json:JSON.stringify([{eventId:'NFL--x'+i,player:'Z'+i,market:'Receptions',side:'Over',gameTime:'2026-10-18T17:00:00.000Z'}])}));
    assert.equal(J(run(`predictionParlayPlan(${JSON.stringify(pool)},${JSON.stringify(full)},'2026-10-13',${now})`)).length,0,'a day with 2 parlays gets no more');
    assert.equal(run("PREDICTION_PAUSED.has('Pass Completions')"),true,'pass completions are paused on prediction picks');
+   assert.equal(run("PREDICTION_MIN_BY['Novig|Receptions']"),2.5,'Novig receptions need 2.5 points');
    assert.equal(run(`predictionParlayPay({result:'won',odds:300,legs_json:'[]'})`),75,'graded at a quarter unit');}
   // Saved prices feed /api/predictions, filtered to the visitor's state.
   const saved=JSON.parse(db.prepare("SELECT prices_json FROM exchange_prices WHERE event_id='NFL--g1'").get().prices_json);
