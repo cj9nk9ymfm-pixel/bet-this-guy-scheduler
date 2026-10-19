@@ -85,11 +85,15 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
    assert.equal(J(run(`predictionParlayPlan(${JSON.stringify(pool)},${JSON.stringify(full)},'2026-10-13',${now})`)).length,0,'a day with 2 parlays gets no more');
    assert.equal(run("PREDICTION_PAUSED.has('Pass Completions')"),true,'pass completions are paused on prediction picks');
    assert.equal(run("PREDICTION_MIN_BY['Novig|Receptions']"),2.5,'Novig receptions need 2.5 points');
+   assert.deepEqual(J(run('TD_PICK')),{min:3.5,books:5,perWeek:2},'TD picks: 3.5 points, 5 books, 2 a week');
+   assert.equal(run("sbTdRule({market:'Anytime Touchdown',books:6,odds:300,avgOdds:200})"),true,'sportsbook TD test logs a Yes well over fair');
+   assert.equal(run("sbTdRule({market:'Anytime Touchdown',books:6,odds:210,avgOdds:200})"),false,'and skips one near the market');
    assert.equal(run(`predictionParlayPay({result:'won',odds:300,legs_json:'[]'})`),75,'graded at a quarter unit');}
   // Saved prices feed /api/predictions, filtered to the visitor's state.
   const saved=JSON.parse(db.prepare("SELECT prices_json FROM exchange_prices WHERE event_id='NFL--g1'").get().prices_json);
   assert.deepEqual(saved.map(p=>p[0]).sort(),['kalshi','kalshi','novig','novig'],'exchanges only, both sides');
   db.prepare("INSERT INTO public_recommendations(id,kind,player,market,side,line,odds,game_id,game_time,legs_json,posted_at,status,source) VALUES('official|x|prop|1','prop','Tre Tucker','Receptions','Under',3.5,105,'NFL--g1',?,?,?,'pending','market-verified-v2')").run(kick,JSON.stringify([{player:'Tre Tucker',edge:3.5}]),new Date(now).toISOString());
+  assert.equal(J(await run(`recordTdPredictionPicks(env,{eventID:'NFL--g1'},{bookmakers:[]},new Map())`)).length,0,'TD picks stay off until td-picks is on');
   const pred=async(state,cf)=>J(await (await run(`predictionsResponse(${JSON.stringify({url:'https://x/api/predictions'+(state?'?state='+state:''),cf})},env,${now+60000})`)).json());
   let p=await pred(null,{country:'US',regionCode:'TX'});
   assert.equal(p.mode,'predictions');assert.equal(p.stateName,'Texas');

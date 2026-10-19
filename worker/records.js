@@ -749,7 +749,13 @@ const tdRow=(env,board,gameId,r,stamp,source)=>env.DB.prepare('INSERT OR IGNORE 
 // Dropped Oct 12 (TD 70-220, defense 36-47, live 102-130, all losing and
 // rarely beating the close). Past rows stay graded; nothing new is logged.
 const TD_SHADOW_ON=false,DEFENSE_SHADOW_ON=false,LIVE_SHADOW_ON=false;
-async function recordTdShadow(env,boards,now=Date.now()){
+// Sportsbook anytime-TD rule test (Oct 19): only TDs whose best big-5 Yes
+// price is 1 point or more over our TD fair price (6+ books), logged as
+// source 'rule', graded, never posted. In the Oct 4-12 backtest no TD got
+// past about 1.3 points, so this finds out how often the rule would fire.
+const SB_TD_TEST_ON=true,tdEdge=r=>100*(tdImplied(r.avgOdds)/TD_YES_MARGIN-tdImplied(r.odds));
+const sbTdRule=r=>r.market==='Anytime Touchdown'&&r.books>=6&&tdEdge(r)>=1;
+async function recordTdShadow(env,boards,now=Date.now(),only=null){
   if(!env.DB)return {logged:0};
   const stamp=new Date(now).toISOString(),statements=[];let logged=0;
   const open=(await env.DB.prepare('SELECT id,event_id,player,market FROM td_shadow WHERE game_time>?').bind(stamp).all()).results||[],games=new Set(open.map(r=>r.event_id));
@@ -757,7 +763,7 @@ async function recordTdShadow(env,boards,now=Date.now()){
     const gameId=board.eventID||`NFL--${board.id}`,kickoff=Date.parse(board.commence_time);
     if(!(kickoff>now)||kickoff-now>LEAN_WINDOW)continue;
     const props=tdProps(board);
-    if(!games.has(gameId))for(const r of props){statements.push(tdRow(env,board,gameId,r,stamp,'live'));logged++}
+    if(!games.has(gameId))for(const r of props.filter(r=>!only||only(r))){statements.push(tdRow(env,board,gameId,r,stamp,only?'rule':'live'));logged++}
     for(const r of open.filter(o=>o.event_id===gameId)){const p=props.find(x=>x.player===r.player&&x.market===r.market);if(p)statements.push(env.DB.prepare('UPDATE td_shadow SET close_odds=?,close_at=? WHERE id=?').bind(p.odds,stamp,r.id))}
   }
   if(statements.length)await env.DB.batch(statements);
@@ -1440,14 +1446,14 @@ function sportsbookFairs(boards,now=Date.now(),minBooks=3){
 // remove the margin from. Estimate: the average Yes chance across 4+ books,
 // less a typical 8% margin. Only for the 'td1' background test, never picks.
 const TD_YES_MARGIN=1.08;
-function tdYesFairs(boards,now=Date.now()){
+function tdYesFairs(boards,now=Date.now(),minBooks=4){
   const out=new Map();
   for(const board of boards){
     const gameId=board.eventID||`NFL--${board.id}`,by=new Map();
     for(const book of board.bookmakers||[]){if(EXCHANGES[book.key])continue;
       for(const m of book.markets||[]){if(m.key!=='player_anytime_td')continue;const updated=Date.parse(m.last_update||book.last_update||'');if(!Number.isFinite(updated)||now-updated>15*60000)continue;
         for(const o of m.outcomes||[]){const player=String(o.description||'').trim(),odds=BTGStats.number(o.price);if(!player||!/^yes$/i.test(String(o.name||''))||odds===null)continue;const g=by.get(player)||new Map();g.set(book.key,odds);by.set(player,g)}}}
-    for(const [player,g] of by){if(g.size<4)continue;const p=[...g.values()].reduce((t,o)=>t+1/recordDecimal(o),0)/g.size/TD_YES_MARGIN;if(p>0&&p<1)out.set(`${gameId}|${normalizedName(player)}|Anytime Touchdown|0.5`,p)}
+    for(const [player,g] of by){if(g.size<minBooks)continue;const p=[...g.values()].reduce((t,o)=>t+1/recordDecimal(o),0)/g.size/TD_YES_MARGIN;if(p>0&&p<1)out.set(`${gameId}|${normalizedName(player)}|Anytime Touchdown|0.5`,p)}
   }
   return out;
 }
@@ -1549,13 +1555,31 @@ function predictionCandidates(board,exchangeBoard,fairs,now=Date.now(),opts={}){
 }
 async function recordPredictionPicks(env,board,exchangeBoard,fairs,now=Date.now(),dirs=null){
   const gameId=board.eventID||`NFL--${board.id}`;
-  const have=((await env.DB.prepare('SELECT player FROM prediction_picks WHERE event_id=?').bind(gameId).all()).results||[]).map(r=>normalizedName(r.player));
+  const have=((await env.DB.prepare("SELECT player FROM prediction_picks WHERE event_id=? AND market<>'Anytime Touchdown'").bind(gameId).all()).results||[]).map(r=>normalizedName(r.player));
   dirs||=await pickDirections(env,now);
   // A full game still takes every top pick.
   const picks=[],stamp=new Date(now).toISOString();let n=have.length;
   for(const p of predictionCandidates(board,exchangeBoard,fairs,now).filter(p=>!have.includes(normalizedName(p.player))&&sameDirection(dirs,p.eventId,p.player,p.side)))if(n<PREDICTION_PER_GAME||p.edge>=TOP_PICK.pm){picks.push(p);n++}
   picks.forEach(p=>dirs.set(directionKey(p.eventId,p.player),p.side));
   return picks.map(p=>env.DB.prepare('INSERT OR IGNORE INTO prediction_picks (id,exchange,event_id,player,team,market,side,line,odds,net_odds,fair_pct,edge,game_time,posted_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(`pm|${gameId}|${normalizedName(p.player)}`,p.exchange,gameId,p.player,p.team,p.market,p.side,p.line,p.odds,p.netOdds,+p.fair.toFixed(2),+p.edge.toFixed(2),p.gameTime,stamp));
+}
+// Anytime TD prediction picks: "Yes" only, 3.5 points or more over our TD
+// fair price after the app's fee, from 5+ sportsbooks, at most 1 a game and
+// 2 a week. The fair price is an estimate (books quote only Yes; see
+// tdYesFairs), hence the higher bar. app_settings td-picks = 'on' turns it on.
+const TD_PICK={min:3.5,books:5,perWeek:2};
+async function recordTdPredictionPicks(env,board,exchangeBoard,fairsTd,now=Date.now(),dirs=null){
+  if(await appSetting(env,'td-picks')!=='on')return [];
+  const gameId=board.eventID||`NFL--${board.id}`;
+  if(await env.DB.prepare("SELECT 1 AS n FROM prediction_picks WHERE event_id=? AND market='Anytime Touchdown'").bind(gameId).first())return [];
+  const week=officialWeek(now),weekEnd=new Date(Date.parse(week+'T00:00:00Z')+7*86400000).toISOString();
+  const used=Number((await env.DB.prepare("SELECT COUNT(*) AS n FROM prediction_picks WHERE market='Anytime Touchdown' AND game_time>=? AND game_time<?").bind(week,weekEnd).first())?.n||0);
+  if(used>=TD_PICK.perWeek)return [];
+  dirs||=await pickDirections(env,now);
+  const p=predictionCandidates(board,exchangeBoard,fairsTd,now,{min:TD_PICK.min}).filter(p=>p.market==='Anytime Touchdown'&&p.side==='Over'&&sameDirection(dirs,p.eventId,p.player,p.side))[0];
+  if(!p)return [];
+  dirs.set(directionKey(p.eventId,p.player),p.side);
+  return [env.DB.prepare('INSERT OR IGNORE INTO prediction_picks (id,exchange,event_id,player,team,market,side,line,odds,net_odds,fair_pct,edge,game_time,posted_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(`pm|${gameId}|${normalizedName(p.player)}|td`,p.exchange,gameId,p.player,p.team,p.market,p.side,p.line,p.odds,p.netOdds,+p.fair.toFixed(2),+p.edge.toFixed(2),p.gameTime,new Date(now).toISOString())];
 }
 async function gradePredictionPicks(env,now=Date.now(),limit=30){
   if(!env.DB||!env.BALLDONTLIE_API_KEY)return {graded:0};
@@ -1775,6 +1799,7 @@ async function recordExchangeProps(env,boards,now=Date.now()){
   // Two-book test (kind 'prop2', not shown anywhere): lines only two sportsbooks price.
   const fairs2=new Map([...sportsbookFairs(boards,now,2)].filter(([k])=>!fairs.has(k)));let picks2=0;
   const fairsTd=new Map([...tdYesFairs(boards,now)].filter(([k])=>!fairs.has(k)&&!fairs2.has(k)));
+  const fairsTd5=tdYesFairs(boards,now,TD_PICK.books);
   const fetchedAt=new Map(((await env.DB.prepare('SELECT event_id,updated_at FROM exchange_prices WHERE game_time>?').bind(stamp).all().catch(()=>({results:[]}))).results||[]).map(r=>[r.event_id,Date.parse(r.updated_at)]));
   let far=0;const dirs=await pickDirections(env,now).catch(()=>new Map());
   for(const board of boards){
@@ -1783,6 +1808,7 @@ async function recordExchangeProps(env,boards,now=Date.now()){
     let ex;try{ex=await fetchExchangeOdds(board.id,env.THE_ODDS_API_KEY)}catch{continue}
     games++;const out=exchangePropCandidates(board,ex,fairs,now);
     statements.push(...await recordPredictionPicks(env,board,ex,fairs,now,dirs).catch(()=>[]));
+    statements.push(...await recordTdPredictionPicks(env,board,ex,fairsTd5,now,dirs).catch(()=>[]));
     pmPool.push(...predictionCandidates(board,ex,fairs,now,{min:.5,max:1,perExchange:true}));
     statements.push(env.DB.prepare('INSERT OR REPLACE INTO exchange_prices (event_id,game_time,prices_json,updated_at) VALUES (?,?,?,?)').bind(board.eventID||`NFL--${board.id}`,new Date(kick).toISOString(),JSON.stringify(exchangePriceList(ex)),stamp));
     for(const [k,c] of Object.entries(out.coverage)){const t=coverage[k]||={lines:0,matched:0};t.lines+=c.lines;t.matched+=c.matched}
@@ -2260,7 +2286,7 @@ async function publishOfficialPicks(request,env,ctx,opts={}){
     if(!opts.soonOnly)jobStep('publish','exchange props');await recordExchangeProps(env,boards,Date.now()).catch(error=>console.warn('exchange_shadow_failed',error.message));
     if(!opts.soonOnly)await stampExchangePrices(env,Date.now()).catch(error=>console.warn('exchange_stamp_failed',error.message));
     if(!opts.soonOnly)jobStep('publish','book shadow');await recordBookShadow(env,boards,Date.now()).catch(error=>console.warn('book_shadow_failed',error.message));
-    if(!opts.soonOnly&&TD_SHADOW_ON){jobStep('publish','td shadow');await recordTdShadow(env,boards,Date.now()).catch(error=>console.warn('td_shadow_failed',error.message))}
+    if(!opts.soonOnly&&(TD_SHADOW_ON||SB_TD_TEST_ON)){jobStep('publish','td shadow');await recordTdShadow(env,boards,Date.now(),TD_SHADOW_ON?null:sbTdRule).catch(error=>console.warn('td_shadow_failed',error.message))}
     if(!opts.soonOnly)jobStep('publish','form wanted');await recordFormWanted(env,boards,Date.now()).catch(error=>console.warn('player_form_failed',error.message));
 
     // New picks go out right away (X post and phone alerts) instead of on the

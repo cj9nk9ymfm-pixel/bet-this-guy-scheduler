@@ -2886,7 +2886,7 @@ function statsProp(l){
   function pmWin(odds,stake,result,money){const o=Number(odds),d=o>=100?1+o/100:o<=-100?1+100/-o:null;if(!d)return '';const win=Math.round(stake*(d-1));
     if(result==='won')return `Won +$${Number.isFinite(Number(money))?Math.round(Number(money)):win}`;if(result==='lost')return `Lost −$${stake}`;if(result==='push'||result==='void')return 'Push · $0';return `$${stake} pays $${Math.round(stake*d)}`}
   function pickRow(r){
-    const initials=String(r.player||'').split(' ').map(x=>x[0]||'').join('').slice(0,3),bet=`${r.side} ${r.line} ${String(r.market||'').toLowerCase()}`;
+    const initials=String(r.player||'').split(' ').map(x=>x[0]||'').join('').slice(0,3),bet=/touchdown/i.test(r.market||'')&&Number(r.line)===.5?`${r.side==='Under'?'No ':''}${r.market}`:`${r.side} ${r.line} ${String(r.market||'').toLowerCase()}`;
     const game=String(r.team||'').replace(' · @ ',' @ ').replace(' · vs ',' vs '),matchup=game&&typeof compactGameName==='function'?compactGameName(game):game,st=pmStatus(r);
     const note=r.voidReason?`${r.voidReason} · bet voided · stake back`:[pmWin(r.netOdds??r.odds,r.result?100:wagerStake(),r.result),`Hit chance ${Math.round(r.fair)}%`,r.open===false?`not offered in ${data?.stateName||'your state'}`:''].filter(Boolean).join(' · ');
     const idx=pmRows.push(pmRecord(r))-1;
