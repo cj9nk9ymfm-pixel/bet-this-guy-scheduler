@@ -2278,3 +2278,55 @@ body.light .on-new{background:#d1fae5;color:#047857}
 .pm-pick .on-new{background:#a78bfa26;color:#c4b5fd}body.light .pm-pick .on-new{background:#ede9fe;color:#6d28d9}
 @keyframes onFlash{0%,100%{box-shadow:inset 0 0 0 2px transparent}20%,70%{box-shadow:inset 0 0 0 2px #2ee6a8;background:#2ee6a812}}
 .on-row.on-flash{animation:onFlash 2.4s ease 2;border-radius:12px}
+/* Live during games: picks in play move to the top with a Live tag; colors
+   mean something (green hit, red lost, neutral in play). */
+.on-dot{display:inline-block;width:7px;height:7px;margin-right:5px;border-radius:50%;background:#f43f5e;vertical-align:1px;animation:onPulse 1.6s infinite;flex:none}
+@media (prefers-reduced-motion:reduce){.on-dot{animation:none}}
+.on-group{display:flex;align-items:center;margin:14px 6px 2px;font:700 11.5px/1 'Space Grotesk',sans-serif;letter-spacing:.08em;text-transform:uppercase;color:#98a1ad}
+.on-group:first-child{margin-top:4px}.on-group-live{color:#f2f4f7}body.light .on-group-live{color:#0f172a}
+.on-tag.on-tag-live{background:rgba(244,63,94,.14);color:#fb7185}.on-tag.on-tag-hit{background:rgba(34,197,94,.16);color:#22c55e}.on-tag.on-tag-miss{background:rgba(240,96,96,.16);color:#f06060}
+body.light .on-tag.on-tag-live{background:#ffe4e6;color:#be123c}body.light .on-tag.on-tag-hit{background:#dcfce7;color:#047857}body.light .on-tag.on-tag-miss{background:#fee2e2;color:#b91c1c}
+.on-row.on-live-now{box-shadow:inset 3px 0 0 #f43f5e}.on-row.on-live-now:has(.on-tag-hit){box-shadow:inset 3px 0 0 #22c55e}.on-row.on-live-now:has(.on-tag-miss){box-shadow:inset 3px 0 0 #f06060}
+html body .on-live b{color:#e5e9ef}html body .on-live b::before{background:#f43f5e}
+html body .on-live.final b::before{display:none}
+html body .on-live.stale b::before{background:#6b7280;animation:none}
+.on-live .ol-stale{color:#fbbf24;font-weight:700}
+.on-live.ol-parlay{white-space:normal}.on-live.ol-parlay b::before{display:none}
+.on-live .ol-wait{color:#98a1ad}
+html body .on-live .ol-bar i{background:#94a3b8}html body .on-live.hit .ol-bar i{background:#22c55e}html body .on-live.miss .ol-bar i{background:#f06060}
+body.light .on-live b{color:#0f172a}body.light .on-live .ol-stale{color:#b45309}body.light .on-live .ol-wait{color:#64748b}
+/* "Live: 4 games · 6 of our picks" bar above the picks */
+.live-strip-bar{display:flex;align-items:center;gap:8px;width:100%;margin:12px 0 6px;padding:12px 14px;border-radius:14px;border:1px solid rgba(244,63,94,.35);background:rgba(244,63,94,.08);color:inherit;font:inherit;font-size:14px;cursor:pointer;text-align:left}
+.live-strip-bar[hidden]{display:none}.live-strip-bar b{font-weight:800}.live-strip-bar span{color:#98a1ad}.live-strip-bar em{margin-left:auto;font-style:normal;font-weight:700;color:#60a5fa;white-space:nowrap}
+body.light .live-strip-bar{background:#fff1f2;border-color:#fecdd3}body.light .live-strip-bar span{color:#64748b}body.light .live-strip-bar em{color:#1d4ed8}
+/* Live in the phone menu only while games are on */
+.mobile-nav .nav-live{display:none!important}body.games-live .mobile-nav .nav-live,body[data-mobile-page="live"] .mobile-nav .nav-live{display:flex!important}
+.mobile-nav .nav-live svg{color:#f43f5e}.mobile-nav .nav-live.active svg{color:currentColor}
+@media(max-width:720px){html body[data-mobile-page="live"] :is(#propsSection,#verdictGuide,#propTypeTabs,#gameTabs,.league-switch,#pmHero,#pmPicksNow,#parlaysNow,#officialNow,#liveStrip,.hero,.hits-strip,.price-view,.board-title){display:none!important}}
+/* Live tracker: each parlay leg keeps its own color */
+.lp-card .lp-leg.hit .live-progress i{background:#2ee6a8}.lp-card .lp-leg.miss .live-progress i{background:#f06060}.lp-card.miss .lp-leg:not(.hit):not(.miss) .live-progress i,.lp-card.hit .lp-leg:not(.hit):not(.miss) .live-progress i{background:#64748b}
+/* Bet screen tracker */
+.bs-live{margin:14px 0 4px;padding:14px 16px;border-radius:16px;border:1px solid rgba(244,63,94,.35);background:rgba(244,63,94,.07)}
+.bs-live.hit{border-color:rgba(34,197,94,.5);background:rgba(34,197,94,.08)}.bs-live.miss{border-color:rgba(240,96,96,.5);background:rgba(240,96,96,.08)}.bs-live.final:not(.hit):not(.miss){border-color:var(--line);background:var(--panel2)}
+.bs-live-top{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin:0 0 8px;font-size:13px;color:#cfd8e3}.bs-live-top b{font-weight:800;color:#f2f4f7}
+.bs-live-num{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}.bs-live-num strong{font:800 40px/1 'Space Grotesk',sans-serif;color:#f2f4f7}.bs-live-num span{font-size:15px;color:#98a1ad}.bs-live-num em{margin-left:auto;font-style:normal;font-weight:800;font-size:15px;color:#e5e9ef}
+.bs-live.hit .bs-live-num strong,.bs-live.hit .bs-live-num em{color:#22c55e}.bs-live.miss .bs-live-num strong,.bs-live.miss .bs-live-num em{color:#f06060}
+.bs-live .ol-bar{display:block;height:6px;margin-top:10px;border-radius:999px;background:#2a313c;overflow:hidden}.bs-live .ol-bar i{display:block;height:100%;border-radius:999px;background:#94a3b8}.bs-live.hit .ol-bar i,.bs-live-leg.hit .ol-bar i{background:#22c55e}.bs-live.miss>.ol-bar i,.bs-live-leg.miss .ol-bar i{background:#f06060}
+.bs-live-also{margin:10px 0 0;font-size:13px;color:#98a1ad}.bs-live .ol-stale{color:#fbbf24;font-weight:700}
+.bs-live-leg{display:grid;grid-template-columns:1fr auto;gap:2px 10px;margin-top:12px}.bs-live-leg span b{display:block;font-size:14.5px;color:#f2f4f7}.bs-live-leg span small{font-size:12.5px;color:#98a1ad}.bs-live-leg strong{font:800 20px/1.1 'Space Grotesk',sans-serif;color:#f2f4f7;align-self:center}.bs-live-leg strong small{font-size:12px;color:#98a1ad;font-weight:600}.bs-live-leg .ol-bar{grid-column:1/-1;margin-top:4px}.bs-live-leg.hit strong{color:#22c55e}.bs-live-leg.miss strong{color:#f06060}
+body.light .bs-live{background:#fff1f2;border-color:#fecdd3}body.light .bs-live.hit{background:#f0fdf4;border-color:#bbf7d0}body.light .bs-live.miss{background:#fef2f2;border-color:#fecaca}
+body.light .bs-live-top,body.light .bs-live-also,body.light .bs-live-num span,body.light .bs-live-leg span small{color:#475569}body.light :is(.bs-live-top b,.bs-live-num strong,.bs-live-num em,.bs-live-leg span b,.bs-live-leg strong){color:#0f172a}body.light .bs-live .ol-bar{background:#e2e6ec}
+body.light .bs-live.hit :is(.bs-live-num strong,.bs-live-num em),body.light .bs-live-leg.hit strong{color:#047857}body.light .bs-live.miss :is(.bs-live-num strong,.bs-live-num em),body.light .bs-live-leg.miss strong{color:#b91c1c}
+/* Player screen: today's game on the chart and a live strip on the overview */
+.pp-bar.pp-today span{background:repeating-linear-gradient(135deg,#94a3b8 0 6px,#64748b 6px 12px)!important;opacity:.95}.pp-bar.pp-today.hit span{background:repeating-linear-gradient(135deg,#22c55e 0 6px,#16a34a 6px 12px)!important}.pp-bar.pp-today.miss span{background:repeating-linear-gradient(135deg,#f06060 0 6px,#dc2626 6px 12px)!important}
+.pp-bar.pp-today small{color:#fb7185;font-weight:800}
+.live-strip.live-game-entry{margin:0 0 12px;border:1px solid rgba(244,63,94,.35);background:rgba(244,63,94,.07);border-radius:14px}
+
+@media(max-width:720px){html body.games-live .mobile-nav,html body[data-mobile-page="live"] .mobile-nav{grid-template-columns:repeat(5,minmax(0,1fr))!important}}
+.pp-live{margin:10px 0 2px;padding:12px 14px;border-radius:14px;border:1px solid rgba(244,63,94,.35);background:rgba(244,63,94,.07)}.pp-live.hit{border-color:rgba(34,197,94,.5);background:rgba(34,197,94,.08)}.pp-live.miss{border-color:rgba(240,96,96,.5);background:rgba(240,96,96,.08)}
+.pp-live p{margin:0}.pp-live-top{display:flex;flex-wrap:wrap;align-items:center;gap:4px;font-size:13px;color:#cfd8e3}.pp-live-top b{color:#f2f4f7;font-weight:800}.pp-live-today{margin-top:6px!important;font:800 17px/1.3 'Space Grotesk',sans-serif;color:#f2f4f7}.pp-live-bet{margin-top:4px!important;font-size:13px;color:#98a1ad}.pp-live-bet b{color:#f2f4f7}.pp-live.hit .pp-live-bet span{color:#22c55e;font-weight:700}.pp-live.miss .pp-live-bet span{color:#f06060;font-weight:700}
+body.light .pp-live{background:#fff1f2;border-color:#fecdd3}body.light .pp-live.hit{background:#f0fdf4;border-color:#bbf7d0}body.light .pp-live.miss{background:#fef2f2;border-color:#fecaca}body.light :is(.pp-live-top b,.pp-live-today,.pp-live-bet b){color:#0f172a}body.light :is(.pp-live-top,.pp-live-bet){color:#475569}
+/* Desktop: the Live now / Up next labels span the two-column pick grid, and
+   the rail's record card wraps so the proof line sits under the record. */
+.on-group{grid-column:1/-1}
+@media(min-width:721px){html body .has-rail #heroBanner.hero{flex-wrap:wrap!important;row-gap:6px!important}html body .has-rail #heroBanner #heroTitle{flex:1 1 100%!important}}
