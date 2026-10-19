@@ -142,11 +142,14 @@ function renderCurrentGame() {
   const current=game?.state==='in_progress', row=snapshot?.stat;
   const status=game?liveStatusLabel(game):formatCompactKickoff(prop.startsAt);
   panel.querySelector('.live-game-entry')?.remove();
+  const overview=$('#playerProfile')?.querySelector('[data-profile-panel="overview"]');overview?.querySelector('.live-game-entry')?.remove();
   if (!game || !['in_progress','final','suspended'].includes(game.state)) return;
   const stamp=snapshot?.updatedAt?new Date(snapshot.updatedAt).toLocaleTimeString([],{hour:'numeric',minute:'2-digit',second:'2-digit'}):null;
   const score=liveScoreLabel(game),notice=snapshot?.error||(!snapshot?'Loading live stats…':!row?'No stats reported yet. This does not confirm whether the player has played.':'');
   const entry=document.createElement('div');entry.className='profile-game-row matchup live-game-entry';entry.innerHTML=`<span><strong>${current?'LIVE NOW':'FINAL'}</strong><small>${htmlEscape(compactGameName(gameName(prop)))} · ${htmlEscape(score)} · ${htmlEscape(status)}</small></span><b>${row?htmlEscape(liveGameStatLine(row,player)):'Updating stats…'}</b><em class="${current?'live':'neutral'}">${current?'LIVE':'FINAL'}</em>${notice?`<small class="live-entry-note">${htmlEscape(notice)}</small>`:''}${stamp?`<small class="live-entry-stamp">Updated ${htmlEscape(stamp)}</small>`:''}`;
   (panel.querySelector('.boxscore-game-list')||panel.querySelector('.profile-game-log')||panel).prepend(entry);
+  // The same entry tops the overview, so a live game shows without opening the game log.
+  if(overview){const strip=entry.cloneNode(true);strip.classList.add('live-strip');overview.prepend(strip)}
 }
 function liveGameStatLine(row,player){const values=[];const push=(label,key)=>{const value=liveStatValue(row,key);if(value!==null)values.push(`${label} ${value}`)};push('Pass','passing_yards');push('Rush','rushing_yards');push('Rec','receiving_yards');push('REC','receptions');push('TD','passing_touchdowns');push('TD','rushing_touchdowns');push('TD','receiving_touchdowns');push('INT','passing_interceptions');return values.join(' · ')||'No box-score categories reported';}
 async function refreshCurrentStats() {
@@ -295,7 +298,7 @@ function legStatus(prop){
   const snap=liveBoard.gameStats.get(String(game.id));
   return {...liveLegState(prop,game,livePlayerRow(game.id,prop.player)),clock:liveStatusLabel(game),final:game.state==='final',loaded:Array.isArray(snap?.stats),stale:!!snap?.stale};
 }
-window.BTGLive={attachProfile:attachLiveProfile,updateLabels:()=>{updateLiveLabels();updateBoardProgress()},renderCenter:renderLiveCenter,boardProgress,legStatus,gameOf:prop=>liveGameFor(gameName(prop),prop.startsAt)};
+window.BTGLive={score:game=>game?liveScoreLabel(game):'',stale:liveSnapshotStale,games:()=>liveBoard.games,statLine:prop=>{const g=liveGameFor(gameName(prop),prop.startsAt),row=g?livePlayerRow(g.id,prop.player):null;if(!row)return '';const parts=[['passing_completions','passing_attempts','comp/att'],['passing_yards',null,'pass yds'],['passing_touchdowns',null,'pass TD'],['rushing_attempts',null,'carries'],['rushing_yards',null,'rush yds'],['receptions',null,'rec'],['receiving_yards',null,'rec yds'],['receiving_targets',null,'targets'],['field_goals_made','field_goal_attempts','FG'],['extra_points_made',null,'XP']].map(([a,b,label])=>{const x=liveStatValue(row,a);if(x===null||(x===0&&!b))return '';const y=b?liveStatValue(row,b):null;return `${x}${y!==null?`/${y}`:''} ${label}`}).filter(Boolean);return parts.join(' · ')},attachProfile:attachLiveProfile,updateLabels:()=>{updateLiveLabels();updateBoardProgress()},renderCenter:renderLiveCenter,boardProgress,legStatus,gameOf:prop=>liveGameFor(gameName(prop),prop.startsAt)};
 document.addEventListener('visibilitychange',()=>{if(document.hidden)clearTimeout(liveBoard.timer);else tickLiveBoard()});
 window.addEventListener('online',tickLiveBoard);
 window.addEventListener('offline',()=>{clearTimeout(liveBoard.timer);liveBoard.error='Offline';updateLiveLabels();renderCurrentGame()});
