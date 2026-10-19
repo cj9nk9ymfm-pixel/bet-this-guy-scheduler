@@ -1581,7 +1581,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     const title=isParlay?`${legs.length}-leg ${legs.some(l=>l.sameGame)?'same-game ':''}parlay`:r.player;
     const sub0=isParlay?legs.map(l=>l.player).join(' + '):legText({side:r.side,line:r.line,market:String(r.market||'').toLowerCase()}),sub=sub0.charAt(0).toUpperCase()+sub0.slice(1);
     const initials=String(r.player||'').split(' ').map(x=>x[0]||'').join('').slice(0,3);
-    const avatar=isParlay?`<span class="on-avatar on-parlay">${icon('layers')}</span>`:`<span class="on-avatar"><span>${htmlEscape(initials)}</span><img loading="lazy" decoding="async" src="/api/player-photo?name=${encodeURIComponent(r.player||'')}${(r.sport||r.sport_label)==='NBA'?'&sport=NBA':''}" alt="" onerror="this.remove()"></span>`;
+    const avatar=isParlay?`<span class="on-avatar on-parlay">${icon('layers')}</span>`:`<span class="on-avatar"><span>${htmlEscape(initials)}</span><img loading="lazy" decoding="async" src="/api/player-photo?name=${encodeURIComponent(r.player||'')}${(r.sport||r.sport_label)==='NBA'||String(r.id||'').startsWith('nba|')||LEAGUE==='NBA'?'&sport=NBA':''}" alt="" onerror="this.remove()"></span>`;
     const tag=status[0]==='locked'?`${icon('lock')} Locked`:status[1];
     const books=[...new Set(legs.map(l=>l.book).filter(Boolean))],edges=legs.map(l=>Number(l.edge)).filter(Number.isFinite);
     const why=edges.length?(isParlay?`Every leg beats fair`:`${Math.max(...edges).toFixed(1)}% better than fair`):'';
