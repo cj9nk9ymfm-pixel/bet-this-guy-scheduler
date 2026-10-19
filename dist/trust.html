@@ -428,7 +428,7 @@ function legSheet(l,row,sport,back,pm=null){
 function pmSheet(r){
   const single=r.kind!=='parlay',done=['won','lost','push','void'].includes(r.result),o=single?(r.netOdds??r.odds):r.odds,d=decimal(o),stake=single?100:25;
   const chip=done?{won:{c:'g',i:'check',t:'Hit'},lost:{c:'r',i:'over',t:'Lost'},push:{c:'n',i:'fair',t:'Push'},void:{c:'n',i:'fair',t:'No action'}}[r.result]:{c:'n',i:'lock',t:'Prediction pick · Locked'};
-  const bet=single?`${r.side} ${r.line} ${String(r.market||'').toLowerCase()}`:r.legs.map(l=>l.player).join(' + ');
+  const bet=single?betText(r):r.legs.map(l=>l.player).join(' + ');
   const rows=[['App',r.exchange,''],['Locked at',whenText(r.postedAt),'']];
   if(single&&r.voidReason)rows.unshift(['Result',`${r.voidReason} before kickoff · bet voided, stake back`,'']);
   else if(single&&r.actual!=null&&done)rows.unshift(['Result',`${r.actual} ${String(r.market||'').toLowerCase()}`,r.result==='won'?'pos':r.result==='lost'?'neg':'']);
@@ -487,7 +487,7 @@ function renderPredictionRecord(){const d=pmRecordData;if(!d)return;
   // Beat the close: the app's own price at kickoff, same side and line (singles).
   const rows=d.plays.map(r=>{const single=r.kind!=='parlay',g=grade(r),edge=single&&r.closeOdds!=null&&g!=='pending'&&dec(r.odds)&&dec(r.closeOdds)?100*(dec(r.odds)/dec(r.closeOdds)-1):null;
     return {src:r,id:r.id,date:r.gameTime||r.postedAt,kind:single?'prop':'parlay',grade:g,net:g==='pending'?null:Number(r.money)||0,price:pmPct(single?(r.netOdds??r.odds):r.odds),clv:edge!=null&&edge>.05,edge,
-      title:single?r.player:`${r.legs.length}-leg parlay`,sub:single?`${r.side} ${r.line} ${String(r.market||'').toLowerCase()} · ${r.voidReason?`${r.voidReason}, bet voided`:r.exchange}`:`${r.legs.map(l=>mark(l)+l.player+(l.voided?' (out, void)':'')).join(' + ')} · ${r.exchange}`}});
+      title:single?r.player:`${r.legs.length}-leg parlay`,sub:single?`${betText(r)} · ${r.voidReason?`${r.voidReason}, bet voided`:r.exchange}`:`${r.legs.map(l=>mark(l)+l.player+(l.voided?' (out, void)':'')).join(' + ')} · ${r.exchange}`}});
   const tracked=rows.filter(r=>r.edge!=null);
   recordBoard('pm',{rows,clv:{beat:tracked.filter(r=>r.edge>.05).length,of:tracked.length,avg:tracked.length?tracked.reduce((t,r)=>t+r.edge,0)/tracked.length:0},open:pmSheet,stakeText:'Singles at $100, parlays at $25, after each app’s fee',empty:'No graded prediction picks yet.',totals:{prop:d.singles.profit,parlay:d.parlays.profit}});
   resultNode('#pmApps').innerHTML=Object.entries(d.apps).sort((a,b)=>b[1].plays-a[1].plays).map(([n,a])=>`<span class="pm-app"><i style="background:${pmColors[n]||'#8a93a0'}"></i><b>${escape(n)}</b> ${a.wins}–${a.losses} · ${escape(pmMoney(a.profit))}</span>`).join('');
