@@ -9,7 +9,8 @@ const run=code=>vm.runInContext(code,context);context.env={DB};
 const now=Date.now(),week=run(`officialWeek(${now})`),previous=new Date(Date.parse(week+'T00:00:00Z')-7*86400000).toISOString().slice(0,10),iso=t=>new Date(t).toISOString();
 const add=(weekStart,id,row)=>db.prepare("INSERT INTO public_recommendations(id,kind,player,market,side,line,odds,combined_odds,game_time,legs_json,posted_at,status,result,source) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'market-verified-v2')").run(`official|${weekStart}|props|${id}`,row.kind||'prop',row.player??null,row.market??null,row.side??null,row.line??null,row.odds??null,row.combined??null,row.game_time,JSON.stringify(row.legs||[{player:row.player,market:row.market,side:row.side,line:row.line,odds:row.odds,actualValue:row.had??null}]),iso(Math.min(now,Date.parse(row.game_time))-86400000),row.result?'final':'pending',row.result||null);
 // Last week: 2-1 on props and a winning parlay. Each pick posts a day before
-// its game (not a day before now), so last week's parlay stays a full unit.
+// its game (not a day before now); last week's parlay posted after Oct 12, 2026,
+// so it's a quarter unit ($25: +264 pays +$66).
 add(previous,'a',{player:'Josh Allen',market:'Passing Yards',side:'Over',line:271.5,odds:110,game_time:iso(now-6*86400000),result:'won',had:312});
 add(previous,'b',{player:'CeeDee Lamb',market:'Receiving Yards',side:'Under',line:82.5,odds:-110,game_time:iso(now-6*86400000),result:'won',had:61});
 add(previous,'c',{player:'Bijan Robinson',market:'Rushing Yards',side:'Over',line:74.5,odds:-115,game_time:iso(now-6*86400000),result:'lost',had:40});
@@ -45,7 +46,7 @@ add(week,'s',{player:'Started Guy',market:'Receptions',side:'Over',line:3.5,odds
   const last=texts.previous;
   assert.equal(last.record,'2–1');assert.equal(Math.round(last.profit),Math.round(110+100/1.1-100));
   assert.ok(last.x.startsWith('📊 Week')&&last.x.includes('2–1 on player props, +$101 betting $100 a pick'),last.x.split('\n')[0]);
-  assert.ok(last.x.includes('Parlays: 1–0 (+$264)'));
+  assert.ok(last.x.includes('Parlays: 1–0 (+$66)'),last.x);
   assert.ok(last.x.includes('✅ Josh Allen o271.5 pass yds (+110) — had 312'),last.x);
   assert.ok(!last.x.includes('Bijan'),'the X post lists wins');assert.ok(last.reddit.includes('❌ Bijan Robinson Over 74.5 rushing yards (-115) — had 40'),'the Reddit post lists every graded pick, losses too');
   assert.ok(last.x.includes(`betthisguy.com${kit.previous.path}`));
@@ -56,7 +57,7 @@ add(week,'s',{player:'Started Guy',market:'Receptions',side:'Over',line:3.5,odds
   assert.ok(trimmed.length<=280&&/\+\d+ more on the site/.test(trimmed),trimmed);
   // /trust carries a server-written record summary, and robots.txt lets search engines load the record.
   const trust=await run('trustSnapshot(env)');
-  assert.ok(trust.includes('<p class="record-snapshot"><strong>Official record: 2–1 on player props, +\u0024101 betting \u0024100 a pick.</strong> Parlays: 1–0 <span class="nowrap">(+\u0024264)</span>.'),trust.match(/<p class="record-snapshot">[\s\S]*?<\/p>/)?.[0]);
+  assert.ok(trust.includes('<p class="record-snapshot"><strong>Official record: 2–1 on player props, +\u0024101 betting \u0024100 a pick.</strong> Parlays: 1–0 <span class="nowrap">(+\u002466)</span>.'),trust.match(/<p class="record-snapshot">[\s\S]*?<\/p>/)?.[0]);
   const robots=await (await run("routeRequest(new Request('https://betthisguy.com/robots.txt'),env,{waitUntil(){}})")).text();
   assert.ok(robots.includes('Allow: /api/record\nDisallow: /api/'));
   // The home page knows last week's banner will have stats and hits, and reserves their space.
