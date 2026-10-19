@@ -7,7 +7,7 @@ const context=vm.createContext({URL,URLSearchParams,Request,Response,Headers,Abo
 const t=read('worker/index.template.js');
 vm.runInContext(t.slice(t.indexOf('const API_BASE')).replace('__MOVEMENT_SERVER__',read('worker/movement.js')).replace('__LIVE_SERVER__',read('worker/live.js')).replace('__STATS_SHARED__',read('dist/stats.js')).replace('__RECORDS_SERVER__',read('worker/records.js')).replace('__ACCOUNTS_SERVER__',read('worker/accounts.js')).replace('export default {','this.worker={'),context);
 const ev='NFL--g',gt='2026-10-13T00:15:00.000Z',now=Date.parse('2026-10-12T23:00:00Z');
-const leg=(player,market,side,line,odds,team)=>({exchange:'Novig',eventId:ev,player,market,side,line,odds,netOdds:odds,edge:.8,gameTime:gt,playerTeam:team});
+const leg=(player,market,side,line,odds,team)=>({exchange:'ProphetX',eventId:ev,player,market,side,line,odds,netOdds:odds,edge:.8,gameTime:gt,playerTeam:team});
 const pool=[leg('Dalton Kincaid','Receptions','Under',4.5,-111,'BUF'),leg('Kyren Williams','Receiving Yards','Under',22.5,104,'LAR'),leg('James Cook','Receptions','Over',1.5,-113,'BUF'),leg('Jordan Whittington','Receiving Yards','Over',5.5,102,'LAR'),leg('Blake Corum','Receiving Yards','Over',2.5,108,'LAR'),leg('Matthew Stafford','Passing Touchdowns','Over',2.5,141,'LAR'),leg('Dawson Knox','Receptions','Under',1.5,-122,'BUF')];
 const existing=[{tier:'short',legs_json:JSON.stringify([leg('Dawson Knox','Receptions','Under',1.5,-122,'BUF'),leg('Kyren Williams','Receiving Yards','Over',22.5,100,'LAR')])}];
 context.pool=pool;context.existing=existing;
