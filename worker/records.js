@@ -1442,13 +1442,17 @@ function sportsbookFairs(boards,now=Date.now(),minBooks=3){
     }
   }
   const fairs=new Map();
-  for(const [k,g] of groups){const pairs=[...g.values()].filter(p=>p.over!=null&&p.under!=null);if(pairs.length<minBooks)continue;fairs.set(k,pairs.reduce((s,p)=>{const o=1/recordDecimal(p.over),u=1/recordDecimal(p.under);return s+o/(o+u)},0)/pairs.length)}
+  // Books far apart (more than FAIR_SPREAD between the highest and lowest
+  // no-margin chance) usually means news is moving the price: no fair price.
+  for(const [k,g] of groups){const pairs=[...g.values()].filter(p=>p.over!=null&&p.under!=null);if(pairs.length<minBooks)continue;
+    const ps=pairs.map(p=>{const o=1/recordDecimal(p.over),u=1/recordDecimal(p.under);return o/(o+u)});if(Math.max(...ps)-Math.min(...ps)>FAIR_SPREAD)continue;
+    fairs.set(k,ps.reduce((s,x)=>s+x,0)/ps.length)}
   return fairs;
 }
 // Anytime touchdown: sportsbooks quote only Yes, so there's no Over/Under pair to
 // remove the margin from. Estimate: the average Yes chance across 4+ books,
 // less a typical 8% margin. Only for the 'td1' background test, never picks.
-const TD_YES_MARGIN=1.08;
+const TD_YES_MARGIN=1.08,FAIR_SPREAD=.1,TD_SPREAD=.12;
 function tdYesFairs(boards,now=Date.now(),minBooks=4){
   const out=new Map();
   for(const board of boards){
@@ -1456,7 +1460,7 @@ function tdYesFairs(boards,now=Date.now(),minBooks=4){
     for(const book of board.bookmakers||[]){if(EXCHANGES[book.key])continue;
       for(const m of book.markets||[]){if(m.key!=='player_anytime_td')continue;const updated=Date.parse(m.last_update||book.last_update||'');if(!Number.isFinite(updated)||now-updated>15*60000)continue;
         for(const o of m.outcomes||[]){const player=String(o.description||'').trim(),odds=BTGStats.number(o.price);if(!player||!/^yes$/i.test(String(o.name||''))||odds===null)continue;const g=by.get(player)||new Map();g.set(book.key,odds);by.set(player,g)}}}
-    for(const [player,g] of by){if(g.size<minBooks)continue;const p=[...g.values()].reduce((t,o)=>t+1/recordDecimal(o),0)/g.size/TD_YES_MARGIN;if(p>0&&p<1)out.set(`${gameId}|${normalizedName(player)}|Anytime Touchdown|0.5`,p)}
+    for(const [player,g] of by){if(g.size<minBooks)continue;const ys=[...g.values()].map(o=>1/recordDecimal(o));if(Math.max(...ys)-Math.min(...ys)>TD_SPREAD)continue;const p=[...g.values()].reduce((t,o)=>t+1/recordDecimal(o),0)/g.size/TD_YES_MARGIN;if(p>0&&p<1)out.set(`${gameId}|${normalizedName(player)}|Anytime Touchdown|0.5`,p)}
   }
   return out;
 }
@@ -1568,18 +1572,22 @@ async function recordPredictionPicks(env,board,exchangeBoard,fairs,now=Date.now(
 }
 // Anytime TD prediction picks: "Yes" only, 3.5 points or more over our TD
 // fair price after the app's fee, from 5+ sportsbooks, at most 1 a game and
-// 2 a week. The fair price is an estimate (books quote only Yes; see
+// 2 a week, only in the last 100 minutes before kickoff (after inactives)
+// and never on a player on the injury report (Questionable or worse). The fair price is an estimate (books quote only Yes; see
 // tdYesFairs), hence the higher bar. app_settings td-picks = 'on' turns it on.
-const TD_PICK={min:3.5,books:5,perWeek:2};
+const TD_PICK={min:3.5,books:5,perWeek:2,lead:100*60000};
 async function recordTdPredictionPicks(env,board,exchangeBoard,fairsTd,now=Date.now(),dirs=null){
   if(await appSetting(env,'td-picks')!=='on')return [];
-  const gameId=board.eventID||`NFL--${board.id}`;
+  // Only once final inactives are out (about 90 minutes before kickoff).
+  const kick=Date.parse(board.commence_time);if(!(kick-now<=TD_PICK.lead))return [];
+  const gameId=board.eventID||`NFL--${board.id}`,injuries=await injuryMap(env).catch(()=>new Map());
+  const listed=name=>Boolean(injuryClass(injuries.get(normalizedName(name))?.status));
   if(await env.DB.prepare("SELECT 1 AS n FROM prediction_picks WHERE event_id=? AND market='Anytime Touchdown'").bind(gameId).first())return [];
   const week=officialWeek(now),weekEnd=new Date(Date.parse(week+'T00:00:00Z')+7*86400000).toISOString();
   const used=Number((await env.DB.prepare("SELECT COUNT(*) AS n FROM prediction_picks WHERE market='Anytime Touchdown' AND game_time>=? AND game_time<?").bind(week,weekEnd).first())?.n||0);
   if(used>=TD_PICK.perWeek)return [];
   dirs||=await pickDirections(env,now);
-  const p=predictionCandidates(board,exchangeBoard,fairsTd,now,{min:TD_PICK.min}).filter(p=>p.market==='Anytime Touchdown'&&p.side==='Over'&&sameDirection(dirs,p.eventId,p.player,p.side))[0];
+  const p=predictionCandidates(board,exchangeBoard,fairsTd,now,{min:TD_PICK.min}).filter(p=>p.market==='Anytime Touchdown'&&p.side==='Over'&&!listed(p.player)&&sameDirection(dirs,p.eventId,p.player,p.side))[0];
   if(!p)return [];
   dirs.set(directionKey(p.eventId,p.player),p.side);
   return [env.DB.prepare('INSERT OR IGNORE INTO prediction_picks (id,exchange,event_id,player,team,market,side,line,odds,net_odds,fair_pct,edge,game_time,posted_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(`pm|${gameId}|${normalizedName(p.player)}|td`,p.exchange,gameId,p.player,p.team,p.market,p.side,p.line,p.odds,p.netOdds,+p.fair.toFixed(2),+p.edge.toFixed(2),p.gameTime,new Date(now).toISOString())];
@@ -1666,7 +1674,7 @@ async function postPredictionPicksToX(env,now=Date.now()){
     const rec=await xRecords(env).catch(()=>null);
     // A partner code (its X code if it has one) rides along on that app's picks.
     const partner=(await partnerOffers(env).catch(()=>({})))[r.exchange],promo=partner?`New to ${r.exchange}? Code ${partner.xCode||partner.code}${partner.offer?`: ${partner.offer}`:''}. Terms apply.`:'';
-    const text=xPostText({head:`${Number(r.edge)>=TOP_PICK.pm?'⭐ Top pick':'🔒 Official pick'} · Prediction app`,lines:[`${r.player} ${weeklyLegText(r)}`,[`${exchangePct(r.odds)}% on ${await xAppTag(env,r.exchange)} (fair ${Math.round(r.fair_pct)}%)`,xMatchup(r.team),xShortWhen(r.game_time)].filter(Boolean).join(' · ')],extra:promo,rec,age:'18+/21+ by app'});
+    const text=xPostText({head:`${Number(r.edge)>=TOP_PICK.pm?'⭐ Top pick':'🔒 Official pick'} · Prediction app`,lines:[`${r.player}${await xQuestionable(env,r.player)} ${weeklyLegText(r)}`,[`${exchangePct(r.odds)}% on ${await xAppTag(env,r.exchange)} (fair ${Math.round(r.fair_pct)}%)`,xMatchup(r.team),xShortWhen(r.game_time)].filter(Boolean).join(' · ')],extra:promo,rec,age:'18+/21+ by app'});
     const mediaId=await xPredictionMedia(env,r,false,rec);
     try{const sent=await xPost(env,text,mediaId);await xDone(env,key,now);if(sent?.data?.id)await setAppSetting(env,`xid:${r.id}`,String(sent.data.id)).catch(()=>{});await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} prediction ${mediaId?'graphic':'text'} ${r.id} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,graphic:Boolean(mediaId)}}
     catch(error){console.warn('x_prediction_failed',error.message);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
@@ -1835,7 +1843,35 @@ async function recordExchangeProps(env,boards,now=Date.now()){
   // Prediction parlays, after this run's prediction picks are saved (their players are left out).
   const pmParlays=await recordPredictionParlays(env,pmPool,now).catch(error=>({error:error.message}));
   await setAppSetting(env,'exchange-coverage',JSON.stringify({at:stamp,games,coverage})).catch(()=>{});
-  return {games,logged:picks,logged2:picks2,pmParlays};
+  const moves=await priceMoveAlerts(env,new Map([...fairs,...fairsTd5]),now).catch(error=>({error:error.message}));
+  return {games,logged:picks,logged2:picks2,pmParlays,moves};
+}
+// Heads-up to the owner's phone when sportsbooks move hard against an open
+// pick before kickoff (news): our fair chance down PRICE_MOVE points or more
+// from when it posted. Once per pick. The pick stays on the record either
+// way. ntfy topic: the Worker secret ALERT_NTFY_TOPIC (kept private).
+const PRICE_MOVE=10;
+async function priceMoveAlerts(env,fairs,now=Date.now()){
+  if(!env.DB)return {sent:0};
+  const stamp=new Date(now).toISOString(),later=new Date(now+36*3600000).toISOString(),found=[];
+  const chance=(f,side)=>100*(String(side).toLowerCase()==='under'?1-f:f);
+  const pm=(await env.DB.prepare('SELECT id,exchange,event_id,player,market,side,line,odds,fair_pct,game_time FROM prediction_picks WHERE result IS NULL AND game_time>? AND game_time<?').bind(stamp,later).all().catch(()=>({results:[]}))).results||[];
+  for(const r of pm){const f=fairs.get(`${r.event_id}|${normalizedName(r.player)}|${r.market}|${r.line}`);if(f===undefined)continue;
+    const was=Number(r.fair_pct),nowPct=chance(f,r.side);if(was-nowPct>=PRICE_MOVE)found.push({id:r.id,text:`${r.player} ${weeklyLegText(r)} (${r.exchange} ${exchangePct(r.odds)}%)`,was,nowPct,game:r.game_time})}
+  const sb=(await env.DB.prepare("SELECT id,player,market,side,line,odds,game_time,legs_json FROM public_recommendations WHERE id LIKE 'official|%' AND kind='prop' AND status='pending' AND game_time>? AND game_time<?").bind(stamp,later).all().catch(()=>({results:[]}))).results||[];
+  for(const r of sb){const l=recordLegs(r)[0]||{},d=recordDecimal(r.odds),edge=Number(l.edge);if(!l.gameId||!d||!Number.isFinite(edge))continue;
+    const f=fairs.get(`${l.gameId}|${normalizedName(r.player)}|${r.market}|${r.line}`);if(f===undefined)continue;
+    const was=100/d+edge,nowPct=chance(f,r.side);if(was-nowPct>=PRICE_MOVE)found.push({id:r.id,text:`${r.player} ${weeklyLegText(r)} (${weeklyOdds(r.odds)}${l.book?` at ${l.book}`:''})`,was,nowPct,game:r.game_time})}
+  let sent=0;const log=[];
+  for(const a of found){
+    const claim=await env.DB.prepare('INSERT OR IGNORE INTO app_settings (key,value) VALUES (?,?)').bind(`move-alert:${a.id}`,stamp).run();if(!Number(claim?.meta?.changes??claim?.changes))continue;
+    const kick=new Date(a.game).toLocaleString('en-US',{timeZone:'America/Los_Angeles',weekday:'short',hour:'numeric',minute:'2-digit'});
+    const body=`${a.text}: the sportsbooks now give it ${Math.round(a.nowPct)}%, down from ${Math.round(a.was)}% when it posted. Kickoff ${kick} PT. Check the news; the pick stays on the record.`;
+    log.push({at:stamp,id:a.id,body});
+    if(env.ALERT_NTFY_TOPIC){const r=await fetch('https://ntfy.sh/'+encodeURIComponent(env.ALERT_NTFY_TOPIC),{method:'POST',headers:{Title:'Bet This Guy: price moved against a pick',Priority:'high',Tags:'warning'},body,signal:AbortSignal.timeout(10000)}).catch(()=>null);if(r?.ok)sent++}
+  }
+  if(log.length){let old=[];try{old=JSON.parse(await appSetting(env,'move-alerts')||'[]')}catch{}await setAppSetting(env,'move-alerts',JSON.stringify([...log,...old].slice(0,30)))}
+  return {found:found.length,sent};
 }
 async function gradeExchangeShadow(env,now=Date.now(),limit=30){
   if(!env.DB||!env.BALLDONTLIE_API_KEY)return {graded:0};
@@ -3117,11 +3153,13 @@ function xPostText({head,lines=[],legs=null,extra='',rec,age='21+'}){
   for(const t of tries){const text=build(...t);if(text.length<=280)return text}
   return xShort(build(last,1,1,0,''));
 }
-function xSportsbookText(r,rec){
+// " (Q)" after a player on the injury report as Questionable.
+const xQuestionable=async(env,name)=>name&&injuryClass((await injuryMap(env).catch(()=>new Map())).get(normalizedName(name))?.status)==='questionable'?' (Q)':'';
+function xSportsbookText(r,rec,q=''){
   const legs=recordLegs(r),first=legs[0]||{},when=xShortWhen(r.game_time||first.gameTime),matchup=xMatchup(first.team);
   if(r.kind==='parlay'){const odds=weeklyOdds(r.combined_odds),same=legs.some(l=>l.sameGame);
     return xPostText({head:`🔒 Official parlay · Sportsbook${recordShare(r)<1?' · $25':''}`,lines:[[`${odds} · ${legs.length} legs${same?` · same-game: bet it at ${odds} or better`:''}`,`${odds} · ${legs.length} legs${same?' · same-game':''}`]],legs,rec});}
-  return xPostText({head:`${Number(first.edge)>=TOP_PICK.sb?'⭐ Top pick':'🔒 Official pick'} · Sportsbook`,lines:[`${r.player} ${weeklyLegText(r)}`,[`${weeklyOdds(r.odds)}${first.book?` at ${first.book}`:''}`,matchup,when].filter(Boolean).join(' · ')],rec});
+  return xPostText({head:`${Number(first.edge)>=TOP_PICK.sb?'⭐ Top pick':'🔒 Official pick'} · Sportsbook`,lines:[`${r.player}${q} ${weeklyLegText(r)}`,[`${weeklyOdds(r.odds)}${first.book?` at ${first.book}`:''}`,matchup,when].filter(Boolean).join(' · ')],rec});
 }
 // X post claims read "pending <time>" while a post is in flight and the post
 // time once it's confirmed. A run cut off mid-post (Tez Johnson's result,
@@ -3181,9 +3219,9 @@ async function postPicksToX(env,now=Date.now()){
     }catch(error){imageError=error.message}
     try{
       let sent=null;
-      if(mediaId)sent=await xPost(env,xSportsbookText(r,rec),mediaId);
+      if(mediaId)sent=await xPost(env,xSportsbookText(r,rec,r.kind==='parlay'?'':await xQuestionable(env,r.player)),mediaId);
       else if(tries<3){throw new Error(imageError||'graphic failed')}
-      else if(!(await appSetting(env,`x:${r.id}`)))sent=await xPost(env,xSportsbookText(r,rec));
+      else if(!(await appSetting(env,`x:${r.id}`)))sent=await xPost(env,xSportsbookText(r,rec,r.kind==='parlay'?'':await xQuestionable(env,r.player)));
       // The post id lets the closing-line and result posts reply under the pick.
       if(sent?.data?.id)await setAppSetting(env,`xid:${r.id}`,String(sent.data.id)).catch(()=>{});
       await xDone(env,`xi:${r.id}`,now);

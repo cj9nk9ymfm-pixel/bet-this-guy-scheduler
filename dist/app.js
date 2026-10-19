@@ -1638,6 +1638,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     officialLiveList=list;updateOfficialLive();window.btgOfficialForm?.(list);focusPick();
     $$('#officialNowList [data-on-player]').forEach(row=>{const player=row.dataset.onPlayer;if(!player||typeof playerStatsFor!=='function')return;const r=list[+row.dataset.on];playerStatsFor({sport:r?.sport||'NFL',player,team:row.dataset.onTeam}).then(payload=>window.BTGPaintTeam?.(row,payload?.player?.team,r?.sport||'NFL')).catch(()=>{})});
     host.hidden=false;if($('#parlaysNow')){$('#parlaysNow').hidden=!parlays.length;$('#parlaysNow').dataset.empty=parlays.length?'':'1'}
+    window.BTGTagInjuries?.();
   }
   let heroRows=null,heroSeason=null;
   async function loadHero(){
@@ -2597,9 +2598,11 @@ function statsProp(l){
   const injuryFor=p=>injuries[normName(p.player)]||null;
   const injuryTag=i=>i?`<em class="inj inj-${i.c}" title="${htmlEscape(`${i.s}${i.d?` · ${i.d}`:''}`)}">${i.c==='out'?'OUT':i.c==='doubtful'?'D':'Q'}</em>`:'';
   async function loadInjuries(){
-    try{const r=await fetch('/api/injuries');const body=await r.json();if(!r.ok||!body?.players)return;injuries=body.players;if(Object.keys(injuries).length)render()}catch{}
+    try{const r=await fetch('/api/injuries');const body=await r.json();if(!r.ok||!body?.players)return;injuries=body.players;if(Object.keys(injuries).length){render();window.BTGTagInjuries?.()}}catch{}
   }
   if(typeof fetch==='function'){loadInjuries();setInterval(loadInjuries,10*60000)}
+  // Open official and prediction picks get the same Q / D / OUT tag.
+  window.BTGTagInjuries=()=>document.querySelectorAll('.on-locked-row[data-on-player],.on-live-row[data-on-player],.on-locked-row[data-inj-player],.on-live-row[data-inj-player]').forEach(el=>{const b=el.querySelector('.on-who>b');if(!b)return;b.querySelector('.inj')?.remove();const i=injuries[normName(el.dataset.onPlayer||el.dataset.injPlayer||'')];if(i)b.insertAdjacentHTML('beforeend',injuryTag(i))});
   async function loadForm(){
     try{const r=await fetch('/api/form');const body=await r.json();if(!r.ok||!body?.players)return;form=body.players;if(Object.keys(form).length){render();officialForm()}}catch{}
   }
@@ -2890,7 +2893,7 @@ function statsProp(l){
     const game=String(r.team||'').replace(' · @ ',' @ ').replace(' · vs ',' vs '),matchup=game&&typeof compactGameName==='function'?compactGameName(game):game,st=pmStatus(r);
     const note=r.voidReason?`${r.voidReason} · bet voided · stake back`:[pmWin(r.netOdds??r.odds,r.result?100:wagerStake(),r.result),`Hit chance ${Math.round(r.fair)}%`,r.open===false?`not offered in ${data?.stateName||'your state'}`:''].filter(Boolean).join(' · ');
     const idx=pmRows.push(pmRecord(r))-1;
-    return `<div class="on-row on-${st[0]}-row pm-pick" role="button" tabindex="0" data-pm-i="${idx}" data-pick-id="${htmlEscape(r.id||'')}" aria-label="${htmlEscape(`Details for ${r.player}`)}"><span class="on-avatar"><span>${htmlEscape(initials)}</span><img loading="lazy" decoding="async" src="/api/player-photo?name=${encodeURIComponent(r.player||'')}" alt="" onerror="this.remove()"></span><span class="on-who"><b>${htmlEscape(r.player)}${r.result?'':newTag(r.postedAt,r.gameTime)}</b><span>${htmlEscape(bet.charAt(0).toUpperCase()+bet.slice(1))}</span><small>${htmlEscape([matchup,when(r.gameTime)].filter(Boolean).join(' · '))} · ${chip(r.exchange)}</small><i class="on-pm ${r.result==='lost'?'pm-lost':r.result==='push'||r.result==='void'?'pm-push':'pm-ok'}">${htmlEscape(note)}</i>${pmLiveSpan(idx)}</span>${pmEnd(r,st)}</div>`;
+    return `<div class="on-row on-${st[0]}-row pm-pick" role="button" tabindex="0" data-pm-i="${idx}" data-pick-id="${htmlEscape(r.id||'')}" data-inj-player="${htmlEscape(r.player||'')}" aria-label="${htmlEscape(`Details for ${r.player}`)}"><span class="on-avatar"><span>${htmlEscape(initials)}</span><img loading="lazy" decoding="async" src="/api/player-photo?name=${encodeURIComponent(r.player||'')}" alt="" onerror="this.remove()"></span><span class="on-who"><b>${htmlEscape(r.player)}${r.result?'':newTag(r.postedAt,r.gameTime)}</b><span>${htmlEscape(bet.charAt(0).toUpperCase()+bet.slice(1))}</span><small>${htmlEscape([matchup,when(r.gameTime)].filter(Boolean).join(' · '))} · ${chip(r.exchange)}</small><i class="on-pm ${r.result==='lost'?'pm-lost':r.result==='push'||r.result==='void'?'pm-push':'pm-ok'}">${htmlEscape(note)}</i>${pmLiveSpan(idx)}</span>${pmEnd(r,st)}</div>`;
   }
   function parlayRow(r){
     const st=pmStatus(r),same=r.legs.some(l=>l.sameGame);
@@ -2945,7 +2948,7 @@ function statsProp(l){
     // The record lives in the bar at the top; this line explains the prices.
     document.getElementById('pmPicksRecord').textContent='Priced as each app’s chance after its fee: 60% means you pay 60¢ to win $1, so lower is better. Singles $100, parlays $25.';
     document.getElementById('pmPicksList').innerHTML=list.length?list.map(pickRow).join(''):'<div class="on-empty"><strong>No picks yet this week.</strong><span>They post when an app’s price beats the sportsbooks’ fair chance by 1.5+ points after its fee.</span></div>';
-    bindPmRows();focusPick();
+    bindPmRows();focusPick();window.BTGTagInjuries?.();
   }
   // Board: every prop's best prediction-market chance in the visitor's state.
   const boardPrices=new Map(),boardWanted=new Set();let boardTimer=null;
