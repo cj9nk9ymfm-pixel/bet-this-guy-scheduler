@@ -654,6 +654,30 @@ async function xCardPreview(request, env) {
   return new Response(png, { headers: { "content-type": "image/png", "cache-control": "public, max-age=600" } });
 }
 
+// GET /api/player-teams?sport=NFL&p=Name~game|Name~game: each player's team
+// abbreviation, for the team colors on pick cards. Up to 12 names a call;
+// each answer is cached a week (a miss for a day), so the stats lookup runs
+// about once per player per week, not per page view.
+const NFL_TEAM_ABBR = { "Arizona Cardinals": "ARI", "Atlanta Falcons": "ATL", "Baltimore Ravens": "BAL", "Buffalo Bills": "BUF", "Carolina Panthers": "CAR", "Chicago Bears": "CHI", "Cincinnati Bengals": "CIN", "Cleveland Browns": "CLE", "Dallas Cowboys": "DAL", "Denver Broncos": "DEN", "Detroit Lions": "DET", "Green Bay Packers": "GB", "Houston Texans": "HOU", "Indianapolis Colts": "IND", "Jacksonville Jaguars": "JAX", "Kansas City Chiefs": "KC", "Las Vegas Raiders": "LV", "Los Angeles Chargers": "LAC", "Los Angeles Rams": "LAR", "Miami Dolphins": "MIA", "Minnesota Vikings": "MIN", "New England Patriots": "NE", "New Orleans Saints": "NO", "New York Giants": "NYG", "New York Jets": "NYJ", "Philadelphia Eagles": "PHI", "Pittsburgh Steelers": "PIT", "San Francisco 49ers": "SF", "Seattle Seahawks": "SEA", "Tampa Bay Buccaneers": "TB", "Tennessee Titans": "TEN", "Washington Commanders": "WAS" };
+async function playerTeamsApi(request, env) {
+  const params = new URL(request.url).searchParams, sport = params.get("sport") === "NBA" ? "NBA" : "NFL";
+  const asks = String(params.get("p") || "").split("|").map(x => x.split("~")).filter(([n]) => /^[A-Za-z .'-]{2,80}$/.test(String(n || "").trim())).slice(0, 12);
+  const cache = typeof caches !== "undefined" ? caches.default : null, out = {};
+  // NFL: the team saved with each player's recent form (no outside call).
+  const saved = sport === "NFL" && env.DB && asks.length ? await playerTeams(env).catch(() => new Map()) : new Map();
+  await Promise.all(asks.map(async ([raw, game = ""]) => {
+    const local = NFL_TEAM_ABBR[saved.get(normalizedName(raw.trim()))];
+    if (local) { out[raw.trim()] = local; return; }
+    const name = raw.trim(), key = new Request(`https://cache.betthisguy.com/player-team-v1/${sport}/${encodeURIComponent(normalizedName(name))}`);
+    try { const hit = await cache?.match(key); if (hit) { const t = await hit.text(); if (t) out[name] = t; return; } } catch {}
+    const team = env.BALLDONTLIE_API_KEY ? await playerTeamOf(env, sport, name, String(game).slice(0, 120)).catch(() => null) : null;
+    const abbr = /^[A-Z]{2,4}$/.test(String(team?.abbreviation || "")) ? team.abbreviation : "";
+    if (abbr) out[name] = abbr;
+    try { await cache?.put(key, new Response(abbr, { headers: { "cache-control": `public, max-age=${abbr ? 604800 : 86400}` } })); } catch {}
+  }));
+  return json({ success: true, teams: out }, 200, { "cache-control": "public, max-age=3600" });
+}
+
 async function playerPhoto(request, env) {
   const params = new URL(request.url).searchParams;
   const name = params.get("name")?.trim() || "";
@@ -1413,16 +1437,19 @@ const NOT_FOUND_HTML = `<!doctype html>
   <meta name="theme-color" content="#0e1013">
   <meta name="robots" content="noindex">
   <title>Page not found — Bet This Guy</title>
-  <style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0e1013;color:#f2f4f7;font:16px/1.6 "DM Sans",system-ui,sans-serif;text-align:center}main{padding:32px 20px;max-width:440px}img{width:190px;height:auto}h1{font:700 30px/1.2 "Space Grotesk",system-ui,sans-serif;margin:28px 0 8px}p{color:#98a1ad;margin:0 0 26px}a.button{display:inline-block;padding:12px 22px;border-radius:12px;background:#2563eb;color:#fff;font-weight:700;text-decoration:none}a.home{display:block;margin-top:16px;color:#6aa8ff}</style>
+  <script>try{var t=localStorage.getItem('btg-theme');if(t==='light'||(t==='auto'&&matchMedia('(prefers-color-scheme: light)').matches))document.documentElement.classList.add('light')}catch(e){}</script>
+  <style>body{margin:0;min-height:100vh;display:flex;flex-direction:column;background:#0e1013;color:#f2f4f7;font:16px/1.6 "DM Sans",system-ui,sans-serif}main{flex:1;display:grid;place-items:center;text-align:center;padding:64px 20px}main>div{max-width:440px}h1{font:700 32px/1.15 "Space Grotesk",system-ui,sans-serif;margin:0 0 10px}p{color:#98a1ad;margin:0 0 26px}a.button{display:inline-block;padding:12px 22px;border-radius:12px;background:#2563eb;color:#fff;font-weight:700;text-decoration:none}a.home{display:block;margin-top:16px;color:#6aa8ff}html.light body{background:#f4f6f9;color:#0f172a}html.light p{color:#5b6472}html.light a.home{color:#1d4ed8}.sx-foot{margin-top:0}</style>
+  <!--SITE_HEAD-->
 </head>
 <body>
-  <main>
-    <a href="/"><img src="/logo.png" alt="Bet This Guy" style="height:28px;width:auto"></a>
+  <!--SITE_HEADER-->
+  <main><div>
     <h1>This line isn't on the board.</h1>
     <p>The page you're looking for doesn't exist or has moved.</p>
     <a class="button" href="/">See this week’s picks →</a>
     <a class="home" href="/trust">See every pick on Results</a>
-  </main>
+  </div></main>
+  <!--SITE_FOOTER-->
 </body>
 </html>
 `;
@@ -1461,6 +1488,7 @@ async function routeRequest(request, env, ctx) {
     if (url.pathname === "/api/live-player") return livePlayer(request, env, ctx);
     if (url.pathname === "/api/live-game-stats") return liveGameStats(request, env, ctx);
     if (url.pathname === "/api/player-photo") return playerPhoto(request, env);
+    if (url.pathname === "/api/player-teams") return playerTeamsApi(request, env);
     if (url.pathname === "/api/feed-status") return json({ configured: Boolean(env.THE_ODDS_API_KEY), provider: "The Odds API" });
     if (url.pathname === "/api/record") return publicRecord(request, env, ctx);
     if (url.pathname === "/api/engine") return engineStatus(env);
@@ -1491,20 +1519,22 @@ async function routeRequest(request, env, ctx) {
       const rows = await homeRecentRows(env).catch(() => null), season = await homeSeason(env).catch(() => null);
       const layout = rows ? homeLayout(rows) : null, classes = layout ? ["home-data", ...(layout.stats ? ["home-stats"] : []), ...(layout.hits ? ["home-hits"] : [])] : [];
       const data = rows ? `<script>window.BTG_HOME=${JSON.stringify(rows).replace(/</g, "\\u003c")};window.BTG_SEASON=${JSON.stringify(season)};document.documentElement.classList.add(${classes.map(c => JSON.stringify(c)).join(",")})</script>` : "";
-      return new Response(STATIC[url.pathname][1].replace("<!--HOME_DATA-->", () => data), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache" } });
+      const track = await siteTrack(env).catch(() => "");
+      return new Response(withSiteChrome(STATIC[url.pathname][1].replace("<!--HOME_DATA-->", () => data), "/", track), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache" } });
     }
-    if ((url.pathname === "/trust" || url.pathname === "/about") && env.DB && typeof STATIC !== "undefined") {
-      const snapshot = await trustSnapshot(env).catch(() => "");
-      return new Response(STATIC[url.pathname][1].replace("<!--RECORD_SNAPSHOT-->", () => snapshot), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache" } });
+    if ((url.pathname === "/trust" || url.pathname === "/about" || url.pathname === "/legal") && env.DB && typeof STATIC !== "undefined") {
+      const snapshot = url.pathname === "/legal" ? "" : await trustSnapshot(env).catch(() => ""), track = await siteTrack(env).catch(() => "");
+      return new Response(withSiteChrome(STATIC[url.pathname][1].replace("<!--RECORD_SNAPSHOT-->", () => snapshot), url.pathname, track), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache" } });
     }
     const asset = STATIC[url.pathname];
+    if (asset && asset[0].startsWith("text/html")) return new Response(withSiteChrome(asset[1], url.pathname, ""), { headers: { "content-type": asset[0], "cache-control": "no-cache" } });
     if (asset) {
       const fingerprinted = ASSET_VERSIONS[url.pathname] && url.searchParams.get("v") === ASSET_VERSIONS[url.pathname];
       const cacheControl = asset[0].startsWith("text/html") ? "no-cache" : fingerprinted ? "public, max-age=31536000, immutable" : "public, max-age=3600";
       return new Response(asset[1], { headers: { "content-type": asset[0], "cache-control": cacheControl } });
     }
     if (url.pathname.startsWith("/api/")) return new Response("Not found", { status: 404 });
-    return new Response(NOT_FOUND_HTML, { status: 404, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache" } });
+    return new Response(withSiteChrome(NOT_FOUND_HTML, "", ""), { status: 404, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache" } });
 }
 
 export default {

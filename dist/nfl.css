@@ -2353,3 +2353,43 @@ html body.light #alertsHero .ah-btn.ah-alt,body.light .ah-alt-email{color:#1d4ed
 .bs-alt{background:transparent;border:0;padding:4px 0;color:#6aa8ff;font:600 13px "Space Grotesk",sans-serif;cursor:pointer}
 body.light .bs-alt{color:#1d4ed8}
 .bs-alert [data-bs-em]:not(:empty){margin:0 0 6px}
+/* Team identity on pick rows: team-color tint on the card's left side and a team tag in the game line. */
+html body .on-row[data-team]{background-image:linear-gradient(100deg,color-mix(in srgb,var(--team) 22%,transparent),transparent 42%)}
+html body.light .on-row[data-team]{background-image:linear-gradient(100deg,color-mix(in srgb,var(--team) 11%,transparent),transparent 42%)}
+.on-who small .on-tm{display:inline-block;margin:0 1px;padding:1px 5px;border-radius:5px;color:#fff;font:700 10.5px/1.35 "Space Grotesk",sans-serif;font-style:normal;letter-spacing:.03em;vertical-align:1px}
+/* Loading: placeholder shapes instead of "Loading…" text. */
+html body #emptyState.empty.is-loading:not([hidden]){padding:0!important;border:0!important;background:none!important;display:grid!important;gap:8px}
+.sk-row{display:flex;align-items:center;gap:12px;padding:14px;border:1px solid var(--line);border-radius:14px;background:var(--panel)}
+.sk-row>span{flex:1;display:grid;gap:7px}
+.sk-av,.sk-l,.sk-chip{display:block;border-radius:8px;background:linear-gradient(90deg,var(--panel2,#1b1f26) 0%,color-mix(in srgb,var(--panel2,#1b1f26) 60%,#fff 8%) 50%,var(--panel2,#1b1f26) 100%);background-size:200% 100%;animation:skShine 1.3s ease-in-out infinite}
+.sk-av{flex:none;width:44px;height:44px;border-radius:50%}.sk-l{height:11px}.sk-chip{flex:none;width:56px;height:30px;border-radius:10px}
+@keyframes skShine{0%{background-position:100% 0}100%{background-position:-100% 0}}
+@media(prefers-reduced-motion:reduce){.sk-av,.sk-l,.sk-chip{animation:none}}
+/* The header feed pill only appears when lines are delayed; a working board speaks for itself. */
+html body .feed-status:not(.error){display:none!important}
+/* The Following box shows once someone follows a player or team. */
+html body .follow-panel.empty{display:none!important}
+.sk-chart{display:flex;align-items:flex-end;gap:6px;height:120px;padding:14px;border:1px solid var(--line);border-radius:14px}
+.sk-chart .sk-l{flex:1;border-radius:6px 6px 2px 2px}
+/* Desktop layout: one centered column width, the league switch in the row above the picks, and a How we pick card in the side column. */
+.how-pick{display:none}
+@media(min-width:721px){
+  html body #jumpBar #leagueSwitch{position:static;margin:0 16px 0 0;flex:none;align-self:center}
+  html body #jumpBar{align-items:center}
+}
+@media(min-width:1180px){
+  html body main>.workspace,html body main>#leagueSwitch{max-width:1280px;margin-left:auto;margin-right:auto}
+  html body .desk-rail .how-pick{display:block;margin-top:12px;padding:16px 18px;border:1px solid var(--line);border-radius:16px;background:var(--panel)}
+  .how-pick h2{margin:0 0 10px;font:700 16px "Space Grotesk",sans-serif}
+  .how-pick ol{margin:0;padding:0;list-style:none;counter-reset:hp;display:grid;gap:10px}
+  .how-pick li{counter-increment:hp;position:relative;padding-left:32px;color:var(--muted);font-size:13.5px;line-height:1.45}
+  .how-pick li::before{content:counter(hp);position:absolute;left:0;top:0;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:color-mix(in srgb,#3b82f6 18%,transparent);color:#8db4ff;font:700 12px "Space Grotesk",sans-serif}
+  .how-pick li b{color:var(--text);font-weight:600}
+  .how-pick a{display:inline-block;margin-top:12px;color:#6aa8ff;font-weight:600;font-size:13.5px;text-decoration:none}
+  body.light .how-pick li::before{background:#e0ebff;color:#1d4ed8}body.light .how-pick a{color:#1d4ed8}
+}
+/* One brand color: blue for actions and selected controls; green and red only for money and results. */
+html body .price-view button[aria-pressed="true"]{background:#2563eb;color:#fff}
+@media(min-width:1180px){html body #homeTagline{display:none}}
+@media(min-width:721px){html body #jumpBar .jump-links{margin-right:auto}}
+body.light .sk-av,body.light .sk-l,body.light .sk-chip{background:linear-gradient(90deg,#e6ebf1 0%,#f3f6f9 50%,#e6ebf1 100%);background-size:200% 100%}
