@@ -1777,7 +1777,7 @@ const EXCHANGE_AHEAD=96*3600000;
 // Owner check: app_settings exchange-market-probe (any value) makes the next
 // run ask the apps for kicker, interception and defense props on the next
 // game (one call), saving which apps list which to exchange-market-probe-result.
-const EXCHANGE_PROBE_MARKETS=['player_field_goals','player_kicking_points','player_pats','player_pass_interceptions','player_sacks','player_tackles_assists','player_longest_reception','player_rush_reception_yds'];
+const EXCHANGE_PROBE_MARKETS=['player_field_goals','player_kicking_points','player_pats','player_pass_interceptions','player_sacks','player_tackles_assists','player_reception_longest','player_rush_reception_yds','player_pass_attempts'];
 async function exchangeMarketProbe(env,boards,now=Date.now()){
   if(!(await appSetting(env,'exchange-market-probe').catch(()=>null)))return null;
   await env.DB.prepare("DELETE FROM app_settings WHERE key='exchange-market-probe'").run();
