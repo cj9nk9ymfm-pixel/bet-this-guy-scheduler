@@ -206,11 +206,11 @@ function parlayDecimal(legs){const d=legs.reduce((p,l)=>p*recordDecimal(l.odds),
 // a player who is an official single: a bad single can't also sink a parlay.
 // cfg (NBA): its own id prefix, caps and per-game limit; NFL uses the defaults.
 function officialPlan(candidates,existing,week,now=Date.now(),pool=candidates,cfg={}){
-  const CAPS=cfg.caps||OFFICIAL_CAPS,PER_GAME=cfg.perGame||OFFICIAL_PER_GAME,prefix=cfg.prefix||`official|${week}|`;
+  const CAPS=cfg.caps||OFFICIAL_CAPS,PER_GAME=cfg.perGame||OFFICIAL_PER_GAME,prefix=cfg.prefix||`official|${week}|`,TOP=cfg.top??TOP_PICK.sb;
   const saved=existing.map(r=>({...r,legs:recordLegs(r)})),counts=Object.fromEntries(Object.keys(CAPS).map(t=>[t,saved.filter(r=>r.id.startsWith(`${prefix}${t}|`)).length]));
   const plan=[],singles=saved.filter(r=>r.kind==='prop'),games=new Map(),used=new Set(singles.flatMap(r=>r.legs.map(officialPlayer)));
   singles.forEach(r=>games.set(r.game_id,(games.get(r.game_id)||0)+1));
-  for(const p of candidates){if(counts.props>=CAPS.props)break;if(used.has(p.playerKey)||((games.get(p.gameId)||0)>=PER_GAME&&!(Number(p.edge)>=TOP_PICK.sb)))continue;plan.push({tier:'props',legs:[p]});counts.props++;used.add(p.playerKey);games.set(p.gameId,(games.get(p.gameId)||0)+1)}
+  for(const p of candidates){const top=Number(p.edge)>=TOP;if(used.has(p.playerKey)||(counts.props>=CAPS.props&&!top)||((games.get(p.gameId)||0)>=PER_GAME&&!top))continue;plan.push({tier:'props',legs:[p]});counts.props++;used.add(p.playerKey);games.set(p.gameId,(games.get(p.gameId)||0)+1)}
   const prior=saved.filter(r=>r.kind==='parlay').map(r=>r.legs.map(officialPlayer)),exposure=new Map();prior.flat().forEach(k=>exposure.set(k,(exposure.get(k)||0)+1));
   const sides=new Map(),perGame=new Map();
   saved.forEach(r=>r.legs.forEach(l=>sides.set(sideKey(l.gameId,l.player,l.market),l.side)));
@@ -245,10 +245,10 @@ function officialPlan(candidates,existing,week,now=Date.now(),pool=candidates,cf
   return plan;
 }
 async function writeOfficialPlan(plan,week,env,cfg={}){
-  const prefix=cfg.prefix||`official|${week}|`,statements=[],CAPS=cfg.caps||OFFICIAL_CAPS,PER_GAME=cfg.perGame||OFFICIAL_PER_GAME,sport=cfg.sport==='NBA'?'NBA':'NFL';
+  const prefix=cfg.prefix||`official|${week}|`,statements=[],CAPS=cfg.caps||OFFICIAL_CAPS,PER_GAME=cfg.perGame||OFFICIAL_PER_GAME,sport=cfg.sport==='NBA'?'NBA':'NFL',TOP=cfg.top??TOP_PICK.sb;
   for(const pick of plan){
     const now=Date.now();if(pick.legs.some(p=>Date.parse(p.gameTime)<=now+5*60000))continue;
-    const kind=pick.tier==='props'?'prop':'parlay',legs=pick.legs.map(p=>({...p,officialWeek:week,officialTier:pick.tier})),first=legs[0],id=prefix+pick.tier+'|'+await boundedRecordId(kind,legs);
+    const kind=pick.tier==='props'?'prop':'parlay',legs=pick.legs.map(p=>({...p,officialWeek:week,officialTier:pick.tier})),first=legs[0],top=kind==='prop'&&Number(first.edge)>=TOP,id=prefix+pick.tier+'|'+await boundedRecordId(kind,legs);
     const combined=kind==='parlay'?recordAmerican(parlayDecimal(legs)):null;
     // Every condition is evaluated inside the INSERT, so concurrent visitors
     // cannot exceed caps, repeat a player as a single, or bypass overlap limits.
@@ -256,12 +256,12 @@ async function writeOfficialPlan(plan,week,env,cfg={}){
       (id,kind,sport,player,market,side,line,odds,combined_odds,game_id,game_time,legs_json,posted_at,status,source,verification_note)
       SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,'pending',?,?
       WHERE (SELECT COUNT(*) FROM public_recommendations WHERE id>=? AND id<?)< ?
-      AND (?='parlay' OR ((SELECT COUNT(*) FROM public_recommendations WHERE id>=? AND id<? AND game_id=?)<${PER_GAME}
+      AND (?='parlay' OR ((SELECT COUNT(*) FROM public_recommendations WHERE id>=? AND id<? AND game_id=?)<?
         AND NOT EXISTS(SELECT 1 FROM public_recommendations r,json_each(r.legs_json) l WHERE r.id>=? AND r.id<? AND json_extract(l.value,'$.playerKey')=?)))
       AND (?='prop' OR (NOT EXISTS(SELECT 1 FROM public_recommendations r WHERE r.id>=? AND r.id<? AND r.kind='parlay'
         AND (SELECT COUNT(*) FROM json_each(r.legs_json) l WHERE json_extract(l.value,'$.playerKey') IN (SELECT json_extract(value,'$.playerKey') FROM json_each(?)))>1)
         AND NOT EXISTS(SELECT 1 FROM json_each(?) n WHERE (SELECT COUNT(*) FROM public_recommendations r,json_each(r.legs_json) l WHERE r.id>=? AND r.id<? AND r.kind='parlay' AND json_extract(l.value,'$.playerKey')=json_extract(n.value,'$.playerKey'))>=3)))`)
-      .bind(id,kind,sport,kind==='prop'?first.player:null,kind==='prop'?first.market:null,kind==='prop'?first.side:null,kind==='prop'?first.line:null,kind==='prop'?first.odds:null,combined,first.gameId,legs.map(p=>p.gameTime).sort().at(-1),JSON.stringify(legs),new Date(now).toISOString(),VERIFIED_RECORD_SOURCE,cfg.note||'Official weekly selection. Pregame odds locked; multi-book price signal, not a player projection. Parlay payout is an estimate.',prefix+pick.tier+'|',prefix+pick.tier+'|\uffff',CAPS[pick.tier]||0,kind,prefix+'props|',prefix+'props|\uffff',first.gameId,prefix+'props|',prefix+'props|\uffff',first.playerKey,kind,prefix,prefix+'\uffff',JSON.stringify(legs),JSON.stringify(legs),prefix,prefix+'\uffff'));
+      .bind(id,kind,sport,kind==='prop'?first.player:null,kind==='prop'?first.market:null,kind==='prop'?first.side:null,kind==='prop'?first.line:null,kind==='prop'?first.odds:null,combined,first.gameId,legs.map(p=>p.gameTime).sort().at(-1),JSON.stringify(legs),new Date(now).toISOString(),VERIFIED_RECORD_SOURCE,cfg.note||'Official weekly selection. Pregame odds locked; multi-book price signal, not a player projection. Parlay payout is an estimate.',prefix+pick.tier+'|',prefix+pick.tier+'|\uffff',top?1e9:(CAPS[pick.tier]||0),kind,prefix+'props|',prefix+'props|\uffff',first.gameId,top?1e9:PER_GAME,prefix+'props|',prefix+'props|\uffff',first.playerKey,kind,prefix,prefix+'\uffff',JSON.stringify(legs),JSON.stringify(legs),prefix,prefix+'\uffff'));
   }
   if(!statements.length)return 0;
   // Returns how many picks were actually inserted (the rest were duplicates or over a cap).
@@ -381,21 +381,23 @@ async function recordNbaShadow(request,env,ctx,now=Date.now()){
   return {games:games.length,boards:boards.length,logged:picks.length,tracked:open.length};
 }
 // Official NBA picks, from opening night (Oct 20, 2026). The price rules are
-// the NFL's (big-5 book, 1-12% edge, 3+ books pricing both sides), sized for
-// a nightly sport: every single that clears the price rule (one per player,
-// never both sides; 30 a night only as a guard against bad data), the parlay
-// caps in NBA_CAPS, and only the core markets. A game's picks can post as soon as its props are listed (from
+// the NFL's (big-5 book, 3+ books pricing both sides) with a higher bar for a
+// nightly sport: 1.5-12% edge, 10 singles a night and 2 a game (a 2.5%+ top
+// pick posts past both), one per player, never both sides, the parlay caps in
+// NBA_CAPS, and only the core markets. A game's picks can post as soon as its props are listed (from
 // NBA_WINDOW before tip-off, when 3+ books price both sides) until 5 minutes
 // before: early prices are the softest. A player ruled out later is no
 // action, never a loss. Ids are nba|<night>|<tier>|...,
 // so every NFL query (id LIKE 'official|%') leaves them out.
 const NBA_START=Date.parse('2026-10-20T14:00:00Z');
-const NBA_CAPS={props:30,reasonable:1,swing:1,moonshot:0},NBA_PER_GAME=99,NBA_WINDOW=36*3600000;
+// NBA plays nearly every night, so the bar is higher than NFL: 1.5% or better,
+// 10 singles a night, 2 a game; a 2.5%+ top pick posts past both limits.
+const NBA_CAPS={props:10,reasonable:1,swing:1,moonshot:0},NBA_PER_GAME=2,NBA_WINDOW=36*3600000,NBA_MIN=1.5,NBA_TOP=2.5;
 const NBA_OFFICIAL_MARKETS=new Set(['Points','Rebounds','Assists','3-Pointers Made','Points + Rebounds + Assists']);
 // The night a game belongs to: its US Eastern date (a 10:30 PM ET tip is
 // after midnight UTC, so 6 hours back keeps it on the same night).
 const nbaNight=time=>new Date(Number(time)-6*3600000).toISOString().slice(0,10);
-const nbaConfig=night=>({prefix:`nba|${night}|`,caps:NBA_CAPS,perGame:NBA_PER_GAME,sport:'NBA',note:'Official nightly NBA selection. Pregame odds locked; multi-book price signal, not a player projection. Parlay payout is an estimate.'});
+const nbaConfig=night=>({prefix:`nba|${night}|`,caps:NBA_CAPS,perGame:NBA_PER_GAME,top:NBA_TOP,sport:'NBA',note:'Official nightly NBA selection. Pregame odds locked; multi-book price signal, not a player projection. Parlay payout is an estimate.'});
 async function publishNbaPicks(request,env,ctx,now=Date.now()){
   if(!env.DB||now<NBA_START-NBA_WINDOW)return {state:'not_started'};
   const schedule=await futureSchedule(new Request(new URL('/api/schedule?sport=NBA',request.url)),env,ctx);
@@ -411,8 +413,8 @@ async function publishNbaPicks(request,env,ctx,now=Date.now()){
     const cfg=nbaConfig(night),tonight=boards.filter(b=>nbaNight(Date.parse(b.commence_time))===night);
     const existing=(await env.DB.prepare('SELECT * FROM public_recommendations WHERE id>=? AND id<?').bind(cfg.prefix,cfg.prefix+'\uffff').all()).results||[];
     const dirs=await pickDirections(env),ok=p=>sameDirection(dirs,p.gameId,p.player,p.side);
-    const stats={},candidates=core(officialCandidates(tonight,Date.now(),stats)).filter(ok);
-    const nextTier=withTeams(core(officialCandidates(tonight,Date.now(),{},{min:.5,below:1})).filter(ok),await playerTeams(env));
+    const stats={},candidates=core(officialCandidates(tonight,Date.now(),stats,{min:NBA_MIN})).filter(ok);
+    const nextTier=withTeams(core(officialCandidates(tonight,Date.now(),{},{min:.5,below:NBA_MIN})).filter(ok),await playerTeams(env));
     const plan=officialPlan(candidates,existing,night,Date.now(),nextTier,cfg);
     posted+=Number(await writeOfficialPlan(plan,night,env,cfg))||0;
     const trail=officialTrailStatements(tonight,existing,env,Date.now());if(trail.length)await env.DB.batch(trail);
@@ -2383,7 +2385,7 @@ async function nbaPage(request,env){
   const nights=[...new Set(all.map(r=>String(r.id).split('|')[1]))].sort().reverse();
   if(url.pathname==='/nba'||url.pathname==='/nba/'){
     const items=nights.map(n=>{const rows=all.filter(r=>String(r.id).startsWith(`nba|${n}|`)),s=weeklySummary(rows),g=s.wins+s.losses+s.pushes;return `<li><a href="/nba/${n}"><span><strong>${weeklyEscape(nbaNightLabel(n).replace(/, \d{4}$/,''))}</strong> <small>${rows.length} pick${rows.length===1?'':'s'}</small></span><small>${g?`${s.wins}–${s.losses}${s.pushes?`–${s.pushes}`:''} · ${weeklyMoney(s.profit)}`:'To play'}</small></a></li>`}).join('');
-    const body=`<p class="eyebrow">OFFICIAL NBA PICKS</p><h1>NBA player prop picks tonight</h1><p class="lead">Free NBA player prop picks, posted the moment a sportsbook price beats the fair line across the big books. Every prop whose price clears the bar posts, no nightly quota, each locked before tip-off and graded from the box score, losses included.${graded?` NBA record: ${record}, ${weeklyMoney(season.profit)} at $100 a pick.`:' The first picks post for opening night, Tuesday, October 20.'}</p>${stats(season)}<p><a class="cta" href="/?league=NBA">Tonight’s NBA board →</a><a href="/trust#nba" style="white-space:nowrap">NBA results →</a></p>${items?`<h2>Every night</h2><ul class="weeks">${items}</ul>`:''}`;
+    const body=`<p class="eyebrow">OFFICIAL NBA PICKS</p><h1>NBA player prop picks tonight</h1><p class="lead">Free NBA player prop picks, posted the moment a sportsbook price beats the fair line across the big books. Only the best prices post: 1.5% or more over the fair line, up to 10 a night, each locked before tip-off and graded from the box score, losses included.${graded?` NBA record: ${record}, ${weeklyMoney(season.profit)} at $100 a pick.`:' The first picks post for opening night, Tuesday, October 20.'}</p>${stats(season)}<p><a class="cta" href="/?league=NBA">Tonight’s NBA board →</a><a href="/trust#nba" style="white-space:nowrap">NBA results →</a></p>${items?`<h2>Every night</h2><ul class="weeks">${items}</ul>`:''}`;
     return new Response(weeklyShell({title:'NBA Player Prop Picks Tonight: Free, Graded in Public | Bet This Guy',description:graded?`Free NBA player prop picks every night, locked before tip-off and graded in public: ${record} on singles, ${weeklyMoney(season.profit)} at $100 a pick.`:'Free NBA player prop picks every night from opening night, Oct 20: priced against the fair line across the big books, locked before tip-off, graded in public.',path:'/nba',body}),{headers});
   }
   const m=url.pathname.match(/^\/nba\/(\d{4}-\d{2}-\d{2})\/?$/);if(!m||!nights.includes(m[1]))return null;
@@ -3715,7 +3717,7 @@ function nbaLaunchThread(s){
   const rec=s&&s.wins+s.losses>=10?`Same rules that got our NFL singles to ${s.wins}–${s.losses}, ${money(s.profit)}: a pick posts only when a sportsbook price beats the fair line across the big books. Locked before tip-off, graded in public.`:'Same rules as our NFL picks: a pick posts only when a sportsbook price beats the fair line across the big books. Locked before tip-off, graded in public.';
   const close=s&&s.tracked>=10?`The number we judge ourselves by: ${s.beat} of ${s.tracked} NFL picks beat the closing price (${Math.round(100*s.beat/s.tracked)}%).\n\nOne game is luck. Beating the final price week after week is how you know the edge is real.`:'The number we judge ourselves by: how often our price beats the closing price.\n\nOne game is luck. Beating the final price week after week is how you know the edge is real.';
   return [`🏀 NBA player props start tonight on Bet This Guy.\n\n${rec}`,
-    'How it works:\n• Every prop where a big-book price beats the fair line posts. No nightly quota\n• Points, rebounds, assists, threes and PRA\n• Posted the moment a price qualifies\n• Player sits = no action, same as at the book\n• Singles at $100, parlays at $25',
+    'How it works:\n• Posts only when a big-book price beats the fair line by 1.5%+, up to 10 a night\n• Points, rebounds, assists, threes and PRA\n• Posted the moment a price qualifies\n• Player sits = no action, same as at the book\n• Singles at $100, parlays at $25',
     close,
     'Every loss stays on the record. NBA gets its own public record, separate from NFL:\nbetthisguy.com/trust#nba',
     'Free. No paywall. Turn on alerts and get each pick the second it locks:\nbetthisguy.com\n\n21+ · Gambling problem? Call 1-800-GAMBLER'];
