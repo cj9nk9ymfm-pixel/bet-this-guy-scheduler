@@ -946,10 +946,13 @@ async function gradePublicRecord(record, env, statsCache, signal) {
       if(playValue!==null)observedValue=playValue;
     }
     // NFL: a player who wasn't ruled out but has no row in a full final box
-    // score played without recording a stat (books grade any snap as action),
-    // so he has 0. Wait 4 hours after kickoff so late box-score fixes land.
+    // score, or a row with the stat left blank, played without recording it
+    // (books grade any snap as action), so he has 0. Catch, rush and pass
+    // stats only (never kickers or touchdowns). Wait 4 hours after kickoff
+    // so late box-score fixes land.
     let noStats=false;
-    if(!nba&&finished&&observedValue===null&&row?.missingPlayerStats&&row.boxMatches===0&&Number(row.boxRowCount)>=20&&BTGStats.supports(leg)&&Date.now()-Date.parse(leg.gameTime)>4*3600000){observedValue=0;noStats=true}
+    const blankRow=row&&!row.missingPlayerStats&&!['receptions','receiving_targets','rushing_attempts','passing_attempts','passing_completions'].some(k=>Number(row[k])>0),noRow=row?.missingPlayerStats&&row.boxMatches===0&&Number(row.boxRowCount)>=20;
+    if(!nba&&finished&&observedValue===null&&(blankRow||noRow)&&/^(receptions|receiving yards|rushing yards|rush attempts|rush \+ receiving yards|passing yards|pass completions|pass attempts)$/i.test(String(leg.market||'').trim())&&BTGStats.supports(leg)&&Date.now()-Date.parse(leg.gameTime)>4*3600000){observedValue=0;noStats=true}
     // Stats that only go up (not yards: a loss of yards can lower them): once
     // the live box score passes the line, the bet is decided, so it settles
     // now (Under lost, Over won) instead of waiting for the final.

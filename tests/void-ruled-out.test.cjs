@@ -53,6 +53,10 @@ db.prepare("INSERT INTO prediction_parlays(id,week,tier,exchange,legs_json,odds,
   const sk={kind:'prop',player:'Cam Skattebo',market:'Rush Attempts',side:'Under',line:14.5,odds:-110,sport:'NFL',game_time:'2026-10-11T17:00:00.000Z',legs_json:JSON.stringify([leg('Cam Skattebo','Rush Attempts','Under',14.5)].map(l=>({...l,gameTime:'2026-10-11T17:00:00.000Z'})))};
   assert.equal(await vm.runInContext('gradePublicRecord',context)(sk,context.env,new Map()),'won');
   assert.deepEqual([sk.gradedLegs[0].actualValue,sk.gradedLegs[0].noStats],[0,true]);
+  // In the box score with the stat left blank (no catches, so no receiving yards): 0 too.
+  context.recordPlayerStats=async()=>({player:{first_name:'Bo',last_name:'Melton'},receptions:null,receiving_yards:null,scoreboardFinal:true,game:{status:'Final'}});
+  const bm={kind:'prop',player:'Bo Melton',market:'Receiving Yards',side:'Under',line:7.5,odds:108,sport:'NFL',game_time:'2026-10-11T17:00:00.000Z',legs_json:JSON.stringify([{...leg('Bo Melton','Receiving Yards','Under',7.5),gameTime:'2026-10-11T17:00:00.000Z'}])};
+  assert.equal(await vm.runInContext('gradePublicRecord',context)(bm,context.env,new Map()),'won');
   // The X reply says why.
   const text=vm.runInContext('xResultText',context)({kind:'prop',player:'Tyler Warren',market:'Receptions',side:'Over',line:4.5,odds:-120,result:'push',status:'final',legs_json:w.legs_json},null);
   assert.match(text,/^➖ Void: Tyler Warren .*\nRuled out \(Groin\) before kickoff/);
