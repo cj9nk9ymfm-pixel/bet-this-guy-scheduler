@@ -1474,7 +1474,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     return {chip,live:done?null:()=>sheetLive(r),title:isParlay?`${legs.length}-leg ${legs.some(l=>l.sameGame)?'same-game ':''}parlay`:r.player,photo:isParlay?null:r.player,sport:sp?.sport,why,statsProp:sp,
       slip:boardP?{inSlip:()=>state.slip.some(x=>x.key===slipSelectionKey(boardP,r.side==='Under'?'Under':'Over')),toggle:()=>toggleLeg(boardP,r.side==='Under'?'Under':'Over',slipPmOf(r))}:isParlay&&!done&&parlayLegsFor(r)?{inSlip:()=>Boolean(parlayLegsFor(r)?.every(l=>state.slip.some(x=>x.key===slipSelectionKey(l.p,l.side)))),toggle:()=>addParlayToSlip(r)}:null,bet,game,price:r.pm?`${r.pm.pct}%`:formatOdds(odds),
       // Alerts prompt for anyone without alerts or pick emails: right after a hit, or on an open pick.
-      alert:document.documentElement.classList.contains('alerts-on')||(()=>{try{return localStorage.getItem('btg-email-sub')==='1'}catch{return false}})()?null:done&&r.result==='won'?{title:'This one hit. Get the next one first.',text:'Picks lock at a price, and the price moves. Alerts get you the next pick the second it posts.'}:!done?{title:'Get the next pick the second it locks',text:'Prices move fast after we post. Free alerts by phone or email, about 3–6 a week.'}:null,
+      alert:document.documentElement.classList.contains('alerts-on')||(()=>{try{return localStorage.getItem('btg-email-sub')==='1'}catch{return false}})()?null:done&&r.result==='won'?{title:'This one hit. Get the next one first.',text:'Picks lock at a price, and the price moves. Alerts get you the next pick the second it posts.'}:!done?{title:'Get the next pick the second it locks',text:'Prices move fast after we post. Free alerts by phone or email, with the price and the sportsbook.'}:null,
       note:pmOffer?`Partner offer: new to ${r.pm.exchange}? Use code ${pmOffer.code}${pmOffer.offer?`: ${pmOffer.offer}`:''}. Open ${r.pm.exchange} copies the code for you. Age limits and terms apply. We earn a commission on sign-ups; it never changes our picks.`:'',stake:`$${(done?heroStake*share(r):myStake(r)).toLocaleString('en-US',{maximumFractionDigits:2})}`,
       money:done?money(payout(r)):d?(r.pm?pmPays(myStake(r),d):bookPays(myStake(r),d)):'—',moneyCls:done?(r.result==='won'?'pos':r.result==='lost'?'neg':''):'pos',
       rows,legs:legRows,chart:points.length>=2?{label:done?'Price posted → kickoff':'Price since posted',points}:null,
@@ -2123,7 +2123,7 @@ function addBetToSlip(x){
     const w=m.why,meter=w?`<div class="bs-pay"><div><small>${esc(w.labels?.[0]||`${w.where} pays`)}</small><b class="${w.cls==='g'?'pos':w.cls==='r'?'neg':''}">${w.win}</b></div><div><small>${esc(w.labels?.[1]||'Should pay')}</small><b>${w.should}</b></div></div>`:'';
     const why=w?`<div class="bs-why bs-why-${w.cls}"><p class="bs-why-h">${esc(w.title)}</p><p>${esc(w.text)}</p>${meter}</div>`:'';
     return `<div class="bsheet"><span class="bs-chip bs-${m.chip.cls}">${m.chip.icon?icon(m.chip.icon):''}${esc(m.chip.text)}</span><div class="bs-head">${photo}<div><h2>${esc(m.title)}</h2>${m.bet?`<p class="bs-bet">${esc(m.bet)}</p>`:''}${m.game?`<p class="bs-game">${esc(m.game)}</p>`:''}</div></div>
-      ${m.live?`<div data-bs-live>${m.live()}</div>`:''}<div class="bs-money"><div><small>Price</small><b>${esc(m.price)}</b></div><div><small>${esc(m.moneyLabel||`${m.stake} bet`)}</small><b class="${m.moneyCls||''}">${esc(m.money)}</b></div></div>${m.slip?`<button type="button" class="bs-btn p wide bs-slip" data-bs-slip>${m.slip.inSlip()?'✓ In your slip':'＋ Add to slip'}</button>`:''}${why}${m.statsProp?'<div class="bs-stats" data-bs-stats><p class="bs-loading">Loading the last 10 games…</p></div>':''}${legs}${rows}${chart(m.chart)}${m.note?`<p class="bs-note">${esc(m.note)}</p>`:''}${acts}${m.alert?`<div class="bs-alert"><p><b>${icon('bell')} ${esc(m.alert.title)}</b><span>${esc(m.alert.text)}</span></p><div class="bs-alert-acts"><button type="button" class="bs-btn p" data-bs-alert>Turn on alerts</button>${window.BTGEmailSub?'<button type="button" class="bs-btn" data-bs-email>Email me instead</button>':''}</div></div>`:''}${(m.links||(m.link?[m.link]:[])).map((l,i)=>`<a class="bs-link" ${l.href?`href="${esc(l.href)}"${l.external?' target="_blank" rel="noopener"':''} data-bs-href="${i}"`:`href="#" data-bs-link="${i}"`}>${esc(l.text)}</a>`).join('')}</div>`;
+      ${m.live?`<div data-bs-live>${m.live()}</div>`:''}<div class="bs-money"><div><small>Price</small><b>${esc(m.price)}</b></div><div><small>${esc(m.moneyLabel||`${m.stake} bet`)}</small><b class="${m.moneyCls||''}">${esc(m.money)}</b></div></div>${m.slip?`<button type="button" class="bs-btn p wide bs-slip" data-bs-slip>${m.slip.inSlip()?'✓ In your slip':'＋ Add to slip'}</button>`:''}${why}${m.statsProp?'<div class="bs-stats" data-bs-stats><p class="bs-loading">Loading the last 10 games…</p></div>':''}${legs}${rows}${chart(m.chart)}${m.note?`<p class="bs-note">${esc(m.note)}</p>`:''}${acts}${m.alert?`<div class="bs-alert"><p><b>${icon('bell')} ${esc(m.alert.title)}</b><span>${esc(m.alert.text)}</span></p><div class="bs-alert-acts"><button type="button" class="bs-btn p" data-bs-alert>Turn on alerts</button>${window.BTGEmailSub?'<button type="button" class="bs-btn" data-bs-email>Email me instead</button>':''}</div><div data-bs-em></div></div>`:''}${(m.links||(m.link?[m.link]:[])).map((l,i)=>`<a class="bs-link" ${l.href?`href="${esc(l.href)}"${l.external?' target="_blank" rel="noopener"':''} data-bs-href="${i}"`:`href="#" data-bs-link="${i}"`}>${esc(l.text)}</a>`).join('')}</div>`;
   }
   function bind(host,m,dialog){
     host.querySelectorAll('[data-bs-gate]').forEach(b=>b.onclick=()=>{dialog?.close?.();window.btgCount?.('gate:signup');window.BTGAuth?.open?.('signup')});
@@ -2135,7 +2135,11 @@ function addBetToSlip(x){
     host.querySelectorAll('[data-bs-link]').forEach(a=>a.addEventListener('click',e=>{e.preventDefault();dialog?.close?.();(m.links||[m.link])[+a.dataset.bsLink]?.onClick?.()}));
     host.querySelectorAll('[data-bs-href]').forEach(a=>a.addEventListener('click',()=>(m.links||[m.link])[+a.dataset.bsHref]?.onClick?.()));
     host.querySelector('[data-bs-alert]')?.addEventListener('click',()=>{window.btgCount?.('sheet:alerts');dialog?.close?.();(document.querySelector('[data-alerts-banner]')||document.querySelector('[data-alerts-toggle]'))?.click()});
-    host.querySelector('[data-bs-email]')?.addEventListener('click',()=>{window.btgCount?.('sheet:email');dialog?.close?.();window.BTGEmailSub?.open('sheet')});
+    {const em=host.querySelector('[data-bs-em]'),emailBtn=host.querySelector('[data-bs-email]'),field=()=>{if(!em||em.firstChild||!window.BTGEmailSub?.inline)return null;emailBtn?.remove();return window.BTGEmailSub.inline(em,'sheet')};
+      const ios=/iPhone|iPad|iPod/.test(navigator.userAgent||'')&&!(window.matchMedia?.('(display-mode: standalone)').matches||navigator.standalone===true);
+      // iPhones need the Home Screen for phone alerts, so email leads there.
+      if(ios&&field()){const on=host.querySelector('[data-bs-alert]');if(on){on.textContent='Phone alerts instead';on.className='bs-alt'}host.querySelector('.bs-alert-acts')?.before(em)}
+      emailBtn?.addEventListener('click',()=>{window.btgCount?.('sheet:email');field()?.querySelector('input')?.focus()})}
     host.querySelector('[data-bs-slip]')?.addEventListener('click',e=>{m.slip.toggle();e.currentTarget.textContent=m.slip.inSlip()?'✓ In your slip':'＋ Add to slip'});
   }
   function open(m,dialogSel='#hitDialog',bodySel='#hitDialogBody'){
@@ -2529,7 +2533,17 @@ function statsProp(l){
   const store={get:k=>{try{return localStorage.getItem(k)}catch{return null}},set:(k,v)=>{try{localStorage.setItem(k,v)}catch{}}};
   const days=n=>n*86400000,recent=(k,n)=>{const t=Number(store.get(k));return Number.isFinite(t)&&Date.now()-t<days(n)};
   const hero=document.getElementById('alertsHero');
-  if(hero&&!recent('btg-alerts-hero-hidden',14)&&!window.btgWelcomeVisit?.()){hero.hidden=false;document.getElementById('alertsHeroClose')?.addEventListener('click',()=>{hero.hidden=true;store.set('btg-alerts-hero-hidden',String(Date.now()));window.btgCount?.('alerts:banner-hide')})}
+  const emailed=store.get('btg-email-sub')==='1';if(emailed)document.documentElement.classList.add('email-on');
+  // iPhones only allow web notifications from the Home Screen, and some
+  // browsers have none: there the banner leads with email.
+  const iphoneWeb=/iPhone|iPad|iPod/.test(navigator.userAgent||'')&&!(window.matchMedia?.('(display-mode: standalone)').matches||navigator.standalone===true),noPush=!('Notification' in window)||!('serviceWorker' in navigator);
+  if(hero)setTimeout(()=>{if(!window.BTGEmailSub?.inline)return;
+    const btn=hero.querySelector('.ah-btn'),copy=hero.querySelector('.ah-copy');
+    if(iphoneWeb||noPush){hero.classList.add('ah-email-first');const strong=copy?.querySelector('strong');if(strong)strong.textContent='Get our picks by email';const small=copy?.querySelector('small');if(small)small.textContent='The moment one locks, with the price and the sportsbook. Free, one-tap unsubscribe.';
+      window.BTGEmailSub.inline(hero,'banner');if(btn){btn.textContent='Phone alerts instead';btn.classList.add('ah-alt')}}
+    else{const alt=document.createElement('button');alt.type='button';alt.className='ah-alt-email';alt.textContent='Or get them by email';alt.onclick=()=>{alt.remove();window.BTGEmailSub.inline(hero,'banner')?.querySelector('input')?.focus()};hero.appendChild(alt)}
+  },0);
+  if(hero&&!emailed&&!recent('btg-alerts-hero-hidden',14)&&!window.btgWelcomeVisit?.()){hero.hidden=false;document.getElementById('alertsHeroClose')?.addEventListener('click',()=>{hero.hidden=true;store.set('btg-alerts-hero-hidden',String(Date.now()));window.btgCount?.('alerts:banner-hide')})}
   // Add to Home Screen: iPhone needs it for phone alerts; Android can install directly.
   const standalone=window.matchMedia?.('(display-mode: standalone)').matches||navigator.standalone===true;
   if(standalone)return;
@@ -3156,13 +3170,28 @@ function statsProp(l){
   const ios=/iPhone|iPad|iPod/.test(navigator.userAgent||'');
   window.BTGEmailSub={open(source){window.btgCount?.('email:open');$('emailIphoneNote').hidden=!(ios||source==='iphone');{const n=$('emailBlockedNote');if(n)n.hidden=!['alerts:denied','alerts:unsupported'].includes(source)}status('');$('emailSubSend').disabled=false;if(typeof dlg.showModal==='function')dlg.showModal();else dlg.setAttribute('open','');setTimeout(()=>{try{$('emailSubInput').focus()}catch{}},60)}};
   const close=()=>dlg.close?.();$('emailDialogX').onclick=close;dlg.addEventListener('click',e=>{if(e.target===dlg)close()});
+  const valid=email=>/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(email);
+  const send=async(email,nba=true)=>{const r=await fetch('/api/email-subscribe',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email,nba})}),d=await r.json().catch(()=>({}));
+    if(!r.ok||!d.success)throw new Error(d.error||'We couldn’t sign you up. Try again in a minute.');
+    try{localStorage.setItem('btg-email-sub','1')}catch{}
+    return d.active?'You’re already on the list. New picks will land in your inbox.':'Almost done: tap the confirm link we just emailed you. Not there in a minute? Check spam.'};
   $('emailSubForm').addEventListener('submit',async e=>{e.preventDefault();const email=$('emailSubInput').value.trim();
-    if(!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(email)){status('Enter a full email address, like you@example.com.','err');return}
+    if(!valid(email)){status('Enter a full email address, like you@example.com.','err');return}
     $('emailSubSend').disabled=true;status('Sending…');
-    try{const r=await fetch('/api/email-subscribe',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email,nba:$('emailSubNba').checked})}),d=await r.json().catch(()=>({}));
-      if(!r.ok||!d.success)throw new Error(d.error||'We couldn’t sign you up. Try again in a minute.');
-      status(d.active?'You’re already on the list. New picks will land in your inbox.':'Check your inbox and tap the confirm link. If it’s not there in a minute, check spam.','ok');try{localStorage.setItem('btg-email-sub','1')}catch{}}
+    try{status(await send(email,$('emailSubNba').checked),'ok')}
     catch(error){status(error.message,'err');$('emailSubSend').disabled=false}});
+  // One-field sign-up placed right where someone already is (the alerts
+  // banner, the bet screen), so email takes one step instead of a pop-up.
+  window.BTGEmailSub.inline=(host,source)=>{
+    const form=document.createElement('form');form.className='em-inline';form.noValidate=true;
+    form.innerHTML='<input type="email" name="email" autocomplete="email" inputmode="email" placeholder="Your email" aria-label="Your email" required><button type="submit">Email me picks</button><p class="em-msg" role="status" hidden></p>';
+    const input=form.querySelector('input'),button=form.querySelector('button'),msg=form.querySelector('.em-msg'),say=(t,cls)=>{msg.hidden=false;msg.textContent=t;msg.className=`em-msg ${cls}`};
+    form.addEventListener('submit',async e=>{e.preventDefault();const email=input.value.trim();
+      if(!valid(email)){say('Enter a full email address, like you@example.com.','err');input.focus();return}
+      button.disabled=true;say('Sending…','');window.btgCount?.(`email:inline-${source}`);
+      try{say(await send(email),'ok');input.disabled=true;button.textContent='✓ Sent';document.documentElement.classList.add('email-on-pending')}
+      catch(error){say(error.message,'err');button.disabled=false}});
+    host.appendChild(form);return form};
 })();
 // The bet slip as a placing helper: each leg's best price at the viewer's
 // books with a button to open that book, the whole parlay priced at every

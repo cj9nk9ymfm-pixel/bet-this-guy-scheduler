@@ -2330,3 +2330,26 @@ body.light .pp-live{background:#fff1f2;border-color:#fecdd3}body.light .pp-live.
    the rail's record card wraps so the proof line sits under the record. */
 .on-group{grid-column:1/-1}
 @media(min-width:721px){html body .has-rail #heroBanner.hero{flex-wrap:wrap!important;row-gap:6px!important}html body .has-rail #heroBanner #heroTitle{flex:1 1 100%!important}}
+
+/* One-field email sign-up (alerts banner, bet screen). */
+.em-inline{display:flex;flex-wrap:wrap;gap:8px;width:100%;margin:0}
+.em-inline input{flex:1 1 180px;min-width:0;height:42px;padding:0 12px;border:1px solid var(--line,#2a3140);border-radius:10px;background:var(--bg,#0e1013);color:inherit;font:15px/1 inherit;font-size:16px}
+.em-inline input:focus{outline:2px solid #3b82f6;outline-offset:1px;border-color:transparent}
+.em-inline button{flex:none;height:42px;padding:0 16px;border:0;border-radius:10px;background:#2563eb;color:#fff;font:700 14px "Space Grotesk",sans-serif;cursor:pointer}
+.em-inline button:disabled{opacity:.75;cursor:default}
+.em-inline .em-msg{flex:1 1 100%;margin:0;font-size:13px;line-height:1.4;color:var(--muted)}
+.em-inline .em-msg.ok{color:#2ee6a8}.em-inline .em-msg.err{color:#f87171}
+body.light .em-inline input{background:#fff;border-color:#cbd5e1}
+body.light .em-inline .em-msg.ok{color:#047857}body.light .em-inline .em-msg.err{color:#b91c1c}
+html body #alertsHero.alerts-hero{flex-wrap:wrap}
+html body #alertsHero .em-inline{flex:1 1 100%}
+html body #alertsHero .ah-btn.ah-alt,.ah-alt-email{background:transparent;border:0;color:#6aa8ff;font:600 13px "Space Grotesk",sans-serif;padding:2px 0;cursor:pointer;height:auto}
+html body #alertsHero .ah-btn.ah-alt{order:5;flex:1 1 100%;text-align:left}
+.ah-alt-email{flex:1 1 100%;text-align:left;order:5}
+html body.light #alertsHero .ah-btn.ah-alt,body.light .ah-alt-email{color:#1d4ed8}
+.email-on .alerts-hero{display:none!important}
+[data-bs-em]:not(:empty){margin-top:10px}
+.em-inline input{flex-basis:140px}
+.bs-alt{background:transparent;border:0;padding:4px 0;color:#6aa8ff;font:600 13px "Space Grotesk",sans-serif;cursor:pointer}
+body.light .bs-alt{color:#1d4ed8}
+.bs-alert [data-bs-em]:not(:empty){margin:0 0 6px}
