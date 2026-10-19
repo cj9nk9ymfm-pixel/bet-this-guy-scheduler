@@ -131,7 +131,7 @@ const run=c=>vm.runInContext(c,context),req='new Request("https://betthisguy.com
   assert.equal((await run(`postNbaLaunchToX(env,${launchAt+600000})`)).done,true,'once');
   const thread=posts.slice(before);
   assert.match(thread[0].text,/^🏀 NBA player props start tonight on Bet This Guy\./);assert.ok(!thread[0].reply,'the first post starts the thread');
-  assert.ok(thread.slice(1).every((p,i)=>p.reply),'the rest are replies');assert.match(thread[1].text,/No nightly quota/);assert.match(thread[4].text,/1-800-GAMBLER/);
+  assert.ok(thread.slice(1).every((p,i)=>p.reply),'the rest are replies');assert.match(thread[1].text,/1.5%\+, up to 10 a night/);assert.match(thread[4].text,/1-800-GAMBLER/);
   // X counts most symbols and emoji (like • and 🏀) as 2 characters.
   const xLen=t=>[...t].reduce((n,ch)=>{const c=ch.codePointAt(0);return n+(c<=4351||(c>=8192&&c<=8205)||(c>=8208&&c<=8223)||(c>=8242&&c<=8247)?1:2)},0);
   assert.ok(thread.every(p=>xLen(p.text)<=280),'every post fits X\'s limit');
@@ -139,5 +139,14 @@ const run=c=>vm.runInContext(c,context),req='new Request("https://betthisguy.com
   assert.equal(run(`nbaNight(Date.parse('${late}'))`),'2026-10-27');
   // Cron: NBA nights grade every publish run.
   assert.deepEqual(run(`cronJobs(new Date('2026-10-28T01:00:00Z'))`).includes('grade'),true);
+  // NBA limits: 10 singles a night, 2 a game; a 2.5%+ top pick posts past both.
+  {const c=(i,g,edge)=>({playerKey:'g'+g+'|p'+i,player:'P'+i,gameId:'g'+g,edge,market:'Points',side:'Over',line:20.5,odds:110,gameTime:'2026-10-21T00:00:00Z'});
+   const pool=[...Array(14)].map((_,i)=>c(i,Math.floor(i/3),2-i*.01)),cfg=JSON.stringify({caps:{props:10,reasonable:0,swing:0,moonshot:0},perGame:2,top:2.5,prefix:'nba|2026-10-20|'});
+   let plan=JSON.parse(JSON.stringify(run(`officialPlan(${JSON.stringify(pool)},[],'2026-10-20',Date.now(),[],${cfg})`))).filter(p=>p.tier==='props');
+   assert.equal(plan.length,10,'10 singles a night');
+   assert.ok([...new Set(plan.map(p=>p.legs[0].gameId))].every(g=>plan.filter(p=>p.legs[0].gameId===g).length<=2),'2 a game');
+   plan=JSON.parse(JSON.stringify(run(`officialPlan(${JSON.stringify([...pool,c(99,0,3.1)])},[],'2026-10-20',Date.now(),[],${cfg})`))).filter(p=>p.tier==='props');
+   assert.ok(plan.some(p=>p.legs[0].player==='P99')&&plan.length===11,'a 2.5%+ top pick posts past the nightly and per-game limits');
+   assert.equal(run('NBA_MIN'),1.5,'NBA bar is 1.5%');}
   console.log('PASS: official NBA picks post every qualifying core-market prop (one per player) as soon as props are listed (up to 36 hours before tip-off), stay out of NFL queries, grade from the box score with no-plays as pushes, and serve their own record');
 })().catch(e=>{console.error(e);process.exit(1)});
