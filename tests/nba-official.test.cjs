@@ -43,7 +43,10 @@ const run=c=>vm.runInContext(c,context),req='new Request("https://betthisguy.com
 (async()=>{
   // Before opening night nothing posts.
   assert.equal((await run(`publishNbaPicks(${req},env,{waitUntil(){}},${Date.parse('2026-10-18T21:00:00Z')})`)).state,'not_started');
+  // New picks set off the alerts and X jobs at once, not on the next scheduled run.
+  const announced=[];env.MAINTENANCE_TOKEN='m';env.SELF={fetch:async q=>{announced.push(new URL(q.url).searchParams.get('job'));return new Response('{}')}};
   const first=await run(`publishNbaPicks(${req},env,{waitUntil(){}},${now})`);
+  assert.deepEqual(announced.sort(),['alerts','xpost'],'a lock announces at once');delete env.SELF;delete env.MAINTENANCE_TOKEN;
   assert.equal(first.state,'completed');assert.equal(first.games,2,'only games tipping within 36 hours');
   const rows=db.prepare('SELECT * FROM public_recommendations ORDER BY id').all()
   const singles=rows.filter(r=>r.kind==='prop').sort((a,b)=>a.player.localeCompare(b.player));
@@ -80,10 +83,10 @@ const run=c=>vm.runInContext(c,context),req='new Request("https://betthisguy.com
   assert.equal((await run(`postNbaCardToX(env,${cardAt})`)).posted,1);
   assert.equal((await run(`postNbaCardToX(env,${cardAt+600000})`)).posted,0,'once a night');
   assert.match(posts[0].text,/^🏀 (Tonight|Today)’s NBA picks/);
-  // Singles also get their own post as they lock (one a run, 3 a day), never twice.
+  // Singles also get their own post as they lock (two a run, 3 a day), never twice.
   assert.equal((await run(`postNbaPicksToX(env,${cardAt+30000})`)).posted,0,'a single already on the card gets no post of its own');
   db.prepare("DELETE FROM app_settings WHERE key LIKE 'x-nba-pick:%'").run();
-  {const before=posts.length,r1=await run(`postNbaPicksToX(env,${cardAt+60000})`);assert.equal(r1.posted,1,'an NBA single gets its own post');
+  {const before=posts.length,r1=await run(`postNbaPicksToX(env,${cardAt+60000})`);assert.equal(r1.posted,2,'picks that lock together post together');
    assert.match(posts[before].text,/^(⭐ Top pick|🔒 Official pick) · NBA\n/);assert.ok(!/https?:|\.com\b/.test(posts[before].text),'no links');
    for(let i=0;i<6;i++)await run(`postNbaPicksToX(env,${cardAt+120000+i*60000})`);const own=posts.slice(before).filter(p=>/ · NBA\n/.test(p.text));
    assert.ok(own.length<=3||own.length===new Set(own.map(p=>p.text)).size,'no pick posted twice');posts.splice(before)}assert.match(posts[0].text,/Victor Wembanyama Over 11.5 rebounds \(\+114, DraftKings\)/);
