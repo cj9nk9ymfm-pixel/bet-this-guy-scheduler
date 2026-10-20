@@ -184,6 +184,17 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
   assert.deepEqual(bp.prices.find(p=>p[2]==='Over'),['Tre Tucker','Receptions','Over',3.5,'Novig',130],'live price after kickoff');
   bp=await liveBoard(live+60000);assert.equal(urls.length-before,1,'one live fetch per 3 minutes');
   assert.equal((await pred(null,{country:'US',regionCode:'TX'})).predictions.draftkings,true);assert.equal((await pred('DE',{})).predictions.draftkings,false);
+  // NBA: app prices saved for the board (no picks), every 30 minutes within 6 hours of tip-off, every 3 hours further out.
+  {const saveFetch=context.fetch,nbaKick=new Date(now+3*3600000).toISOString(),nbaUrls=[];
+   const pts={key:'player_points',last_update:upd,outcomes:[{name:'Over',description:'Cade Cunningham',point:25.5,price:-105},{name:'Under',description:'Cade Cunningham',point:25.5,price:-115}]};
+   context.fetch=async url=>{url=String(url);nbaUrls.push(url);if(url.includes('/basketball_nba/events/n1/odds'))return new Response(JSON.stringify({id:'n1',bookmakers:[{key:'novig',title:'Novig',markets:[pts]},{key:'draftkings',title:'DK',markets:[pts]}]}));return new Response(null,{status:404})};
+   context.nbaBoards=[{id:'n1',eventID:'NBA--n1',commence_time:nbaKick},{id:'n2',eventID:'NBA--n2',commence_time:new Date(now+60*3600000).toISOString()}];
+   assert.deepEqual(J(await run(`recordNbaExchangePrices(env,nbaBoards,${now})`)),{games:1},'only games within 36 hours');
+   assert.ok(nbaUrls[0].includes('markets=player_points%2Cplayer_rebounds%2Cplayer_assists%2Cplayer_threes%2Cplayer_points_rebounds_assists')&&nbaUrls[0].includes('regions=us_ex'),'the five core NBA markets on the apps');
+   await run(`recordNbaExchangePrices(env,nbaBoards,${now+10*60000})`);assert.equal(nbaUrls.length,1,'not again within 30 minutes');
+   const nb=J(await (await run(`predictionBoardResponse(${JSON.stringify({url:'https://x/api/predictions/board?event=NBA--n1&state=TX',cf:{}})},env,${now+11*60000})`)).json());
+   assert.deepEqual(nb.prices.find(p=>p[2]==='Over'),['Cade Cunningham','Points','Over',25.5,'Novig',-105],'the board serves NBA app prices');
+   db.prepare("DELETE FROM exchange_prices WHERE event_id LIKE 'NBA--%'").run();context.fetch=saveFetch}
   // One direction per player per game across sportsbook and prediction picks (Bo Melton, Oct 18).
   const gt=new Date(Date.now()+86400000).toISOString();
   db.prepare("INSERT INTO public_recommendations(id,kind,player,market,side,line,odds,game_time,legs_json,posted_at,status,source) VALUES(?,?,?,?,?,?,?,?,?,?,?,'market-verified-v2')").run('official|x|props|prop|bo','prop','Bo Melton','Receptions','Over',1.5,112,gt,JSON.stringify([{player:'Bo Melton',market:'Receptions',side:'Over',line:1.5,odds:112,gameId:'NFL--g9'}]),new Date().toISOString(),'pending');
