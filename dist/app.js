@@ -1468,7 +1468,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     const pmShare={text:'Share',icon:'share',primary:false,wide:true,share:`Bet This Guy prediction pick: ${isParlay?`${legs.length}-leg parlay`:`${r.player} ${bet}`} (${r.pm?.pct}% on ${r.pm?.exchange}) · ${location.origin}`};
     const pmOffer=r.pm&&!done?window.BTGApps?.offer?.(r.pm.exchange):null;
     // The case for the pick, the player's last 10 and Add to slip (singles).
-    const sp=isParlay?null:statsProp({...first,player:r.player,market:r.market,line:r.line,side:r.side,odds:r.odds,gameTime:r.game_time||first.gameTime,sport:r.sport||(String(r.id||'').startsWith('nba|')?'NBA':'NFL')});
+    const sp=isParlay?null:statsProp({...first,player:r.player,market:r.market,line:r.line,side:r.side,odds:r.odds,gameTime:r.game_time||first.gameTime,sport:recSport(r)});
     let why=isParlay?null:r.pm?betWhy({done,need:r.pm.pct,fair:r.pm.fair,where:r.pm.exchange,pm:true,afterFee:r.netOdds!=null&&Number(r.netOdds)!==Number(r.odds)}):(()=>{const d0=oddsDecimal(r.odds),e=Number(first.edge);return d0&&Number.isFinite(e)?betWhy({done,need:100/d0,fair:100/d0+e,where:first.book||'The book',price:formatOdds(r.odds)}):null})();
     const boardP=!isParlay&&!done?boardPropFor(r):null;
     return {chip,live:done?null:()=>sheetLive(r),title:isParlay?`${legs.length}-leg ${legs.some(l=>l.sameGame)?'same-game ':''}parlay`:r.player,photo:isParlay?null:r.player,sport:sp?.sport,why,statsProp:sp,
@@ -1489,7 +1489,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
   function openLegSheet(l,r){
     const pm=!!r.pm,o=pm?(l.netOdds??l.odds):l.odds,d0=oddsDecimal(o),need=d0?100/d0:null,e=Number(l.edge);
     const fair=pm&&Number.isFinite(Number(l.fair))?Number(l.fair):need!=null&&Number.isFinite(e)?need+e:null;
-    const sp=statsProp({...l,sport:r.sport||(String(r.id||'').startsWith('nba|')?'NBA':'NFL')}),bp=graded(r)?null:boardPropFor(l),side=l.side==='Under'?'Under':'Over';
+    const sp=statsProp({...l,sport:recSport(r)}),bp=graded(r)?null:boardPropFor(l),side=l.side==='Under'?'Under':'Over';
     window.BTGSheet.open({chip:{cls:'n',icon:'layers',text:`Leg of a ${recordLegs(r).length}-leg parlay`},title:l.player,photo:l.player,sport:sp.sport,
       bet:(t=>t.charAt(0).toUpperCase()+t.slice(1))(legText({...l,market:String(l.market||'').toLowerCase()})),game:[String(l.team||'').replace(' · ',' '),when(l.gameTime||r.game_time)].filter(Boolean).join(' · '),
       price:pm?(need?`${Math.round(need)}%`:'—'):formatOdds(o),stake:stakeText(wagerStake()),moneyLabel:`As a single, ${stakeText(wagerStake())}`,money:d0?(pm?pmPays(wagerStake(),d0):bookPays(wagerStake(),d0)):'—',moneyCls:'pos',
@@ -1591,7 +1591,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
   }
   // Live progress for locked picks, refreshed with the live board (every 5s in games).
   let officialLiveList=[];
-  const liveLeg=(r,l)=>statsProp({...l,player:l.player||r.player,market:l.market||r.market,line:l.line??r.line,side:l.side||r.side,gameTime:l.gameTime||r.game_time});
+  const liveLeg=(r,l)=>statsProp({...l,sport:l.sport||recSport(r,undefined),eventId:l.eventId||r.event_id,player:l.player||r.player,market:l.market||r.market,line:l.line??r.line,side:l.side||r.side,gameTime:l.gameTime||r.game_time});
   const liveUnit=p=>/touchdown|scorer/i.test(p.market||'')?'TD':String(p.market||'').toLowerCase();
   // Live line for an open pick: game clock, stat against the line and what's
   // left; green once it has hit, red only once it's lost, neutral otherwise.
@@ -2436,9 +2436,15 @@ function addBetToSlip(x){
 })();
 (()=>{const set=()=>{const h=document.querySelector('.topbar');if(h)document.documentElement.style.setProperty('--search-top',Math.round(h.getBoundingClientRect().bottom)+'px')};set();addEventListener('resize',set);$('#searchBtn')?.addEventListener('click',set,true)})();
 // A recorded pick or parlay leg in the shape the player stats screen reads.
+// A record's sport: its own field, else an NBA id (nba|… official, pm|NBA--…
+// prediction pick, or an NBA--… game).
+function recSport(r,fallback='NFL'){return r?.sport||(/^nba\||NBA--/.test(`${r?.id||''} ${r?.event_id||''}`)?'NBA':fallback)}
 function statsProp(l){
   const binary=/touchdown|scorer/i.test(l.market||'')&&Number(l.line)===0.5,odds=Number(l.odds);
-  return {id:`stats-${l.player}`,sport:l.sport||'NFL',player:l.player,team:l.team||'',market:l.market||'',line:binary?.5:Number(l.line),side:l.side||'Over',binary,over:Number.isFinite(odds)?odds:null,under:Number.isFinite(odds)?odds:null,startsAt:l.gameTime||null,eventID:l.gameId};
+  // The sport from the leg, its game id (NBA--…) or the league being viewed: an
+  // NBA pick read as NFL finds no assists in the box score and shows 0.
+  const sport=l.sport||(/^NBA--/.test(String(l.gameId||l.eventId||''))?'NBA':/^NFL--/.test(String(l.gameId||l.eventId||''))?'NFL':typeof LEAGUE==='string'&&LEAGUE?LEAGUE:'NFL');
+  return {id:`stats-${l.player}`,sport,player:l.player,team:l.team||'',market:l.market||'',line:binary?.5:Number(l.line),side:l.side||'Over',binary,over:Number.isFinite(odds)?odds:null,under:Number.isFinite(odds)?odds:null,startsAt:l.gameTime||null,eventID:l.gameId};
 }
 // The Results page links here (?stats=…) to open a player's stats screen.
 (()=>{const q=new URLSearchParams(location.search),player=q.get('stats');if(!player)return;
@@ -2973,7 +2979,7 @@ function statsProp(l){
     const official=(window.BTGOfficialRows?.()||[]).filter(inGame),pm=[...(data?.pmPicks||[]),...(data?.pmParlays||[])].map(pmRecord).filter(inGame);
     const seen=new Set(),list=[...official,...pm].filter(r=>!seen.has(r.id)&&seen.add(r.id));
     panel.hidden=!list.length;if(!list.length){host.innerHTML='';return}
-    const legState=(r,l)=>{try{return window.BTGLive.legStatus(statsProp({...l,player:l.player||r.player,market:l.market||r.market,line:l.line??r.line,side:l.side||r.side,gameTime:l.gameTime||r.game_time}))}catch{return null}};
+    const legState=(r,l)=>{try{return window.BTGLive.legStatus(statsProp({...l,sport:l.sport||recSport(r,undefined),eventId:l.eventId||r.event_id,player:l.player||r.player,market:l.market||r.market,line:l.line??r.line,side:l.side||r.side,gameTime:l.gameTime||r.game_time}))}catch{return null}};
     const pill=s=>s?.key==='hit'?'<b class="lp-pill hit">✓ Hit</b>':s?.key==='miss'?'<b class="lp-pill miss">✗ Missed</b>':s?.final?'<b class="lp-pill">Final</b>':'<b class="lp-pill live"><i></i>Live</b>';
     const shortMarket=m=>String(m||'').toLowerCase().replace('passing yards','pass yds').replace('receiving yards','rec yds').replace('rushing yards','rush yds').replace('receptions','rec').replace('pass completions','completions');
     const bar=(s,line)=>`<div class="live-progress"><i style="width:${Math.max(0,Math.min(100,s?.progress||0)).toFixed(1)}%"></i></div>`;
