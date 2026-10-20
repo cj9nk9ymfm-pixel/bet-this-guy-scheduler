@@ -79,7 +79,12 @@ const run=c=>vm.runInContext(c,context),req='new Request("https://betthisguy.com
   const cardAt=Date.parse(tip1)-30*60000;
   assert.equal((await run(`postNbaCardToX(env,${cardAt})`)).posted,1);
   assert.equal((await run(`postNbaCardToX(env,${cardAt+600000})`)).posted,0,'once a night');
-  assert.match(posts[0].text,/^🏀 (Tonight|Today)’s NBA picks/);assert.match(posts[0].text,/Victor Wembanyama Over 11.5 rebounds \(\+114, DraftKings\)/);
+  assert.match(posts[0].text,/^🏀 (Tonight|Today)’s NBA picks/);
+  // Singles also get their own post as they lock (one a run, 3 a day), never twice.
+  {const before=posts.length,r1=await run(`postNbaPicksToX(env,${cardAt+60000})`);assert.equal(r1.posted,1,'an NBA single gets its own post');
+   assert.match(posts[before].text,/^(⭐ Top pick|🔒 Official pick) · NBA\n/);assert.ok(!/https?:|\.com\b/.test(posts[before].text),'no links');
+   for(let i=0;i<6;i++)await run(`postNbaPicksToX(env,${cardAt+120000+i*60000})`);const own=posts.slice(before).filter(p=>/ · NBA\n/.test(p.text));
+   assert.ok(own.length<=3||own.length===new Set(own.map(p=>p.text)).size,'no pick posted twice');posts.splice(before)}assert.match(posts[0].text,/Victor Wembanyama Over 11.5 rebounds \(\+114, DraftKings\)/);
   // A hold stops NBA posts.
   db.prepare("INSERT INTO app_settings (key,value) VALUES ('x-nba','hold')").run();
   assert.equal((await run(`postNbaRepliesToX(env,${cardAt})`)).disabled,true);
