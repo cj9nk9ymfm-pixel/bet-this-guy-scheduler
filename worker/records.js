@@ -4055,7 +4055,8 @@ async function postNbaPicksToX(env,now=Date.now()){
   for(const r of rows){
     const f=recordLegs(r)[0]||{},edge=Number(f.edge);
     if(today>=X_HEAD.sb.day&&!(edge>=NBA_TOP))continue;
-    if(await appSetting(env,`xid:${r.id}`)||!(await xClaimable(env,`xi:${r.id}`,now))||!(await xClaim(env,`xi:${r.id}`,now)))continue;
+    // Already on X (its own post, or the night's card): never again.
+    if(await appSetting(env,`xid:${r.id}`)||await appSetting(env,`x-nba-pick:${r.id}`)||!(await xClaimable(env,`xi:${r.id}`,now))||!(await xClaim(env,`xi:${r.id}`,now)))continue;
     let mediaId=null;
     try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(xCardSvg(await xCardData(env,r,await nbaRecordSummary(env)))))}catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} nba pick graphic: ${error.message}`).catch(()=>{})}
     const text=xShort(`${edge>=NBA_TOP?'⭐ Top pick':'🔒 Official pick'} · NBA\n${r.player} ${weeklyLegText(r)}\n${[`${weeklyOdds(r.odds)}${f.book?` at ${f.book}`:''}`,xMatchup(f.team),xShortWhen(r.game_time)].filter(Boolean).join(' · ')}\n\nLocked before tip-off. Every pick graded in public, link in bio. 21+`);
