@@ -81,6 +81,8 @@ const run=c=>vm.runInContext(c,context),req='new Request("https://betthisguy.com
   assert.equal((await run(`postNbaCardToX(env,${cardAt+600000})`)).posted,0,'once a night');
   assert.match(posts[0].text,/^🏀 (Tonight|Today)’s NBA picks/);
   // Singles also get their own post as they lock (one a run, 3 a day), never twice.
+  assert.equal((await run(`postNbaPicksToX(env,${cardAt+30000})`)).posted,0,'a single already on the card gets no post of its own');
+  db.prepare("DELETE FROM app_settings WHERE key LIKE 'x-nba-pick:%'").run();
   {const before=posts.length,r1=await run(`postNbaPicksToX(env,${cardAt+60000})`);assert.equal(r1.posted,1,'an NBA single gets its own post');
    assert.match(posts[before].text,/^(⭐ Top pick|🔒 Official pick) · NBA\n/);assert.ok(!/https?:|\.com\b/.test(posts[before].text),'no links');
    for(let i=0;i<6;i++)await run(`postNbaPicksToX(env,${cardAt+120000+i*60000})`);const own=posts.slice(before).filter(p=>/ · NBA\n/.test(p.text));
