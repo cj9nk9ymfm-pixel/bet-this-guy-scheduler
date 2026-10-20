@@ -3154,8 +3154,6 @@ function statsProp(l){
         note.innerHTML=`<div class="on-head"><h2>NBA on prediction apps</h2></div><div class="on-empty"><strong>${apps.length?`${htmlEscape(list(apps))} ${apps.length===1?'lists':'list'} NBA player props.`:'Prediction apps don’t list NBA player props yet.'}</strong><span>${apps.length?`NBA prediction picks start once we’ve priced them against the sportsbooks${stateApps.length||!d.state?'':`; none of these apps are open in ${htmlEscape(d.stateName||'your state')} yet`}. Until then, our NBA picks are on the Sportsbook side.`:'We check Novig, ProphetX and the rest every few hours. Until they list NBA props, our NBA picks are on the Sportsbook side.'}</span></div><p class="pm-nba-switch"><button type="button" class="on-toggle" data-view-odds>See today’s NBA picks and props</button></p>`;
         note.querySelector('[data-view-odds]').onclick=()=>{store(VIEW,'odds');render();resync()};
         note.hidden=false;document.getElementById('officialNow')?.setAttribute('hidden','');document.getElementById('parlaysNow')?.setAttribute('hidden','');
-        // No NBA app prices on our board yet, so its filters would only ever show an empty list.
-        document.body.classList.add('nba-pm-empty');
       }else{document.body.classList.remove('nba-pm-empty');if(note)note.hidden=true;const on=document.getElementById('officialNow');if(on&&on.dataset.nbaHidden!=='1')on.removeAttribute('hidden');const pn=document.getElementById('parlaysNow');if(pn&&pn.dataset.empty!=='1')pn.removeAttribute('hidden')}
     }
   }
@@ -3478,9 +3476,12 @@ function statsProp(l){
   render=function(){const out=base.apply(this,arguments);try{const box=document.getElementById('emptyState');if(!box)return out;
     if(!box.dataset.plain)box.dataset.plain=box.innerHTML;
     const pm=window.BTGPmBoard?.active?.(),empty=!box.hidden;
+    // NBA prediction view: the board shows once any NBA game has app prices
+    // (they load per game); until then its filters would only show an empty list.
+    const nbaPm=pm&&typeof LEAGUE!=='undefined'&&LEAGUE==='NBA';document.body.classList.toggle('nba-pm-empty',nbaPm&&!(typeof props!=='undefined'&&props.some(p=>p.sport==='NBA'&&window.BTGPmBoard.has(p))));
     const preNba=typeof LEAGUE!=='undefined'&&LEAGUE==='NBA'&&Date.now()<Date.parse('2026-10-20T14:00:00Z');
     if(empty&&preNba&&!(typeof props!=='undefined'&&props.length)){box.innerHTML='<strong>NBA props open before opening night, Tue Oct 20.</strong><span>Sportsbooks post player props about a day before tip-off.</span>'}
     else if(pm&&empty){const soon=(typeof props!=='undefined'?props:[]).filter(p=>p.sport===state.boardSport&&Date.parse(p.startsAt)>Date.now()).map(p=>Date.parse(p.startsAt)).sort((a,b)=>a-b)[0];
-      box.innerHTML=`<strong>No prediction app prices for these props yet.</strong><span>We load prediction app prices about 4 days before each game${soon&&soon-Date.now()>96*3600000?`; the next game’s load ${new Date(soon-96*3600000).toLocaleDateString([],{weekday:'long'})}`:''}. Switch to Sportsbook to see every prop now.</span>`}
+      const ahead=(typeof LEAGUE!=='undefined'&&LEAGUE==='NBA'?36:96)*3600000;box.innerHTML=`<strong>No prediction app prices for these props yet.</strong><span>We load prediction app prices ${ahead<96*3600000?'about a day and a half':'about 4 days'} before each game${soon&&soon-Date.now()>ahead?`; the next game’s load ${new Date(soon-ahead).toLocaleDateString([],{weekday:'long'})}`:''}, and the apps don’t list every prop. Switch to Sportsbook to see every prop now.</span>`}
     else if(box.innerHTML!==box.dataset.plain)box.innerHTML=box.dataset.plain}catch{}return out};
   window.render=render})();

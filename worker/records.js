@@ -406,6 +406,7 @@ async function publishNbaPicks(request,env,ctx,now=Date.now()){
   if(!games.length)return {state:'no_games'};
   const boards=[];let failed=0;
   for(let i=0;i<games.length;i+=4){const results=await Promise.allSettled(games.slice(i,i+4).map(async e=>{const url=new URL('/api/event',request.url);url.searchParams.set('eventID',e.eventID);const r=await eventProps(new Request(url),env,ctx,{maxAge:SOON_MAX_AGE});if(!r.ok||r.headers.get('x-feed-cache')==='stale')throw new Error('NBA board unavailable');return (await r.json()).data||[]}));for(const r of results)if(r.status==='fulfilled')boards.push(...r.value);else failed++}
+  await recordNbaExchangePrices(env,boards,now).catch(error=>console.warn('nba_exchange_prices_failed',error.message));
   const injuries=await injuryMap(env,'NBA').catch(()=>new Map());boards.splice(0,boards.length,...withoutInjured(boards,injuries));
   const core=list=>list.filter(p=>NBA_OFFICIAL_MARKETS.has(p.market));
   let posted=0;const leans=[],nights=[...new Set(boards.map(b=>nbaNight(Date.parse(b.commence_time))))];
@@ -2020,15 +2021,15 @@ const EXCHANGE_LIVE_GAP=3*60000,EXCHANGE_LIVE_FOR=4.5*3600000;
 async function predictionBoardResponse(request,env,now=Date.now()){
   const head={'content-type':'application/json; charset=utf-8','cache-control':'private, max-age=120'};
   const where=bettingOptions(request),id=String(new URL(request.url).searchParams.get('event')||'');
-  if(!env.DB||where.mode==='unknown'||!/^NFL--[A-Za-z0-9_-]{2,100}$/.test(id))return new Response(JSON.stringify({success:true,prices:[]}),{headers:head});
+  if(!env.DB||where.mode==='unknown'||!/^(NFL|NBA)--[A-Za-z0-9_-]{2,100}$/.test(id))return new Response(JSON.stringify({success:true,prices:[]}),{headers:head});
   let row=await env.DB.prepare('SELECT game_time,prices_json,updated_at FROM exchange_prices WHERE event_id=?').bind(id).first();
   // In-game: the 30-minute pregame snapshot stops at kickoff, so a live game's
   // prices are fetched on request, at most once every EXCHANGE_LIVE_GAP per game
   // (the first request after that claims the refresh; others get the last one).
   const kick=row?Date.parse(row.game_time):NaN,live=kick<=now&&now-kick<EXCHANGE_LIVE_FOR;
-  if(live&&env.THE_ODDS_API_KEY&&now-Date.parse(row.updated_at)>EXCHANGE_LIVE_GAP){
+  if(live&&env.THE_ODDS_API_KEY&&now-Date.parse(row.updated_at)>(id.startsWith('NBA--')?2*EXCHANGE_LIVE_GAP:EXCHANGE_LIVE_GAP)){
     const stamp=new Date(now).toISOString(),claim=await env.DB.prepare('UPDATE exchange_prices SET updated_at=? WHERE event_id=? AND updated_at=?').bind(stamp,id,row.updated_at).run().catch(()=>null);
-    if(Number(claim?.meta?.changes??claim?.changes)){try{const ex=await fetchExchangeOdds(id.slice(5),env.THE_ODDS_API_KEY),list=exchangePriceList(ex);await env.DB.prepare('UPDATE exchange_prices SET prices_json=?,updated_at=? WHERE event_id=?').bind(JSON.stringify(list),stamp,id).run();row={...row,prices_json:JSON.stringify(list),updated_at:stamp}}catch(error){console.warn('exchange_live_failed',error.message)}}
+    if(Number(claim?.meta?.changes??claim?.changes)){try{const ex=id.startsWith('NBA--')?await fetchNbaExchangeOdds(id.slice(5),env.THE_ODDS_API_KEY):await fetchExchangeOdds(id.slice(5),env.THE_ODDS_API_KEY),list=exchangePriceList(ex);await env.DB.prepare('UPDATE exchange_prices SET prices_json=?,updated_at=? WHERE event_id=?').bind(JSON.stringify(list),stamp,id).run();row={...row,prices_json:JSON.stringify(list),updated_at:stamp}}catch(error){console.warn('exchange_live_failed',error.message)}}
   }
   if(live)head['cache-control']='private, max-age=60';
   if(!row||(!live&&now-Date.parse(row.updated_at)>3*3600000))return new Response(JSON.stringify({success:true,prices:[]}),{headers:head});
@@ -3875,6 +3876,28 @@ async function checkNbaExchanges(request,env,ctx,now=Date.now()){
   for(const b of d.bookmakers||[])if(EXCHANGES[b.key]){const n=(b.markets||[]).reduce((t,m)=>t+(m.outcomes||[]).filter(o=>o.description).length,0);if(n)apps[EXCHANGES[b.key]]=n}
   await setAppSetting(env,'nba-exchange-check',JSON.stringify({at:new Date(now).toISOString(),game:`${d.away_team||''} @ ${d.home_team||''}`,apps}));
   return {apps};
+}
+// NBA prediction-app prices for the board (Novig, ProphetX, Polymarket, …),
+// saved like the NFL ones so the prediction view can list NBA props. One call
+// a game with the five core markets (about 5 credits): every 30 minutes within
+// 6 hours of tip-off, every 3 hours out to 36 hours, at most 8 games a run,
+// and none when credits run low. Board prices only: no NBA prediction picks.
+const NBA_EXCHANGE_PRICE_MARKETS=[...NBA_EXCHANGE_MARKETS,'player_points_rebounds_assists'];
+async function fetchNbaExchangeOdds(eventId,apiKey){
+  const q=new URLSearchParams({apiKey,regions:'us_ex',markets:NBA_EXCHANGE_PRICE_MARKETS.join(','),oddsFormat:'american',dateFormat:'iso'});
+  const r=await fetch(`${API_BASE}/sports/${NBA_SPORT.key}/events/${eventId}/odds?${q}`,{headers:{accept:'application/json'},signal:AbortSignal.timeout(15000)});
+  const body=await r.text();if(!r.ok)throw new Error(providerMessage(body,'Exchange prices are unavailable.'));
+  const left=r.headers.get('x-requests-remaining');if(left!==null&&Number.isFinite(Number(left)))oddsCreditsLeft=Number(left);
+  const d=JSON.parse(body);return {...d,bookmakers:(d.bookmakers||[]).filter(b=>EXCHANGES[b.key])};
+}
+async function recordNbaExchangePrices(env,boards,now=Date.now()){
+  if(!env.DB||!env.THE_ODDS_API_KEY||(oddsCreditsLeft!==null&&oddsCreditsLeft<LOW_ODDS_CREDITS))return {skipped:true};
+  const stamp=new Date(now).toISOString(),fetchedAt=new Map(((await env.DB.prepare("SELECT event_id,updated_at FROM exchange_prices WHERE event_id LIKE 'NBA--%' AND game_time>?").bind(stamp).all().catch(()=>({results:[]}))).results||[]).map(r=>[r.event_id,Date.parse(r.updated_at)]));
+  const due=boards.map(b=>({b,id:b.eventID||`NBA--${b.id}`,kick:Date.parse(b.commence_time)})).filter(({id,kick})=>{if(!(kick>now+60000)||kick-now>36*3600000)return false;const age=now-(fetchedAt.get(id)||0);return age>=(kick-now<=6*3600000?29*60000:3*3600000-60000)}).sort((a,b)=>a.kick-b.kick).slice(0,8);
+  const statements=[];
+  for(const {b,id,kick} of due){try{const ex=await fetchNbaExchangeOdds(oddsEventId(id),env.THE_ODDS_API_KEY);statements.push(env.DB.prepare('INSERT OR REPLACE INTO exchange_prices (event_id,game_time,prices_json,updated_at) VALUES (?,?,?,?)').bind(id,new Date(kick).toISOString(),JSON.stringify(exchangePriceList(ex)),stamp))}catch{}}
+  if(statements.length)await env.DB.batch(statements);
+  return {games:statements.length};
 }
 async function nbaExchangeStatus(env){try{const s=JSON.parse(await appSetting(env,'nba-exchange-check')||'null');return s?{at:s.at,apps:s.apps||{}}:null}catch{return null}}
 // NBA launch: a five-post thread at 9 AM PT on opening day (Tim's call), with
