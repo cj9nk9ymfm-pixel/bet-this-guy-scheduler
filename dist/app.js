@@ -2481,7 +2481,7 @@ function statsProp(l){
   const words=[[/\bTop props this week\b/g,'Top props today'],[/\b(T|t)his week’s (picks|parlays)\b/g,(m,t,w)=>`${t==='T'?'T':'t'}onight’s ${w}`],[/\bNFL\b/g,'NBA'],[/\bkickoff\b/g,'tip-off'],[/\bKickoff\b/g,'Tip-off']];
   const fix=node=>{
     if(node.nodeType===3){let t=node.nodeValue,n=t;for(const [a,b] of words)n=n.replace(a,b);if(n!==t)node.nodeValue=n;return}
-    if(node.nodeType!==1||/^(SCRIPT|STYLE|TEXTAREA)$/.test(node.nodeName)||node.id==='leagueSwitch'||node.id==='welcomeDialog'||node.id==='alertKinds')return;
+    if(node.nodeType!==1||/^(SCRIPT|STYLE|TEXTAREA)$/.test(node.nodeName)||node.id==='leagueSwitch'||node.id==='welcomeDialog'||node.id==='alertKinds'||node.classList?.contains('sx-foot'))return;
     for(const attr of ['aria-label','placeholder','title'])if(node.hasAttribute?.(attr)){let v=node.getAttribute(attr),n=v;for(const [a,b] of words)n=n.replace(a,b);if(n!==v)node.setAttribute(attr,n)}
     node.childNodes.forEach(fix);
   };

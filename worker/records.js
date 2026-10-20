@@ -3885,11 +3885,11 @@ function nbaLaunchThread(s){
   const money=v=>(v<0?'−':'+')+'\u0024'+Math.abs(Math.round(v)).toLocaleString('en-US');
   const rec=s&&s.wins+s.losses>=10?`Same rules that got our NFL singles to ${s.wins}–${s.losses}, ${money(s.profit)}: a pick posts only when a sportsbook price beats the fair line across the big books. Locked before tip-off, graded in public.`:'Same rules as our NFL picks: a pick posts only when a sportsbook price beats the fair line across the big books. Locked before tip-off, graded in public.';
   const close=s&&s.tracked>=10?`The number we judge ourselves by: ${s.beat} of ${s.tracked} NFL picks beat the closing price (${Math.round(100*s.beat/s.tracked)}%).\n\nOne game is luck. Beating the final price week after week is how you know the edge is real.`:'The number we judge ourselves by: how often our price beats the closing price.\n\nOne game is luck. Beating the final price week after week is how you know the edge is real.';
-  return [`🏀 NBA player props start tonight on Bet This Guy.\n\n${rec}`,
+  return [`🏀 NBA player props start today on Bet This Guy.\n\n${rec}`,
     'How it works:\n• Posts only when a big-book price beats the fair line by 1.5%+, up to 10 a night\n• Points, rebounds, assists, threes and PRA\n• Posted the moment a price qualifies\n• Player sits = no action, same as at the book\n• Singles at $100, parlays at $25',
     close,
-    'Every loss stays on the record. NBA gets its own public record, separate from NFL:\nbetthisguy.com/trust#nba',
-    'Free. No paywall. Turn on alerts and get each pick the second it locks:\nbetthisguy.com\n\n21+ · Gambling problem? Call 1-800-GAMBLER'];
+    'Every loss stays on the record. NBA gets its own public record, separate from NFL. Link in bio.',
+    'Free. No paywall. Turn on alerts and get each pick the second it locks. Link in bio.\n\n21+ · Gambling problem? Call 1-800-GAMBLER'];
 }
 async function watchNbaLaunch(request,env,ctx,now=Date.now()){
   if(!env.DB||await appSetting(env,'nba-props-live'))return {done:true};
@@ -3930,8 +3930,8 @@ async function postNbaCardToX(env,now=Date.now()){
   const season=await nbaRecordSummary(env),singles=rows.filter(r=>r.kind==='prop').length,parlays=rows.length-singles;
   const rec=season.wins+season.losses>=1?`\nNBA record: ${season.wins}–${season.losses}${season.pushes?`–${season.pushes}`:''}, ${weeklyMoney(season.profit)}.`:'';
   // Every pick in the text when it fits; otherwise the counts, with the full list on the graphic.
-  const tail=`${rec}\nLate games can add more. Every pick graded in public, link in bio. 21+`,full=`🏀 Tonight’s NBA picks\n${rows.map(nbaLine).join('\n')}\n${tail}`;
-  const text=full.length<=280?full:xShort(`🏀 Tonight’s NBA picks: ${singles} pick${singles===1?'':'s'}${parlays?` + ${parlays} parlay${parlays===1?'':'s'}`:''}, all on the card 👇\n${tail}`);
+  const tail=`${rec}\nLate games can add more. Every pick graded in public, link in bio. 21+`,when=Number(new Date(first).toLocaleString('en-US',{hour:'numeric',hour12:false,timeZone:'America/Los_Angeles'}))<15?'Today’s':'Tonight’s',full=`🏀 ${when} NBA picks\n${rows.map(nbaLine).join('\n')}\n${tail}`;
+  const text=full.length<=280?full:xShort(`🏀 ${when} NBA picks: ${singles} pick${singles===1?'':'s'}${parlays?` + ${parlays} parlay${parlays===1?'':'s'}`:''}, all on the card 👇\n${tail}`);
   let mediaId=null;
   try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(xSlateSvg({final:true,kicker:'NBA · OFFICIAL PICKS',day:etDate(first,{weekday:'long'}),date:etDate(first,{month:'short',day:'numeric'}),dateLine:`${etDate(first,{month:'short',day:'numeric'})} · ${singles} pick${singles===1?'':'s'}${parlays?` + ${parlays} parlay${parlays===1?'':'s'}`:''}`,note:`First tip ${etDate(first,{hour:'numeric',minute:'2-digit'})} ET`,note2:'Late games can add more',foot:'LOCKED BEFORE TIP-OFF · 21+',picks:nbaSlatePicks(rows),season:season.wins+season.losses>=1?`${season.wins}–${season.losses} · ${weeklyMoney(season.profit)}`:''})))}
   catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} nba card graphic: ${error.message}`).catch(()=>{})}
