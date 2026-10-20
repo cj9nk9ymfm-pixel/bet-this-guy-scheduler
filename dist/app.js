@@ -2753,7 +2753,8 @@ function statsProp(l){
 
   // "Good value" chip beside Popular: only the props that beat the fair price.
   let valueOnly=false;
-  const isValue=p=>p.sport===LEAGUE&&propVerdict(p)?.key==='send'&&recommendationEligible(p);
+  // In the prediction view a Good value prop also needs an app price, so the count matches what a tap shows.
+  const isValue=p=>p.sport===LEAGUE&&propVerdict(p)?.key==='send'&&recommendationEligible(p)&&(!window.BTGPmBoard?.active?.()||window.BTGPmBoard.has(p));
   const goodValue=()=>props.filter(p=>isValue(p)&&(state.boardGame==='All'||gameName(p)===state.boardGame)).sort((a,b)=>(b.rawEdge||0)-(a.rawEdge||0));
   const baseVisible=visibleProps;
   visibleProps=function(){
@@ -2775,7 +2776,8 @@ function statsProp(l){
     const chip=document.createElement('button');chip.type='button';chip.className=`sub-tab value-tab${valueOnly?' active':''}`;chip.innerHTML=`${icon('check')} Good value<b>${n}</b>`;
     if(valueOnly){bar.querySelectorAll('.sub-tab.active').forEach(b=>b!==chip&&b.classList.remove('active'))}
     popular.after(chip);
-    chip.onclick=()=>{valueOnly=!valueOnly;if(valueOnly)state.boardMarket='All';propRenderLimit=24;window.btgCount?.('board:value');render()};
+    // The count covers every game, so a tap while one game is picked widens to all games when that game has none.
+    chip.onclick=()=>{valueOnly=!valueOnly;if(valueOnly){state.boardMarket='All';if(state.boardGame!=='All'&&!goodValue().length)state.boardGame='All'}propRenderLimit=24;window.btgCount?.('board:value');render()};
     bar.querySelectorAll('[data-board-market]').forEach(b=>b.addEventListener('click',()=>{valueOnly=false},{capture:true}));
   };
   const baseRender=render;
@@ -3149,10 +3151,12 @@ function statsProp(l){
       if(v==='predictions'){
         if(!note){note=document.createElement('section');note.id='pmNbaNote';note.className='official-now pm-nba-note';const anchor=document.getElementById('officialNow');(anchor||document.querySelector('main')).before(note)}
         const apps=Object.keys(d.nbaApps?.apps||{}),stateApps=apps.filter(a=>!d.state||names.includes(a));
-        note.innerHTML=`<div class="on-head"><h2>NBA on prediction apps</h2></div><div class="on-empty"><strong>${apps.length?`${htmlEscape(list(apps))} ${apps.length===1?'lists':'list'} NBA player props.`:'Prediction apps don’t list NBA player props yet.'}</strong><span>${apps.length?`NBA prediction picks start once we’ve priced them against the sportsbooks${stateApps.length||!d.state?'':`; none of these apps are open in ${htmlEscape(d.stateName||'your state')} yet`}. Until then, our NBA picks are on the Sportsbook side.`:'We check Novig, ProphetX and the rest every few hours. Until they list NBA props, our NBA picks are on the Sportsbook side.'}</span></div><p class="pm-nba-switch"><button type="button" class="on-toggle" data-view-odds>See tonight’s NBA picks</button></p>`;
+        note.innerHTML=`<div class="on-head"><h2>NBA on prediction apps</h2></div><div class="on-empty"><strong>${apps.length?`${htmlEscape(list(apps))} ${apps.length===1?'lists':'list'} NBA player props.`:'Prediction apps don’t list NBA player props yet.'}</strong><span>${apps.length?`NBA prediction picks start once we’ve priced them against the sportsbooks${stateApps.length||!d.state?'':`; none of these apps are open in ${htmlEscape(d.stateName||'your state')} yet`}. Until then, our NBA picks are on the Sportsbook side.`:'We check Novig, ProphetX and the rest every few hours. Until they list NBA props, our NBA picks are on the Sportsbook side.'}</span></div><p class="pm-nba-switch"><button type="button" class="on-toggle" data-view-odds>See today’s NBA picks and props</button></p>`;
         note.querySelector('[data-view-odds]').onclick=()=>{store(VIEW,'odds');render();resync()};
         note.hidden=false;document.getElementById('officialNow')?.setAttribute('hidden','');document.getElementById('parlaysNow')?.setAttribute('hidden','');
-      }else{if(note)note.hidden=true;const on=document.getElementById('officialNow');if(on&&on.dataset.nbaHidden!=='1')on.removeAttribute('hidden');const pn=document.getElementById('parlaysNow');if(pn&&pn.dataset.empty!=='1')pn.removeAttribute('hidden')}
+        // No NBA app prices on our board yet, so its filters would only ever show an empty list.
+        document.body.classList.add('nba-pm-empty');
+      }else{document.body.classList.remove('nba-pm-empty');if(note)note.hidden=true;const on=document.getElementById('officialNow');if(on&&on.dataset.nbaHidden!=='1')on.removeAttribute('hidden');const pn=document.getElementById('parlaysNow');if(pn&&pn.dataset.empty!=='1')pn.removeAttribute('hidden')}
     }
   }
   // Alerts follow the switch: the phone's alerts are re-saved with the new choice.
