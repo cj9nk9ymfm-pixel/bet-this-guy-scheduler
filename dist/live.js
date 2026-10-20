@@ -298,7 +298,67 @@ function legStatus(prop){
   const snap=liveBoard.gameStats.get(String(game.id));
   return {...liveLegState(prop,game,livePlayerRow(game.id,prop.player)),clock:liveStatusLabel(game),final:game.state==='final',loaded:Array.isArray(snap?.stats),stale:!!snap?.stale};
 }
-window.BTGLive={score:game=>game?liveScoreLabel(game):'',stale:liveSnapshotStale,games:()=>liveBoard.games,statLine:prop=>{const g=liveGameFor(gameName(prop),prop.startsAt),row=g?livePlayerRow(g.id,prop.player):null;if(!row)return '';if(String(prop.sport||'').toUpperCase()==='NBA'){const m=String(row.min??'').match(/^(\d+)/);return [[m?+m[1]:null,'min'],[liveStatValue(row,'pts'),'pts'],[liveStatValue(row,'reb'),'reb'],[liveStatValue(row,'ast'),'ast'],[liveStatValue(row,'fg3m'),'3PM']].filter(([v])=>v!==null).map(([v,l])=>`${v} ${l}`).join(' · ')}const parts=[['passing_completions','passing_attempts','comp/att'],['passing_yards',null,'pass yds'],['passing_touchdowns',null,'pass TD'],['rushing_attempts',null,'carries'],['rushing_yards',null,'rush yds'],['receptions',null,'rec'],['receiving_yards',null,'rec yds'],['receiving_targets',null,'targets'],['field_goals_made','field_goal_attempts','FG'],['extra_points_made',null,'XP']].map(([a,b,label])=>{const x=liveStatValue(row,a);if(x===null||(x===0&&!b))return '';const y=b?liveStatValue(row,b):null;return `${x}${y!==null?`/${y}`:''} ${label}`}).filter(Boolean);return parts.join(' · ')},attachProfile:attachLiveProfile,updateLabels:()=>{updateLiveLabels();updateBoardProgress()},renderCenter:renderLiveCenter,boardProgress,legStatus,gameOf:prop=>liveGameFor(gameName(prop),prop.startsAt)};
+// ---- Live card (bet screens) and row pieces (pick lists) ----
+// Share of regulation played, from the period and clock (NBA 4×12, NFL 4×15).
+function liveElapsed(game,sport){
+  if(!game)return 0;if(game.state==='final')return 1;
+  const per=Number(game.period)||0;if(!per)return 0;if(game.halftime)return .5;
+  const q=(sport==='NBA'?12:15)*60,m=String(game.clock||'').match(/^(\d{1,2}):(\d{2})$/),left=m?+m[1]*60+ +m[2]:null;
+  if(per>4)return 1;return Math.max(0,Math.min(1,((per-1)*q+(left===null?q/2:q-left))/(4*q)));
+}
+const LIVE_LOGO_FIX={NBA:{GSW:'gs',NOP:'no',NYK:'ny',SAS:'sa',UTA:'utah',WAS:'wsh'},NFL:{WAS:'wsh',WSH:'wsh'}};
+function liveLogo(team,sport){const k=String(team?.abbreviation||'').toUpperCase();if(!k)return '';const slug=LIVE_LOGO_FIX[sport]?.[k]||k.toLowerCase();return `https://a.espncdn.com/combiner/i?img=/i/teamlogos/${sport==='NBA'?'nba':'nfl'}/500/${slug}.png&w=80&h=80`}
+// Count stats (assists, catches, threes…) get one pip each; yards and points a bar.
+function livePipCount(prop){const line=Number(prop.line);return Number.isFinite(line)&&line<=9.5&&!/yards|points|\+|pts|\bPRA\b/i.test(String(prop.market||''))?Math.floor(line)+1:0}
+function livePips(prop,s,mini){
+  const n=livePipCount(prop),v=Number.isFinite(s?.value)?s.value:0,under=String(prop.side)==='Under';
+  if(!n)return `<span class="lv-bar${mini?' mini':''}"><i style="width:${Math.max(0,Math.min(100,s?.progress||0)).toFixed(1)}%"></i></span>`;
+  const cells=Array.from({length:n},(_,i)=>`<i class="${i<Math.min(v,n)?'f':''}${i===n-1?(under?' x':' c'):''}"></i>`).join('');
+  const labels=!mini&&n<=8?`<span class="lv-pipl">${Array.from({length:n},(_,i)=>`<span>${i===n-1?`${i+1} · ${under?'LOSES':'CASH'}`:i+1}</span>`).join('')}</span>`:'';
+  return `<span class="lv-pips${mini?' mini':''}">${cells}</span>${labels}`;
+}
+// Average of the bet's stat over the player's last 10 games, when the stats screen has loaded them.
+function liveL10(prop){
+  try{if(typeof playerStatsCache==='undefined')return null;const payload=playerStatsCache.get(`${prop.sport}|${prop.player}|${prop.team}`);
+    const rows=(payload?.stats||[]).slice().sort((a,b)=>Date.parse(b?.game?.date||0)-Date.parse(a?.game?.date||0));
+    const vals=[],mins=[];for(const row of rows){if(prop.sport==='NBA'&&!BTGStats.nbaPlayed(row))continue;const v=BTGStats.metric(prop,row).value;if(v===null)continue;vals.push(v);const m=String(row.min??'').match(/^(\d+)/);if(m)mins.push(+m[1]);if(vals.length>=10)break}
+    if(vals.length<3)return null;const avg=a=>a.reduce((x,y)=>x+y,0)/a.length;return {avg:avg(vals),min:mins.length>=3?avg(mins):null};
+  }catch{return null}
+}
+function liveNeed(prop,s){
+  const line=Number(prop.line),v=s?.value,under=String(prop.side)==='Under';
+  if(v==null)return {big:s?.loaded?'No stats yet':'Loading…',small:''};
+  if(s.key==='hit')return {big:'Hit ✓',small:s.final?'Final':under?'Stayed under':'Cleared the line'};
+  if(s.key==='miss')return {big:'Missed',small:under?`Went over ${line}`:`Needed ${Math.floor(line)+1}`};
+  if(s.final)return {big:'Push',small:'Final'};
+  if(under)return {big:'Safe so far',small:`loses at ${Math.floor(line)+1}`};
+  const n=Math.max(0,Math.floor(line+1-v));return {big:`${n} to go`,small:`needs ${Math.floor(line)+1} to cash`};
+}
+function liveCard(prop){
+  const game=liveGameFor(gameName(prop),prop.startsAt),s=legStatus(prop);if(!game||!s)return '';
+  const sport=String(prop.sport||'NFL').toUpperCase()==='NBA'?'NBA':'NFL',row=livePlayerRow(game.id,prop.player),state=s.key==='hit'?'hit':s.key==='miss'?'miss':'live';
+  const pair=t=>(window.BTGTeamColors?.(t,sport)||['#2a313c'])[0],ab=t=>htmlEscape(String(t?.abbreviation||'').toUpperCase());
+  const logo=t=>{const u=liveLogo(t,sport);return `<span class="lv-lg" style="--tc:${pair(t)}"><em>${ab(t)}</em>${u?`<img src="${u}" alt="" loading="lazy" onerror="this.remove()">`:''}</span>`};
+  const el=liveElapsed(game,sport),per=Number(game.period)||0,ord=['1st','2nd','3rd','4th'][per-1]||'Overtime';
+  const clock=game.state==='final'?'Final':game.halftime?'Halftime':String(liveStatusLabel(game)).replace(' · ',' ');
+  const qbar=[0,1,2,3].map(i=>{const f=Math.max(0,Math.min(1,el*4-i));return `<i style="--f:${(f*100).toFixed(0)}%"></i>`}).join('');
+  const need=liveNeed(prop,s),line=String(prop.line),stale=liveSnapshotStale()||!!s.stale;
+  const facts=[],l10=liveL10(prop),value=Number(s.value);
+  if(game.state==='in_progress'&&state==='live'&&el>=.08&&Number.isFinite(value))facts.push(['ON PACE',(value/el).toFixed(1),htmlEscape(liveShortUnit(prop.market))]);
+  const mins=sport==='NBA'?String(row?.min??'').match(/^(\d+)/):null;if(mins)facts.push(['MINUTES',mins[1],l10?.min?`of ~${Math.round(l10.min)}`:'']);
+  if(l10)facts.push(['LAST 10 AVG',l10.avg.toFixed(1),htmlEscape(liveShortUnit(prop.market))]);
+  const chips=(window.BTGLive.statLine(prop)||'').split(' · ').filter(Boolean).filter(c=>!/ min$/.test(c)).map(c=>{const m=c.match(/^(\S+)\s+(.*)$/);return m?`<span><b>${htmlEscape(m[1])}</b> ${htmlEscape(m[2])}</span>`:`<span>${htmlEscape(c)}</span>`}).join('');
+  const stamp=state==='hit'?'<span class="lv-stamp">CASHED</span>':state==='miss'&&s.final?'<span class="lv-stamp m">MISSED</span>':state==='miss'?'<span class="lv-stamp m">LOST</span>':'';
+  return `<div class="lv-card ${state}${s.final?' final':''}${stale?' stale':''}" style="--ta:${pair(game.away)};--th:${pair(game.home)}">
+<div class="lv-sb"><div class="lv-tm a">${logo(game.away)}<b>${htmlEscape(String(game.awayScore??'–'))}</b></div><div class="lv-clk">${game.state==='in_progress'?'<i class="lv-dot"></i>':''}${htmlEscape(clock)}<small>${game.state==='final'?'Game over':game.halftime?'Break':stale?'Update delayed':per>4?'Overtime':per?`${ord} quarter`:'Live'}</small></div><div class="lv-tm h"><b>${htmlEscape(String(game.homeScore??'–'))}</b>${logo(game.home)}</div></div>
+<div class="lv-q">${qbar}</div>${stamp}
+<div class="lv-count"><strong>${s.value==null?'–':htmlEscape(String(s.value))}<span>/ ${htmlEscape(line)}</span></strong><div class="lv-need"><b>${htmlEscape(need.big)}</b><small>${htmlEscape([need.small,prop.side==='Under'?`Under ${line} ${liveShortUnit(prop.market)}`:''].filter(Boolean).join(' · '))}</small></div></div>
+${livePips(prop,s,false)}
+${facts.length?`<div class="lv-facts">${facts.map(([k,v,u])=>`<div><small>${k}</small><b>${htmlEscape(v)}${u?`<em>${u}</em>`:''}</b></div>`).join('')}</div>`:''}
+${chips?`<div class="lv-chips">${chips}</div>`:''}</div>`;
+}
+const liveShortUnit=m=>String(m||'').toLowerCase().replace('points + rebounds + assists','PRA').replace('3-pointers made','3PM').replace('threes','3PM').replace('assists','ast').replace('rebounds','reb').replace('points','pts').replace('receiving yards','rec yds').replace('rushing yards','rush yds').replace('passing yards','pass yds').replace('receptions','rec').replace('pass completions','comp').replace('rush attempts','carries');
+window.BTGLive={card:liveCard,pips:livePips,need:liveNeed,shortUnit:liveShortUnit,score:game=>game?liveScoreLabel(game):'',stale:liveSnapshotStale,games:()=>liveBoard.games,statLine:prop=>{const g=liveGameFor(gameName(prop),prop.startsAt),row=g?livePlayerRow(g.id,prop.player):null;if(!row)return '';if(String(prop.sport||'').toUpperCase()==='NBA'){const m=String(row.min??'').match(/^(\d+)/);return [[m?+m[1]:null,'min'],[liveStatValue(row,'pts'),'pts'],[liveStatValue(row,'reb'),'reb'],[liveStatValue(row,'ast'),'ast'],[liveStatValue(row,'fg3m'),'3PM']].filter(([v])=>v!==null).map(([v,l])=>`${v} ${l}`).join(' · ')}const parts=[['passing_completions','passing_attempts','comp/att'],['passing_yards',null,'pass yds'],['passing_touchdowns',null,'pass TD'],['rushing_attempts',null,'carries'],['rushing_yards',null,'rush yds'],['receptions',null,'rec'],['receiving_yards',null,'rec yds'],['receiving_targets',null,'targets'],['field_goals_made','field_goal_attempts','FG'],['extra_points_made',null,'XP']].map(([a,b,label])=>{const x=liveStatValue(row,a);if(x===null||(x===0&&!b))return '';const y=b?liveStatValue(row,b):null;return `${x}${y!==null?`/${y}`:''} ${label}`}).filter(Boolean);return parts.join(' · ')},attachProfile:attachLiveProfile,updateLabels:()=>{updateLiveLabels();updateBoardProgress()},renderCenter:renderLiveCenter,boardProgress,legStatus,gameOf:prop=>liveGameFor(gameName(prop),prop.startsAt)};
 document.addEventListener('visibilitychange',()=>{if(document.hidden)clearTimeout(liveBoard.timer);else tickLiveBoard()});
 window.addEventListener('online',tickLiveBoard);
 window.addEventListener('offline',()=>{clearTimeout(liveBoard.timer);liveBoard.error='Offline';updateLiveLabels();renderCurrentGame()});

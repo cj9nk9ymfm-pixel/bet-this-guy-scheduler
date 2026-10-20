@@ -2396,3 +2396,51 @@ body.light .sk-av,body.light .sk-l,body.light .sk-chip{background:linear-gradien
 /* NBA in the prediction view: no app prices on the board yet, so the board's filters are hidden and the note points to the Sportsbook side. */
 html body.nba-pm-empty #propsSection,html body.nba-pm-empty #propTypeTabs,html body.nba-pm-empty #gameTabs,html body.nba-pm-empty #propList,html body.nba-pm-empty #emptyState,html body.nba-pm-empty #marketFilter{display:none!important}
 html body .pm-nba-switch .on-toggle{border-style:solid;background:#2563eb;color:#fff;font-weight:700}
+/* Live card (bet screens): scoreboard in team colors, the count against the line, pips, pace and his line. */
+.lv-card{position:relative;margin:14px 0 4px;border-radius:18px;overflow:hidden;background:#13161b;border:1px solid #262b33;color:#f2f4f7}
+.lv-sb{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;height:56px}
+.lv-tm{display:flex;align-items:center;gap:9px;height:100%;padding:0 14px}.lv-tm b{font:800 24px/1 'Space Grotesk',sans-serif}
+.lv-tm.a{background:linear-gradient(90deg,var(--ta) 0%,transparent 100%)}.lv-tm.h{justify-content:flex-end;background:linear-gradient(270deg,var(--th) 0%,transparent 100%)}
+.lv-lg{position:relative;width:30px;height:30px;flex:none;border-radius:50%;background:var(--tc);border:2px solid rgba(255,255,255,.25);display:grid;place-items:center;overflow:hidden}
+.lv-lg em{font:800 9.5px 'Space Grotesk',sans-serif;font-style:normal;color:#fff;letter-spacing:.02em}.lv-lg img{position:absolute;inset:3px;width:calc(100% - 6px);height:calc(100% - 6px);object-fit:contain;background:#fff;border-radius:50%;padding:2px}
+.lv-clk{text-align:center;font:800 13px 'Space Grotesk',sans-serif;letter-spacing:.04em;padding:0 6px;white-space:nowrap}.lv-clk small{display:block;font:500 10.5px/1.3 'DM Sans',sans-serif;color:#98a1ad;letter-spacing:0}
+.lv-dot{display:inline-block;width:7px;height:7px;margin-right:6px;border-radius:50%;background:#f43f5e;box-shadow:0 0 0 3px rgba(244,63,94,.22);vertical-align:1px;animation:onPulse 1.6s infinite}
+.lv-q{display:flex;gap:2px;height:3px;background:#13161b}.lv-q i{flex:1;background:linear-gradient(90deg,#e5e9ef var(--f),#2b313b var(--f))}
+.lv-count{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;padding:16px 16px 0}
+.lv-count strong{font:800 60px/.9 'Space Grotesk',sans-serif;letter-spacing:-.02em}.lv-count strong span{margin-left:4px;font:600 21px 'Space Grotesk',sans-serif;color:#5d6570;letter-spacing:0}
+.lv-need{text-align:right}.lv-need b{display:block;font:800 21px/1.1 'Space Grotesk',sans-serif;color:#2ee6a8}.lv-need small{font-size:12px;color:#98a1ad}
+.lv-pips{display:flex;gap:6px;padding:14px 16px 4px}.lv-pips i{flex:1;height:12px;border-radius:4px;background:#232831}
+.lv-pips i.f{background:linear-gradient(180deg,#45f0b8,#20c08a);box-shadow:0 0 12px rgba(46,230,168,.32)}
+.lv-pips i.c:not(.f){background:repeating-linear-gradient(135deg,rgba(46,230,168,.18) 0 4px,transparent 4px 8px);box-shadow:inset 0 0 0 1.5px #2ee6a8}
+.lv-pips i.x:not(.f){box-shadow:inset 0 0 0 1.5px #f06060}.lv-pips i.x.f{background:#f06060;box-shadow:none}
+.lv-pipl{display:flex;justify-content:space-between;padding:0 16px;font:600 10.5px 'Space Grotesk',sans-serif;color:#5d6570;letter-spacing:.05em}
+.lv-bar{display:block;height:10px;margin:16px 16px 4px;border-radius:999px;background:#232831;overflow:hidden}.lv-bar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#1fb985,#2ee6a8)}
+.lv-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(0,1fr));margin:14px 16px 0;border:1px solid #232831;border-radius:14px;overflow:hidden}
+.lv-facts div{padding:9px 11px;border-right:1px solid #232831}.lv-facts div:last-child{border-right:0}.lv-facts small{display:block;font:700 9.5px 'Space Grotesk',sans-serif;letter-spacing:.1em;color:#7d8794}.lv-facts b{font:800 16px 'Space Grotesk',sans-serif}.lv-facts em{margin-left:3px;font:400 11px 'DM Sans',sans-serif;font-style:normal;color:#98a1ad}
+.lv-chips{display:flex;flex-wrap:wrap;gap:5px;padding:12px 16px 0;font-size:12px;color:#98a1ad}.lv-chips span{background:#1b1f25;border-radius:8px;padding:5px 8px}.lv-chips b{color:#f2f4f7}
+.lv-card>:last-child{margin-bottom:16px}.lv-card .lv-pipl:last-child,.lv-card .lv-pips:last-child{margin-bottom:12px}
+.lv-stamp{position:absolute;left:50%;top:76px;transform:translateX(-30%) rotate(-8deg);font:800 14px 'Space Grotesk',sans-serif;letter-spacing:.14em;color:#2ee6a8;border:2px solid #2ee6a8;border-radius:8px;padding:2px 9px;background:rgba(19,22,27,.75);pointer-events:none}
+.lv-stamp.m{color:#f06060;border-color:#f06060}
+.lv-card.hit{border-color:rgba(46,230,168,.55);box-shadow:0 0 0 1px rgba(46,230,168,.18),0 10px 36px -12px rgba(46,230,168,.4)}.lv-card.hit .lv-count strong{color:#2ee6a8}
+.lv-card.miss .lv-count strong,.lv-card.miss .lv-need b{color:#f06060}.lv-card.miss .lv-pips i.f{background:#4b5260;box-shadow:none}
+.lv-card.final .lv-dot,.lv-card.stale .lv-dot{animation:none;background:#6b7280;box-shadow:none}
+@media (prefers-reduced-motion:reduce){.lv-dot{animation:none}}
+body.light .lv-card{background:#fff;border-color:#dbe3ee;color:#0f172a}body.light .lv-sb{color:#fff}body.light .lv-sb .lv-clk{color:#0f172a}body.light .lv-sb .lv-clk small{color:#475569}
+body.light .lv-q{background:#fff}body.light .lv-q i{background:linear-gradient(90deg,#0f172a var(--f),#e2e6ec var(--f))}
+body.light .lv-count strong span,body.light .lv-pipl{color:#94a3b8}body.light .lv-need b{color:#047857}body.light .lv-need small,body.light .lv-chips{color:#475569}
+body.light .lv-pips i,body.light .lv-bar{background:#e2e6ec}body.light .lv-pips i.f{background:linear-gradient(180deg,#10b981,#059669);box-shadow:none}body.light .lv-pips i.c:not(.f){box-shadow:inset 0 0 0 1.5px #059669}
+body.light .lv-facts,body.light .lv-facts div{border-color:#e2e6ec}body.light .lv-chips span{background:#f1f5f9}body.light .lv-chips b{color:#0f172a}body.light .lv-stamp{background:rgba(255,255,255,.85);color:#047857;border-color:#047857}body.light .lv-card.hit .lv-count strong{color:#047857}
+/* Pick rows while live: count and what's left on the right, a pip strip under the bet, a colored edge. */
+.on-live.ol-row{white-space:normal}
+.on-live .lv-pips.mini{display:flex;gap:3px;padding:0;margin-top:6px;max-width:170px}.on-live .lv-pips.mini i{height:5px;border-radius:2px}.on-live .lv-pips.mini i.f{box-shadow:none;background:#2ee6a8}
+.on-live .lv-bar.mini{height:5px;margin:6px 0 0;max-width:170px}
+.on-live.miss .lv-pips.mini i.f,.on-live.miss .lv-bar.mini i{background:#4b5260}
+.on-tag.on-tag-count{display:flex;flex-direction:column;align-items:flex-end;height:auto;padding:0;background:none!important;gap:3px}
+.on-tag.on-tag-count strong{font:800 21px/1 'Space Grotesk',sans-serif;color:#f2f4f7}.on-tag.on-tag-count strong span{font:600 12.5px 'Space Grotesk',sans-serif;color:#5d6570}
+.on-tag.on-tag-count small{font:800 10.5px 'Space Grotesk',sans-serif;letter-spacing:.06em;color:#fb7185;display:flex;align-items:center;gap:4px;white-space:nowrap}
+.on-tag.on-tag-count.on-tag-hit strong,.on-tag.on-tag-count.on-tag-hit small{color:#2ee6a8}.on-tag.on-tag-count.on-tag-miss strong,.on-tag.on-tag-count.on-tag-miss small{color:#7d8794}
+html body #officialNowList .on-tag.on-tag-count,html body #pmPicksList .on-tag.on-tag-count{padding:0}
+.on-row.on-live-now:has(.on-tag-count) .on-price{display:none}
+html body .on-row.on-live-now,html body :is(#officialNowList,#parlaysList,#pmPicksList,#pmParlaysList,#livePicksList) .on-row.on-live-now{box-shadow:inset 3px 0 0 #f43f5e!important}html body .on-row.on-live-now.on-live-hit,html body :is(#officialNowList,#parlaysList,#pmPicksList,#pmParlaysList,#livePicksList) .on-row.on-live-now.on-live-hit{box-shadow:inset 3px 0 0 #2ee6a8!important}html body .on-row.on-live-now.on-live-miss,html body :is(#officialNowList,#parlaysList,#pmPicksList,#pmParlaysList,#livePicksList) .on-row.on-live-now.on-live-miss{box-shadow:inset 3px 0 0 #4b5260!important}
+body.light .on-tag.on-tag-count strong{color:#0f172a}body.light .on-tag.on-tag-count small{color:#be123c}body.light .on-tag.on-tag-count.on-tag-hit strong,body.light .on-tag.on-tag-count.on-tag-hit small{color:#047857}body.light .on-tag.on-tag-count.on-tag-miss :is(strong,small){color:#64748b}
+body.light .on-live .lv-pips.mini i{background:#e2e6ec}body.light .on-live .lv-pips.mini i.f{background:#059669}body.light .on-live .lv-bar.mini{background:#e2e6ec}
