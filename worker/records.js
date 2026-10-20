@@ -406,7 +406,7 @@ async function publishNbaPicks(request,env,ctx,now=Date.now()){
   if(!games.length)return {state:'no_games'};
   const boards=[];let failed=0;
   for(let i=0;i<games.length;i+=4){const results=await Promise.allSettled(games.slice(i,i+4).map(async e=>{const url=new URL('/api/event',request.url);url.searchParams.set('eventID',e.eventID);const r=await eventProps(new Request(url),env,ctx,{maxAge:SOON_MAX_AGE});if(!r.ok||r.headers.get('x-feed-cache')==='stale')throw new Error('NBA board unavailable');return (await r.json()).data||[]}));for(const r of results)if(r.status==='fulfilled')boards.push(...r.value);else failed++}
-  await recordNbaExchangePrices(env,boards,now).catch(error=>console.warn('nba_exchange_prices_failed',error.message));
+  const pmRun=await recordNbaExchangePrices(env,boards,now).catch(error=>{console.warn('nba_exchange_prices_failed',error.message);return {}});
   const injuries=await injuryMap(env,'NBA').catch(()=>new Map());boards.splice(0,boards.length,...withoutInjured(boards,injuries));
   const core=list=>list.filter(p=>NBA_OFFICIAL_MARKETS.has(p.market));
   let posted=0;const leans=[],nights=[...new Set(boards.map(b=>nbaNight(Date.parse(b.commence_time))))];
@@ -426,6 +426,9 @@ async function publishNbaPicks(request,env,ctx,now=Date.now()){
     for(const p of core(officialCandidates(tonight,Date.now(),{},{min:.5}))){if(taken.has(p.playerKey)||(perGame.get(p.gameId)||0)>=2||leans.length>=10)continue;perGame.set(p.gameId,(perGame.get(p.gameId)||0)+1);leans.push({eventId:p.gameId,player:p.player,team:p.team||'',market:p.market,side:p.side,line:p.line,odds:p.odds,flagged:p.odds,book:p.book,edge:+Number(p.edge).toFixed(1),gameTime:p.gameTime})}
   }
   await setAppSetting(env,'nba-leans',JSON.stringify({at:new Date(now).toISOString(),leans})).catch(()=>{});
+  // New NBA picks (sportsbook or prediction app) go out at once, like NFL ones:
+  // phone alerts and X posts in their own runs, not on the next scheduled one.
+  if(posted>0||Number(pmRun?.picks)>0)await announceNow(env).catch(error=>console.warn('announce_now_failed',error.message));
   if(failed)throw new Error('Some NBA boards were unavailable; retry required');
   return {state:'completed',games:games.length,boards:boards.length,posted};
 }
@@ -2938,7 +2941,10 @@ async function sendNbaAlerts(env,now=Date.now()){
   await setAppSetting(env,'nba-alert-for',fresh.at(-1).posted_at);
   const only=((await env.DB.prepare('SELECT endpoint FROM push_subscriptions WHERE COALESCE(alert_nba,1)=1').all().catch(()=>({results:[]}))).results||[]).map(r=>r.endpoint);
   if(!only.length)return {sent:0,picks:fresh.length};
-  return {...await sendPickAlerts(env,now,only),picks:fresh.length};
+  const out=await sendPickAlerts(env,now,only);
+  // When it went and to how many phones, to check delivery later.
+  await setAppSetting(env,'nba-alert-log',`${new Date(now).toISOString()} picks ${fresh.length} sent ${out.sent??0} of ${only.length}`).catch(()=>{});
+  return {...out,picks:fresh.length};
 }
 // One-off email (partner outreach): the app_settings key email-custom holds
 // JSON {id,to,subject,text,from?,bcc?}. Sent once per id, plain text, from a
@@ -4051,8 +4057,10 @@ async function postNbaPredictionToX(env,now=Date.now()){
 async function postNbaPicksToX(env,now=Date.now()){
   if(!env.DB||!xReady(env)||await appSetting(env,'x-nba')==='hold')return {posted:0,disabled:true};
   const rows=(await env.DB.prepare("SELECT * FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'nba|%' AND kind='prop' AND posted_at>? AND game_time>? ORDER BY posted_at LIMIT 20").bind(new Date(now-24*3600000).toISOString(),new Date(now+5*60000).toISOString()).all()).results||[];
-  let today=await xHeadCount(env,'xi:nba|',now);
+  let today=await xHeadCount(env,'xi:nba|',now),posted=0;
   for(const r of rows){
+    // Two a run: picks that lock together go out together.
+    if(posted>=2)break;
     const f=recordLegs(r)[0]||{},edge=Number(f.edge);
     if(today>=X_HEAD.sb.day&&!(edge>=NBA_TOP))continue;
     // Already on X (its own post, or the night's card): never again.
@@ -4063,10 +4071,10 @@ async function postNbaPicksToX(env,now=Date.now()){
     try{const sent=await xPost(env,text,mediaId);await xDone(env,`xi:${r.id}`,now);
       if(sent?.data?.id)await setAppSetting(env,`xid:${r.id}`,String(sent.data.id)).catch(()=>{});
       await env.DB.prepare('INSERT OR IGNORE INTO app_settings (key,value) VALUES (?,?)').bind(`x-nba-pick:${r.id}`,new Date(now).toISOString()).run().catch(()=>{});
-      await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} nba pick ${sent?.data?.id||''} ${r.id}`).catch(()=>{});return {posted:1,graphic:Boolean(mediaId)}}
-    catch(error){await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(`xi:${r.id}`).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
+      await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} nba pick ${sent?.data?.id||''} ${r.id}`).catch(()=>{});posted++;today++;continue}
+    catch(error){await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(`xi:${r.id}`).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {posted,error:error.message}}
   }
-  return {posted:0};
+  return {posted};
 }
 async function postNbaCardToX(env,now=Date.now()){
   if(!env.DB||!xReady(env)||await appSetting(env,'x-nba')==='hold')return {posted:0,disabled:true};
@@ -4292,8 +4300,9 @@ async function runXPosts(env,now=Date.now()){
   const recap=picks.posted||predictions.posted||combo.posted||weekly.posted||final.posted||slate.posted||pin.posted?{posted:0,waiting:true}:await postDayRecapToX(env,now);
   const proof=await postProofToX(env,now);
   const nbaLaunch=await postNbaLaunchToX(env,now).catch(error=>({posted:0,error:error.message}));
-  const nba=picks.posted||predictions.posted||combo.posted||weekly.posted||final.posted||slate.posted?{posted:0,waiting:true}:await postNbaCardToX(env,now).catch(error=>({posted:0,error:error.message}));
-  const nbaPick=picks.posted||predictions.posted||nba.posted?{posted:0,waiting:true}:await postNbaPicksToX(env,now).catch(error=>({posted:0,error:error.message}));
+  // New NBA picks first, the moment they lock; the night's card takes the next run.
+  const nbaPick=picks.posted||predictions.posted?{posted:0,waiting:true}:await postNbaPicksToX(env,now).catch(error=>({posted:0,error:error.message}));
+  const nba=picks.posted||predictions.posted||combo.posted||weekly.posted||final.posted||slate.posted||nbaPick.posted?{posted:0,waiting:true}:await postNbaCardToX(env,now).catch(error=>({posted:0,error:error.message}));
   const nbaPm=picks.posted||predictions.posted||nba.posted||nbaPick.posted?{posted:0,waiting:true}:await postNbaPredictionToX(env,now).catch(error=>({posted:0,error:error.message}));
   const results=picks.posted||predictions.posted||combo.posted||weekly.posted||final.posted||slate.posted||pin.posted||recap.posted?{posted:0,waiting:true}:await postResultsToX(env,now);
   // The pinned summary waits for a run with nothing else heavy.
