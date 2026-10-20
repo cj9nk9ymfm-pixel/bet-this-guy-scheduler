@@ -6,7 +6,7 @@ const context=vm.createContext({URL,URLSearchParams,Request,Response,Headers,Abo
 const template=read('worker/index.template.js');
 vm.runInContext(template.slice(template.indexOf('const API_BASE')).replace('__MOVEMENT_SERVER__',read('worker/movement.js')).replace('__LIVE_SERVER__',read('worker/live.js')).replace('__STATS_SHARED__',read('dist/stats.js')).replace('__RECORDS_SERVER__',read('worker/records.js')).replace('__ACCOUNTS_SERVER__',read('worker/accounts.js')).replace('export default {','this.worker={'),context);
 const fs=require('node:fs'),db=new DatabaseSync(':memory:');
-for(const f of fs.readdirSync('drizzle').filter(f=>/^000[0-2]_|^0006_|^0008_|^0013_|0025_|0026_|0027_|0031_|0032_|0036_|0033_|0028_|0030_|0018_/.test(f)).sort())db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''));
+for(const f of fs.readdirSync('drizzle').filter(f=>/^000[0-2]_|^0006_|^0008_|^0013_|0025_|0026_|0027_|0031_|0032_|0036_|0037_|0033_|0028_|0030_|0018_/.test(f)).sort())db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''));
 const wrap=(sql,args=[])=>({bind(...values){return wrap(sql,values)},async first(){return db.prepare(sql).get(...args)||null},async all(){return{results:db.prepare(sql).all(...args)}},async run(){const r=db.prepare(sql).run(...args);return{success:true,meta:{changes:Number(r.changes)}}}});
 context.env={DB:{prepare:sql=>wrap(sql),async batch(list){for(const s of list)await s.run()}},THE_ODDS_API_KEY:'k',BALLDONTLIE_API_KEY:'b'};
 const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v));
@@ -189,7 +189,7 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
    const pts={key:'player_points',last_update:upd,outcomes:[{name:'Over',description:'Cade Cunningham',point:25.5,price:-105},{name:'Under',description:'Cade Cunningham',point:25.5,price:-115}]};
    context.fetch=async url=>{url=String(url);nbaUrls.push(url);if(url.includes('/basketball_nba/events/n1/odds'))return new Response(JSON.stringify({id:'n1',bookmakers:[{key:'novig',title:'Novig',markets:[pts]},{key:'draftkings',title:'DK',markets:[pts]}]}));return new Response(null,{status:404})};
    context.nbaBoards=[{id:'n1',eventID:'NBA--n1',commence_time:nbaKick},{id:'n2',eventID:'NBA--n2',commence_time:new Date(now+60*3600000).toISOString()}];
-   assert.deepEqual(J(await run(`recordNbaExchangePrices(env,nbaBoards,${now})`)),{games:1,picks:0},'only games within 36 hours');
+   assert.deepEqual(J(await run(`recordNbaExchangePrices(env,nbaBoards,${now})`)),{games:1,picks:0,parlays:0},'only games within 36 hours');
    assert.ok(nbaUrls[0].includes('markets=player_points%2Cplayer_rebounds%2Cplayer_assists%2Cplayer_threes%2Cplayer_points_rebounds_assists')&&nbaUrls[0].includes('regions=us_ex'),'the five core NBA markets on the apps');
    await run(`recordNbaExchangePrices(env,nbaBoards,${now+10*60000})`);assert.equal(nbaUrls.length,1,'not again within 30 minutes');
    const nb=J(await (await run(`predictionBoardResponse(${JSON.stringify({url:'https://x/api/predictions/board?event=NBA--n1&state=TX',cf:{}})},env,${now+11*60000})`)).json());
@@ -214,6 +214,18 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
    db.prepare("DELETE FROM prediction_picks WHERE event_id='NBA--n1'").run();db.prepare("DELETE FROM exchange_prices WHERE event_id LIKE 'NBA--%'").run();
    assert.equal(J(await run(`recordNbaExchangePrices(env,nbaBoards,${now})`)).picks,0,'nba-pm-picks=off stops them');
    db.prepare("DELETE FROM app_settings WHERE key IN ('nba-pm-picks','nba-pm-audit')").run();db.prepare("DELETE FROM exchange_prices WHERE event_id LIKE 'NBA--%'").run();context.fetch=saveFetch}
+  // NBA parlays: tracked privately (own table, never in the prediction view), graded from box scores.
+  {const tip=new Date(now+3*3600000).toISOString(),leg=(g,player,line,netOdds,edge)=>({exchange:'ProphetX',eventId:`NBA--${g}`,player,team:g,market:'Points',side:'Over',line,odds:netOdds,netOdds,edge,gameTime:tip,fairPct:55});
+   const pool=[leg('p1','Cade Cunningham',24.5,120,3),leg('p2','Jalen Brunson',25.5,115,2.5),leg('p3','Jayson Tatum',26.5,110,2),leg('p4','Luka Doncic',30.5,105,2.2)];context.__pool=pool;
+   const out=J(await run(`recordNbaPmParlays(env,__pool,${now})`));assert.ok(out.posted>=1&&out.posted<=2,'up to 2 a day: '+JSON.stringify(out));
+   const rows=db.prepare('SELECT * FROM nba_pm_parlays').all();assert.ok(rows.every(r=>r.exchange==='ProphetX'&&r.id.startsWith('nbap|')));
+   assert.equal(J(await run(`recordNbaPmParlays(env,__pool,${now+60000})`)).posted,0,'no repeats');
+   assert.ok(!/nba_pm_parlays/.test(run('predictionsResponse.toString()')),'never in the prediction view');
+   const keep=context.recordPlayerStats;context.recordPlayerStats=async r=>({scoreboardFinal:true,min:'34',pts:r.player==='Jalen Brunson'?20:35});run('recordPlayerStats=globalThis.recordPlayerStats');
+   const g=J(await run(`gradeNbaPmParlays(env,${Date.parse(tip)+4*3600000})`));assert.equal(g.graded,rows.length);
+   const graded=db.prepare('SELECT legs_json,result FROM nba_pm_parlays').all();
+   for(const r of graded)assert.equal(r.result,JSON.parse(r.legs_json).some(l=>l.player==='Jalen Brunson')?'lost':'won');
+   if(keep){context.recordPlayerStats=keep;run('recordPlayerStats=globalThis.recordPlayerStats')}db.prepare('DELETE FROM nba_pm_parlays').run()}
   // One direction per player per game across sportsbook and prediction picks (Bo Melton, Oct 18).
   const gt=new Date(Date.now()+86400000).toISOString();
   db.prepare("INSERT INTO public_recommendations(id,kind,player,market,side,line,odds,game_time,legs_json,posted_at,status,source) VALUES(?,?,?,?,?,?,?,?,?,?,?,'market-verified-v2')").run('official|x|props|prop|bo','prop','Bo Melton','Receptions','Over',1.5,112,gt,JSON.stringify([{player:'Bo Melton',market:'Receptions',side:'Over',line:1.5,odds:112,gameId:'NFL--g9'}]),new Date().toISOString(),'pending');

@@ -3960,17 +3960,57 @@ async function recordNbaPredictionPicks(env,board,ex,fairs,now,ctx){
   }
   return picks.map(p=>env.DB.prepare('INSERT OR IGNORE INTO prediction_picks (id,exchange,event_id,player,team,market,side,line,odds,net_odds,fair_pct,edge,game_time,posted_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(`pm|${gameId}|${normalizedName(p.player)}`,p.exchange,gameId,p.player,p.team,p.market,p.side,p.line,p.odds,p.netOdds,+p.fair.toFixed(2),+p.edge.toFixed(2),p.gameTime,new Date(now).toISOString()));
 }
+// NBA prediction parlays, tracked privately in nba_pm_parlays (never on the
+// site, X, alerts or the record): the NFL parlay rules (ProphetX, 2 short and
+// 1 mid, at most 2 a day) per NBA night, graded from box scores.
+async function recordNbaPmParlays(env,pool,now=Date.now()){
+  if(!env.DB)return {posted:0};
+  const night=nbaNight(now),existing=(await env.DB.prepare('SELECT tier,legs_json,game_time FROM nba_pm_parlays WHERE night=?').bind(night).all()).results||[];
+  const picks=new Set((((await env.DB.prepare("SELECT event_id,player FROM prediction_picks WHERE event_id LIKE 'NBA--%' AND game_time>?").bind(new Date(now).toISOString()).all()).results)||[]).map(r=>`${r.event_id}|${normalizedName(r.player)}`));
+  const dirs=await pickDirections(env,now),listed=await injuryMap(env,'NBA').catch(()=>new Map());
+  const legs=pool.filter(p=>!picks.has(`${p.eventId}|${normalizedName(p.player)}`)&&!injuryClass(listed.get(normalizedName(p.player))?.status)&&sameDirection(dirs,p.eventId,p.player,p.side));
+  const plan=predictionParlayPlan(legs,existing,night,now),stamp=new Date(now).toISOString();
+  const statements=plan.map(p=>{const id=`nbap|${night}|${p.tier}|${p.exchange}|${p.legs.map(l=>`${l.eventId}:${normalizedName(l.player)}:${l.market}`).sort().join(',')}`;
+    return env.DB.prepare('INSERT OR IGNORE INTO nba_pm_parlays (id,night,tier,exchange,legs_json,odds,game_time,posted_at) VALUES (?,?,?,?,?,?,?,?)').bind(id.slice(0,480),night,p.tier,p.exchange,JSON.stringify(p.legs),p.odds,p.legs.map(l=>l.gameTime).sort()[0],stamp)});
+  if(statements.length)await env.DB.batch(statements);
+  return {posted:statements.length};
+}
+// A leg is graded from the final box score; a player who didn't play is no action.
+async function gradeNbaPmParlays(env,now=Date.now(),limit=15){
+  if(!env.DB||!env.BALLDONTLIE_API_KEY)return {graded:0};
+  const rows=(await env.DB.prepare('SELECT * FROM nba_pm_parlays WHERE result IS NULL AND game_time<? ORDER BY game_time LIMIT ?').bind(new Date(now-2*3600000).toISOString(),limit).all().catch(()=>({results:[]}))).results||[];
+  const cache=new Map(),statements=[],stamp=new Date(now).toISOString();let graded=0;
+  for(const r of rows){
+    let legs;try{legs=JSON.parse(r.legs_json)}catch{continue}
+    let changed=false;
+    for(const l of legs){
+      if(l.result||Date.parse(l.gameTime)>now-2*3600000)continue;
+      const record={sport:'NBA',player:l.player,team:l.team,gameTime:l.gameTime,market:l.market,side:l.side,line:l.line};
+      const stat=await recordPlayerStats(record,env,undefined,cache).catch(()=>null);
+      if(!stat||!stat.scoreboardFinal||stat.missingPlayerStats)continue;
+      if(!BTGStats.nbaPlayed(stat)){l.result='push';changed=true;continue}
+      const value=BTGStats.metric(record,stat).value,res=value===null?null:BTGStats.grade(l.side,l.line,value);
+      if(res){l.result=res;l.actual=value;changed=true}
+    }
+    const result=legs.some(l=>l.result==='lost')?'lost':legs.every(l=>l.result)?(legs.every(l=>l.result==='push')?'push':'won'):null;
+    if(changed||result)statements.push(env.DB.prepare('UPDATE nba_pm_parlays SET legs_json=?,result=?,graded_at=? WHERE id=?').bind(JSON.stringify(legs),result,result?stamp:null,r.id));
+    if(result)graded++;
+  }
+  if(statements.length)await env.DB.batch(statements);
+  return {graded,checked:rows.length};
+}
 async function recordNbaExchangePrices(env,boards,now=Date.now()){
   if(!env.DB||!env.THE_ODDS_API_KEY||(oddsCreditsLeft!==null&&oddsCreditsLeft<LOW_ODDS_CREDITS))return {skipped:true};
   const stamp=new Date(now).toISOString(),fetchedAt=new Map(((await env.DB.prepare("SELECT event_id,updated_at FROM exchange_prices WHERE event_id LIKE 'NBA--%' AND game_time>?").bind(stamp).all().catch(()=>({results:[]}))).results||[]).map(r=>[r.event_id,Date.parse(r.updated_at)]));
   const due=boards.map(b=>({b,id:b.eventID||`NBA--${b.id}`,kick:Date.parse(b.commence_time)})).filter(({id,kick})=>{if(!(kick>now+60000)||kick-now>36*3600000)return false;const age=now-(fetchedAt.get(id)||0);return age>=(kick-now<=6*3600000?29*60000:3*3600000-60000)}).sort((a,b)=>a.kick-b.kick).slice(0,8);
   const statements=[],fairs=sportsbookFairs(boards,now,NBA_PM.books),fairs3=new Map([...sportsbookFairs(boards,now,3)].filter(([k])=>!fairs.has(k))),audit={at:stamp,games:[],apps:{},top:[]},on=await appSetting(env,'nba-pm-picks')!=='off';
-  let ctx=null,picks=0;
+  let ctx=null,picks=0;const pool=[];
   for(const {b,id,kick} of due){try{
     const ex=await fetchNbaExchangeOdds(oddsEventId(id),env.THE_ODDS_API_KEY);
     statements.push(env.DB.prepare('INSERT OR REPLACE INTO exchange_prices (event_id,game_time,prices_json,updated_at) VALUES (?,?,?,?)').bind(id,new Date(kick).toISOString(),JSON.stringify(exchangePriceList(ex)),stamp));
     if(kick-now>PREDICTION_LOCK)continue;
     nbaPmAudit(audit,b,ex,fairs);
+    pool.push(...predictionCandidates(b,ex,fairs,now,{min:.5,max:1,perExchange:true}).filter(p=>NBA_PM.markets.has(p.market)));
     // Price test (not shown): app lines 1+ point over fair, priced from 4+
     // sportsbooks (nba4) and from exactly 3 (nba3), each with its closing
     // price, to see whether 3-book lines or a lower bar would hold up.
@@ -3984,8 +4024,10 @@ async function recordNbaExchangePrices(env,boards,now=Date.now()){
     const made=await recordNbaPredictionPicks(env,b,ex,fairs,now,ctx);statements.push(...made);picks+=made.length;
   }catch(error){console.warn('nba_exchange_game_failed',error.message)}}
   if(statements.length)await env.DB.batch(statements);
+  // Private parlay test, after this run's picks are saved (their players are left out).
+  const parlays=pool.length>=2?await recordNbaPmParlays(env,pool,now).catch(error=>({error:error.message})):{posted:0};
   if(audit.games.length){audit.top=audit.top.sort((x,y)=>y[7]-x[7]).slice(0,20);audit.fairs=fairs.size;for(const a of Object.values(audit.apps)){a.avg=a.priced?+(a.sum/a.priced).toFixed(2):null;delete a.sum}await setAppSetting(env,'nba-pm-audit',JSON.stringify(audit)).catch(()=>{})}
-  return {games:due.length,picks};
+  return {games:due.length,picks,parlays:parlays.posted||0};
 }
 async function nbaExchangeStatus(env){try{const s=JSON.parse(await appSetting(env,'nba-exchange-check')||'null');return s?{at:s.at,apps:s.apps||{}}:null}catch{return null}}
 // NBA launch: a five-post thread at 9 AM PT on opening day (Tim's call), with
