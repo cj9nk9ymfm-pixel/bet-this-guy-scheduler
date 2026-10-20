@@ -2393,3 +2393,6 @@ html body .price-view button[aria-pressed="true"]{background:#2563eb;color:#fff}
 @media(min-width:1180px){html body #homeTagline{display:none}}
 @media(min-width:721px){html body #jumpBar .jump-links{margin-right:auto}}
 body.light .sk-av,body.light .sk-l,body.light .sk-chip{background:linear-gradient(90deg,#e6ebf1 0%,#f3f6f9 50%,#e6ebf1 100%);background-size:200% 100%}
+/* NBA in the prediction view: no app prices on the board yet, so the board's filters are hidden and the note points to the Sportsbook side. */
+html body.nba-pm-empty #propsSection,html body.nba-pm-empty #propTypeTabs,html body.nba-pm-empty #gameTabs,html body.nba-pm-empty #propList,html body.nba-pm-empty #emptyState,html body.nba-pm-empty #marketFilter{display:none!important}
+html body .pm-nba-switch .on-toggle{border-style:solid;background:#2563eb;color:#fff;font-weight:700}

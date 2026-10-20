@@ -9,7 +9,8 @@ function node(id=''){
 }
 function client(width=390,storage={}){
   const nodes=new Map(),requests=[],events={}; const get=s=>{if(!nodes.has(s))nodes.set(s,node(s));return nodes.get(s)};
-  const store=new Map(Object.entries(storage));
+  // NFL unless a test asks for NBA (the site opens on NBA on NBA nights from Oct 20).
+  const store=new Map(Object.entries({'btg-league':'NFL',...storage}));
   const doc={hidden:false,body:node('body'),documentElement:node('html'),querySelector:get,querySelectorAll:()=>[],createElement:tag=>node(tag),addEventListener:(name,fn)=>(events[name]??=[]).push(fn)};
   for(const [key,v] of Object.entries({wager:'10',oddsSlider:'19',legsSlider:'5'}))get('#'+key).value=v;
   const sandbox={document:doc,innerWidth:width,innerHeight:844,scrollY:0,location:new URL('https://test.invalid/'),history:{pushState(){}},navigator:{onLine:true},
