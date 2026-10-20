@@ -4044,6 +4044,29 @@ async function postNbaPredictionToX(env,now=Date.now()){
     catch(error){await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}}
   return {posted:0};
 }
+// NBA singles on X the moment they lock, like the NFL ones: the photo
+// graphic, 3 a day (top picks, 2.5+ points, always post), one a run. The
+// rest go on the night's card; a pick posted here never repeats as an
+// "added" reply under the card.
+async function postNbaPicksToX(env,now=Date.now()){
+  if(!env.DB||!xReady(env)||await appSetting(env,'x-nba')==='hold')return {posted:0,disabled:true};
+  const rows=(await env.DB.prepare("SELECT * FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'nba|%' AND kind='prop' AND posted_at>? AND game_time>? ORDER BY posted_at LIMIT 20").bind(new Date(now-24*3600000).toISOString(),new Date(now+5*60000).toISOString()).all()).results||[];
+  let today=await xHeadCount(env,'xi:nba|',now);
+  for(const r of rows){
+    const f=recordLegs(r)[0]||{},edge=Number(f.edge);
+    if(today>=X_HEAD.sb.day&&!(edge>=NBA_TOP))continue;
+    if(await appSetting(env,`xid:${r.id}`)||!(await xClaimable(env,`xi:${r.id}`,now))||!(await xClaim(env,`xi:${r.id}`,now)))continue;
+    let mediaId=null;
+    try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(xCardSvg(await xCardData(env,r,await nbaRecordSummary(env)))))}catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} nba pick graphic: ${error.message}`).catch(()=>{})}
+    const text=xShort(`${edge>=NBA_TOP?'⭐ Top pick':'🔒 Official pick'} · NBA\n${r.player} ${weeklyLegText(r)}\n${[`${weeklyOdds(r.odds)}${f.book?` at ${f.book}`:''}`,xMatchup(f.team),xShortWhen(r.game_time)].filter(Boolean).join(' · ')}\n\nLocked before tip-off. Every pick graded in public, link in bio. 21+`);
+    try{const sent=await xPost(env,text,mediaId);await xDone(env,`xi:${r.id}`,now);
+      if(sent?.data?.id)await setAppSetting(env,`xid:${r.id}`,String(sent.data.id)).catch(()=>{});
+      await env.DB.prepare('INSERT OR IGNORE INTO app_settings (key,value) VALUES (?,?)').bind(`x-nba-pick:${r.id}`,new Date(now).toISOString()).run().catch(()=>{});
+      await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} nba pick ${sent?.data?.id||''} ${r.id}`).catch(()=>{});return {posted:1,graphic:Boolean(mediaId)}}
+    catch(error){await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(`xi:${r.id}`).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
+  }
+  return {posted:0};
+}
 async function postNbaCardToX(env,now=Date.now()){
   if(!env.DB||!xReady(env)||await appSetting(env,'x-nba')==='hold')return {posted:0,disabled:true};
   const night=nbaNight(now),key=`x-nba-card:${night}`,rows=await nbaRows(env,night);
@@ -4269,11 +4292,12 @@ async function runXPosts(env,now=Date.now()){
   const proof=await postProofToX(env,now);
   const nbaLaunch=await postNbaLaunchToX(env,now).catch(error=>({posted:0,error:error.message}));
   const nba=picks.posted||predictions.posted||combo.posted||weekly.posted||final.posted||slate.posted?{posted:0,waiting:true}:await postNbaCardToX(env,now).catch(error=>({posted:0,error:error.message}));
-  const nbaPm=picks.posted||predictions.posted||nba.posted?{posted:0,waiting:true}:await postNbaPredictionToX(env,now).catch(error=>({posted:0,error:error.message}));
+  const nbaPick=picks.posted||predictions.posted||nba.posted?{posted:0,waiting:true}:await postNbaPicksToX(env,now).catch(error=>({posted:0,error:error.message}));
+  const nbaPm=picks.posted||predictions.posted||nba.posted||nbaPick.posted?{posted:0,waiting:true}:await postNbaPredictionToX(env,now).catch(error=>({posted:0,error:error.message}));
   const results=picks.posted||predictions.posted||combo.posted||weekly.posted||final.posted||slate.posted||pin.posted||recap.posted?{posted:0,waiting:true}:await postResultsToX(env,now);
   // The pinned summary waits for a run with nothing else heavy.
   const summary=picks.posted||predictions.posted||combo.posted||weekly.posted||final.posted||slate.posted||pin.posted||recap.posted||results.posted?{posted:0,waiting:true}:await postSummaryToX(env,now);
-  return {picks,weekly,closing,combo,final,catchUp,slate,pmSlate,pin,recap,proof,nbaLaunch,nba,nbaPm,predictions,results,summary};
+  return {picks,weekly,closing,combo,final,catchUp,slate,pmSlate,pin,recap,proof,nbaLaunch,nba,nbaPick,nbaPm,predictions,results,summary};
 }
 // "My book" alerts: a good-value price at one of someone's own sportsbooks.
 // The fair price always comes from every book (3+ pricing both sides, the same
