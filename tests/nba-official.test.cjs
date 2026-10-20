@@ -86,10 +86,14 @@ const run=c=>vm.runInContext(c,context),req='new Request("https://betthisguy.com
   // Singles also get their own post as they lock (two a run, 3 a day), never twice.
   assert.equal((await run(`postNbaPicksToX(env,${cardAt+30000})`)).posted,0,'a single already on the card gets no post of its own');
   db.prepare("DELETE FROM app_settings WHERE key LIKE 'x-nba-pick:%'").run();
+  // A parlay locked after the singles gets its own post too.
+  db.prepare("INSERT INTO public_recommendations (id,kind,sport,combined_odds,game_id,game_time,legs_json,posted_at,status,source,created_at) VALUES ('nba|test|swing|parlay|v2|p1','parlay','NBA',264,'NBA--x',?,?,?,'pending','market-verified-v2','2026-10-01')").run(tip1,JSON.stringify([{player:'Jayson Tatum',market:'Points',side:'Over',line:27.5,odds:115,sport:'NBA',gameTime:tip1,team:'x'},{player:'Victor Wembanyama',market:'Rebounds',side:'Over',line:11.5,odds:114,sport:'NBA',gameTime:tip1,team:'x'}]),new Date(cardAt).toISOString());
   {const before=posts.length,r1=await run(`postNbaPicksToX(env,${cardAt+60000})`);assert.equal(r1.posted,2,'picks that lock together post together');
    assert.match(posts[before].text,/^(⭐ Top pick|🔒 Official pick) · NBA\n/);assert.ok(!/https?:|\.com\b/.test(posts[before].text),'no links');
    for(let i=0;i<6;i++)await run(`postNbaPicksToX(env,${cardAt+120000+i*60000})`);const own=posts.slice(before).filter(p=>/ · NBA\n/.test(p.text));
-   assert.ok(own.length<=3||own.length===new Set(own.map(p=>p.text)).size,'no pick posted twice');posts.splice(before)}assert.match(posts[0].text,/Victor Wembanyama Over 11.5 rebounds \(\+114, DraftKings\)/);
+   assert.ok(own.length===new Set(own.map(p=>p.text)).size,'no pick posted twice');
+   assert.ok(own.some(p=>/^🔒 Official parlay · NBA\n2-leg parlay \+264\n• Jayson Tatum Over 27.5 points/.test(p.text)),'the parlay posts on its own');
+   db.prepare("DELETE FROM public_recommendations WHERE id='nba|test|swing|parlay|v2|p1'").run();posts.splice(before)}assert.match(posts[0].text,/Victor Wembanyama Over 11.5 rebounds \(\+114, DraftKings\)/);
   // A hold stops NBA posts.
   db.prepare("INSERT INTO app_settings (key,value) VALUES ('x-nba','hold')").run();
   assert.equal((await run(`postNbaRepliesToX(env,${cardAt})`)).disabled,true);

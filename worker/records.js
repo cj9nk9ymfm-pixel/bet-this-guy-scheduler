@@ -2896,7 +2896,7 @@ async function sendPickAlerts(env,now=Date.now(),only=null){
   for(let i=0;i<subs.length;i+=20){
     await Promise.all(subs.slice(i,i+20).map(async sub=>{
       try{
-        const response=await fetch(sub.endpoint,{method:'POST',headers:{TTL:'21600',Urgency:'normal','Content-Length':'0',Authorization:await vapidAuthorization(env,sub.endpoint,now)},signal:AbortSignal.timeout(10000)});
+        const response=await fetch(sub.endpoint,{method:'POST',headers:{TTL:'21600',Urgency:'high','Content-Length':'0',Authorization:await vapidAuthorization(env,sub.endpoint,now)},signal:AbortSignal.timeout(10000)});
         if(response.status===404||response.status===410)return env.DB.prepare('DELETE FROM push_subscriptions WHERE endpoint=?').bind(sub.endpoint).run();
         if(response.ok){sent++;return sub.failures?env.DB.prepare('UPDATE push_subscriptions SET failures=0 WHERE endpoint=?').bind(sub.endpoint).run():null}
         throw new Error(`${response.status} ${(await response.text().catch(()=>'')).slice(0,80)}`.trim());
@@ -4098,18 +4098,19 @@ async function postNbaPredictionToX(env,now=Date.now()){
 // "added" reply under the card.
 async function postNbaPicksToX(env,now=Date.now()){
   if(!env.DB||!xReady(env)||await appSetting(env,'x-nba')==='hold')return {posted:0,disabled:true};
-  const rows=(await env.DB.prepare("SELECT * FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'nba|%' AND kind='prop' AND posted_at>? AND game_time>? ORDER BY posted_at LIMIT 20").bind(new Date(now-24*3600000).toISOString(),new Date(now+5*60000).toISOString()).all()).results||[];
+  const rows=(await env.DB.prepare("SELECT * FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'nba|%' AND kind IN ('prop','parlay') AND posted_at>? AND game_time>? ORDER BY posted_at LIMIT 20").bind(new Date(now-24*3600000).toISOString(),new Date(now+5*60000).toISOString()).all()).results||[];
   let today=await xHeadCount(env,'xi:nba|',now),posted=0;
   for(const r of rows){
     // Two a run: picks that lock together go out together.
     if(posted>=2)break;
-    const f=recordLegs(r)[0]||{},edge=Number(f.edge);
-    if(today>=X_HEAD.sb.day&&!(edge>=NBA_TOP))continue;
+    // Every official NBA pick and parlay gets its own post the moment it locks (no daily cap).
+    const legs=recordLegs(r),f=legs[0]||{},edge=Number(f.edge),parlay=r.kind==='parlay';
     // Already on X (its own post, or the night's card): never again.
     if(await appSetting(env,`xid:${r.id}`)||await appSetting(env,`x-nba-pick:${r.id}`)||!(await xClaimable(env,`xi:${r.id}`,now))||!(await xClaim(env,`xi:${r.id}`,now)))continue;
     let mediaId=null;
     try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(xCardSvg(await xCardData(env,r,await nbaRecordSummary(env)))))}catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} nba pick graphic: ${error.message}`).catch(()=>{})}
-    const text=xShort(`${edge>=NBA_TOP?'⭐ Top pick':'🔒 Official pick'} · NBA\n${r.player} ${weeklyLegText(r)}\n${[`${weeklyOdds(r.odds)}${f.book?` at ${f.book}`:''}`,xMatchup(f.team),xShortWhen(r.game_time)].filter(Boolean).join(' · ')}\n\nLocked before tip-off. Every pick graded in public, link in bio. 21+`);
+    const text=parlay?xShort(`🔒 Official parlay · NBA\n${legs.length}-leg parlay ${weeklyOdds(r.combined_odds)}\n${legs.map(l=>`• ${l.player} ${weeklyLegText(l)}`).join('\n')}\n${xShortWhen(r.game_time)}\n\nLocked before tip-off. Every pick graded in public, link in bio. 21+`)
+      :xShort(`${edge>=NBA_TOP?'⭐ Top pick':'🔒 Official pick'} · NBA\n${r.player} ${weeklyLegText(r)}\n${[`${weeklyOdds(r.odds)}${f.book?` at ${f.book}`:''}`,xMatchup(f.team),xShortWhen(r.game_time)].filter(Boolean).join(' · ')}\n\nLocked before tip-off. Every pick graded in public, link in bio. 21+`);
     try{const sent=await xPost(env,text,mediaId);await xDone(env,`xi:${r.id}`,now);
       if(sent?.data?.id)await setAppSetting(env,`xid:${r.id}`,String(sent.data.id)).catch(()=>{});
       await env.DB.prepare('INSERT OR IGNORE INTO app_settings (key,value) VALUES (?,?)').bind(`x-nba-pick:${r.id}`,new Date(now).toISOString()).run().catch(()=>{});
@@ -4451,7 +4452,7 @@ async function sendBookAlerts(env,events,now=Date.now()){
     if(!claims.some(c=>Number(c?.meta?.changes??c?.changes)))continue;
     try{
       if(r.push){
-        const response=await fetch(r.push.endpoint,{method:'POST',headers:{TTL:'21600',Urgency:'normal','Content-Length':'0',Authorization:await vapidAuthorization(env,r.push.endpoint,now)},signal:AbortSignal.timeout(10000)});
+        const response=await fetch(r.push.endpoint,{method:'POST',headers:{TTL:'21600',Urgency:'high','Content-Length':'0',Authorization:await vapidAuthorization(env,r.push.endpoint,now)},signal:AbortSignal.timeout(10000)});
         if(response.status===404||response.status===410){await env.DB.prepare('DELETE FROM push_subscriptions WHERE endpoint=?').bind(r.push.endpoint).run();continue}
         if(response.ok)sent++;
       }else{
@@ -4523,7 +4524,7 @@ self.addEventListener('activate',event=>event.waitUntil(self.clients.claim()));
 self.addEventListener('push',event=>event.waitUntil((async()=>{
   let note={title:'New Bet This Guy pick',body:'A new official pick is on the board.',url:'/'};
   try{const sub=await self.registration.pushManager.getSubscription().catch(()=>null);const response=await fetch('/api/alerts/latest'+(sub?'?endpoint='+encodeURIComponent(sub.endpoint):''),{cache:'no-store'});if(response.ok)note=Object.assign(note,await response.json())}catch(error){}
-  return self.registration.showNotification(note.title,{body:note.body,icon:'/icon-192.png',badge:'/icon-192.png',tag:'btg-pick',renotify:true,data:{url:note.url||'/'}});
+  return self.registration.showNotification(note.title,{body:note.body,icon:'/icon-192.png',badge:'/icon-192.png',tag:'btg-pick-'+Date.now(),data:{url:note.url||'/'}});
 })()));
 self.addEventListener('notificationclick',event=>{event.notification.close();event.waitUntil((async()=>{
   const target=new URL((event.notification.data&&event.notification.data.url)||'/',self.location.origin).href;
