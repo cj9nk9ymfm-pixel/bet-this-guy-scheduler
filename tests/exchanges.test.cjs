@@ -203,6 +203,7 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
    const res=J(await run(`recordNbaExchangePrices(env,nbaBoards,${now})`));assert.equal(res.picks,1,'one pick a game');
    const pick=db.prepare("SELECT * FROM prediction_picks WHERE event_id='NBA--n1'").get();
    assert.deepEqual([pick.exchange,pick.player,pick.market,pick.side,pick.line,pick.odds],['Novig','Cade Cunningham','Points','Over',25.5,120],'the biggest edge past the bar (4.5 points; Duren at +104 is only 1 point)');
+   assert.ok(db.prepare("SELECT 1 FROM exchange_shadow WHERE kind='nba4' AND player='Cade Cunningham' AND exchange='Novig'").get(),'NBA app lines over fair are logged for the price test');
    const audit=JSON.parse(db.prepare("SELECT value FROM app_settings WHERE key='nba-pm-audit'").get().value);
    assert.equal(audit.apps.Novig.priced,4);assert.ok(audit.top.some(t=>t[1]==='Cade Cunningham'&&t[7]>4),'the audit lists every app line against fair');
    // NBA picks are their own record: the NFL prediction view never shows them.

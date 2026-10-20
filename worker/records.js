@@ -3148,7 +3148,11 @@ async function sendWeeklyDigest(env,now=Date.now()){
   const headline=s.wins+s.losses+s.pushes?`${name}: ${digestRecord(s)} on props, ${weeklyMoney(s.profit)}`:`${name} results`;
   const parlays=s.parlayWins+s.parlayLosses?` Parlays ${s.parlayWins}–${s.parlayLosses} (${weeklyMoney(s.parlayProfit)}).`:'';
   const pmLine=predictionWeekLine(await predictionWeek(env,week).catch(()=>({graded:0})));
-  const lede=`Betting \u0024100 a pick.${parlays}${pmLine?` ${pmLine}`:''} Season: ${digestRecord(season)} on props, ${weeklyMoney(season.profit)}. This week's picks post the moment a price qualifies, any day before kickoff, and we'll email you when they do.`;
+  // NBA, from opening night: the week's nights and the NBA season, its own record.
+  const nbaRows=(await env.DB.prepare("SELECT kind,posted_at,odds,combined_odds,status,result,closing_line,closing_odds,closing_captured_at,line,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'nba|%' AND game_time>=? AND game_time<?").bind(`${week}T12:00:00Z`,new Date(Date.parse(`${week}T12:00:00Z`)+7*86400000).toISOString()).all().catch(()=>({results:[]}))).results||[];
+  const nw=weeklySummary(nbaRows),ns=nw.wins+nw.losses+nw.pushes?await nbaRecordSummary(env).catch(()=>null):null;
+  const nbaLine=ns?`NBA: ${digestRecord(nw)}, ${weeklyMoney(nw.profit+nw.parlayProfit)} (season ${digestRecord(ns)}, ${weeklyMoney(ns.profit+ns.parlayProfit)}).`:'';
+  const lede=`Betting \u0024100 a pick.${parlays}${pmLine?` ${pmLine}`:''}${nbaLine?` ${nbaLine}`:''} Season: ${digestRecord(season)} on props, ${weeklyMoney(season.profit)}. This week's picks post the moment a price qualifies, any day before kickoff, and we'll email you when they do.`;
   const subject=`📊 ${headline}`,page=info?`${SITE_URL}/picks/${info.season}/week-${info.week}`:`${SITE_URL}/trust`;
   const people=await emailPeople(env);
   const from=env.EMAIL_FROM||EMAIL_ALERT_FROM,postal=String(env.EMAIL_POSTAL_ADDRESS||'').trim(),opts={subject,heading:weeklyEscape(headline),eyebrow:'WEEKLY RESULTS',lede,rowsHtml:rows.map(digestRow).join(''),ctaLabel:`See ${name}`,ctaUrl:page};
@@ -3936,13 +3940,21 @@ async function recordNbaExchangePrices(env,boards,now=Date.now()){
   if(!env.DB||!env.THE_ODDS_API_KEY||(oddsCreditsLeft!==null&&oddsCreditsLeft<LOW_ODDS_CREDITS))return {skipped:true};
   const stamp=new Date(now).toISOString(),fetchedAt=new Map(((await env.DB.prepare("SELECT event_id,updated_at FROM exchange_prices WHERE event_id LIKE 'NBA--%' AND game_time>?").bind(stamp).all().catch(()=>({results:[]}))).results||[]).map(r=>[r.event_id,Date.parse(r.updated_at)]));
   const due=boards.map(b=>({b,id:b.eventID||`NBA--${b.id}`,kick:Date.parse(b.commence_time)})).filter(({id,kick})=>{if(!(kick>now+60000)||kick-now>36*3600000)return false;const age=now-(fetchedAt.get(id)||0);return age>=(kick-now<=6*3600000?29*60000:3*3600000-60000)}).sort((a,b)=>a.kick-b.kick).slice(0,8);
-  const statements=[],fairs=sportsbookFairs(boards,now,NBA_PM.books),audit={at:stamp,games:[],apps:{},top:[]},on=await appSetting(env,'nba-pm-picks')!=='off';
+  const statements=[],fairs=sportsbookFairs(boards,now,NBA_PM.books),fairs3=new Map([...sportsbookFairs(boards,now,3)].filter(([k])=>!fairs.has(k))),audit={at:stamp,games:[],apps:{},top:[]},on=await appSetting(env,'nba-pm-picks')!=='off';
   let ctx=null,picks=0;
   for(const {b,id,kick} of due){try{
     const ex=await fetchNbaExchangeOdds(oddsEventId(id),env.THE_ODDS_API_KEY);
     statements.push(env.DB.prepare('INSERT OR REPLACE INTO exchange_prices (event_id,game_time,prices_json,updated_at) VALUES (?,?,?,?)').bind(id,new Date(kick).toISOString(),JSON.stringify(exchangePriceList(ex)),stamp));
     if(kick-now>PREDICTION_LOCK)continue;
     nbaPmAudit(audit,b,ex,fairs);
+    // Price test (not shown): app lines 1+ point over fair, priced from 4+
+    // sportsbooks (nba4) and from exactly 3 (nba3), each with its closing
+    // price, to see whether 3-book lines or a lower bar would hold up.
+    for(const [kind,f] of [['nba4',fairs],['nba3',fairs3]])for(const p of exchangePropCandidates(b,ex,f,now,kind).picks)statements.push(exchangeInsert(env,p,stamp));
+    const open=(await env.DB.prepare("SELECT id,exchange,player,market,side,line FROM exchange_shadow WHERE kind IN ('nba4','nba3') AND event_id=? AND game_time>?").bind(id,stamp).all().catch(()=>({results:[]}))).results||[];
+    for(const r of open){const key=Object.keys(EXCHANGES).find(k=>EXCHANGES[k]===r.exchange);let price=null;
+      for(const bk of ex.bookmakers||[])if(bk.key===key)for(const m of bk.markets||[])if(recordLabels[m.key]===r.market)for(const o of m.outcomes||[])if(String(o.description||'').trim()===r.player&&exchangeOutcome(o).side===r.side.toLowerCase()&&exchangeOutcome(o).line===Number(r.line))price=BTGStats.number(o.price);
+      if(price!==null)statements.push(env.DB.prepare('UPDATE exchange_shadow SET close_odds=?,close_at=? WHERE id=?').bind(price,stamp,r.id))}
     if(!on)continue;
     ctx||={dirs:await pickDirections(env,now),injuries:await injuryMap(env,'NBA').catch(()=>new Map()),night:{}};
     const made=await recordNbaPredictionPicks(env,b,ex,fairs,now,ctx);statements.push(...made);picks+=made.length;
