@@ -3146,13 +3146,15 @@ function statsProp(l){
     // NBA: prediction picks are NFL-only so far, so the prediction view shows
     // where NBA stands on the apps (checked every 6 hours) instead of NFL picks.
     if(LEAGUE==='NBA'){
-      ['pmHero','pmPicksNow','pmParlaysNow','pmNow'].forEach(id=>{const el=document.getElementById(id);if(el)el.hidden=true});
+      // NBA prediction picks (own record) show once there are any; parlays and the NFL lists stay hidden.
+      const nbaPm=(d.pmPicks||[]).length>0;
+      (nbaPm?['pmHero','pmParlaysNow','pmNow']:['pmHero','pmPicksNow','pmParlaysNow','pmNow']).forEach(id=>{const el=document.getElementById(id);if(el)el.hidden=true});
       let note=document.getElementById('pmNbaNote');
       if(v==='predictions'){
         if(!note){note=document.createElement('section');note.id='pmNbaNote';note.className='official-now pm-nba-note';const anchor=document.getElementById('officialNow');(anchor||document.querySelector('main')).before(note)}
         const apps=Object.keys(d.nbaApps?.apps||{}),stateApps=apps.filter(a=>!d.state||names.includes(a));
-        note.innerHTML=`<div class="on-head"><h2>NBA on prediction apps</h2></div><div class="on-empty"><strong>${apps.length?`${htmlEscape(list(apps))} ${apps.length===1?'lists':'list'} NBA player props.`:'Prediction apps don’t list NBA player props yet.'}</strong><span>${apps.length?`NBA prediction picks start once we’ve priced them against the sportsbooks${stateApps.length||!d.state?'':`; none of these apps are open in ${htmlEscape(d.stateName||'your state')} yet`}. Until then, our NBA picks are on the Sportsbook side.`:'We check Novig, ProphetX and the rest every few hours. Until they list NBA props, our NBA picks are on the Sportsbook side.'}</span></div><p class="pm-nba-switch"><button type="button" class="on-toggle" data-view-odds>See today’s NBA picks and props</button></p>`;
-        note.querySelector('[data-view-odds]').onclick=()=>{store(VIEW,'odds');render();resync()};
+        note.innerHTML=nbaPm?`<div class="on-head"><h2>NBA on prediction apps</h2></div><p class="on-sub">Posted only when an app’s price, after its fee, beats the sportsbooks’ fair price by 2.5 points or more (2 on ProphetX). Own record, separate from NFL and from our sportsbook picks.</p>`:`<div class="on-head"><h2>NBA on prediction apps</h2></div><div class="on-empty"><strong>${apps.length?`${htmlEscape(list(apps))} ${apps.length===1?'lists':'list'} NBA player props.`:'Prediction apps don’t list NBA player props yet.'}</strong><span>${apps.length?`NBA prediction picks start once we’ve priced them against the sportsbooks${stateApps.length||!d.state?'':`; none of these apps are open in ${htmlEscape(d.stateName||'your state')} yet`}. Until then, our NBA picks are on the Sportsbook side.`:'We check Novig, ProphetX and the rest every few hours. Until they list NBA props, our NBA picks are on the Sportsbook side.'}</span></div><p class="pm-nba-switch"><button type="button" class="on-toggle" data-view-odds>See today’s NBA picks and props</button></p>`;
+        note.querySelector('[data-view-odds]')?.addEventListener('click',()=>{store(VIEW,'odds');render();resync()});
         note.hidden=false;document.getElementById('officialNow')?.setAttribute('hidden','');document.getElementById('parlaysNow')?.setAttribute('hidden','');
       }else{document.body.classList.remove('nba-pm-empty');if(note)note.hidden=true;const on=document.getElementById('officialNow');if(on&&on.dataset.nbaHidden!=='1')on.removeAttribute('hidden');const pn=document.getElementById('parlaysNow');if(pn&&pn.dataset.empty!=='1')pn.removeAttribute('hidden')}
     }
@@ -3161,7 +3163,7 @@ function statsProp(l){
   window.BTGPriceView={view,state:()=>stored(KEY)||data?.state||'',set:v=>{store(VIEW,v==='predictions'?'predictions':'odds');render();resync()}};
   const resync=()=>{try{window.BTGSyncAlertBooks?.()}catch{}};
   document.getElementById('priceView')?.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{store(VIEW,b.dataset.view);render();resync()});
-  async function load(){try{const st=stored(KEY),r=await fetch(`/api/predictions${st?`?state=${encodeURIComponent(st)}`:''}`);const body=await r.json();if(!r.ok||!body?.success)return;data=body;render();try{dispatchEvent(new Event('btg:where'))}catch{}}catch{}}
+  async function load(){try{const st=stored(KEY),q=new URLSearchParams();if(st)q.set('state',st);if(typeof LEAGUE!=='undefined'&&LEAGUE==='NBA')q.set('league','NBA');const r=await fetch(`/api/predictions${q.toString()?`?${q}`:''}`);const body=await r.json();if(!r.ok||!body?.success)return;data=body;render();try{dispatchEvent(new Event('btg:where'))}catch{}}catch{}}
   const host=document.getElementById('officialNowList');if(host)new MutationObserver(paintPicks).observe(host,{childList:true});
   render();load();setInterval(load,10*60000);
 })();

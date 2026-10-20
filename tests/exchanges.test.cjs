@@ -189,12 +189,30 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
    const pts={key:'player_points',last_update:upd,outcomes:[{name:'Over',description:'Cade Cunningham',point:25.5,price:-105},{name:'Under',description:'Cade Cunningham',point:25.5,price:-115}]};
    context.fetch=async url=>{url=String(url);nbaUrls.push(url);if(url.includes('/basketball_nba/events/n1/odds'))return new Response(JSON.stringify({id:'n1',bookmakers:[{key:'novig',title:'Novig',markets:[pts]},{key:'draftkings',title:'DK',markets:[pts]}]}));return new Response(null,{status:404})};
    context.nbaBoards=[{id:'n1',eventID:'NBA--n1',commence_time:nbaKick},{id:'n2',eventID:'NBA--n2',commence_time:new Date(now+60*3600000).toISOString()}];
-   assert.deepEqual(J(await run(`recordNbaExchangePrices(env,nbaBoards,${now})`)),{games:1},'only games within 36 hours');
+   assert.deepEqual(J(await run(`recordNbaExchangePrices(env,nbaBoards,${now})`)),{games:1,picks:0},'only games within 36 hours');
    assert.ok(nbaUrls[0].includes('markets=player_points%2Cplayer_rebounds%2Cplayer_assists%2Cplayer_threes%2Cplayer_points_rebounds_assists')&&nbaUrls[0].includes('regions=us_ex'),'the five core NBA markets on the apps');
    await run(`recordNbaExchangePrices(env,nbaBoards,${now+10*60000})`);assert.equal(nbaUrls.length,1,'not again within 30 minutes');
    const nb=J(await (await run(`predictionBoardResponse(${JSON.stringify({url:'https://x/api/predictions/board?event=NBA--n1&state=TX',cf:{}})},env,${now+11*60000})`)).json());
    assert.deepEqual(nb.prices.find(p=>p[2]==='Over'),['Cade Cunningham','Points','Over',25.5,'Novig',-105],'the board serves NBA app prices');
-   db.prepare("DELETE FROM exchange_prices WHERE event_id LIKE 'NBA--%'").run();context.fetch=saveFetch}
+   // Picks: an app price 2.5+ points under the fair price from 4+ sportsbooks, after the fee, inside 24 hours.
+   db.prepare("DELETE FROM exchange_prices WHERE event_id LIKE 'NBA--%'").run();
+   const sb=(key,o,u)=>({key,title:key,last_update:upd,markets:[{key:'player_points',last_update:upd,outcomes:[{name:'Over',description:'Cade Cunningham',point:25.5,price:o},{name:'Under',description:'Cade Cunningham',point:25.5,price:u}]},{key:'player_rebounds',last_update:upd,outcomes:[{name:'Over',description:'Jalen Duren',point:10.5,price:-110},{name:'Under',description:'Jalen Duren',point:10.5,price:-110}]}]});
+   context.nbaBoards=[{id:'n1',eventID:'NBA--n1',commence_time:nbaKick,home_team:'Detroit Pistons',away_team:'Boston Celtics',bookmakers:[sb('draftkings',-110,-110),sb('fanduel',-112,-108),sb('betmgm',-108,-112),sb('caesars',-110,-110)]}];
+   const app=(o,u,dr)=>({key:'novig',title:'Novig',markets:[{key:'player_points',outcomes:[{name:'Over',description:'Cade Cunningham',point:25.5,price:o},{name:'Under',description:'Cade Cunningham',point:25.5,price:u}]},{key:'player_rebounds',outcomes:[{name:'Over',description:'Jalen Duren',point:10.5,price:dr},{name:'Under',description:'Jalen Duren',point:10.5,price:-140}]}]});
+   context.fetch=async url=>{url=String(url);if(url.includes('/basketball_nba/events/n1/odds'))return new Response(JSON.stringify({id:'n1',bookmakers:[app(120,-150,104)]}));return new Response(null,{status:404})};
+   const res=J(await run(`recordNbaExchangePrices(env,nbaBoards,${now})`));assert.equal(res.picks,1,'one pick a game');
+   const pick=db.prepare("SELECT * FROM prediction_picks WHERE event_id='NBA--n1'").get();
+   assert.deepEqual([pick.exchange,pick.player,pick.market,pick.side,pick.line,pick.odds],['Novig','Cade Cunningham','Points','Over',25.5,120],'the biggest edge past the bar (4.5 points; Duren at +104 is only 1 point)');
+   const audit=JSON.parse(db.prepare("SELECT value FROM app_settings WHERE key='nba-pm-audit'").get().value);
+   assert.equal(audit.apps.Novig.priced,4);assert.ok(audit.top.some(t=>t[1]==='Cade Cunningham'&&t[7]>4),'the audit lists every app line against fair');
+   // NBA picks are their own record: the NFL prediction view never shows them.
+   const view=async q=>J(await (await run(`predictionsResponse(${JSON.stringify({url:'https://x/api/predictions?state=TX'+q,cf:{}})},env,${now})`)).json());
+   assert.ok((await view('&league=NBA')).pmPicks.some(r=>r.player==='Cade Cunningham'),'the NBA view lists NBA prediction picks');
+   assert.ok(!(await view('')).pmPicks.some(r=>r.player==='Cade Cunningham'),'the NFL view does not');
+   db.prepare("UPDATE app_settings SET value='off' WHERE key='nba-pm-picks'").run();db.prepare("INSERT OR IGNORE INTO app_settings (key,value) VALUES ('nba-pm-picks','off')").run();
+   db.prepare("DELETE FROM prediction_picks WHERE event_id='NBA--n1'").run();db.prepare("DELETE FROM exchange_prices WHERE event_id LIKE 'NBA--%'").run();
+   assert.equal(J(await run(`recordNbaExchangePrices(env,nbaBoards,${now})`)).picks,0,'nba-pm-picks=off stops them');
+   db.prepare("DELETE FROM app_settings WHERE key IN ('nba-pm-picks','nba-pm-audit')").run();db.prepare("DELETE FROM exchange_prices WHERE event_id LIKE 'NBA--%'").run();context.fetch=saveFetch}
   // One direction per player per game across sportsbook and prediction picks (Bo Melton, Oct 18).
   const gt=new Date(Date.now()+86400000).toISOString();
   db.prepare("INSERT INTO public_recommendations(id,kind,player,market,side,line,odds,game_time,legs_json,posted_at,status,source) VALUES(?,?,?,?,?,?,?,?,?,?,?,'market-verified-v2')").run('official|x|props|prop|bo','prop','Bo Melton','Receptions','Over',1.5,112,gt,JSON.stringify([{player:'Bo Melton',market:'Receptions',side:'Over',line:1.5,odds:112,gameId:'NFL--g9'}]),new Date().toISOString(),'pending');
