@@ -1,0 +1,53 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+@font-face{font-family:G;src:url(../../worker/fonts/SpaceGrotesk-Bold.ttf)}@font-face{font-family:XB;src:url(../../worker/fonts/Inter-ExtraBold.ttf)}@font-face{font-family:SB;src:url(../../worker/fonts/Inter-SemiBold.ttf)}
+:root{--bg:#0b1530;--ink:#fff;--muted:#9fb0cc;--g:#2ee6a8;--b:#2563eb;--card:#111d3d;--line:#22305a}
+*{box-sizing:border-box;margin:0}body{background:#000}
+.ad{position:relative;overflow:hidden;background:radial-gradient(120% 90% at 0% 0%,#1d4ed8 0%,#0b1530 55%) var(--bg);color:var(--ink);font-family:SB}
+.kick{font:15px XB;letter-spacing:.24em;color:#cfe0ff;opacity:.85}
+.h1{font-family:G;line-height:1.02;letter-spacing:-.01em}.h1 em{font-style:normal;color:var(--g)}
+.stats{display:flex;gap:34px}.stat b{display:block;font:56px G;line-height:1}.stat span{display:block;margin-top:8px;font:17px SB;color:var(--muted);line-height:1.3}
+.stat b.g{color:var(--g)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:26px 28px;box-shadow:0 30px 60px rgba(0,0,0,.35)}
+.pill{display:inline-flex;align-items:center;gap:8px;height:32px;padding:0 14px;border-radius:99px;background:var(--g);color:#06231a;font:13px XB;letter-spacing:.14em}
+.pl{font:34px G;margin-top:16px}.bet{font:22px SB;color:#dbe4f0;margin-top:4px}.meta{font:16px SB;color:var(--muted);margin-top:6px}
+.posted{display:inline-flex;align-items:center;gap:8px;margin-top:12px;padding:6px 12px;border-radius:10px;background:rgba(46,230,168,.12);border:1px solid rgba(46,230,168,.35);color:#cff5e8;font:15px SB}.posted i{font-style:normal}.w16 .pre{display:none}.w45 .posted{font-size:18px}.vcard .posted{font-size:22px;padding:8px 14px}
+.prices{display:flex;gap:14px;margin-top:20px}.pr{flex:1;border-radius:14px;background:#0b1530;border:1px solid var(--line);padding:12px 14px}.pr small{display:block;font:12px XB;letter-spacing:.14em;color:var(--muted)}.pr b{display:block;font:30px G;margin-top:6px}.pr b.g{color:var(--g)}
+.res{margin-top:16px;display:flex;align-items:center;gap:12px;font:20px XB;color:var(--g)}.res i{width:30px;height:30px;border-radius:50%;background:var(--g);display:grid;place-items:center;color:#06231a;font-style:normal;font-size:18px}
+.bar{position:absolute;left:0;right:0;bottom:0;background:var(--g);color:#06231a;display:flex;align-items:center;justify-content:space-between}
+.bar b{font-family:G}.brand{display:flex;align-items:center;gap:14px}.brand img{height:40px}
+.rg{font:13px SB;color:#9fb0cc}
+/* 16:9 */
+.w16{width:1200px;height:675px}.w16 .left{position:absolute;left:64px;top:64px;width:560px}.w16 .h1{font-size:54px;margin:18px 0 28px}
+.w16 .right{position:absolute;right:56px;top:84px;width:470px}.w16 .bar{height:84px;padding:0 64px}.w16 .bar b{font-size:30px}.w16 .rg{position:absolute;left:64px;bottom:100px}
+/* 4:5 */
+.w45{width:1080px;height:1350px}.w45 .left{position:absolute;left:72px;right:72px;top:96px}.w45 .h1{font-size:76px;margin:22px 0 34px}.w45 .stat b{font-size:72px}.w45 .stat span{font-size:20px}
+.w45 .right{position:absolute;left:72px;right:72px;top:560px}.w45 .free{position:absolute;left:72px;right:72px;top:1080px;font:30px G;color:#fff}.w45 .free span{color:var(--g)}.w16 .free{display:none}.w45 .card{padding:34px 36px}.w45 .pl{font-size:44px}.w45 .bet{font-size:28px}.w45 .meta{font-size:19px}.w45 .pr b{font-size:38px}.w45 .res{font-size:24px}
+.w45 .bar{height:120px;padding:0 72px}.w45 .bar b{font-size:38px}.w45 .rg{position:absolute;left:72px;bottom:140px;font-size:16px}
+/* video scenes */
+.scene{position:absolute;inset:0}.w45.vcard{width:auto;height:auto}.vcard .card{padding:40px 42px}.vcard .pl{font-size:56px}.vcard .bet{font-size:34px}.vcard .meta{font-size:22px}.vcard .pr small{font-size:15px}.vcard .pr b{font-size:52px}.vcard .res{font-size:30px;margin-top:22px}.vcard .res i{width:40px;height:40px;font-size:22px}.vcard .pill{height:40px;font-size:16px;padding:0 18px}.big{font-family:G;text-align:center;position:absolute;left:72px;right:72px}
+</style></head><body>
+<div id="root"></div>
+<script>
+const P={player:'Chuba Hubbard',bet:'Over 18.5 rush attempts',meta:'CAR @ PHI · Sun, Oct 18, 1:00 PM ET · BetMGM',posted:'Posted on X Thu, Oct 15, 3:40 PM ET',locked:'+125',closed:'−104',final:'28 rush attempts'};
+const card=(stage)=>`<div class="card"><span class="pill">${stage>=2?'✓ WINNER':'🔒 OFFICIAL PICK'}</span><div class="pl">${P.player}</div><div class="bet">${P.bet}</div><div class="meta">${P.meta}</div><div class="posted"><i>🕒</i>${P.posted}<span class="pre"> · 3 days before kickoff</span></div>
+<div class="prices"><div class="pr"><small>WE LOCKED</small><b class="g">${P.locked}</b></div><div class="pr" style="opacity:${stage>=1?1:.25}"><small>IT CLOSED</small><b>${P.closed}</b></div></div>
+${stage>=1?`<div class="res" style="color:#cfe0ff"><i style="background:#2563eb;color:#fff">↗</i>Beat the closing price</div>`:''}${stage>=2?`<div class="res"><i>✓</i>Hit · ${P.final}</div>`:''}</div>`;
+const left=`<div class="left"><div class="kick">NFL + NBA PLAYER PROPS</div><div class="h1">We only post when the price <em>beats the market.</em></div><div class="stats"><div class="stat"><b>34–24</b><span>NFL singles<br>record</span></div><div class="stat"><b class="g">79%</b><span>of NFL singles beat<br>the closing price</span></div></div></div>`;
+const bar=`<div class="rg">Every pick graded in public, losses included. 21+ · Gambling problem? Call 1-800-GAMBLER</div><div class="bar"><div class="brand"><img src="../../dist/logo-dark.png"></div><b>betthisguy.com →</b></div>`;
+const mode=new URLSearchParams(location.search).get('m')||'16';
+const root=document.getElementById('root');
+if(mode!=='v'){root.innerHTML=`<div class="ad w${mode}">${left}<div class="right">${card(2)}</div><div class="free">Free. No paywall. <span>Get each pick the second it locks.</span></div>${bar}</div>`}
+else{
+ // 13 s video, 4:5: hook, the pick locks, the close moves, it hits, the numbers, the call to action.
+ const ease=x=>x<0?0:x>1?1:1-Math.pow(1-x,3),fade=(t,a,b)=>ease((t-a)/(b-a));
+ window.setT=t=>{
+  const s1=t<3.2,inCard=t>=3.2&&t<9.2,stats=t>=9.2&&t<11.4,end=t>=11.4;
+  let h='';
+  if(s1){const a=fade(t,.1,.7),b=fade(t,1.5,2.1),out=1-fade(t,2.9,3.2);h=`<div class="big" style="top:440px;font-size:74px;opacity:${a*out}">Most pick accounts<br>show you the wins.</div><div class="big" style="top:720px;font-size:74px;color:#2ee6a8;opacity:${b*out};transform:translateY(${(1-b)*30}px)">We show every pick.</div>`}
+  if(inCard){const stage=t<5.4?0:t<7.2?1:2,a=fade(t,3.2,3.8),out=1-fade(t,8.9,9.2);const cap=stage===0?'Posted 3 days before kickoff':stage===1?'By kickoff the price had moved our way':'Graded from the box score';
+   h=`<div class="big" style="top:170px;font-size:44px;color:#cfe0ff;opacity:${a*out}">${cap}</div><div style="position:absolute;left:72px;right:72px;top:${330+(1-a)*60}px;opacity:${a*out};transform:scale(${stage===2?1+0.03*Math.sin(Math.min(1,(t-7.2)/.4)*Math.PI):1})" class="w45 vcard">${card(stage)}</div>`}
+  if(stats){const a=fade(t,9.2,9.7),out=1-fade(t,11.1,11.4),n=Math.round(79*fade(t,9.4,10.4));h=`<div class="big" style="top:300px;font-size:150px;color:#2ee6a8;opacity:${a*out}">${n}%</div><div class="big" style="top:500px;font-size:48px;opacity:${a*out}">of our NFL singles beat<br>the closing price</div><div class="big" style="top:760px;font-size:40px;color:#cfe0ff;opacity:${fade(t,10,10.4)*out}">34–24 · every pick graded in public</div>`}
+  if(end){const a=fade(t,11.4,11.9);h=`<div style="position:absolute;left:0;right:0;top:330px;text-align:center;opacity:${a}"><img src="../../dist/logo.png" style="height:96px"></div><div class="big" style="top:520px;font-size:62px;opacity:${a}">Free picks + alerts<br><span style="color:#2ee6a8">betthisguy.com</span></div><div class="big" style="top:1180px;font-family:SB;font-size:22px;color:#9fb0cc;opacity:${a}">21+ · Gambling problem? Call 1-800-GAMBLER</div>`}
+  root.innerHTML=`<div class="ad w45">${h}</div>`};
+ setT(0)}
+</script></body></html>
