@@ -1,6 +1,6 @@
 # NBA opening-day video, Oct 20 2026
 
-`btg-nba-robinson.mp4`: 14.5-second 4:5 video of Duncan Robinson Over 1.5
+`btg-nba-robinson.mp4`: 22.5-second 4:5 video (about four seconds a step) of Duncan Robinson Over 1.5
 assists (Celtics @ Pistons). Not posted; drafts for X need Tim's OK first.
 
 Every number is from the live record: locked +117 at DraftKings 11:11 AM PT,
