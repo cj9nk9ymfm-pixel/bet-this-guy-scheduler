@@ -209,6 +209,10 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
    // NBA picks are their own record: the NFL prediction view never shows them.
    const view=async q=>J(await (await run(`predictionsResponse(${JSON.stringify({url:'https://x/api/predictions?state=TX'+q,cf:{}})},env,${now})`)).json());
    assert.ok((await view('&league=NBA')).pmPicks.some(r=>r.player==='Cade Cunningham'),'the NBA view lists NBA prediction picks');
+   // The Results page: NFL and NBA prediction records apart (?sport=NBA), NBA singles only.
+   {const nbaRec=J(await run("predictionRecordData(env,'NBA')")),nflRec=J(await run('predictionRecordData(env)'));
+    assert.ok(nbaRec.plays.some(p=>p.player==='Cade Cunningham')&&nbaRec.plays.every(p=>p.kind==='single'),'the NBA record has the NBA picks, singles only');
+    assert.ok(!nflRec.plays.some(p=>p.player==='Cade Cunningham'),'the NFL record leaves NBA picks out');assert.equal(nbaRec.sport,'NBA')}
    assert.ok(!(await view('')).pmPicks.some(r=>r.player==='Cade Cunningham'),'the NFL view does not');
    db.prepare("UPDATE app_settings SET value='off' WHERE key='nba-pm-picks'").run();db.prepare("INSERT OR IGNORE INTO app_settings (key,value) VALUES ('nba-pm-picks','off')").run();
    db.prepare("DELETE FROM prediction_picks WHERE event_id='NBA--n1'").run();db.prepare("DELETE FROM exchange_prices WHERE event_id LIKE 'NBA--%'").run();
