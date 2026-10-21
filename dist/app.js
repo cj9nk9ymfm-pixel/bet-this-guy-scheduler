@@ -2572,7 +2572,8 @@ function statsProp(l){
       window.BTGEmailSub.inline(hero,'banner');if(btn){btn.textContent='Phone alerts instead';btn.classList.add('ah-alt')}}
     else{const alt=document.createElement('button');alt.type='button';alt.className='ah-alt-email';alt.textContent='Or get them by email';alt.onclick=()=>{alt.remove();window.BTGEmailSub.inline(hero,'banner')?.querySelector('input')?.focus()};hero.appendChild(alt)}
   },0);
-  if(hero&&!emailed&&!recent('btg-alerts-hero-hidden',14)&&!window.btgWelcomeVisit?.()){hero.hidden=false;document.getElementById('alertsHeroClose')?.addEventListener('click',()=>{hero.hidden=true;store.set('btg-alerts-hero-hidden',String(Date.now()));window.btgCount?.('alerts:banner-hide')})}
+  // Shown on a first visit too: the welcome sheet now waits, and this one doesn't cover the picks.
+  if(hero&&!emailed&&!recent('btg-alerts-hero-hidden',14)){hero.hidden=false;document.getElementById('alertsHeroClose')?.addEventListener('click',()=>{hero.hidden=true;store.set('btg-alerts-hero-hidden',String(Date.now()));window.btgCount?.('alerts:banner-hide')})}
   // Add to Home Screen: iPhone needs it for phone alerts; Android can install directly.
   const standalone=window.matchMedia?.('(display-mode: standalone)').matches||navigator.standalone===true;
   if(standalone)return;
@@ -2863,7 +2864,22 @@ function statsProp(l){
     }
     if(season.wins+season.losses>=10){const p=Math.round(season.profit||0);set('wdRecordSub',`Locked before kickoff, graded from box scores, losses included. Season: ${season.wins}–${season.losses}${season.pushes?`–${season.pushes}`:''}, ${p<0?'−':'+'}$${Math.abs(p).toLocaleString('en-US')} at $100 a pick.`)}
   }
-  const open=()=>{paint(window.BTG_SEASON);const on=document.documentElement.classList.contains('alerts-on');document.getElementById('wdAlerts').hidden=on;document.getElementById('wdAccount').classList.toggle('wd-primary',on);document.getElementById('wdAccount').classList.toggle('wd-secondary',!on);if(!dlg.open)dlg.showModal()};
+  // Where phone alerts can't work right now (iPhone outside the Home Screen,
+  // the X / Instagram / Facebook in-app browsers, no push support), the sheet
+  // leads with a one-field email sign-up instead of a button to a second pop-up.
+  const ua=navigator.userAgent||'',inApp=/\bTwitter|Instagram|FBAN|FBAV|Snapchat|Line\//i.test(ua);
+  const iphoneWeb=/iPhone|iPad|iPod/.test(ua)&&!(window.matchMedia?.('(display-mode: standalone)').matches||navigator.standalone===true);
+  const pushOK=()=>!inApp&&!iphoneWeb&&'serviceWorker' in navigator&&'PushManager' in window&&'Notification' in window;
+  let emailField=null;
+  const emailHere=focus=>{if(emailField||!window.BTGEmailSub?.inline)return emailField;const acts=dlg.querySelector('.wd-actions'),btn=document.getElementById('wdEmail');
+    const slot=document.createElement('div');slot.className='wd-email';btn?btn.replaceWith(slot):acts.prepend(slot);emailField=window.BTGEmailSub.inline(slot,'welcome');
+    if(focus)emailField?.querySelector('input')?.focus();return emailField};
+  const emailFirst=()=>{if(pushOK()||/\bemail-on/.test(document.documentElement.className))return;
+    const acts=dlg.querySelector('.wd-actions'),alerts=document.getElementById('wdAlerts');emailHere(false);
+    // Right under the headline, so it's on screen without scrolling the sheet.
+    const slot=acts.querySelector('.wd-email'),lede=dlg.querySelector('.wd-lede');if(slot&&lede)lede.after(slot);if(alerts)alerts.hidden=true;
+    const why=dlg.querySelector('.wd-why');if(why)why.textContent='We email each pick the moment it locks, with the price and the sportsbook. Free, no account, one-tap unsubscribe.'};
+  const open=()=>{paint(window.BTG_SEASON);const on=document.documentElement.classList.contains('alerts-on');document.getElementById('wdAlerts').hidden=on;emailFirst();document.getElementById('wdAccount').classList.toggle('wd-primary',on);document.getElementById('wdAccount').classList.toggle('wd-secondary',!on);if(!dlg.open)dlg.showModal()};
   const close=how=>{mark();strip.hidden=false;if(dlg.open)dlg.close();if(how)window.btgCount?.(`welcome:${how}`)};
   addEventListener('btg:season',()=>paint(window.BTG_SEASON));paint(window.BTG_SEASON);
   // No sportsbooks where they are (California, Texas...): the welcome leads
@@ -2879,10 +2895,15 @@ function statsProp(l){
   dlg.addEventListener('click',e=>{if(e.target===dlg)close('close')});
   // The alerts button is also a pick-alerts toggle (handled with the others); this just closes the sheet.
   document.getElementById('wdAlerts').addEventListener('click',()=>close('alerts'));
-  document.getElementById('wdEmail')?.addEventListener('click',()=>{close('email');window.BTGEmailSub?.open('welcome')});
+  // Email opens its field right here (one step), not a second pop-up.
+  document.getElementById('wdEmail')?.addEventListener('click',()=>{window.btgCount?.('welcome:email');if(!emailHere(true)){close('email');window.BTGEmailSub?.open('welcome')}});
   document.getElementById('wdAccount').onclick=()=>{close('account');window.BTGAuth?.open?.(window.BTGAuth?.hasAccount?.()?'account':'signup')};
   if(seen()){strip.hidden=false;return}
-  setTimeout(()=>{if(seen()||document.querySelector('dialog[open]'))return;open();window.btgCount?.('welcome:shown')},900);
+  // Not the moment the page opens: picks first. The sheet waits until the
+  // visitor scrolls past the first screen or has been here 15 seconds.
+  let shown=false;const show=()=>{if(shown||seen())return;if(document.querySelector('dialog[open]')){setTimeout(show,4000);return}shown=true;removeEventListener('scroll',onScroll);open();window.btgCount?.('welcome:shown')};
+  const onScroll=()=>{if(scrollY>innerHeight*0.9)show()};
+  addEventListener('scroll',onScroll,{passive:true});setTimeout(show,15000);
 })();
 
 // Jump bar: Picks · Worth a look · Board, with the odds / predictions switch.

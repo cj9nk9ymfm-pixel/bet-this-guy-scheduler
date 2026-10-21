@@ -2444,3 +2444,10 @@ html body #officialNowList .on-tag.on-tag-count,html body #pmPicksList .on-tag.o
 html body .on-row.on-live-now,html body :is(#officialNowList,#parlaysList,#pmPicksList,#pmParlaysList,#livePicksList) .on-row.on-live-now{box-shadow:inset 3px 0 0 #f43f5e!important}html body .on-row.on-live-now.on-live-hit,html body :is(#officialNowList,#parlaysList,#pmPicksList,#pmParlaysList,#livePicksList) .on-row.on-live-now.on-live-hit{box-shadow:inset 3px 0 0 #2ee6a8!important}html body .on-row.on-live-now.on-live-miss,html body :is(#officialNowList,#parlaysList,#pmPicksList,#pmParlaysList,#livePicksList) .on-row.on-live-now.on-live-miss{box-shadow:inset 3px 0 0 #4b5260!important}
 body.light .on-tag.on-tag-count strong{color:#0f172a}body.light .on-tag.on-tag-count small{color:#be123c}body.light .on-tag.on-tag-count.on-tag-hit strong,body.light .on-tag.on-tag-count.on-tag-hit small{color:#047857}body.light .on-tag.on-tag-count.on-tag-miss :is(strong,small){color:#64748b}
 body.light .on-live .lv-pips.mini i{background:#e2e6ec}body.light .on-live .lv-pips.mini i.f{background:#059669}body.light .on-live .lv-bar.mini{background:#e2e6ec}
+/* Welcome sheet: the email field in place of a button to a second pop-up. */
+.wd-email .em-inline input{height:48px;border-radius:999px;padding:0 18px}
+.wd-email .em-inline button{flex:1 1 100%;min-height:48px;border:0;border-radius:999px;background:#1fd88f;color:#05231a;font:700 15.5px 'DM Sans',sans-serif;cursor:pointer}
+.wd-email .em-inline button:disabled{opacity:.75}
+.wd-email .em-msg{flex-basis:100%;margin:2px 4px 0;font-size:13.5px}
+body.light .wd-email .em-inline button{background:#16a34a;color:#fff}
+.wd-shell>.wd-email{margin:14px 0 6px}

@@ -41,6 +41,15 @@ context.env={DB};
   assert.equal(JSON.stringify(counts),JSON.stringify({'slip:add':1,'view:home':2,'visit:new':1}),'known metrics counted once per send, unknown names and bots ignored');
   assert.equal(JSON.stringify(db.prepare('PRAGMA table_info(usage_counts)').all().map(c=>c.name)),'["day","metric","count"]','only a day, a metric name and a total are stored');
   assert.equal((await run("usageHit(new Request('https://betthisguy.com/api/hit'),env,ctx)")).status,405,'reads are refused');
+  // Visits by place: a daily total per US state or country, only with a visit.
+  assert.equal(run("usageGeo({cf:{country:'US',regionCode:'TX'}})"),'geo:US-TX');assert.equal(run("usageGeo({cf:{country:'GB',regionCode:'ENG'}})"),'geo:GB');
+  assert.equal(run("usageGeo({cf:{country:'T1'}})"),null,'Tor and unknown places are skipped');assert.equal(run('usageGeo({})'),null);
+  {const before=db.prepare("SELECT COALESCE(SUM(count),0) n FROM usage_counts WHERE metric LIKE 'geo:%'").get().n;
+   const geoHit=async(m)=>{await run(`(()=>{const r=new Request('https://betthisguy.com/api/hit',{method:'POST',headers:{'user-agent':'Mozilla/5.0 (iPhone)'},body:${JSON.stringify(JSON.stringify({m}))}});Object.defineProperty(r,'cf',{value:{country:'US',regionCode:'TX'}});return usageHit(r,env,ctx)})()`);await Promise.all(context.jobs.splice(0))};
+   await geoHit(['visit:new']);await geoHit(['view:home']);
+   assert.equal(db.prepare("SELECT count FROM usage_counts WHERE metric='geo:US-TX'").get()?.count,1,'a visit counts its state once; other actions do not');
+   assert.equal(db.prepare("SELECT COALESCE(SUM(count),0) n FROM usage_counts WHERE metric LIKE 'geo:%'").get().n-before,1);
+   db.prepare("DELETE FROM usage_counts WHERE metric='geo:US-TX'").run();db.prepare("UPDATE usage_counts SET count=count-1 WHERE metric IN ('visit:new','view:home')").run()}
   // The owner's devices (cookie set by /?me=1) are never counted; visit sources are.
   const ownerHit=await run(`usageHit(new Request('https://betthisguy.com/api/hit',{method:'POST',headers:{'user-agent':'Mozilla/5.0','cookie':'a=1; btg_owner=1'},body:JSON.stringify({m:['view:home','src:reddit']})}),env,ctx)`);await Promise.all(context.jobs.splice(0));
   assert.equal(ownerHit.status,204);assert.equal(db.prepare("SELECT count FROM usage_counts WHERE metric='view:home'").get().count,2,'owner visits are not counted');
