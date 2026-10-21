@@ -853,7 +853,7 @@ async function gradePredictionNow(env,now=Date.now()){
 // invocation (SELF binding), so their reads, uploads and posts get their own
 // request allowance instead of crowding out the main X run.
 // One-off post set by the owner: app_settings x-custom-post holds JSON
-// {"text":"…","quoteKey":"xid:…"} (quoteKey optional). It posts once, after
+// {"text":"…","quoteKey":"xid:…"} (quoteKey optional; image: a dist/x PNG; id: saves xid:x-custom:<id>). It posts once, after
 // the post it quotes exists, then the request is cleared.
 async function postCustomToX(env,now=Date.now()){
   if(!env.DB||!xReady(env))return {posted:0,disabled:true};
@@ -864,9 +864,11 @@ async function postCustomToX(env,now=Date.now()){
   // at: post no earlier than this time. svgKey: an app_settings key holding a card SVG to attach.
   if(req.at&&now<Date.parse(req.at))return {posted:0,waiting:true};
   const svg=req.svgKey?await appSetting(env,String(req.svgKey)):null;if(req.svgKey&&!svg)return {posted:0,invalid:true};
+  // image: a PNG shipped with the site in dist/x/ (an image made outside the card templates).
+  const png=req.image?(typeof X_POST_IMAGES==='object'&&X_POST_IMAGES?X_POST_IMAGES[String(req.image)]:null):null;if(req.image&&!png)return {posted:0,invalid:true};
   const claim=await env.DB.prepare('DELETE FROM app_settings WHERE key=? AND value=?').bind('x-custom-post',raw).run();if(!Number(claim?.meta?.changes??claim?.changes))return {posted:0,claimed:false};
-  try{const mediaId=svg&&typeof renderCardPng==='function'?await xUploadImage(env,await renderCardPng(svg)):null;
-    const sent=await xPost(env,text,mediaId,null,quote);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} custom ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,graphic:Boolean(mediaId)}}
+  try{const mediaId=png?await xUploadImage(env,Uint8Array.from(atob(png),c=>c.charCodeAt(0))):svg&&typeof renderCardPng==='function'?await xUploadImage(env,await renderCardPng(svg)):null;
+    const sent=await xPost(env,text,mediaId,null,quote);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} custom ${sent?.data?.id||''}`).catch(()=>{});if(req.id&&sent?.data?.id)await setAppSetting(env,`xid:x-custom:${req.id}`,String(sent.data.id)).catch(()=>{});return {posted:1,graphic:Boolean(mediaId)}}
   catch(error){await setAppSetting(env,'x-custom-post',raw).catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} custom: ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
 }
 async function runXResults(env,now=Date.now()){
