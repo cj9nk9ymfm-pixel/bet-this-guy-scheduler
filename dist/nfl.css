@@ -1926,7 +1926,8 @@ body.light #pmHero .hero-picks button{color:#0f172a}
 body.light #pmHero .hp-all{color:#1d4ed8}
 html body[data-mobile-page]:not([data-mobile-page="props"]) #pmHero{display:none!important}
 html body[data-desktop-page]:not([data-desktop-page="props"]) #pmHero{display:none!important}
-html[data-league="NBA"] #pmHero{display:none!important}
+/* NBA: the record bar shows once there are NBA prediction picks (their own record). */
+html[data-league="NBA"] body:not(.nba-pm-on) #pmHero{display:none!important}
 .desk-rail #pmHero{margin:0!important}
 .desk-rail #pmHero #heroTitle{white-space:normal}
 #pmHero .hp-week{margin:4px 2px 8px;font-size:13.5px;color:var(--muted)}

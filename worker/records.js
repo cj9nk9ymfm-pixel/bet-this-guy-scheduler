@@ -2008,9 +2008,12 @@ async function postPredictionWeekToX(env,now=Date.now()){
 // The prediction-app record for the Results page and weekly pages: every
 // prediction pick and parlay (not limited to a state), singles and parlays
 // apart, after each app's fee, plus a split by app.
-async function predictionRecordData(env){
-  const picks=(await env.DB.prepare('SELECT id,exchange,player,team,market,side,line,odds,net_odds,fair_pct,game_time,posted_at,result,actual,close_odds,early,void_reason FROM prediction_picks WHERE event_id NOT LIKE \'NBA--%\' ORDER BY game_time DESC,posted_at DESC LIMIT 500').all()).results||[];
-  const parlays=(await env.DB.prepare('SELECT id,tier,exchange,legs_json,odds,game_time,posted_at,result FROM prediction_parlays ORDER BY game_time DESC,posted_at DESC LIMIT 300').all().catch(()=>({results:[]}))).results||[];
+// NFL and NBA prediction picks are separate records (?sport=NBA for NBA's).
+// NBA prediction parlays are a private test, so the NBA record has singles only.
+async function predictionRecordData(env,sport='NFL'){
+  const nba=sport==='NBA';
+  const picks=(await env.DB.prepare(`SELECT id,exchange,player,team,market,side,line,odds,net_odds,fair_pct,game_time,posted_at,result,actual,close_odds,early,void_reason FROM prediction_picks WHERE event_id ${nba?'':'NOT '}LIKE 'NBA--%' ORDER BY game_time DESC,posted_at DESC LIMIT 500`).all()).results||[];
+  const parlays=nba?[]:(await env.DB.prepare('SELECT id,tier,exchange,legs_json,odds,game_time,posted_at,result FROM prediction_parlays ORDER BY game_time DESC,posted_at DESC LIMIT 300').all().catch(()=>({results:[]}))).results||[];
   const singles=predictionRecord(picks),combos=predictionParlayRecord(parlays),apps={};
   const pay=r=>r.result==='won'?100*(recordDecimal(r.net_odds??r.odds)-1):r.result==='lost'?-100:0;
   for(const r of picks){const a=apps[r.exchange]||={wins:0,losses:0,pushes:0,profit:0,plays:0};a.plays++;if(r.result==='won')a.wins++;else if(r.result==='lost')a.losses++;else if(r.result==='push')a.pushes++;a.profit+=pay(r)}
@@ -2019,12 +2022,12 @@ async function predictionRecordData(env){
   const plays=[...picks.map(r=>({id:r.id,kind:'single',exchange:r.exchange,player:r.player,team:r.team||'',market:r.market,side:r.side,line:r.line,odds:r.odds,netOdds:r.net_odds,fair:r.fair_pct,gameTime:r.game_time,postedAt:r.posted_at,result:r.result,actual:r.actual,closeOdds:r.close_odds,early:Boolean(r.early),...(r.void_reason?{voidReason:r.void_reason}:{}),money:Math.round(pay(r))})),
     ...parlays.map(r=>{let legs=[];try{legs=JSON.parse(r.legs_json)}catch{}return {id:r.id,kind:'parlay',exchange:r.exchange,odds:r.odds,gameTime:r.game_time,postedAt:r.posted_at,result:r.result,money:Math.round(predictionParlayPay(r)),legs:legs.map(l=>({player:l.player,market:l.market,side:l.side,line:l.line,team:l.team,result:l.result||null,actual:l.actual??null}))}})]
     .sort((a,b)=>String(b.gameTime).localeCompare(String(a.gameTime))||String(b.postedAt).localeCompare(String(a.postedAt)));
-  return {singles,parlays:combos,apps,plays};
+  return {sport:nba?'NBA':'NFL',singles,parlays:combos,apps,plays};
 }
 async function predictionRecordResponse(request,env){
   const head={'content-type':'application/json; charset=utf-8','cache-control':'public, max-age=60'};
   if(!env.DB)return new Response(JSON.stringify({success:false}),{status:503,headers:head});
-  return new Response(JSON.stringify({success:true,...await predictionRecordData(env),updatedAt:new Date().toISOString()}),{headers:head});
+  return new Response(JSON.stringify({success:true,...await predictionRecordData(env,new URL(request.url).searchParams.get('sport')==='NBA'?'NBA':'NFL'),updatedAt:new Date().toISOString()}),{headers:head});
 }
 const EXCHANGE_LIVE_GAP=3*60000,EXCHANGE_LIVE_FOR=4.5*3600000;
 async function predictionBoardResponse(request,env,now=Date.now()){

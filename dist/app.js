@@ -3045,22 +3045,24 @@ function statsProp(l){
   function renderPmHero(v){
     const hero=document.getElementById('pmHero');if(!hero)return;
     const money=v=>Math.round(v)===0?'$0':`${v<0?'−':'+'}$${Math.abs(Math.round(v)).toLocaleString('en-US')}`;hero.hidden=v!=='predictions'||!data||data.mode==='unknown';if(hero.hidden)return;
-    const rec=data.pmRecord||{wins:0,losses:0,pushes:0,profit:0},pr=data.pmParlayRecord||{wins:0,losses:0,pushes:0,profit:0};
+    // NBA view: the NBA prediction record on its own (no sportsbook lead, no parlays).
+    const nbaRec=typeof LEAGUE!=='undefined'&&LEAGUE==='NBA';
+    const rec=data.pmRecord||{wins:0,losses:0,pushes:0,profit:0},pr=nbaRec?{wins:0,losses:0,pushes:0,profit:0}:data.pmParlayRecord||{wins:0,losses:0,pushes:0,profit:0};
     const w=rec.wins+pr.wins,l=rec.losses+pr.losses,pu=(rec.pushes||0)+(pr.pushes||0),net=(rec.profit||0)+(pr.profit||0);
     const title=document.getElementById('pmHeroTitle'),panel=document.getElementById('pmHeroPicks');
-    if(!w&&!l){title.innerHTML='Prediction record <b>First picks grading now</b>';panel.hidden=true;hero.classList.remove('open');return}
+    if(!w&&!l){title.innerHTML=`${nbaRec?'NBA prediction record':'Prediction record'} <b>First picks grading now</b>`;panel.hidden=true;hero.classList.remove('open');return}
     // Lead with the full track record (sportsbook picks, the long sample), then
     // the newer prediction-app record, both labeled.
     const sea=window.BTG_SEASON,spl=sea?(sea.parlayWins||0)+(sea.parlayLosses||0):0,row=(label,w,l,p,v)=>`<span class="pm-row">${label} <b>${w}–${l}${p?`–${p}`:''}</b> <span class="hero-profit ${v>=0?'up':'down'}">${htmlEscape(money(v))}</span></span>`;
     // Sportsbooks first (the long sample): singles and parlays on their own rows, like the X cards.
-    const lead=sea&&sea.wins+sea.losses>=10?`<span class="pm-lead"><small class="pm-cap">Sportsbooks${sea.tracked?` · beat the kickoff price ${sea.beat} of ${sea.tracked}`:''}</small>${row('Singles',sea.wins,sea.losses,sea.pushes,sea.profit)}${spl?row('Parlays',sea.parlayWins,sea.parlayLosses,0,sea.parlayProfit||0):''}</span>`:'';
-    title.innerHTML=`${lead}<button type="button" class="hero-toggle${lead?' pm-second':''}" id="pmHeroToggle" aria-expanded="${!panel.hidden}" aria-controls="pmHeroPicks">${lead?'Prediction-app picks':'Prediction record'} <b>${w}–${l}${pu?`–${pu}`:''}</b> <span class="hero-profit ${net>=0?'up':'down'}">${htmlEscape(money(net))}</span>${lead&&w+l<20?'<em class="pm-new">new</em>':''}<i aria-hidden="true"><svg class="ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></i></button>`;
+    const lead=!nbaRec&&sea&&sea.wins+sea.losses>=10?`<span class="pm-lead"><small class="pm-cap">Sportsbooks${sea.tracked?` · beat the kickoff price ${sea.beat} of ${sea.tracked}`:''}</small>${row('Singles',sea.wins,sea.losses,sea.pushes,sea.profit)}${spl?row('Parlays',sea.parlayWins,sea.parlayLosses,0,sea.parlayProfit||0):''}</span>`:'';
+    title.innerHTML=`${lead}<button type="button" class="hero-toggle${lead?' pm-second':''}" id="pmHeroToggle" aria-expanded="${!panel.hidden}" aria-controls="pmHeroPicks">${lead?'Prediction-app picks':nbaRec?'NBA prediction record':'Prediction record'} <b>${w}–${l}${pu?`–${pu}`:''}</b> <span class="hero-profit ${net>=0?'up':'down'}">${htmlEscape(money(net))}</span>${lead&&w+l<20?'<em class="pm-new">new</em>':''}<i aria-hidden="true"><svg class="ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></i></button>`;
     const stat=(value,label,tone='')=>`<div><strong class="${tone}">${htmlEscape(value)}</strong><span>${htmlEscape(label)}</span></div>`;
     const graded=[...(data.pmPicks||[]),...(data.pmParlays||[])].filter(r=>['won','lost','push'].includes(r.result)).sort((a,b)=>String(b.gameTime).localeCompare(String(a.gameTime)));
     const tag={won:['g','check','Hit'],lost:['r','over','Lost'],push:['n','fair','Push']};
     const items=graded.map((r,i)=>{const [cls,ic,txt]=tag[r.result],title=r.parlay?`${r.legs.length}-leg parlay`:r.player,detail=r.parlay?r.legs.map(x=>x.player).join(' + '):`${r.side} ${r.line} ${String(r.market||'').toLowerCase()}`;
       return `<li><button type="button" data-pm-hero="${i}"><span class="hp-tag ${cls}">${typeof icon==='function'?icon(ic):''}${txt}</span><span class="hp-name"><strong>${htmlEscape(title)}</strong><small>${htmlEscape(detail)}</small></span><span class="hp-num"><b>${htmlEscape(pct(r.odds))}</b><small>${chip(r.exchange)}</small></span></button></li>`}).join('');
-    panel.innerHTML=`<div class="pm-hero-stats">${stat(`${rec.wins}–${rec.losses}`,`singles · ${money(rec.profit||0)}`,(rec.profit||0)>=0?'up':'down')}${stat(`${pr.wins}–${pr.losses}`,`parlays · ${money(pr.profit||0)}`,(pr.profit||0)>=0?'up':'down')}${rec.tracked?stat(`${rec.beat} of ${rec.tracked}`,'beat the kickoff price'):stat(String(w+l+pu),'plays graded')}</div><p class="pm-hero-note">After each app’s fee. Singles at $100, parlays at $25. Its own record, separate from our sportsbook picks. Past results don’t guarantee future ones.</p>${items?`<ul>${items}</ul>`:''}<p class="pm-hero-links"><a href="/trust#predictions">Every prediction pick →</a><button type="button" data-pm-to-odds>Sportsbook record →</button></p>`;
+    panel.innerHTML=`<div class="pm-hero-stats">${stat(`${rec.wins}–${rec.losses}`,`singles · ${money(rec.profit||0)}`,(rec.profit||0)>=0?'up':'down')}${nbaRec?'':stat(`${pr.wins}–${pr.losses}`,`parlays · ${money(pr.profit||0)}`,(pr.profit||0)>=0?'up':'down')}${rec.tracked?stat(`${rec.beat} of ${rec.tracked}`,'beat the kickoff price'):stat(String(w+l+pu),'plays graded')}</div><p class="pm-hero-note">${nbaRec?'After each app’s fee. Singles at $100. NBA’s own record, kept apart from football and from our sportsbook picks.':'After each app’s fee. Singles at $100, parlays at $25. Its own record, separate from our sportsbook picks.'} Past results don’t guarantee future ones.</p>${items?`<ul>${items}</ul>`:''}<p class="pm-hero-links"><a href="/trust#predictions">Every prediction pick →</a><button type="button" data-pm-to-odds>Sportsbook record →</button></p>`;
     panel.querySelectorAll('[data-pm-hero]').forEach(b=>b.onclick=()=>window.BTGOpenPick?.(pmRecord(graded[+b.dataset.pmHero])));
     panel.querySelector('[data-pm-to-odds]')?.addEventListener('click',()=>{store(VIEW,'odds');render();resync()});
     const toggle=document.getElementById('pmHeroToggle');toggle.onclick=()=>{const open=panel.hidden;panel.hidden=!open;toggle.setAttribute('aria-expanded',String(open));hero.classList.toggle('open',open);if(open)window.btgCount?.('hero:picks')};
@@ -3182,9 +3184,10 @@ function statsProp(l){
     // NBA: prediction picks are NFL-only so far, so the prediction view shows
     // where NBA stands on the apps (checked every 6 hours) instead of NFL picks.
     if(LEAGUE==='NBA'){
-      // NBA prediction picks (own record) show once there are any; parlays and the NFL lists stay hidden.
+      // NBA prediction picks and their own record bar show once there are any; parlays and the NFL lists stay hidden.
       const nbaPm=(d.pmPicks||[]).length>0;
-      (nbaPm?['pmHero','pmParlaysNow','pmNow']:['pmHero','pmPicksNow','pmParlaysNow','pmNow']).forEach(id=>{const el=document.getElementById(id);if(el)el.hidden=true});
+      document.body.classList.toggle('nba-pm-on',nbaPm);
+      (nbaPm?['pmParlaysNow','pmNow']:['pmHero','pmPicksNow','pmParlaysNow','pmNow']).forEach(id=>{const el=document.getElementById(id);if(el)el.hidden=true});
       let note=document.getElementById('pmNbaNote');
       if(v==='predictions'){
         if(!note){note=document.createElement('section');note.id='pmNbaNote';note.className='official-now pm-nba-note';const anchor=document.getElementById('officialNow');(anchor||document.querySelector('main')).before(note)}
