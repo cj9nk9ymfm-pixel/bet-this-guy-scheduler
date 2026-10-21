@@ -121,7 +121,10 @@ const run=c=>vm.runInContext(c,context),req='new Request("https://betthisguy.com
   let replies=await run(`postNbaRepliesToX(env,${now},5)`);
   assert.deepEqual([replies.results,replies.recap],[2,1]);
   const texts=posts.slice(1).map(p=>p.text);
-  assert.ok(posts.slice(1).every(p=>p.reply?.in_reply_to_tweet_id==='1001'),'replies go under the card');
+  // Each result answers the pick's own post when it has one; the recap goes under the card.
+  {const own=Object.fromEntries(db.prepare("SELECT p.player,a.value FROM public_recommendations p JOIN app_settings a ON a.key='xid:'||p.id WHERE p.kind='prop'").all().map(r=>[r.player,r.value]));
+   assert.ok(Object.keys(own).length>=1,'the singles had their own posts');
+   for(const p of posts.slice(1)){const who=Object.keys(own).find(n=>p.text.includes(n));assert.equal(p.reply?.in_reply_to_tweet_id,who&&!/^🏀/.test(p.text)?own[who]:'1001',p.text.split('\n')[0])}}
   assert.ok(texts.some(t=>/^✅ HIT: Jayson Tatum Over 27.5 points \(\+115\)\nFinal: 31 points\.\n\+\$115 on a \$100 pick\./.test(t)),texts.join('|'));
   assert.ok(texts.some(t=>/^➖ NO ACTION: Victor Wembanyama.*didn’t play/s.test(t)));
   assert.ok(texts.some(t=>/^🏀 NBA (tonight|last night): 1–0–1, \+\$115\./.test(t)));
