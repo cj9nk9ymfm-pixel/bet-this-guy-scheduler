@@ -11,6 +11,12 @@ Render (Playwright's Chromium; ffmpeg from `pip install imageio-ffmpeg`):
 
     node shoot.mjs "$PWD" video
     $(python3 -c "import imageio_ffmpeg;print(imageio_ffmpeg.get_ffmpeg_exe())") -y -framerate 30 \
-      -i frames/f%04d.png -c:v libx264 -pix_fmt yuv420p -crf 18 -movflags +faststart btg-nba-robinson.mp4
+      -i frames/f%04d.png -c:v libx264 -pix_fmt yuv420p -crf 18 -movflags +faststart silent.mp4
 
-`node shoot.mjs "$PWD" stills` writes sample frames. `frames/` and stills are scratch; don't commit them.
+Sound (made from scratch in `sound.py`, nothing licensed: beat, whooshes, price ticks,
+assist chimes, crowd swell, cash hit; about -15 LUFS). Needs `pip install numpy scipy`:
+
+    python3 sound.py
+    ffmpeg -y -i silent.mp4 -i sound.wav -map 0:v -map 1:a -c:v copy -c:a aac -b:a 192k -shortest -movflags +faststart btg-nba-robinson.mp4
+
+`node shoot.mjs "$PWD" stills` writes sample frames. `frames/`, stills, `silent.mp4` and `sound.wav` are scratch; don't commit them.
