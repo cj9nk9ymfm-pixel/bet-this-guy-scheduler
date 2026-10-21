@@ -2,6 +2,7 @@
 import { Resvg, initWasm } from "@resvg/resvg-wasm";
 import resvgWasm from "@resvg/resvg-wasm/index_bg.wasm";
 const XCARD_FONTS = __XFONTS_PAYLOAD__;
+const X_POST_IMAGES = __XIMAGES_PAYLOAD__;
 let resvgReady = null;
 async function renderCardPng(svg) {
   resvgReady ||= initWasm(resvgWasm);

@@ -94,6 +94,17 @@ const run=c=>vm.runInContext(c,context),req='new Request("https://betthisguy.com
    assert.ok(own.length===new Set(own.map(p=>p.text)).size,'no pick posted twice');
    assert.ok(own.some(p=>/^🔒 Official parlay · NBA\n2-leg parlay \+264\n• Jayson Tatum Over 27.5 points/.test(p.text)),'the parlay posts on its own');
    db.prepare("DELETE FROM public_recommendations WHERE id='nba|test|swing|parlay|v2|p1'").run();posts.splice(before)}assert.match(posts[0].text,/Victor Wembanyama Over 11.5 rebounds \(\+114, DraftKings\)/);
+  // A one-off post (x-custom-post) with an image shipped in dist/x/: once, image attached.
+  {context.FormData??=FormData;context.Blob??=Blob;const before=context.fetch;context.fetch=async(u,i)=>String(u).includes('/2/media/upload')?Response.json({data:{id:'m1'}}):before(u,i);run('fetch=globalThis.fetch');
+   run("globalThis.X_POST_IMAGES={'night.png':btoa('png bytes')}");const n=posts.length;
+   db.prepare("INSERT INTO app_settings (key,value) VALUES ('x-custom-post',?)").run(JSON.stringify({id:'night1',text:'NBA opening night: 8–3 🏀',image:'night.png'}));
+   {const r=await run(`postCustomToX(env,${cardAt})`);assert.equal(r.posted,1,JSON.stringify(r));assert.equal(r.graphic,true)}
+   assert.equal(posts.at(-1).text,'NBA opening night: 8–3 🏀');assert.deepEqual(posts.at(-1).media,{media_ids:['m1']});
+   assert.equal(db.prepare("SELECT value FROM app_settings WHERE key='xid:x-custom:night1'").get()?.value,String(1000+posts.length),'its post id is saved');
+   assert.equal((await run(`postCustomToX(env,${cardAt+300000})`)).none,true,'once');assert.equal(posts.length,n+1);
+   db.prepare("INSERT INTO app_settings (key,value) VALUES ('x-custom-post',?)").run(JSON.stringify({text:'x',image:'missing.png'}));
+   assert.equal((await run(`postCustomToX(env,${cardAt+600000})`)).invalid,true,'an image not in the build never posts');assert.equal(posts.length,n+1);
+   db.prepare("DELETE FROM app_settings WHERE key LIKE 'x-custom%' OR key LIKE 'xid:x-custom%'").run();context.fetch=before;run('fetch=globalThis.fetch');posts.splice(n)}
   // A hold stops NBA posts.
   db.prepare("INSERT INTO app_settings (key,value) VALUES ('x-nba','hold')").run();
   assert.equal((await run(`postNbaRepliesToX(env,${cardAt})`)).disabled,true);
