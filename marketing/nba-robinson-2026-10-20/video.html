@@ -37,7 +37,7 @@ const ease=x=>x<0?0:x>1?1:1-Math.pow(1-x,3),fade=(t,a,b)=>ease((t-a)/(b-a));
 const P={posted:'🕒 Posted on X 11:15 AM PT · 45 min before tip'};
 function card(stage,t){
  // stage 0 locked, 1 price moved, 2 live count, 3 cashed
- const live=stage>=2,ast=stage<2?0:stage===3?2:Math.min(2,Math.floor((t-7.6)/0.55)+1);
+ const live=stage>=2,ast=stage<2?0:stage===3?2:Math.min(2,Math.floor((t-12.0)/1.3)+1);
  const sb=live?`<div class="sb"><div class="tm a"><span class="lg" style="background:var(--bos)">BOS</span>${stage===3?113:''}</div><div class="clk">${stage===3?'FINAL':'<span class="dot"></span>LIVE'}<small>${stage===3?'Celtics @ Pistons':'Celtics @ Pistons'}</small></div><div class="tm h">${stage===3?121:''}<span class="lg" style="background:var(--det)">DET</span></div></div>`:'';
  const head=`<span class="pill">⭐ TOP PICK · NBA</span><div class="who"><div class="av">DR</div><div><div class="name">Duncan Robinson</div><div class="bet">Over 1.5 assists · DraftKings</div></div></div>`;
  const lower=!live?`<div class="posted">${P.posted}</div><div class="prices"><div class="pr"><small>WE LOCKED</small><b style="color:var(--g)">+117</b><em>$100 wins $117</em></div><div class="pr" style="opacity:${stage>=1?1:.2}"><small>20 MIN LATER</small><b>−132</b><em>$100 wins $76</em></div></div>`
@@ -46,16 +46,17 @@ function card(stage,t){
 }
 window.setT=t=>{
  let h='';
- if(t<3){const a=fade(t,.1,.6),b=fade(t,1.3,1.9),o=1-fade(t,2.7,3);
+ if(t<3.6){const a=fade(t,.1,.7),b=fade(t,1.4,2.1),o=1-fade(t,3.2,3.6);
   h=`<div class="big" style="top:420px;font-size:84px;opacity:${a*o}">NBA opening day.</div><div class="big" style="top:560px;font-size:84px;color:#2ee6a8;opacity:${b*o};transform:translateY(${(1-b)*30}px)">One pick,<br>start to finish.</div>`}
- else if(t<12.4){
-  const stage=t<5.2?0:t<7.4?1:t<10.2?2:3,a=fade(t,3,3.5),o=1-fade(t,12.1,12.4);
+ else if(t<19.4){
+  // About four seconds a step: locked, price moved, live, graded.
+  const S=[3.6,7.6,11.4,15.4],stage=t<S[1]?0:t<S[2]?1:t<S[3]?2:3,a=fade(t,3.6,4.2),o=1-fade(t,19,19.4);
   const cap=['Locked and posted before tip','Then the price moved our way','Tracked live, assist by assist','Graded from the box score'][stage];
-  const pop=stage===3?1+0.03*Math.sin(Math.min(1,(t-10.2)/.4)*Math.PI):1;
-  const sub=['Tip-off: <span>12:00 PM PT</span>','Same bet 20 min later paid <span>$41 less</span>','<span>2 assists</span> · line was 1.5','<span>+$117</span> on a $100 bet'][stage];
-  h=`<div class="cap" style="opacity:${a*o}">${cap}</div><div style="opacity:${a*o};transform:translateY(${(1-a)*50}px) scale(${1.1*pop});transform-origin:50% 30%">${card(stage,t)}</div><div class="sub" style="opacity:${fade(t,[3,5.2,7.4,10.2][stage]+.3,[3,5.2,7.4,10.2][stage]+.8)*o}">${sub}</div>`}
- else{const a=fade(t,12.4,12.9);
-  h=`<div style="position:absolute;left:0;right:0;top:340px;text-align:center;opacity:${a}"><img src="../../dist/logo.png" style="height:100px"></div><div class="big" style="top:520px;font-size:64px;opacity:${a}">Free NBA + NFL picks.<br><span style="color:#2ee6a8">Every one graded in public.</span></div><div class="big" style="top:800px;font-size:46px;color:#cfe0ff;opacity:${fade(t,12.8,13.2)}">Turn on alerts · betthisguy.com</div>`}
+  const pop=stage===3?1+0.03*Math.sin(Math.min(1,(t-15.4)/.5)*Math.PI):1;
+  const sub=['Tip-off: <span>12:00 PM PT</span>','Same bet 20 min later paid <span>$41 less</span>',(t<13.3?'He needs <span>2 assists</span> to cash':'<span>2 assists</span> · line was 1.5'),'<span>+$117</span> on a $100 bet'][stage];
+  h=`<div class="cap" style="opacity:${a*o}">${cap}</div><div style="opacity:${a*o};transform:translateY(${(1-a)*50}px) scale(${1.1*pop});transform-origin:50% 30%">${card(stage,t)}</div><div class="sub" style="opacity:${fade(t,S[stage]+.5,S[stage]+1.1)*o}">${sub}</div>`}
+ else{const a=fade(t,19.4,20);
+  h=`<div style="position:absolute;left:0;right:0;top:340px;text-align:center;opacity:${a}"><img src="../../dist/logo.png" style="height:100px"></div><div class="big" style="top:520px;font-size:64px;opacity:${a}">Free NBA + NFL picks.<br><span style="color:#2ee6a8">Every one graded in public.</span></div><div class="big" style="top:800px;font-size:46px;color:#cfe0ff;opacity:${fade(t,20.2,20.8)}">Turn on alerts · betthisguy.com</div>`}
  document.getElementById('root').innerHTML=`<div class="v">${h}<div class="rg">21+ · Gambling problem? Call 1-800-GAMBLER</div></div>`};
 setT(Number(new URLSearchParams(location.search).get('t')||0));
 </script></body></html>
