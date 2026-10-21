@@ -1,0 +1,61 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+@font-face{font-family:G;src:url(../../worker/fonts/SpaceGrotesk-Bold.ttf)}@font-face{font-family:XB;src:url(../../worker/fonts/Inter-ExtraBold.ttf)}@font-face{font-family:SB;src:url(../../worker/fonts/Inter-SemiBold.ttf)}
+:root{--g:#2ee6a8;--muted:#9fb0cc;--card:#13161b;--line:#262b33;--bos:#007a33;--det:#c8102e}
+*{box-sizing:border-box;margin:0}body{background:#000}
+.v{position:relative;width:1080px;height:1350px;overflow:hidden;background:radial-gradient(120% 80% at 0% 0%,#1d4ed8 0%,#0b1530 52%,#070b18 100%);color:#fff;font-family:SB}
+.big{position:absolute;left:72px;right:72px;text-align:center;font-family:G;line-height:1.05}
+.cap{position:absolute;left:72px;right:72px;top:150px;text-align:center;font:44px G;color:#cfe0ff}
+.card{position:absolute;left:95px;right:95px;top:300px;border-radius:30px;overflow:hidden;background:var(--card);border:1.5px solid var(--line);box-shadow:0 40px 80px rgba(0,0,0,.45)}
+.sb{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;height:110px}
+.tm{display:flex;align-items:center;gap:16px;height:100%;padding:0 28px;font:44px G}
+.tm.a{background:linear-gradient(90deg,var(--bos),transparent)}.tm.h{justify-content:flex-end;background:linear-gradient(270deg,var(--det),transparent)}
+.lg{width:58px;height:58px;border-radius:50%;display:grid;place-items:center;font:17px XB;border:3px solid rgba(255,255,255,.3)}
+.clk{text-align:center;font:24px XB;letter-spacing:.06em}.clk small{display:block;font:18px SB;color:#98a1ad;letter-spacing:0;margin-top:4px}
+.dot{display:inline-block;width:13px;height:13px;border-radius:50%;background:#f43f5e;margin-right:10px;vertical-align:2px;box-shadow:0 0 0 6px rgba(244,63,94,.22)}
+.body{padding:34px 40px 40px}
+.pill{display:inline-flex;align-items:center;gap:10px;height:46px;padding:0 20px;border-radius:99px;background:rgba(46,230,168,.14);border:1.5px solid rgba(46,230,168,.5);color:var(--g);font:18px XB;letter-spacing:.14em}
+.who{display:flex;align-items:center;gap:22px;margin-top:22px}
+.av{width:104px;height:104px;border-radius:50%;background:radial-gradient(circle at 50% 35%,#334155,#1a1e24);border:4px solid var(--det);display:grid;place-items:center;font:36px G;color:#cbd5e1;flex:none}
+.name{font:58px G;line-height:1.02}.bet{font:32px SB;color:#dbe4f0;margin-top:6px}
+.posted{display:inline-flex;align-items:center;gap:10px;margin-top:22px;padding:10px 16px;border-radius:12px;background:rgba(46,230,168,.1);border:1.5px solid rgba(46,230,168,.35);color:#cff5e8;font:24px SB}
+.prices{display:flex;gap:18px;margin-top:26px}.pr{flex:1;border-radius:18px;background:#0b0f14;border:1.5px solid var(--line);padding:18px 22px}
+.pr small{display:block;font:16px XB;letter-spacing:.14em;color:var(--muted)}.pr b{display:block;font:62px G;margin-top:8px;line-height:1}.pr em{display:block;font:18px SB;font-style:normal;color:var(--muted);margin-top:8px}
+.count{display:flex;align-items:flex-end;justify-content:space-between;margin-top:26px}.count strong{font:130px/0.85 G}.count strong span{font:42px G;color:#5d6570;margin-left:8px}
+.need{text-align:right}.need b{display:block;font:44px G;color:var(--g)}.need small{font:22px SB;color:#98a1ad}
+.pips{display:flex;gap:14px;margin-top:26px}.pips i{flex:1;height:26px;border-radius:8px;background:#232831}.pips i.f{background:linear-gradient(180deg,#45f0b8,#20c08a);box-shadow:0 0 22px rgba(46,230,168,.45)}
+.pips i.c:not(.f){background:repeating-linear-gradient(135deg,rgba(46,230,168,.2) 0 8px,transparent 8px 16px);box-shadow:inset 0 0 0 3px var(--g)}
+.stamp{position:absolute;left:300px;top:395px;transform:rotate(-9deg);font:40px G;letter-spacing:.14em;color:var(--g);border:5px solid var(--g);border-radius:14px;padding:6px 20px;background:rgba(19,22,27,.85)}
+.card.hit{border-color:rgba(46,230,168,.6);box-shadow:0 0 0 2px rgba(46,230,168,.2),0 30px 90px -10px rgba(46,230,168,.45)}
+.sub{position:absolute;left:72px;right:72px;top:1010px;text-align:center;font:46px G;color:#fff}.sub span{color:var(--g)}
+.rg{position:absolute;left:72px;right:72px;bottom:56px;text-align:center;font:22px SB;color:#9fb0cc}
+</style></head><body><div id="root"></div>
+<script>
+// Duncan Robinson, Over 1.5 assists, Celtics @ Pistons, Tue Oct 20 2026 (noon PT tip).
+// Every number from the live record: locked +117 at DraftKings 11:11 AM PT, posted on X 11:15 AM PT,
+// DraftKings -135 at 11:21 and -132 at 11:31 AM PT, final 2 assists (won).
+const ease=x=>x<0?0:x>1?1:1-Math.pow(1-x,3),fade=(t,a,b)=>ease((t-a)/(b-a));
+const P={posted:'🕒 Posted on X 11:15 AM PT · 45 min before tip'};
+function card(stage,t){
+ // stage 0 locked, 1 price moved, 2 live count, 3 cashed
+ const live=stage>=2,ast=stage<2?0:stage===3?2:Math.min(2,Math.floor((t-7.6)/0.55)+1);
+ const sb=live?`<div class="sb"><div class="tm a"><span class="lg" style="background:var(--bos)">BOS</span>${stage===3?113:''}</div><div class="clk">${stage===3?'FINAL':'<span class="dot"></span>LIVE'}<small>${stage===3?'Celtics @ Pistons':'Celtics @ Pistons'}</small></div><div class="tm h">${stage===3?121:''}<span class="lg" style="background:var(--det)">DET</span></div></div>`:'';
+ const head=`<span class="pill">⭐ TOP PICK · NBA</span><div class="who"><div class="av">DR</div><div><div class="name">Duncan Robinson</div><div class="bet">Over 1.5 assists · DraftKings</div></div></div>`;
+ const lower=!live?`<div class="posted">${P.posted}</div><div class="prices"><div class="pr"><small>WE LOCKED</small><b style="color:var(--g)">+117</b><em>$100 wins $117</em></div><div class="pr" style="opacity:${stage>=1?1:.2}"><small>20 MIN LATER</small><b>−132</b><em>$100 wins $76</em></div></div>`
+  :`<div class="count"><strong style="color:${stage===3?'var(--g)':'#fff'}">${ast}<span>/ 1.5</span></strong><div class="need"><b>${stage===3?'Hit ✓':ast>=2?'Cashed':'1 to go'}</b><small>${stage===3?'$100 won $117':ast>=2?'cleared the line':'needs 2 to cash'}</small></div></div><div class="pips"><i class="${ast>=1?'f':''}"></i><i class="c ${ast>=2?'f':''}"></i></div>`;
+ return `<div class="card${stage===3||ast>=2?' hit':''}">${sb}<div class="body">${head}${lower}</div>${stage===3?'<span class="stamp">CASHED</span>':''}</div>`;
+}
+window.setT=t=>{
+ let h='';
+ if(t<3){const a=fade(t,.1,.6),b=fade(t,1.3,1.9),o=1-fade(t,2.7,3);
+  h=`<div class="big" style="top:420px;font-size:84px;opacity:${a*o}">NBA opening day.</div><div class="big" style="top:560px;font-size:84px;color:#2ee6a8;opacity:${b*o};transform:translateY(${(1-b)*30}px)">One pick,<br>start to finish.</div>`}
+ else if(t<12.4){
+  const stage=t<5.2?0:t<7.4?1:t<10.2?2:3,a=fade(t,3,3.5),o=1-fade(t,12.1,12.4);
+  const cap=['Locked and posted before tip','Then the price moved our way','Tracked live, assist by assist','Graded from the box score'][stage];
+  const pop=stage===3?1+0.03*Math.sin(Math.min(1,(t-10.2)/.4)*Math.PI):1;
+  const sub=['Tip-off: <span>12:00 PM PT</span>','Same bet 20 min later paid <span>$41 less</span>','<span>2 assists</span> · line was 1.5','<span>+$117</span> on a $100 bet'][stage];
+  h=`<div class="cap" style="opacity:${a*o}">${cap}</div><div style="opacity:${a*o};transform:translateY(${(1-a)*50}px) scale(${1.1*pop});transform-origin:50% 30%">${card(stage,t)}</div><div class="sub" style="opacity:${fade(t,[3,5.2,7.4,10.2][stage]+.3,[3,5.2,7.4,10.2][stage]+.8)*o}">${sub}</div>`}
+ else{const a=fade(t,12.4,12.9);
+  h=`<div style="position:absolute;left:0;right:0;top:340px;text-align:center;opacity:${a}"><img src="../../dist/logo.png" style="height:100px"></div><div class="big" style="top:520px;font-size:64px;opacity:${a}">Free NBA + NFL picks.<br><span style="color:#2ee6a8">Every one graded in public.</span></div><div class="big" style="top:800px;font-size:46px;color:#cfe0ff;opacity:${fade(t,12.8,13.2)}">Turn on alerts · betthisguy.com</div>`}
+ document.getElementById('root').innerHTML=`<div class="v">${h}<div class="rg">21+ · Gambling problem? Call 1-800-GAMBLER</div></div>`};
+setT(Number(new URLSearchParams(location.search).get('t')||0));
+</script></body></html>
