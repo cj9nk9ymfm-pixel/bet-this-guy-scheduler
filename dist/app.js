@@ -1346,6 +1346,8 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
   // Mirrors the server: official weeks run Tuesday noon UTC to Tuesday noon UTC;
   // an NBA night is its Eastern date (6 hours back keeps late tips on it).
   const currentWeek=(now=Date.now())=>{if(NBA)return new Date(now-6*3600000).toISOString().slice(0,10);const d=new Date(now-12*3600000);d.setUTCHours(0,0,0,0);d.setUTCDate(d.getUTCDate()-(d.getUTCDay()+5)%7);return d.toISOString().slice(0,10)};
+  // A later NBA night as a heading: "Fri, Oct 23 · tomorrow".
+  const nightLabel=n=>{const d=new Date(`${n}T12:00:00Z`),next=new Date(Date.parse(`${currentWeek()}T12:00:00Z`)+86400000).toISOString().slice(0,10);return `${d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',timeZone:'UTC'})}${n===next?' · tomorrow':''}`};
   const recordLegs=r=>{try{const legs=JSON.parse(r.legs_json||'[]');return Array.isArray(legs)?legs:[]}catch{return []}};
   // The record is always at $100 a single and $25 a parlay; open picks show
   // what the viewer's own bet (Settings) wins.
@@ -1685,14 +1687,19 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     const rowsOf=items=>items.map(([r,i])=>officialRow(r,i)).join(''),SHOW=4;
     function fill(sel,items,noun,empty){
       const box=$(sel);if(!box)return;
-      const done=items.filter(([r])=>officialDone(r)),live=items.filter(([r])=>!officialDone(r)&&liveLine(r)),open=items.filter(([r])=>!officialDone(r)&&!live.some(([x])=>x===r));
+      // NBA: picks for a later night sit under their own day heading, after tonight's.
+      const cur=currentWeek(),later=NBA?items.filter(([r])=>!officialDone(r)&&weekOf(r)>cur):[];
+      const done=items.filter(([r])=>officialDone(r)),live=items.filter(([r])=>!officialDone(r)&&liveLine(r)&&!later.some(([x])=>x===r)),open=items.filter(([r])=>!officialDone(r)&&!live.some(([x])=>x===r)&&!later.some(([x])=>x===r));
+      const laterHtml=[...new Set(later.map(([r])=>weekOf(r)))].sort().map(n=>`<p class="on-group on-group-later">${htmlEscape(nightLabel(n))}</p>${rowsOf(later.filter(([r])=>weekOf(r)===n))}`).join('');
       const tally=done.reduce((t,[r])=>{t[r.result]=(t[r.result]||0)+1;return t},{}),doneRec=`${tally.won||0}–${tally.lost||0}${tally.push?`–${tally.push}`:''}`;
-      box.innerHTML=items.length?(live.length?`<p class="on-group on-group-live"><i class="on-dot"></i>Live now</p>${rowsOf(live)}${open.length?'<p class="on-group">Up next</p>':''}`:'')+rowsOf(open.slice(0,SHOW))+(open.length>SHOW?`<div class="on-more" hidden>${rowsOf(open.slice(SHOW))}</div><button type="button" class="on-toggle" data-on-toggle="more" aria-expanded="false">See all ${open.length} ${noun}s</button>`:'')+(done.length?`<button type="button" class="on-toggle on-final-toggle" data-on-toggle="final" aria-expanded="${open.length?'false':'true'}">Final · ${done.length} ${noun}${done.length===1?'':'s'} · ${doneRec}</button><div class="on-final"${open.length?' hidden':''}>${rowsOf(done)}</div>`:''):empty;
+      box.innerHTML=items.length?(later.length&&(open.length||live.length||done.length)?'<p class="on-group">Tonight</p>':'')+(live.length?`<p class="on-group on-group-live"><i class="on-dot"></i>Live now</p>${rowsOf(live)}${open.length?'<p class="on-group">Up next</p>':''}`:'')+rowsOf(open.slice(0,SHOW))+(open.length>SHOW?`<div class="on-more" hidden>${rowsOf(open.slice(SHOW))}</div><button type="button" class="on-toggle" data-on-toggle="more" aria-expanded="false">See all ${open.length} ${noun}s</button>`:'')+(done.length?`<button type="button" class="on-toggle on-final-toggle" data-on-toggle="final" aria-expanded="${open.length?'false':'true'}">Final · ${done.length} ${noun}${done.length===1?'':'s'} · ${doneRec}</button><div class="on-final"${open.length?' hidden':''}>${rowsOf(done)}</div>`:'')+laterHtml:empty;
       box.querySelectorAll('[data-on-toggle]').forEach(b=>b.onclick=()=>{const el=b.dataset.onToggle==='more'?b.previousElementSibling:b.nextElementSibling;const show=el.hidden;el.hidden=!show;b.setAttribute('aria-expanded',String(show));if(b.dataset.onToggle==='more')b.textContent=show?'Show fewer':`See all ${open.length} ${noun}s`});
     }
     const singles=indexed.filter(([r])=>r.kind!=='parlay'),parlays=indexed.filter(([r])=>r.kind==='parlay');
-    $('#officialNowCount').textContent=singles.length?String(singles.length):'';
-    if($('#parlaysCount'))$('#parlaysCount').textContent=parlays.length?String(parlays.length):'';
+    // Counts are tonight's (NBA picks for a later night sit under their own heading).
+    const tonightOnly=items=>NBA?items.filter(([r])=>!(weekOf(r)>currentWeek())):items,nS=tonightOnly(singles).length,nP=tonightOnly(parlays).length;
+    $('#officialNowCount').textContent=nS?String(nS):'';
+    if($('#parlaysCount'))$('#parlaysCount').textContent=nP?String(nP):'';
     fill('#officialNowList',singles,'pick',NBA?'<div class="on-empty"><strong>No NBA picks yet tonight.</strong><span>They post as soon as a price qualifies, often the day before. Only the best: 1.5% or more over the fair price, up to 10 a night.</span></div>':'<div class="on-empty"><strong>No picks yet this week.</strong><span>They post the moment a price qualifies, any day before kickoff.</span></div>');
     fill('#parlaysList',parlays,'parlay',NBA?'<div class="on-empty"><strong>No NBA parlays yet tonight.</strong><span>Up to 2 a night, when two or more props that just missed line up.</span></div>':'<div class="on-empty"><strong>No parlays yet this week.</strong><span>They post when two or more props that just missed line up.</span></div>');
     // Tap the row for the bet screen; tap a single's price to add it to the slip.
@@ -3089,7 +3096,11 @@ function statsProp(l){
     const pc=document.getElementById('pmPicksCount');if(pc)pc.textContent=list.length?String(list.length):'';
     // The record lives in the bar at the top; this line explains the prices.
     document.getElementById('pmPicksRecord').textContent='Priced as each app’s chance after its fee: 60% means you pay 60¢ to win $1, so lower is better. Singles $100, parlays $25.';
-    document.getElementById('pmPicksList').innerHTML=list.length?list.map(pickRow).join(''):'<div class="on-empty"><strong>'+(LEAGUE==='NBA'?'No NBA picks yet tonight.':'No picks yet this week.')+'</strong><span>They post when an app’s price beats the sportsbooks’ fair chance by 1.5+ points after its fee.</span></div>';
+    // NBA: picks for a later night under their own day heading, after tonight's.
+    const tonight=night(Date.now()),laterOf=r=>LEAGUE==='NBA'&&!r.result&&night(Date.parse(r.gameTime))>tonight,now_=list.filter(r=>!laterOf(r)),later=list.filter(laterOf);
+    const dayHead=n=>{const d=new Date(`${n}T12:00:00Z`),next=new Date(Date.parse(`${tonight}T12:00:00Z`)+86400000).toISOString().slice(0,10);return `<p class="on-group on-group-later">${d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',timeZone:'UTC'})}${n===next?' · tomorrow':''}</p>`};
+    const laterHtml=[...new Set(later.map(r=>night(Date.parse(r.gameTime))))].sort().map(n=>dayHead(n)+later.filter(r=>night(Date.parse(r.gameTime))===n).map(pickRow).join('')).join('');
+    document.getElementById('pmPicksList').innerHTML=list.length?(later.length&&now_.length?'<p class="on-group">Tonight</p>':'')+now_.map(pickRow).join('')+laterHtml:'<div class="on-empty"><strong>'+(LEAGUE==='NBA'?'No NBA picks yet tonight.':'No picks yet this week.')+'</strong><span>They post when an app’s price beats the sportsbooks’ fair chance by 1.5+ points after its fee.</span></div>';
     bindPmRows();focusPick();window.BTGTagInjuries?.();
   }
   // Board: every prop's best prediction-market chance in the visitor's state.

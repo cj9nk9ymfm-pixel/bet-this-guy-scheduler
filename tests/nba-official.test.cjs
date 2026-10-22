@@ -180,5 +180,10 @@ const run=c=>vm.runInContext(c,context),req='new Request("https://betthisguy.com
    plan=JSON.parse(JSON.stringify(run(`officialPlan(${JSON.stringify([...pool,c(99,0,3.1)])},[],'2026-10-20',Date.now(),[],${cfg})`))).filter(p=>p.tier==='props');
    assert.ok(plan.some(p=>p.legs[0].player==='P99')&&plan.length===11,'a 2.5%+ top pick posts past the nightly and per-game limits');
    assert.equal(run('NBA_MIN'),1.5,'NBA bar is 1.5%');}
+  // A pick for a later night leads its X post with the day; tonight's don't.
+  {const now=Date.parse('2026-10-22T22:00:00Z');
+   assert.equal(run(`nbaAhead('2026-10-23T01:40:00Z',${now})`),'','tonight (late tip, after midnight UTC)');
+   assert.equal(run(`nbaAhead('2026-10-24T01:40:00Z',${now})`),'🗓️ For TOMORROW (Fri)\n');
+   assert.equal(run(`nbaAhead('2026-10-24T23:00:00Z',${now})`),'🗓️ For Sat, Oct 24\n');}
   console.log('PASS: official NBA picks post every qualifying core-market prop (one per player) as soon as props are listed (up to 36 hours before tip-off), stay out of NFL queries, grade from the box score with no-plays as pushes, and serve their own record');
 })().catch(e=>{console.error(e);process.exit(1)});

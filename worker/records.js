@@ -397,6 +397,8 @@ const NBA_OFFICIAL_MARKETS=new Set(['Points','Rebounds','Assists','3-Pointers Ma
 // The night a game belongs to: its US Eastern date (a 10:30 PM ET tip is
 // after midnight UTC, so 6 hours back keeps it on the same night).
 const nbaNight=time=>new Date(Number(time)-6*3600000).toISOString().slice(0,10);
+// An NBA pick for a later night leads its X post with the day, so nobody bets it tonight.
+const nbaAhead=(gameTime,now=Date.now())=>{const n=nbaNight(Date.parse(gameTime)),t=nbaNight(now);if(!(n>t))return '';const day=new Date(`${n}T12:00:00Z`),tomorrow=nbaNight(now+86400000)===n;return `🗓️ For ${tomorrow?`TOMORROW (${day.toLocaleDateString('en-US',{weekday:'short',timeZone:'UTC'})})`:day.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',timeZone:'UTC'})}\n`};
 const nbaConfig=night=>({prefix:`nba|${night}|`,caps:NBA_CAPS,perGame:NBA_PER_GAME,top:NBA_TOP,sport:'NBA',note:'Official nightly NBA selection. Pregame odds locked; multi-book price signal, not a player projection. Parlay payout is an estimate.'});
 async function publishNbaPicks(request,env,ctx,now=Date.now()){
   if(!env.DB||now<NBA_START-NBA_WINDOW)return {state:'not_started'};
@@ -1695,7 +1697,7 @@ async function postPredictionPicksToX(env,now=Date.now()){
     const rec=await xRecords(env).catch(()=>null);
     // A partner code (its X code if it has one) rides along on that app's picks.
     const partner=(await partnerOffers(env).catch(()=>({})))[r.exchange],promo=partner?`New to ${r.exchange}? Code ${partner.xCode||partner.code}${partner.offer?`: ${partner.offer}`:''}. Terms apply.`:'';
-    const text=xPostText({head:`${Number(r.edge)>=TOP_PICK.pm?'⭐ Top pick':'🔒 Official pick'} · Prediction app`,lines:[`${r.player}${await xQuestionable(env,r.player)} ${weeklyLegText(r)}`,[`${exchangePct(r.odds)}% on ${await xAppTag(env,r.exchange)} (fair ${Math.round(r.fair_pct)}%)`,xMatchup(r.team),xShortWhen(r.game_time)].filter(Boolean).join(' · ')],extra:promo,rec,age:'18+/21+ by app'});
+    const text=xPostText({head:`${String(r.event_id||'').startsWith('NBA--')?nbaAhead(r.game_time,now):''}${Number(r.edge)>=TOP_PICK.pm?'⭐ Top pick':'🔒 Official pick'} · Prediction app`,lines:[`${r.player}${await xQuestionable(env,r.player)} ${weeklyLegText(r)}`,[`${exchangePct(r.odds)}% on ${await xAppTag(env,r.exchange)} (fair ${Math.round(r.fair_pct)}%)`,xMatchup(r.team),xShortWhen(r.game_time)].filter(Boolean).join(' · ')],extra:promo,rec,age:'18+/21+ by app'});
     const mediaId=await xPredictionMedia(env,r,false,rec);
     try{const sent=await xPost(env,text,mediaId);await xDone(env,key,now);if(sent?.data?.id)await setAppSetting(env,`xid:${r.id}`,String(sent.data.id)).catch(()=>{});await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} prediction ${mediaId?'graphic':'text'} ${r.id} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,graphic:Boolean(mediaId)}}
     catch(error){console.warn('x_prediction_failed',error.message);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
@@ -4173,8 +4175,9 @@ async function postNbaPicksToX(env,now=Date.now()){
     if(await appSetting(env,`xid:${r.id}`)||await appSetting(env,`x-nba-pick:${r.id}`)||!(await xClaimable(env,`xi:${r.id}`,now))||!(await xClaim(env,`xi:${r.id}`,now)))continue;
     let mediaId=null;
     try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(xCardSvg(await xCardData(env,r,await nbaRecordSummary(env)))))}catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} nba pick graphic: ${error.message}`).catch(()=>{})}
-    const text=parlay?xShort(`🔒 Official parlay · NBA\n${legs.length}-leg parlay ${weeklyOdds(r.combined_odds)}\n${legs.map(l=>`• ${l.player} ${weeklyLegText(l)}`).join('\n')}\n${xShortWhen(r.game_time)}\n\nLocked before tip-off. Every pick graded in public, link in bio. 21+`)
-      :xShort(`${edge>=NBA_TOP?'⭐ Top pick':'🔒 Official pick'} · NBA\n${r.player} ${weeklyLegText(r)}\n${[`${weeklyOdds(r.odds)}${f.book?` at ${f.book}`:''}`,xMatchup(f.team),xShortWhen(r.game_time)].filter(Boolean).join(' · ')}\n\nLocked before tip-off. Every pick graded in public, link in bio. 21+`);
+    const ahead=nbaAhead(r.game_time,now);
+    const text=parlay?xShort(`${ahead}🔒 Official parlay · NBA\n${legs.length}-leg parlay ${weeklyOdds(r.combined_odds)}\n${legs.map(l=>`• ${l.player} ${weeklyLegText(l)}`).join('\n')}\n${xShortWhen(r.game_time)}\n\nLocked before tip-off. Every pick graded in public, link in bio. 21+`)
+      :xShort(`${ahead}${edge>=NBA_TOP?'⭐ Top pick':'🔒 Official pick'} · NBA\n${r.player} ${weeklyLegText(r)}\n${[`${weeklyOdds(r.odds)}${f.book?` at ${f.book}`:''}`,xMatchup(f.team),xShortWhen(r.game_time)].filter(Boolean).join(' · ')}\n\nLocked before tip-off. Every pick graded in public, link in bio. 21+`);
     try{const sent=await xPost(env,text,mediaId);await xDone(env,`xi:${r.id}`,now);
       if(sent?.data?.id)await setAppSetting(env,`xid:${r.id}`,String(sent.data.id)).catch(()=>{});
       await env.DB.prepare('INSERT OR IGNORE INTO app_settings (key,value) VALUES (?,?)').bind(`x-nba-pick:${r.id}`,new Date(now).toISOString()).run().catch(()=>{});
