@@ -3017,7 +3017,8 @@ async function sendDueAlerts(env,now=Date.now()){
   const nbaEmails=await sendNbaEmails(env,now).catch(error=>({error:error.message}));
   const predictions=await sendPredictionAlerts(env,now).catch(error=>({error:error.message}));
   const predictionEmails=await sendPredictionEmails(env,now).catch(error=>({error:error.message}));
-  return {...await sendOfficialAlerts(env,now),nba,nbaEmails,predictions,predictionEmails,...(custom.none?{}:{custom})};
+  const reminders=await remindPendingSubscribers(env,now).catch(error=>({error:error.message}));
+  return {...await sendOfficialAlerts(env,now),nba,nbaEmails,predictions,predictionEmails,...(reminders.sent?{reminders}:{}),...(custom.none?{}:{custom})};
 }
 async function sendOfficialAlerts(env,now=Date.now()){
   if(!env.DB)return {sent:0};
@@ -4489,11 +4490,24 @@ async function sendBookAlerts(env,events,now=Date.now()){
 // One-click unsubscribe. A plain visit shows a button (so link scanners can't
 // unsubscribe anyone); mail apps' one-click POST unsubscribes straight away.
 // Email alerts without an account. POST /api/email-subscribe {email, nba?}
-// stores the address as pending and emails a confirm link (at most one every
-// 10 minutes per address, 60 an hour in all); GET
-// /api/email-subscribe/confirm?token= turns it on. Nothing is sent to an
-// address until its owner opens that link.
+// turns the address on at once and sends a welcome email with a one-click
+// unsubscribe (at most one email every 10 minutes per address, 60 sign-ups
+// an hour in all). Addresses that signed up when a confirm link was required
+// stay pending until they tap it (one reminder: remindPendingSubscribers).
 const SUB_EMAIL=/^[^\s@<>"]{1,64}@[^\s@<>"]{1,190}\.[a-z]{2,24}$/i;
+async function sendSubscriberEmail(env,email,token,kind){
+  if(!env.RESEND_API_KEY)return false;
+  const postal=String(env.EMAIL_POSTAL_ADDRESS||'').trim(),stop=`${SITE_URL}/api/email-alerts/unsubscribe?token=${token}`;
+  const confirm=kind==='confirm',link=confirm?`${SITE_URL}/api/email-subscribe/confirm?token=${token}`:`${SITE_URL}/`;
+  const opts=confirm
+    ?{subject:'Confirm your Bet This Guy pick emails',heading:'One tap to start your pick emails',eyebrow:'CONFIRM YOUR EMAIL',lede:'Tap below and we’ll email you each new official pick, with the price and the sportsbook. Picks that lock together come in one email. Didn’t ask for this? Ignore it and you won’t hear from us.',rowsHtml:'',ctaLabel:'Yes, email me picks',ctaUrl:link}
+    :{subject:'You’re in: Bet This Guy picks by email',heading:'You’re on the list',eyebrow:'PICK EMAILS ARE ON',lede:'We’ll email you each new official NFL and NBA pick the moment it locks, with the price and the sportsbook. Picks that lock together come in one email. Every email has a one-click unsubscribe. Didn’t sign up? Use the link below and you won’t hear from us again.',rowsHtml:'',ctaLabel:'See this week’s picks',ctaUrl:link};
+  const text=confirm
+    ?`One tap to start your Bet This Guy pick emails:\n${link}\n\nPicks that lock together come in one email. Didn’t ask for this? Ignore this email and you won’t hear from us.\n21+ where legal. Gambling problem? Call 1-800-GAMBLER.${postal?`\n${postal}`:''}\n`
+    :`You’re on the Bet This Guy list. We’ll email you each new official pick the moment it locks, with the price and the sportsbook.\n\nThis week’s picks: ${link}\n\nDidn’t sign up, or want to stop? Unsubscribe: ${stop}\n21+ where legal. Gambling problem? Call 1-800-GAMBLER.${postal?`\n${postal}`:''}\n`;
+  const r=await fetch('https://api.resend.com/emails',{method:'POST',headers:{authorization:`Bearer ${env.RESEND_API_KEY}`,'content-type':'application/json'},body:JSON.stringify({from:env.EMAIL_FROM||EMAIL_ALERT_FROM,to:[email],reply_to:env.EMAIL_REPLY_TO||'support@betthisguy.com',subject:opts.subject,html:emailAlertHtml([],confirm?`${SITE_URL}/`:stop,postal,opts),text,...(confirm?{}:{headers:{'List-Unsubscribe':`<${stop}>`,'List-Unsubscribe-Post':'List-Unsubscribe=One-Click'}})}),signal:AbortSignal.timeout(15000)}).catch(()=>null);
+  return Boolean(r?.ok);
+}
 async function emailSubscribeApi(request,env,ctx){
   const url=new URL(request.url),reply=(body,status=200)=>json(body,status,{'cache-control':'no-store'});
   if(!env.DB)return reply({success:false,error:'Unavailable'},503);
@@ -4505,20 +4519,31 @@ async function emailSubscribeApi(request,env,ctx){
   const now=Date.now(),stamp=new Date(now).toISOString();
   const row=await env.DB.prepare('SELECT status,token,confirm_sent_at FROM email_subscribers WHERE email=?').bind(email).first();
   if(row?.status==='active')return reply({success:true,active:true});
-  if(row&&now-Date.parse(row.confirm_sent_at||0)<10*60000)return reply({success:true,pending:true});
+  if(row&&now-Date.parse(row.confirm_sent_at||0)<10*60000)return reply({success:true,active:row.status==='active',pending:row.status==='pending'});
   const hour=`email-sub-hour:${stamp.slice(0,13)}`,sent=Number(await appSetting(env,hour)||0);
   if(sent>=60)return reply({success:false,error:'Too many sign-ups right now. Try again in an hour.'},429);
-  const token=emailAlertToken(),nba=body.nba===false?0:1;
-  await env.DB.prepare("INSERT INTO email_subscribers (email,token,status,nba,created_at,confirm_sent_at) VALUES (?,?,'pending',?,?,?) ON CONFLICT(email) DO UPDATE SET token=excluded.token,status='pending',nba=excluded.nba,confirm_sent_at=excluded.confirm_sent_at").bind(email,token,nba,stamp,stamp).run();
-  await setAppSetting(env,hour,String(sent+1));
   if(!env.RESEND_API_KEY)return reply({success:false,error:'Email isn’t connected yet.'},503);
-  const link=`${SITE_URL}/api/email-subscribe/confirm?token=${token}`,postal=String(env.EMAIL_POSTAL_ADDRESS||'').trim();
-  const opts={subject:'Confirm your Bet This Guy pick emails',heading:'One tap to start your pick emails',eyebrow:'CONFIRM YOUR EMAIL',lede:'Tap below and we’ll email you each new official pick, with the price and the sportsbook. Picks that lock together come in one email. Didn’t ask for this? Ignore it and you won’t hear from us.',rowsHtml:'',ctaLabel:'Yes, email me picks',ctaUrl:link};
-  const text=`One tap to start your Bet This Guy pick emails:\n${link}\n\nPicks that lock together come in one email. Didn’t ask for this? Ignore this email and you won’t hear from us.\n21+ where legal. Gambling problem? Call 1-800-GAMBLER.${postal?`\n${postal}`:''}\n`;
-  const r=await fetch('https://api.resend.com/emails',{method:'POST',headers:{authorization:`Bearer ${env.RESEND_API_KEY}`,'content-type':'application/json'},body:JSON.stringify({from:env.EMAIL_FROM||EMAIL_ALERT_FROM,to:[email],reply_to:env.EMAIL_REPLY_TO||'support@betthisguy.com',subject:opts.subject,html:emailAlertHtml([],`${SITE_URL}/`,postal,opts),text}),signal:AbortSignal.timeout(15000)}).catch(()=>null);
-  if(!r?.ok){await env.DB.prepare('UPDATE email_subscribers SET confirm_sent_at=NULL WHERE email=?').bind(email).run().catch(()=>{});return reply({success:false,error:'We couldn’t send the email. Try again in a minute.'},502)}
+  const token=emailAlertToken(),nba=body.nba===false?0:1;
+  await setAppSetting(env,hour,String(sent+1));
+  // The welcome email goes first; the address only turns on once it's sent.
+  if(!(await sendSubscriberEmail(env,email,token,'welcome')))return reply({success:false,error:'We couldn’t send the email. Try again in a minute.'},502);
+  await env.DB.prepare("INSERT INTO email_subscribers (email,token,status,nba,created_at,confirm_sent_at,confirmed_at) VALUES (?,?,'active',?,?,?,?) ON CONFLICT(email) DO UPDATE SET token=excluded.token,status='active',nba=excluded.nba,confirm_sent_at=excluded.confirm_sent_at,confirmed_at=excluded.confirmed_at").bind(email,token,nba,stamp,stamp,stamp).run();
   ctx?.waitUntil?.(countUsage(env,['email:subscribe'],request).catch(()=>{}));
-  return reply({success:true,pending:true});
+  return reply({success:true,active:true,welcome:true});
+}
+// Addresses still pending from when a confirm link was required get it once
+// more, a day after signing up, then never again (marker email-reconfirm:<token>).
+async function remindPendingSubscribers(env,now=Date.now()){
+  if(!env.DB||!env.RESEND_API_KEY)return {sent:0};
+  const rows=(await env.DB.prepare("SELECT email,token FROM email_subscribers WHERE status='pending' AND created_at<? ORDER BY created_at LIMIT 5").bind(new Date(now-86400000).toISOString()).all().catch(()=>({results:[]}))).results||[];
+  let sent=0;
+  for(const r of rows){
+    const key=`email-reconfirm:${r.token}`;
+    const claim=await env.DB.prepare('INSERT OR IGNORE INTO app_settings (key,value) VALUES (?,?)').bind(key,new Date(now).toISOString()).run();
+    if(!Number(claim?.meta?.changes??claim?.changes))continue;
+    if(await sendSubscriberEmail(env,r.email,r.token,'confirm'))sent++;
+  }
+  return {sent,pending:rows.length};
 }
 async function emailConfirmPage(url,env){
   const token=url.searchParams.get('token')||'';
