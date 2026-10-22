@@ -871,7 +871,7 @@ async function postCustomToX(env,now=Date.now()){
     const sent=await xPost(env,text,mediaId,null,quote);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} custom ${sent?.data?.id||''}`).catch(()=>{});if(req.id&&sent?.data?.id)await setAppSetting(env,`xid:x-custom:${req.id}`,String(sent.data.id)).catch(()=>{});return {posted:1,graphic:Boolean(mediaId)}}
   catch(error){await setAppSetting(env,'x-custom-post',raw).catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} custom: ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
 }
-async function runXResults(env,now=Date.now()){
+async function runXResults(env,now=Date.now(),chain=0){
   if(typeof loadEspnIds==='function')await loadEspnIds(env,now).catch(()=>null);
   const grading=await gradePredictionNow(env,now).catch(error=>({error:error.message}));
   const results=await postPredictionResultsToX(env,now,2).catch(error=>({posted:0,error:error.message}));
@@ -879,7 +879,13 @@ async function runXResults(env,now=Date.now()){
   const recap=await postCardRecapToX(env,now).catch(error=>({posted:0,error:error.message}));
   const week=recap.posted?{posted:0,waiting:true}:await postPredictionWeekToX(env,now).catch(error=>({posted:0,error:error.message}));
   const custom=week.posted?{posted:0,waiting:true}:await postCustomToX(env,now).catch(error=>({posted:0,error:error.message}));
-  return {grading,results,nba,recap,week,custom};
+  // Results still waiting after this run's limit (one graphic a run): the next
+  // run starts now in its own invocation instead of on the next 5-minute tick,
+  // so every win or loss posts within a minute or two of being decided.
+  let next=null;
+  if((nba.more||results.more)&&chain<6&&env.SELF?.fetch&&env.MAINTENANCE_TOKEN)
+    next=await env.SELF.fetch(new Request(`${SITE_URL}/api/maintenance?job=xresults&chain=${chain+1}`,{method:'POST',headers:{authorization:`Bearer ${env.MAINTENANCE_TOKEN}`},signal:AbortSignal.timeout(240000)})).then(r=>r.status).catch(error=>error.message);
+  return {grading,results,nba,recap,week,custom,...(next?{next}:{})};
 }
 async function runXResultsNow(env){
   if(!xReady(env))return {disabled:true};
@@ -4161,7 +4167,7 @@ async function postNbaCardToX(env,now=Date.now()){
 // land, then the recap once every pick is graded. Text only, limit per run.
 async function postNbaRepliesToX(env,now=Date.now(),limit=2){
   if(!env.DB||!xReady(env)||await appSetting(env,'x-nba')==='hold')return {posted:0,disabled:true};
-  let posted=0;const out={added:0,results:0,recap:0};
+  let posted=0,more=false;const out={added:0,results:0,recap:0};
   for(const night of [...new Set([nbaNight(now),nbaNight(now-86400000)])]){
     const card=await appSetting(env,`xid:x-nba-card:${night}`);if(!card)continue;
     const rows=await nbaRows(env,night),look={won:['✅','HIT'],lost:['❌','MISS'],push:['➖','NO ACTION']};
@@ -4174,7 +4180,7 @@ async function postNbaRepliesToX(env,now=Date.now(),limit=2){
     if(rows.length&&rows.every(r=>r.status==='final'))jobs.push({key:`x-nba-recap:${night}`,kind:'recap',text:async()=>{const s=weeklySummary(rows),season=await nbaRecordSummary(env),net=s.profit+s.parlayProfit;
       return `🏀 NBA ${night===nbaNight(now)?'tonight':'last night'}: ${s.wins}–${s.losses}${s.pushes?`–${s.pushes}`:''}${s.parlayWins+s.parlayLosses?`, parlays ${s.parlayWins}–${s.parlayLosses}`:''}, ${weeklyMoney(net)}.\nNBA season: ${season.wins}–${season.losses}${season.pushes?`–${season.pushes}`:''}, ${weeklyMoney(season.profit+season.parlayProfit)}.\n\nEvery pick graded in public, losses included. Link in bio. 21+`}});
     for(const j of jobs){
-      if(posted>=limit)break;
+      if(posted>=limit){if(await xClaimable(env,j.key,now))more=true;break}
       if(!(await xClaimable(env,j.key,now))||!(await xClaim(env,j.key,now)))continue;
       // Added picks and results carry their graphic (one per run: each needs a photo, a team lookup and an upload).
       // A result answers the pick's own post (its solo post, or its "added" reply), else the card.
@@ -4182,7 +4188,7 @@ async function postNbaRepliesToX(env,now=Date.now(),limit=2){
       catch(error){await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(j.key).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {posted,...out,error:error.message}}
     }
   }
-  return {posted,...out};
+  return {posted,...out,...(more?{more}:{})};
 }
 // Our own recent posts (originals, no replies), to find a post to reply under
 // when its id wasn't saved. One read, cached 10 minutes. The account id is the
@@ -4217,14 +4223,15 @@ async function postPredictionResultsToX(env,now=Date.now(),limit=3){
       return `${e} ${w}: ${r.player} ${weeklyLegText(r)} (${exchangePct(r.odds)}% on ${r.exchange})${r.actual!=null?(r.early?`\n${r.player} already has ${r.actual} ${Number(r.actual)===1?unit.replace(/s$/,''):unit}, with the game still on.`:`\nFinal: ${r.actual} ${Number(r.actual)===1?unit.replace(/s$/,''):unit}.`):''}\n${r.result==='push'?'Stake back.':`${weeklyMoney(win)} on a $100 pick after fees.`}${recLine}\n\nEvery pick graded in public. 18+/21+ by app.`}})),
     ...parlays.map(r=>{let legs=[];try{legs=JSON.parse(r.legs_json)}catch{}return {id:r.id,posted:`xpmp:${r.id}`,match:pmParlayMatch(legs),text:()=>{const [e,w]=look[r.result];
       return `${e} ${w}: ${legs.length}-leg parlay on ${r.exchange} (${exchangePct(r.odds)}%)\n${legs.map(l=>`${l.result==='won'?'✅':l.result==='lost'?'❌':'➖'} ${l.player} ${weeklyLegText(l)}`).join('\n')}\n${r.result==='push'?'Stake back.':`${weeklyMoney(predictionParlayPay(r))} on a $25 ticket.`}\n\nEvery pick graded in public. 18+/21+ by app.`}}})];
+  let more=false;
   for(const j of jobs){
-    if(posted>=limit)break;
+    if(posted>=limit){more=true;break}
     if(!(await appSetting(env,j.posted))||!(await xClaimable(env,`xpr:${j.id}`,now))||!(await xClaim(env,`xpr:${j.id}`,now)))continue;
     try{const to=await xFindPost(env,j.id,j.match,now),sent=await xPost(env,xShort(j.text()),null,to);await xDone(env,`xpr:${j.id}`,now);posted++;
       await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} prediction-result ${to?'reply':'post'} ${sent?.data?.id||''} ${j.id}`).catch(()=>{})}
     catch(error){await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(`xpr:${j.id}`).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});break}
   }
-  return {posted};
+  return {posted,...(more?{more}:{})};
 }
 // Full-card recap: once every play on a full card (x-combo-request day) is
 // graded, one graphic with every result and the night's money, as a reply
