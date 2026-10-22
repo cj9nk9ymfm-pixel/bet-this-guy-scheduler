@@ -3076,7 +3076,9 @@ function statsProp(l){
     const host=document.getElementById('pmPicksNow');if(!host)return;pmRows=[];
     // This week only, like the sportsbook picks: the pick week starts Tuesday noon UTC
     // (the server sends five days, so Monday night's picks would linger into Wednesday).
-    const weekStart=(()=>{const d=new Date(Date.now()-12*3600000);d.setUTCHours(0,0,0,0);d.setUTCDate(d.getUTCDate()-(d.getUTCDay()+5)%7);return d.getTime()+12*3600000})(),thisWeek=r=>Date.parse(r.gameTime)>=weekStart;
+    const weekStart=(()=>{const d=new Date(Date.now()-12*3600000);d.setUTCHours(0,0,0,0);d.setUTCDate(d.getUTCDate()-(d.getUTCDay()+5)%7);return d.getTime()+12*3600000})(),night=t=>new Date(t-6*3600000).toISOString().slice(0,10),
+      // NBA: tonight and later nights only, like the NBA sportsbook picks.
+      thisWeek=r=>LEAGUE==='NBA'?night(Date.parse(r.gameTime))>=night(Date.now()):Date.parse(r.gameTime)>=weekStart;
     // Still to play, newest posted first; then in play and graded, by kickoff.
     const nowT=Date.now(),order=(a,b)=>{const ga=a.result?2:Date.parse(a.gameTime)<=nowT?1:0,gb=b.result?2:Date.parse(b.gameTime)<=nowT?1:0;return ga-gb||(ga===0?String(b.postedAt||'').localeCompare(String(a.postedAt||'')):String(a.gameTime).localeCompare(String(b.gameTime)))};
     const list=(data?.pmPicks||[]).filter(thisWeek).sort(order),parlays=(data?.pmParlays||[]).filter(thisWeek).sort(order),rec=data?.pmRecord,pr=data?.pmParlayRecord;host.hidden=v!=='predictions'||!data||data.mode==='unknown';
@@ -3087,7 +3089,7 @@ function statsProp(l){
     const pc=document.getElementById('pmPicksCount');if(pc)pc.textContent=list.length?String(list.length):'';
     // The record lives in the bar at the top; this line explains the prices.
     document.getElementById('pmPicksRecord').textContent='Priced as each app’s chance after its fee: 60% means you pay 60¢ to win $1, so lower is better. Singles $100, parlays $25.';
-    document.getElementById('pmPicksList').innerHTML=list.length?list.map(pickRow).join(''):'<div class="on-empty"><strong>No picks yet this week.</strong><span>They post when an app’s price beats the sportsbooks’ fair chance by 1.5+ points after its fee.</span></div>';
+    document.getElementById('pmPicksList').innerHTML=list.length?list.map(pickRow).join(''):'<div class="on-empty"><strong>'+(LEAGUE==='NBA'?'No NBA picks yet tonight.':'No picks yet this week.')+'</strong><span>They post when an app’s price beats the sportsbooks’ fair chance by 1.5+ points after its fee.</span></div>';
     bindPmRows();focusPick();window.BTGTagInjuries?.();
   }
   // Board: every prop's best prediction-market chance in the visitor's state.
