@@ -41,6 +41,8 @@ const wrap=(sql,args=[])=>({bind(...v){return wrap(sql,v)},async first(){return 
 const env={DB:{prepare:sql=>wrap(sql),async batch(l){const out=[];for(const s of l)out.push(await s.run());return out}},THE_ODDS_API_KEY:'k',BALLDONTLIE_API_KEY:'k',X_API_KEY:'a',X_API_SECRET:'b',X_ACCESS_TOKEN:'1-c',X_ACCESS_SECRET:'d'};context.env=env;
 const run=c=>vm.runInContext(c,context),req='new Request("https://betthisguy.com/api/maintenance")';
 (async()=>{
+  // The stats feed's "LA Clippers" is the odds feed's "Los Angeles Clippers" (grading and live matching).
+  assert.equal(run("normalizedName('LA Clippers')"),run("normalizedName('Los Angeles Clippers')"));
   // Before opening night nothing posts.
   assert.equal((await run(`publishNbaPicks(${req},env,{waitUntil(){}},${Date.parse('2026-10-18T21:00:00Z')})`)).state,'not_started');
   // New picks set off the alerts and X jobs at once, not on the next scheduled run.

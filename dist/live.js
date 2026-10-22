@@ -2,7 +2,9 @@
 const liveBoard = { games: [], updatedAt: null, stale: false, error: '', timer: null, pending: null, oddsAt: new Map(), stats: new Map(), statsPending: new Map(), gameStats: new Map(), gameStatsPending: new Map(), selectedGameID: null, profile: null };
 
 function liveTeamKey(team) {
-  const value = typeof team === 'string' ? team : team?.full_name || team?.abbreviation || team?.name || '';
+  // The stats feed calls the Clippers "LA Clippers"; the odds feed "Los Angeles Clippers".
+  const raw = typeof team === 'string' ? team : team?.full_name || team?.abbreviation || team?.name || '';
+  const value = /^la clippers$/i.test(String(raw).trim()) ? 'Los Angeles Clippers' : raw;
   const key = compactTeamName(value).toUpperCase();
   return ({JAC:'JAX',WSH:'WAS',BLT:'BAL',LA:'LAR'})[key] || key;
 }
