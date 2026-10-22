@@ -3233,7 +3233,7 @@ function statsProp(l){
   const send=async(email,nba=true)=>{const r=await fetch('/api/email-subscribe',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email,nba})}),d=await r.json().catch(()=>({}));
     if(!r.ok||!d.success)throw new Error(d.error||'We couldn’t sign you up. Try again in a minute.');
     try{localStorage.setItem('btg-email-sub','1')}catch{}
-    return d.active?'You’re already on the list. New picks will land in your inbox.':'Almost done: tap the confirm link we just emailed you. Not there in a minute? Check spam.'};
+    return d.welcome?'You’re in. Each new pick lands in your inbox the moment it locks. (We sent a welcome email; not there? Check spam.)':d.active?'You’re already on the list. New picks will land in your inbox.':'Almost done: tap the confirm link we emailed you. Not there in a minute? Check spam.'};
   $('emailSubForm').addEventListener('submit',async e=>{e.preventDefault();const email=$('emailSubInput').value.trim();
     if(!valid(email)){status('Enter a full email address, like you@example.com.','err');return}
     $('emailSubSend').disabled=true;status('Sending…');
@@ -3248,7 +3248,7 @@ function statsProp(l){
     form.addEventListener('submit',async e=>{e.preventDefault();const email=input.value.trim();
       if(!valid(email)){say('Enter a full email address, like you@example.com.','err');input.focus();return}
       button.disabled=true;say('Sending…','');window.btgCount?.(`email:inline-${source}`);
-      try{say(await send(email),'ok');input.disabled=true;button.textContent='✓ Sent';document.documentElement.classList.add('email-on-pending')}
+      try{say(await send(email),'ok');input.disabled=true;button.textContent='✓ You’re in';document.documentElement.classList.add('email-on');try{localStorage.setItem('btg-email-sub','1')}catch{}}
       catch(error){say(error.message,'err');button.disabled=false}});
     host.appendChild(form);return form};
 })();

@@ -25,18 +25,16 @@ const plain=value=>JSON.parse(JSON.stringify(value));
 const pick=(id,player,gameTime,postedAt,extra={})=>db.prepare("INSERT INTO public_recommendations(id,kind,player,market,side,line,odds,combined_odds,game_time,legs_json,posted_at,status,source) VALUES(?,?,?,?,?,?,?,?,?,?,?,'pending','market-verified-v2')").run(`official|2026-09-29|props|prop|${id}`,extra.kind||'prop',player,'Receptions','Over',4.5,120,extra.combined??null,gameTime,extra.legs||JSON.stringify([{player,market:'Receptions',side:'Over',line:4.5,odds:120,book:'DraftKings'}]),postedAt);
 
 (async()=>{
-  // Email alerts without an account: sign up with an address, confirm by link, then get pick emails.
+  // Email alerts without an account: sign up with an address and it's on, with a welcome email.
   env.RESEND_API_KEY='r';
   let r=await request('/api/email-subscribe',{method:'POST',body:JSON.stringify({email:'not-an-email'})});assert.equal(r.status,400);
-  r=await request('/api/email-subscribe',{method:'POST',body:JSON.stringify({email:'New.Fan@Example.com'})});assert.equal(r.status,200);assert.equal((await r.json()).pending,true);
-  const confirm=sent.find(m=>m.single&&m.body.to[0]==='new.fan@example.com');assert.ok(confirm,'a confirm email goes out');assert.match(confirm.body.subject,/Confirm/);
-  const token=db.prepare("SELECT token,status FROM email_subscribers WHERE email='new.fan@example.com'").get();assert.equal(token.status,'pending');
-  assert.ok(confirm.body.text.includes(`/api/email-subscribe/confirm?token=${token.token}`));
-  // Before confirming, no pick emails.
-  assert.equal((await run('emailPeople(env)')).length,0,'pending addresses get nothing');
+  r=await request('/api/email-subscribe',{method:'POST',body:JSON.stringify({email:'New.Fan@Example.com'})});assert.equal(r.status,200);{const b=await r.json();assert.equal(b.active,true);assert.equal(b.welcome,true)}
+  const welcome=sent.find(m=>m.single&&m.body.to[0]==='new.fan@example.com');assert.ok(welcome,'a welcome email goes out');assert.match(welcome.body.subject,/You’re in/);
+  const token=db.prepare("SELECT token,status FROM email_subscribers WHERE email='new.fan@example.com'").get();assert.equal(token.status,'active');
+  assert.ok(welcome.body.text.includes(`/api/email-alerts/unsubscribe?token=${token.token}`),'the welcome email has the unsubscribe link');
+  assert.ok(welcome.body.headers?.['List-Unsubscribe'],'one-click unsubscribe header');
   // A second sign-up within 10 minutes doesn't send another email.
-  const before=sent.length;await request('/api/email-subscribe',{method:'POST',body:JSON.stringify({email:'new.fan@example.com'})});assert.equal(sent.length,before,'no repeat confirm emails');
-  r=await request(`/api/email-subscribe/confirm?token=${token.token}`);assert.equal(r.status,200);assert.match(await r.text(),/You’re in/);
+  const before=sent.length;r=await request('/api/email-subscribe',{method:'POST',body:JSON.stringify({email:'new.fan@example.com'})});assert.equal(sent.length,before,'no repeat emails');assert.equal((await r.json()).active,true);
   assert.deepEqual(plain(await run('emailPeople(env)')).map(p=>p.email),['new.fan@example.com']);
   assert.equal((await run("emailPeople(env,'nba')")).length,1,'NBA on by default');assert.equal((await run("emailPeople(env,'predictions')")).length,0);
   // An account with the same address gets one email, not two.
@@ -48,6 +46,12 @@ const pick=(id,player,gameTime,postedAt,extra={})=>db.prepare("INSERT INTO publi
   r=await request(`/api/email-alerts/unsubscribe?token=${token.token}`,{method:'POST'});assert.equal(r.status,200);
   assert.equal(db.prepare("SELECT status FROM email_subscribers WHERE email='new.fan@example.com'").get().status,'off');
   assert.equal((await run('emailPeople(env)')).length,0,'unsubscribed gets nothing');
-  r=await request(`/api/email-subscribe/confirm?token=${token.token}`);assert.equal(r.status,404,'an old confirm link cannot turn it back on');
-  console.log('PASS: email alerts without an account: confirm link first, no repeat confirm emails, one email per address, one-click unsubscribe');
+  // Signed up back when a confirm link was required and never tapped it: one reminder a day later, then never again; still nothing until they confirm.
+  const old=new Date(Date.now()-3*86400000).toISOString(),tk='b'.repeat(64);
+  db.prepare("INSERT INTO email_subscribers (email,token,status,nba,created_at,confirm_sent_at) VALUES ('old.fan@example.com',?,'pending',1,?,?)").run(tk,old,old);
+  const n=sent.length;assert.equal((await run('remindPendingSubscribers(env)')).sent,1);assert.equal((await run('remindPendingSubscribers(env)')).sent,0,'only once');
+  const nudge=sent.slice(n).find(m=>m.body?.to?.[0]==='old.fan@example.com');assert.ok(nudge&&/Confirm/.test(nudge.body.subject)&&nudge.body.text.includes(`confirm?token=${tk}`),'the reminder is the confirm link');
+  assert.equal((await run('emailPeople(env)')).length,0,'pending still gets no picks');
+  r=await request(`/api/email-subscribe/confirm?token=${tk}`);assert.equal(r.status,200);assert.equal((await run('emailPeople(env)')).length,1,'confirmed, then picks');
+  console.log('PASS: email alerts without an account: on at sign-up with a welcome email, no repeat emails, one email per address, one-click unsubscribe, one confirm reminder for old pending sign-ups');
 })().catch(error=>{console.error(error);process.exit(1)});
