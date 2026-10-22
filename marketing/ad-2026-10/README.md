@@ -21,3 +21,8 @@ Render (Playwright's Chromium; ffmpeg from `pip install imageio-ffmpeg`):
       -i frames/f%04d.png -c:v libx264 -pix_fmt yuv420p -crf 18 -movflags +faststart btg-ad.mp4
 
 `frames/` is scratch output; don't commit it.
+
+Posting: a copy of `btg-ad.mp4` ships in `dist/x/`, and the site posts it
+when `x-custom-post` is set to `{"text":"…","video":"btg-ad.mp4","id":"ad-2026-10"}`
+(chunked video upload, see `xUploadVideo` in worker/records.js). Only after
+Tim approves the text.

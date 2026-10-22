@@ -853,7 +853,7 @@ async function gradePredictionNow(env,now=Date.now()){
 // invocation (SELF binding), so their reads, uploads and posts get their own
 // request allowance instead of crowding out the main X run.
 // One-off post set by the owner: app_settings x-custom-post holds JSON
-// {"text":"…","quoteKey":"xid:…"} (quoteKey optional; image: a dist/x PNG; id: saves xid:x-custom:<id>). It posts once, after
+// {"text":"…","quoteKey":"xid:…"} (quoteKey optional; image: a dist/x PNG; video: a dist/x MP4; id: saves xid:x-custom:<id>). It posts once, after
 // the post it quotes exists, then the request is cleared.
 async function postCustomToX(env,now=Date.now()){
   if(!env.DB||!xReady(env))return {posted:0,disabled:true};
@@ -866,10 +866,13 @@ async function postCustomToX(env,now=Date.now()){
   const svg=req.svgKey?await appSetting(env,String(req.svgKey)):null;if(req.svgKey&&!svg)return {posted:0,invalid:true};
   // image: a PNG shipped with the site in dist/x/ (an image made outside the card templates).
   const png=req.image?(typeof X_POST_IMAGES==='object'&&X_POST_IMAGES?X_POST_IMAGES[String(req.image)]:null):null;if(req.image&&!png)return {posted:0,invalid:true};
+  // video: an MP4 shipped the same way, sent with the chunked upload.
+  const mp4=req.video?(typeof X_POST_IMAGES==='object'&&X_POST_IMAGES?X_POST_IMAGES[String(req.video)]:null):null;if(req.video&&!mp4)return {posted:0,invalid:true};
   const claim=await env.DB.prepare('DELETE FROM app_settings WHERE key=? AND value=?').bind('x-custom-post',raw).run();if(!Number(claim?.meta?.changes??claim?.changes))return {posted:0,claimed:false};
-  try{const mediaId=png?await xUploadImage(env,Uint8Array.from(atob(png),c=>c.charCodeAt(0))):svg&&typeof renderCardPng==='function'?await xUploadImage(env,await renderCardPng(svg)):null;
+  try{const mediaId=mp4?await xUploadVideo(env,Uint8Array.from(atob(mp4),c=>c.charCodeAt(0))):png?await xUploadImage(env,Uint8Array.from(atob(png),c=>c.charCodeAt(0))):svg&&typeof renderCardPng==='function'?await xUploadImage(env,await renderCardPng(svg)):null;
     const sent=await xPost(env,text,mediaId,null,quote);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} custom ${sent?.data?.id||''}`).catch(()=>{});if(req.id&&sent?.data?.id)await setAppSetting(env,`xid:x-custom:${req.id}`,String(sent.data.id)).catch(()=>{});return {posted:1,graphic:Boolean(mediaId)}}
-  catch(error){await setAppSetting(env,'x-custom-post',raw).catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} custom: ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
+  // A failed post is put back for the next run, three tries in all (each try costs X credits).
+  catch(error){const tries=Number(req.tries||0)+1;if(tries<3)await setAppSetting(env,'x-custom-post',JSON.stringify({...req,tries})).catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} custom: ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
 }
 async function runXResults(env,now=Date.now(),chain=0){
   if(typeof loadEspnIds==='function')await loadEspnIds(env,now).catch(()=>null);
@@ -3432,6 +3435,47 @@ async function xUploadImage(env,png){
     ||await attempt('https://upload.twitter.com/1.1/media/upload.json',form(false));
   if(!id)throw new Error(`X image upload failed: ${tries.join(' | ')}`);
   return id;
+}
+// Upload an MP4 to X with the chunked upload (initialize, append in 1 MB
+// pieces, finalize, then wait for X to finish processing) and return its media
+// id. Tries the v2 endpoints, then the older v1.1 upload.
+async function xUploadVideo(env,mp4,wait=ms=>new Promise(done=>setTimeout(done,ms))){
+  const signed=async(method,url,body,headers={},query={})=>{
+    const qs=new URLSearchParams(query).toString();
+    const response=await fetch(qs?`${url}?${qs}`:url,{method,headers:{authorization:await xOAuthHeader(env,method,url,query),...headers},body,signal:AbortSignal.timeout(30000)});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(`${new URL(url).pathname} ${response.status} ${String(data?.detail||data?.title||data?.errors?.[0]?.message||'').slice(0,80)}`);
+    return data?.data||data;
+  };
+  const form=fields=>{const f=new FormData();for(const [k,v] of Object.entries(fields))f.append(k,v);return f};
+  const piece=1024*1024,pieces=Math.ceil(mp4.length/piece);
+  const v2=async()=>{
+    const base='https://api.x.com/2/media/upload';
+    const init=await signed('POST',`${base}/initialize`,JSON.stringify({media_type:'video/mp4',total_bytes:mp4.length,media_category:'tweet_video'}),{'content-type':'application/json'});
+    const id=String(init?.id||init?.media_id_string||'');if(!id)throw new Error('v2 initialize: no media id');
+    for(let i=0;i<pieces;i++)await signed('POST',`${base}/${id}/append`,form({media:new Blob([mp4.subarray(i*piece,(i+1)*piece)],{type:'video/mp4'}),segment_index:String(i)}));
+    let info=(await signed('POST',`${base}/${id}/finalize`))?.processing_info;
+    return {id,info,status:()=>signed('GET',base,undefined,{},{command:'STATUS',media_id:id})};
+  };
+  const v1=async()=>{
+    const base='https://upload.twitter.com/1.1/media/upload.json';
+    const init=await signed('POST',base,form({command:'INIT',media_type:'video/mp4',total_bytes:String(mp4.length),media_category:'tweet_video'}));
+    const id=String(init?.media_id_string||'');if(!id)throw new Error('v1.1 INIT: no media id');
+    for(let i=0;i<pieces;i++)await signed('POST',base,form({command:'APPEND',media_id:id,segment_index:String(i),media:new Blob([mp4.subarray(i*piece,(i+1)*piece)],{type:'video/mp4'})}));
+    let info=(await signed('POST',base,form({command:'FINALIZE',media_id:id})))?.processing_info;
+    return {id,info,status:()=>signed('GET',base,undefined,{},{command:'STATUS',media_id:id})};
+  };
+  const errors=[];let up=null;
+  for(const way of [v2,v1]){try{up=await way();break}catch(error){errors.push(error.message)}}
+  if(!up)throw new Error(`X video upload failed: ${errors.join(' | ')}`);
+  // Processing: poll STATUS as X asks, up to about two minutes.
+  for(let n=0;up.info&&up.info.state!=='succeeded'&&n<20;n++){
+    if(up.info.state==='failed')throw new Error(`X video processing failed: ${String(up.info.error?.message||up.info.error?.name||'').slice(0,80)}`);
+    await wait(Math.min(10,Math.max(1,Number(up.info.check_after_secs)||3))*1000);
+    up.info=(await up.status())?.processing_info||null;
+  }
+  if(up.info&&up.info.state!=='succeeded')throw new Error('X video processing did not finish');
+  return up.id;
 }
 // What the X integration last did: keys present, last post, last error.
 // Never calls X itself (X API calls cost credits).
