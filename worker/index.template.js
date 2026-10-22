@@ -332,8 +332,11 @@ async function eventProps(request, env, ctx, opts = {}) {
   }
 }
 
+// The stats feed calls the Clippers "LA Clippers"; the odds feed "Los Angeles Clippers".
+const TEAM_NAME_ALIASES = { laclippers: "losangelesclippers" };
 function normalizedName(value) {
-  return String(value || "").toLowerCase().replace(/\b(jr|sr|ii|iii|iv)\b/g, "").replace(/[^a-z0-9]/g, "");
+  const key = String(value || "").toLowerCase().replace(/\b(jr|sr|ii|iii|iv)\b/g, "").replace(/[^a-z0-9]/g, "");
+  return TEAM_NAME_ALIASES[key] || key;
 }
 
 function playerLabel(player) {
