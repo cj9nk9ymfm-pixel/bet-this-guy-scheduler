@@ -45,8 +45,8 @@ const records = await readFile("worker/records.js", "utf8");
 const icons = Object.fromEntries(await Promise.all(["/icon-192.png", "/icon-512.png", "/apple-touch-icon.png", "/og-image-v4.jpg", "/logo.png", "/logo-dark.png"].map(async path => [path, (await readFile(`dist${path}`)).toString("base64")])));
 const accounts = await readFile("worker/accounts.js", "utf8");
 // Fonts for the X pick graphics (static, Latin-only instances).
-// One-off images for X posts Tim approves (dist/x/*.png), posted by x-custom-post.
-const xImages = Object.fromEntries(await Promise.all((await readdir("dist/x").catch(() => [])).filter(name => name.endsWith(".png")).map(async name => [name, (await readFile(`dist/x/${name}`)).toString("base64")])));
+// One-off images and videos for X posts Tim approves (dist/x/*.png, *.mp4), posted by x-custom-post.
+const xImages = Object.fromEntries(await Promise.all((await readdir("dist/x").catch(() => [])).filter(name => /\.(png|mp4)$/.test(name)).map(async name => [name, (await readFile(`dist/x/${name}`)).toString("base64")])));
 const xFonts = await Promise.all(["SpaceGrotesk-Bold", "Inter-ExtraBold", "Inter-SemiBold"].map(async name => (await readFile(`worker/fonts/${name}.ttf`)).toString("base64")));
 const movement = await readFile("dist/movement.js", "utf8");
 const movementServer = await readFile("worker/movement.js", "utf8");
