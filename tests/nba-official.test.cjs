@@ -118,8 +118,10 @@ const run=c=>vm.runInContext(c,context),req='new Request("https://betthisguy.com
   assert.equal(graded['Victor Wembanyama'].result,'push','a player who did not play is no action');
   assert.equal(JSON.parse(graded['Victor Wembanyama'].legs_json)[0].voided,true,'marked as voided for the display');
   // Results reply under the card, then the recap once the night is graded.
-  let replies=await run(`postNbaRepliesToX(env,${now},5)`);
-  assert.deepEqual([replies.results,replies.recap],[2,1]);
+  // A run that hits its limit with results still waiting says so (the next run starts at once).
+  const capped=await run(`postNbaRepliesToX(env,${now},1)`);assert.equal(capped.posted,1);assert.equal(capped.more,true,'more results are waiting');
+  let replies=await run(`postNbaRepliesToX(env,${now},5)`);assert.ok(!replies.more,'nothing left');
+  assert.deepEqual([capped.results+replies.results,replies.recap],[2,1]);
   const texts=posts.slice(1).map(p=>p.text);
   // Each result answers the pick's own post when it has one; the recap goes under the card.
   {const own=Object.fromEntries(db.prepare("SELECT p.player,a.value FROM public_recommendations p JOIN app_settings a ON a.key='xid:'||p.id WHERE p.kind='prop'").all().map(r=>[r.player,r.value]));
