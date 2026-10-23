@@ -423,6 +423,7 @@ async function publishNbaPicks(request,env,ctx,now=Date.now()){
   for(let i=0;i<games.length;i+=4){const results=await Promise.allSettled(games.slice(i,i+4).map(async e=>{const url=new URL('/api/event',request.url);url.searchParams.set('eventID',e.eventID);const r=await eventProps(new Request(url),env,ctx,{maxAge:SOON_MAX_AGE});if(!r.ok||r.headers.get('x-feed-cache')==='stale')throw new Error('NBA board unavailable');return (await r.json()).data||[]}));for(const r of results)if(r.status==='fulfilled')boards.push(...r.value);else failed++}
   const pmRun=await recordNbaExchangePrices(env,boards,now).catch(error=>{console.warn('nba_exchange_prices_failed',error.message);return {}});
   const injuries=await injuryMap(env,'NBA').catch(()=>new Map());boards.splice(0,boards.length,...withoutInjured(boards,injuries));
+  await recordSharpShadow(env,boards,now).catch(error=>console.warn('sharp_shadow_failed',error.message));
   const core=list=>list.filter(p=>NBA_OFFICIAL_MARKETS.has(p.market));
   let posted=0;const leans=[],nights=[...new Set(boards.map(b=>nbaNight(Date.parse(b.commence_time))))];
   for(const night of nights){
@@ -1922,6 +1923,8 @@ async function gradeExchangeShadow(env,now=Date.now(),limit=30){
   const statements=[],stamp=new Date(now).toISOString(),cache=new Map(),tdCache=new Map();
   const games=rows.some(r=>r.kind==='game')?await finalGames(rows,env):[];
   for(const r of rows){
+    // Still ungraded 5 days after the game (no usable stats): no action, so it stops blocking the queue.
+    if(now-Date.parse(r.game_time)>5*86400000){statements.push(env.DB.prepare('UPDATE exchange_shadow SET result=?,graded_at=? WHERE id=?').bind('void',stamp,r.id));continue}
     if(r.kind==='game'){const g=games.find(g=>normalizedName(g.home_team?.full_name)===normalizedName(r.home)&&normalizedName(g.visitor_team?.full_name)===normalizedName(r.away));
       if(!g||nflGameState(g)!=='final')continue;const hs=Number(g.home_team_score),as=Number(g.visitor_team_score);if(!Number.isFinite(hs)||!Number.isFinite(as))continue;
       statements.push(env.DB.prepare('UPDATE exchange_shadow SET home_score=?,away_score=?,result=?,graded_at=? WHERE id=?').bind(hs,as,gameLineResult(r,hs,as),stamp,r.id));continue}
@@ -2375,6 +2378,7 @@ async function publishOfficialPicks(request,env,ctx,opts={}){
     if(!opts.soonOnly)jobStep('publish','bump shadow');await recordBumpShadow(env,boards,injuries,Date.now()).catch(error=>console.warn('bump_shadow_failed',error.message));
     if(!opts.soonOnly)jobStep('publish','exchange props');await recordExchangeProps(env,boards,Date.now()).catch(error=>console.warn('exchange_shadow_failed',error.message));
     if(!opts.soonOnly)await stampExchangePrices(env,Date.now()).catch(error=>console.warn('exchange_stamp_failed',error.message));
+    if(!opts.soonOnly)jobStep('publish','sharp shadow');await recordSharpShadow(env,boards,Date.now()).catch(error=>console.warn('sharp_shadow_failed',error.message));
     if(!opts.soonOnly)jobStep('publish','book shadow');await recordBookShadow(env,boards,Date.now()).catch(error=>console.warn('book_shadow_failed',error.message));
     if(!opts.soonOnly&&(TD_SHADOW_ON||(SB_TD_TEST_ON&&!RETIRED_SHADOWS.has('sbtd')))){jobStep('publish','td shadow');await recordTdShadow(env,boards,Date.now(),TD_SHADOW_ON?null:sbTdRule).catch(error=>console.warn('td_shadow_failed',error.message))}
     if(!opts.soonOnly)jobStep('publish','form wanted');await recordFormWanted(env,boards,Date.now()).catch(error=>console.warn('player_form_failed',error.message));
@@ -4026,6 +4030,62 @@ const nbaDecided=r=>['won','lost','push'].includes(r.result)&&(r.status==='final
 // next NBA game's main props (points, rebounds, assists, threes; about 4
 // credits) records which apps list NBA player props, for the NBA prediction view.
 const NBA_EXCHANGE_MARKETS=['player_points','player_rebounds','player_assists','player_threes'];
+// Sharp-book shadow (from Oct 23): every prop the engine rates 0.25%+ inside
+// 24 hours of its game, logged with its first price and edge, plus Pinnacle's
+// no-vig fair chance at the same line (refreshed every 2 hours per game, about
+// one feed call per market). Graded and closing-priced; never posted. The
+// question: do props Pinnacle agrees with win and beat the close more often?
+const SHARP_WINDOW=24*3600000,SHARP_EVERY=2*3600000;
+const sharpKey=label=>Object.entries(recordLabels).find(([k,l])=>l===label&&!/_q1$|_alternate$/.test(k))?.[0]||null;
+async function recordSharpShadow(env,boards,now=Date.now()){
+  if(!env.DB||!env.THE_ODDS_API_KEY||RETIRED_SHADOWS.has('sharp')||(oddsCreditsLeft!==null&&oddsCreditsLeft<LOW_ODDS_CREDITS))return {skipped:true};
+  const stamp=new Date(now).toISOString(),statements=[];let pulled=0,logged=0;
+  const soon=boards.filter(b=>{const k=Date.parse(b.commence_time);return k>now+5*60000&&k-now<=SHARP_WINDOW});
+  for(const board of soon){
+    const nba=String(board.eventID||'').startsWith('NBA--')||board.sport_label==='NBA',id=board.eventID||`NFL--${board.id}`;
+    const picks=officialCandidates([board],now,{},{min:.25});
+    for(const p of picks){statements.push(env.DB.prepare('INSERT OR IGNORE INTO sharp_shadow (id,sport,event_id,player,team,market,side,line,odds,book,edge,game_time,logged_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(`${id}|${normalizedName(p.player)}|${p.market}`,nba?'NBA':'NFL',id,p.player,p.team||null,p.market,p.side,p.line,p.odds,p.book,+p.edge.toFixed(2),p.gameTime||new Date(Date.parse(board.commence_time)).toISOString(),stamp));logged++}
+    // Closing price: the best big-5 price at the same line, until kickoff.
+    const open=(await env.DB.prepare('SELECT id,player,market,side,line,odds,pin_at FROM sharp_shadow WHERE event_id=?').bind(id).all().catch(()=>({results:[]}))).results||[];
+    for(const r of open){const best=bigFivePrice(board,r);if(best!==null)statements.push(env.DB.prepare('UPDATE sharp_shadow SET close_odds=?,close_at=? WHERE id=?').bind(best,stamp,r.id))}
+    const rows=[...open,...picks.filter(p=>!open.some(r=>normalizedName(r.player)===normalizedName(p.player)&&r.market===p.market)).map(p=>({id:`${id}|${normalizedName(p.player)}|${p.market}`,player:p.player,market:p.market,side:p.side,line:p.line,odds:p.odds,pin_at:null}))];
+    if(!rows.length)continue;
+    const last=Number(await appSetting(env,`sharp-at:${id}`)||0);if(now-last<SHARP_EVERY)continue;
+    const markets=[...new Set(rows.map(r=>sharpKey(r.market)).filter(Boolean))];if(!markets.length)continue;
+    await setAppSetting(env,`sharp-at:${id}`,String(now));
+    try{
+      const q=new URLSearchParams({apiKey:env.THE_ODDS_API_KEY,bookmakers:'pinnacle',markets:markets.join(','),oddsFormat:'american',dateFormat:'iso'});
+      const r=await fetch(`${API_BASE}/sports/${nba?NBA_SPORT.key:SPORTS[0].key}/events/${oddsEventId(id)}/odds?${q}`,{headers:{accept:'application/json'},signal:AbortSignal.timeout(15000)});
+      const left=r.headers.get('x-requests-remaining');if(left!==null&&Number.isFinite(Number(left)))oddsCreditsLeft=Number(left);
+      if(!r.ok)continue;pulled++;
+      const pin=((await r.json()).bookmakers||[]).find(b=>b.key==='pinnacle');if(!pin)continue;
+      for(const row of rows){
+        const pair={};for(const m of pin.markets||[])if(recordLabels[m.key]===row.market)for(const o of m.outcomes||[])if(normalizedName(o.description)===normalizedName(row.player)&&exchangeOutcome(o).line===Number(row.line))pair[exchangeOutcome(o).side]=BTGStats.number(o.price);
+        if(pair.over==null||pair.under==null)continue;
+        const o=1/recordDecimal(pair.over),u=1/recordDecimal(pair.under),fair=row.side==='Over'?o/(o+u):u/(o+u);
+        statements.push(env.DB.prepare('UPDATE sharp_shadow SET pin_fair=?,pin_edge=?,pin_at=? WHERE id=?').bind(+(100*fair).toFixed(2),+(100*(fair-1/recordDecimal(row.odds))).toFixed(2),stamp,row.id));
+      }
+    }catch(error){console.warn('sharp_pull_failed',error.message)}
+  }
+  if(statements.length)await env.DB.batch(statements);
+  return {games:soon.length,logged,pulled};
+}
+async function gradeSharpShadow(env,now=Date.now(),limit=30){
+  if(!env.DB||!env.BALLDONTLIE_API_KEY)return {graded:0};
+  const rows=(await env.DB.prepare('SELECT * FROM sharp_shadow WHERE result IS NULL AND game_time<? AND game_time>? ORDER BY game_time LIMIT ?').bind(new Date(now-4*3600000).toISOString(),new Date(now-14*86400000).toISOString(),limit).all().catch(()=>({results:[]}))).results||[];
+  const cache=new Map(),statements=[],stamp=new Date(now).toISOString();
+  for(const r of rows){
+    const nba=r.sport==='NBA',record={sport:r.sport,player:r.player,team:r.team,gameTime:r.game_time,market:r.market,side:r.side,line:r.line};
+    const stat=await recordPlayerStats(record,env,undefined,cache).catch(()=>null);
+    const voided=nba?stat?.scoreboardFinal&&!stat.missingPlayerStats&&!BTGStats.nbaPlayed(stat):shadowVoid(stat,r.game_time,now);
+    if(voided||((!stat||stat.missingPlayerStats)&&now-Date.parse(r.game_time)>3*86400000)){statements.push(env.DB.prepare('UPDATE sharp_shadow SET result=?,graded_at=? WHERE id=?').bind('void',stamp,r.id));continue}
+    if(!stat||stat.missingPlayerStats||!(stat.scoreboardFinal||nflGameState(stat.game||{})==='final'))continue;
+    const value=BTGStats.metric(record,stat).value,result=value===null?null:BTGStats.grade(r.side,r.line,value);
+    if(result)statements.push(env.DB.prepare('UPDATE sharp_shadow SET actual=?,result=?,graded_at=? WHERE id=?').bind(value,result,stamp,r.id));
+  }
+  if(statements.length)await env.DB.batch(statements);
+  return {graded:statements.length,checked:rows.length};
+}
 // Sharp-book check: once a day, does the odds feed carry Pinnacle player
 // props for the next NFL and NBA game? (2 credits each.) If it does, a
 // Pinnacle-referenced fair price can be tested in shadow against our 5-book average.
