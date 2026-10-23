@@ -442,7 +442,7 @@ async function nbaHomeData(env,now=Date.now(),wantAll=false){
   if(nbaHomeCache.data&&now-nbaHomeCache.at<60000)return wantAll?{...nbaHomeCache.data,recent:nbaHomeCache.all}:nbaHomeCache.data;
   const all=(await env.DB.prepare("SELECT id,kind,player,market,side,line,odds,combined_odds,game_id,game_time,posted_at,status,result,closing_line,closing_odds,closing_captured_at,legs_json,(SELECT value FROM app_settings s WHERE s.key='xid:x-nba-card:'||substr(r.id,5,10)) AS x_id FROM public_recommendations r WHERE source='market-verified-v2' AND id LIKE 'nba|%' AND kind IN ('prop','parlay') ORDER BY game_time DESC,posted_at DESC").all()).results||[];
   const s=weeklySummary(all),since=new Date(now-21*86400000).toISOString();
-  const season={wins:s.wins,losses:s.losses,pushes:s.pushes,profit:Math.round(s.profit),parlayWins:s.parlayWins,parlayLosses:s.parlayLosses,parlayProfit:Math.round(s.parlayProfit),beat:s.beat,tracked:s.tracked,picks:all.length};
+  const season={wins:s.wins,losses:s.losses,pushes:s.pushes,profit:Math.round(s.profit),parlayWins:s.parlayWins,parlayLosses:s.parlayLosses,parlayProfit:Math.round(s.parlayProfit),beat:s.beat,tracked:s.tracked,picks:all.length,curve:recordCurve(all),latest:recordLatest(all)};
   const data={season,tonight:nbaNight(now),recent:all.filter(r=>r.game_time>=since).slice(0,300)};
   nbaHomeCache={at:now,data,all};return wantAll?{...data,recent:all}:data;
 }
@@ -2404,6 +2404,18 @@ function weeklySummary(rows){
   const count=(list,res)=>list.filter(r=>r.result===res).length;
   const closes=props.filter(r=>r.closing_captured_at&&r.closing_odds!=null&&(r.closing_line==null||Math.abs(Number(r.closing_line)-Number(r.line))<=.01)).map(r=>(weeklyDecimal(r.odds)/weeklyDecimal(r.closing_odds)-1)*100>.05);
   return {wins:count(props,'won'),losses:count(props,'lost'),pushes:count(props,'push'),profit:props.reduce((s,r)=>s+pay(r),0),parlayWins:count(parlays,'won'),parlayLosses:count(parlays,'lost'),parlayProfit:parlays.reduce((s,r)=>s+pay(r),0),beat:closes.filter(Boolean).length,tracked:closes.length,pending:rows.filter(r=>!weeklyGraded(r)).length,total:rows.length};
+}
+// The home page's running profit (every graded pick in order, singles $100,
+// parlays at their stake) and its latest results, newest first.
+function recordCurve(rows,max=160){
+  const done=rows.filter(weeklyGraded).sort((a,b)=>String(a.game_time||a.posted_at||'').localeCompare(String(b.game_time||b.posted_at||'')));
+  let v=0;const pts=[{v:0,d:done[0]?.game_time||null}];for(const r of done){v+=recordPay(r);pts.push({v:Math.round(v),d:r.game_time||null})}
+  // Long seasons keep every nth point (and the last), so the line stays the same shape.
+  const step=Math.ceil(pts.length/max);return step>1?pts.filter((p,i)=>i%step===0||i===pts.length-1):pts;
+}
+function recordLatest(rows,n=8){
+  return rows.filter(weeklyGraded).sort((a,b)=>String(b.game_time||'').localeCompare(String(a.game_time||''))).slice(0,n).map(r=>{const legs=recordLegs(r);
+    return {kind:r.kind,player:r.kind==='parlay'?`${legs.length}-leg parlay`:r.player,bet:r.kind==='parlay'?legs.map(l=>String(l.player||'').split(' ').slice(-1)[0]).join(' + '):weeklyLegText(r),odds:r.kind==='parlay'?r.combined_odds:r.odds,result:r.result,pay:Math.round(recordPay(r)),day:r.game_time||null}});
 }
 // The dollar sign is escaped: tests splice this file in with a string replace, where dollar patterns are special.
 const weeklyMoney=v=>(v<0?'−':'+')+'\u0024'+Math.abs(Math.round(v)).toLocaleString('en-US');
