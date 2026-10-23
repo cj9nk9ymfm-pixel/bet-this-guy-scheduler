@@ -1213,7 +1213,7 @@ let homeRowsCache = { at: 0, rows: null };
 let homeSeasonCache = { at: 0, season: null };
 async function homeSeason(env, now = Date.now()) {
   if (homeSeasonCache.season && now - homeSeasonCache.at < 60000) return homeSeasonCache.season;
-  const rows = (await env.DB.prepare("SELECT kind, posted_at, line, odds, combined_odds, status, result, closing_line, closing_odds, closing_captured_at, legs_json FROM public_recommendations WHERE source = 'market-verified-v2' AND id LIKE 'official|%' AND kind IN ('prop','parlay')").all()).results || [];
+  const rows = (await env.DB.prepare("SELECT kind, player, market, side, game_time, posted_at, line, odds, combined_odds, status, result, closing_line, closing_odds, closing_captured_at, legs_json FROM public_recommendations WHERE source = 'market-verified-v2' AND id LIKE 'official|%' AND kind IN ('prop','parlay')").all()).results || [];
   const s = weeklySummary(rows);
   // Price story for the welcome screen: how many picks got a worse price than
   // kickoff, and the typical (median) posted and kickoff prices.
@@ -1221,7 +1221,7 @@ async function homeSeason(env, now = Date.now()) {
   const median = list => { const v = [...list].sort((a, b) => a - b); return v.length ? v[Math.floor(v.length / 2)] : null; };
   const toDec = o => (o = Number(o)) >= 100 ? 1 + o / 100 : o <= -100 ? 1 + 100 / -o : null, toAm = d => d >= 2 ? Math.round((d - 1) * 100) : Math.round(-100 / (d - 1));
   const posted = median(tracked.map(r => toDec(r.odds)).filter(Boolean)), close = median(tracked.map(r => toDec(r.closing_odds)).filter(Boolean));
-  const season = { wins: s.wins, losses: s.losses, pushes: s.pushes, profit: Math.round(s.profit), parlayWins: s.parlayWins, parlayLosses: s.parlayLosses, parlayProfit: Math.round(s.parlayProfit), beat: s.beat, tracked: s.tracked, worse: tracked.filter(r => (toDec(r.odds) / toDec(r.closing_odds) - 1) * 100 < -.05).length, typicalOdds: posted ? toAm(posted) : null, typicalClose: close ? toAm(close) : null };
+  const season = { wins: s.wins, losses: s.losses, pushes: s.pushes, profit: Math.round(s.profit), parlayWins: s.parlayWins, parlayLosses: s.parlayLosses, parlayProfit: Math.round(s.parlayProfit), beat: s.beat, tracked: s.tracked, worse: tracked.filter(r => (toDec(r.odds) / toDec(r.closing_odds) - 1) * 100 < -.05).length, typicalOdds: posted ? toAm(posted) : null, typicalClose: close ? toAm(close) : null, curve: recordCurve(rows), latest: recordLatest(rows) };
   homeSeasonCache = { at: now, season };
   return season;
 }

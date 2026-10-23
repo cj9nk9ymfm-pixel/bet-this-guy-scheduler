@@ -1544,7 +1544,14 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
       const toggle=$('#heroToggle');toggle.onclick=()=>{const open=panel.hidden;panel.hidden=!open;toggle.setAttribute('aria-expanded',String(open));hero.classList.toggle('open',open);if(open)window.btgCount?.('hero:picks')};
     }
     // Our strongest proof, on the first screen: how often we beat the kickoff price.
-    {let pf=$('#heroProof');const sea=heroSeason;if(sea?.tracked){if(!pf){pf=document.createElement('p');pf.id='heroProof';pf.className='hero-proof'}$('#heroTitle').after(pf);pf.innerHTML=`Beat the kickoff price on <b>${sea.beat} of ${sea.tracked}</b> picks`}else pf?.remove()}
+    // With 5+ tracked it leads as a big share, with why it matters and why we post early.
+    {let pf=$('#heroProof');const sea=heroSeason,start=NBA?'tip-off':'kickoff';if(sea?.tracked){if(!pf){pf=document.createElement('div');pf.id='heroProof';pf.className='hero-proof'}$('#heroTitle').after(pf);
+      pf.innerHTML=sea.tracked>=5?`<div class="hp-big"><strong>${Math.round(100*sea.beat/sea.tracked)}%</strong><span><b>of our picks beat the ${start} price</b><small>${sea.beat} of ${sea.tracked}: the market moved our way after we posted</small></span></div><p class="hp-why">We post the moment a price qualifies, often a day early, before the market catches up. A hot streak can be luck; beating the final price, pick after pick, is the steadiest sign of a real edge.</p>`:`Beat the ${start} price on <b>${sea.beat} of ${sea.tracked}</b> picks`}else pf?.remove()}
+    // Running profit, every graded pick in order, and the latest results (wins and losses).
+    {let box=$('#heroCurve');const pts=heroSeason?.curve||[];if(pts.length>=3){if(!box){box=document.createElement('div');box.id='heroCurve';box.className='hero-curve'}$('#heroStats').after(box);box.innerHTML=heroCurveSvg(pts)}else box?.remove()}
+    {let tk=$('#heroTicker');const list=heroSeason?.latest||[];if(list.length){if(!tk){tk=document.createElement('div');tk.id='heroTicker';tk.className='hero-ticker'}hero.after(tk);
+      const day=iso=>{const d=new Date(iso);return Number.isFinite(d.getTime())?d.toLocaleDateString([],{month:'short',day:'numeric'}):''};
+      tk.innerHTML=`<span class="tk-label">Latest results</span><div class="tk-row">${list.map(r=>{const w=r.result==='won',l=r.result==='lost';return `<span class="tk-item ${w?'won':l?'lost':'push'}"><i aria-hidden="true">${w?'✓':l?'✗':'–'}</i><em>${htmlEscape(day(r.day))}</em><b>${htmlEscape(r.player||'')}</b> ${htmlEscape(r.bet||'')} <small>${htmlEscape(formatOdds(r.odds))}</small><strong>${htmlEscape(r.result==='push'?'push':money(r.pay))}</strong></span>`}).join('')}</div><a class="tk-all" href="/trust#official">Every pick ›</a>`}else tk?.remove()}
     if(!strip||!s.hits.length)return;
     $('#hitsTitle').textContent=['LAST WEEK','THIS WEEK SO FAR','LAST NIGHT','TONIGHT SO FAR'].includes(s.label)?`${periodOwner(s.label).replace(/^./,c=>c.toUpperCase())} hits`:'Recent hits';
     $('#hitsRow').innerHTML=s.hits.map((r,i)=>{const n=pickName(r),odds=r.kind==='parlay'?r.combined_odds:r.odds;return `<button type="button" class="hit-card-mini" data-hit="${i}" aria-label="Details for ${htmlEscape(n.title)}"><span class="hit-tag">${icon('check')} HIT</span><strong>${htmlEscape(n.title)}</strong><small>${htmlEscape(n.detail)}</small><div class="hit-foot"><b>${htmlEscape(formatOdds(odds))}</b><span>${htmlEscape(stakeText())} → ${htmlEscape(money(payout(r)))}</span></div><em class="hit-more">Tap for details ›</em></button>`}).join('');
@@ -1708,6 +1715,14 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     $$('#officialNowList [data-on-player]').forEach(row=>{const player=row.dataset.onPlayer;if(!player||typeof playerStatsFor!=='function')return;const r=list[+row.dataset.on];playerStatsFor({sport:r?.sport||'NFL',player,team:row.dataset.onTeam}).then(payload=>window.BTGPaintTeam?.(row,payload?.player?.team,r?.sport||'NFL')).catch(()=>{})});
     host.hidden=false;if($('#parlaysNow')){$('#parlaysNow').hidden=!parlays.length;$('#parlaysNow').dataset.empty=parlays.length?'':'1'}
     window.BTGTagInjuries?.();
+  }
+  // Profit over the season as a small area chart: $0 line, last value marked.
+  function heroCurveSvg(pts){
+    const W=640,H=120,L=4,R=60,T=10,B=20,vals=pts.map(p=>p.v),lo=Math.min(0,...vals),hi=Math.max(0,...vals),span=(hi-lo)||1;
+    const x=i=>L+(W-L-R)*i/(pts.length-1),y=v=>T+(H-T-B)*(1-(v-lo)/span),last=vals.at(-1),up=last>=0,col=up?'#2ee6a8':'#f06060';
+    const line=pts.map((p,i)=>`${x(i).toFixed(1)},${y(p.v).toFixed(1)}`).join(' '),area=`M${x(0).toFixed(1)},${y(0).toFixed(1)} L${line.replace(/ /g,' L')} L${x(pts.length-1).toFixed(1)},${y(0).toFixed(1)} Z`;
+    const d=iso=>{const t=new Date(iso);return Number.isFinite(t.getTime())?t.toLocaleDateString([],{month:'short',day:'numeric'}):''};
+    return `<div class="hc-head"><span>Profit, pick by pick</span><b class="${up?'up':'down'}">${htmlEscape(money(last))}</b></div><svg viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="none" role="img" aria-label="${htmlEscape(`Running profit over ${pts.length-1} graded picks, now ${money(last)}`)}"><line x1="${L}" x2="${W-R}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}" class="hc-zero"/><path d="${area}" fill="${col}" opacity=".14"/><polyline points="${line}" fill="none" stroke="${col}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/><circle cx="${x(pts.length-1).toFixed(1)}" cy="${y(last).toFixed(1)}" r="4" fill="${col}"/><text x="${W-R+8}" y="${(y(0)+4).toFixed(1)}" class="hc-lab">$0</text></svg><div class="hc-foot"><span>${htmlEscape(d(pts[1]?.d||pts[0].d))}</span><span>${pts.length-1} graded picks · nothing removed</span><span>${htmlEscape(d(pts.at(-1).d))}</span></div>`;
   }
   let heroRows=null,heroSeason=null;
   async function loadHero(){
