@@ -37,6 +37,10 @@ const {read}=require('./helpers/client.cjs');
   const got=[];context.xUploadVideo=async(env,bytes)=>{got.push([...bytes]);return 'vid1'};
   db.prepare("INSERT INTO app_settings(key,value) VALUES('x-custom-post',?)").run(JSON.stringify({text:'Ad',video:'ad.mp4'}));
   assert.equal((await vm.runInContext('postCustomToX(env)',context)).graphic,true);assert.deepEqual(sent,[['Ad','vid1']]);assert.deepEqual(got,[[1,2,3]]);
+  // A slate card is drawn and attached.
+  const drawn=[];context.xSlateSvgFaces=async o=>{drawn.push(o.kicker);return '<svg/>'};context.renderCardPng=async()=>new Uint8Array([9]);context.xUploadImage=async()=>'img1';sent.length=0;
+  db.prepare("INSERT INTO app_settings(key,value) VALUES('x-custom-post',?)").run(JSON.stringify({text:'Card',slate:{kicker:'NFL · PREDICTION PICKS',picks:[{text:'A · Over 1.5',odds:'54%'}]}}));
+  assert.equal((await vm.runInContext('postCustomToX(env)',context)).graphic,true);assert.deepEqual(sent,[['Card','img1']]);assert.deepEqual(drawn,['NFL · PREDICTION PICKS']);
   // A failing upload is put back for two more runs, then dropped.
   context.xUploadVideo=async()=>{throw new Error('X video upload failed')};
   db.prepare("INSERT INTO app_settings(key,value) VALUES('x-custom-post',?)").run(JSON.stringify({text:'Ad',video:'ad.mp4'}));

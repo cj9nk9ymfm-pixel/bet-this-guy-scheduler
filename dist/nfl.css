@@ -2475,3 +2475,6 @@ body.light .hero-curve{background:#f8fafc;border-color:#e2e8f0}body.light .hero-
 .hero-ticker .tk-all{flex:none;font-size:12.5px;font-weight:700;color:#2ee6a8;text-decoration:none}
 body.light .hero-ticker{background:#fff;border-color:#e2e8f0}body.light .hero-ticker .tk-item{color:#3b4452}body.light .hero-ticker b{color:#0f172a}body.light .hero-ticker .won strong,body.light .hero-ticker .tk-all{color:#0f9a6c}
 @media(max-width:560px){.hero-ticker .tk-all{display:none}}
+.hero-email{margin:6px 0 10px;padding:12px 14px;border:1px solid rgba(46,230,168,.35);border-radius:14px;background:rgba(46,230,168,.07)}
+.hero-email .he-copy{display:flex;flex-direction:column;gap:2px;margin-bottom:8px}.hero-email .he-copy b{font-size:15px;color:#f2f4f7}.hero-email .he-copy span{font-size:12.5px;color:#98a1ad}
+body.light .hero-email{background:#ecfdf5;border-color:#a7f3d0}body.light .hero-email .he-copy b{color:#0f172a}
