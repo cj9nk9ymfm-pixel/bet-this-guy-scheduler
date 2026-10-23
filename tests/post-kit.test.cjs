@@ -64,5 +64,11 @@ add(week,'s',{player:'Started Guy',market:'Receptions',side:'Over',line:3.5,odds
   const layout=JSON.parse(JSON.stringify(await run(`homeRecentRows(env).then(rows=>homeLayout(rows,${now}))`)));
   assert.deepEqual(layout,{stats:true,hits:true});
   assert.deepEqual(JSON.parse(JSON.stringify(run('homeLayout([])'))),{stats:false,hits:false});
+  // Share cards: picks still to play, and last week's results (the SVG stands in for the PNG here).
+  run('renderCardPng=async svg=>new TextEncoder().encode(svg)');
+  const card=async q=>{const r=await run(`routeRequest(new Request('https://betthisguy.com/post/card.png?${q}'),env,{waitUntil(){}})`);return [r.status,await r.text()]};
+  {const [st,svg]=await card('league=NFL&kind=slate');assert.equal(st,200);assert.ok(svg.includes('Puka Nacua')&&!svg.includes('Started Guy'),'only picks still to play');}
+  {const [st,svg]=await card('league=NFL&kind=results');assert.equal(st,200);assert.ok(svg.includes('Josh Allen')&&svg.includes('WEEKLY RESULTS'));}
+  assert.equal((await card('league=NBA&kind=slate'))[0],404,'no NBA picks: nothing to share');
   console.log('PASS: post kit and /trust summary, home layout: upcoming picks only, X posts that fit, short and long bet text, anytime TDs, weekly results with $100 profit, parlays and actual stats, Reddit lists losses too, trimming with a count, noindex page whose script parses');
 })().catch(e=>{console.error(e);process.exitCode=1});
