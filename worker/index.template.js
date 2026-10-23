@@ -1510,6 +1510,7 @@ async function routeRequest(request, env, ctx) {
     if (typeof ICONS !== "undefined" && ICONS[url.pathname]) return new Response(Uint8Array.from(atob(ICONS[url.pathname]), char => char.charCodeAt(0)), { headers: { "content-type": url.pathname.endsWith(".jpg") ? "image/jpeg" : "image/png", "cache-control": "public, max-age=86400" } });
     if (url.pathname === "/robots.txt") return new Response(ROBOTS_TXT, { headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=86400" } });
     if (url.pathname === "/sitemap.xml") return new Response(env.DB ? await weeklySitemap(env) : SITEMAP_XML, { headers: { "content-type": "application/xml; charset=utf-8", "cache-control": "public, max-age=3600" } });
+    if (url.pathname === "/post/card.png") return postKitCard(request, env).catch(error => new Response(error.message, { status: 500 }));
     if (url.pathname === "/post") { ctx.waitUntil(countUsage(env, ["view:post"], request).catch(() => {})); return postKitPage(request, env); }
     if (url.pathname === "/where" || url.pathname === "/where/") return new Response(wherePage(), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=3600" } });
     if (url.pathname === "/nba" || url.pathname.startsWith("/nba/")) { const page = await nbaPage(request, env).catch(() => null); if (page) { ctx.waitUntil(countUsage(env, ["view:nba"], request).catch(() => {})); return page; } }
