@@ -4035,6 +4035,9 @@ const NBA_EXCHANGE_MARKETS=['player_points','player_rebounds','player_assists','
 // no-vig fair chance at the same line (refreshed every 2 hours per game, about
 // one feed call per market). Graded and closing-priced; never posted. The
 // question: do props Pinnacle agrees with win and beat the close more often?
+// Internal only (Tim, Oct 23): Pinnacle takes no US customers, so it is never
+// named, priced or linked on the site, X, emails or alerts; it may only shape
+// which legal-book prices we pick.
 const SHARP_WINDOW=24*3600000,SHARP_EVERY=2*3600000;
 const sharpKey=label=>Object.entries(recordLabels).find(([k,l])=>l===label&&!/_q1$|_alternate$/.test(k))?.[0]||null;
 async function recordSharpShadow(env,boards,now=Date.now()){
