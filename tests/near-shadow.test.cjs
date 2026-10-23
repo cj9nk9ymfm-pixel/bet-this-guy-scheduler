@@ -17,8 +17,8 @@ const run=code=>vm.runInContext(code,context);
   // Three books at -110/-110; DraftKings is a little soft on the Over.
   const props=(soft)=>[['fanduel','FanDuel'],['betmgm','BetMGM'],['williamhill_us','Caesars'],['draftkings','DraftKings']].map(([key,title])=>({key,title,last_update:fresh,markets:Object.entries(soft).map(([player,[mk,point,over,under]])=>key==='draftkings'?market(mk,player,over,under,point):market(mk,player,-110,-110,point))}));
   const board=soft=>({id:'evt1',eventID:'NFL--evt1',sport_label:'NFL',commence_time:kickoff,home_team:'Pittsburgh Steelers',away_team:'Cleveland Browns',bookmakers:props(soft)});
-  // Rodgers: 0.73% (near miss). Chubb: about 1.8% (official). Njoku: about 0.3% (too thin).
-  context.boards=[board({'Aaron Rodgers':['player_pass_yds',215.5,106,-120],'Nick Chubb':['player_rush_yds',62.5,110,-120],'David Njoku':['player_receptions',3.5,104,-120]})];
+  // Rodgers: 0.73% (near miss). Chubb: about 1.8% (official). Njoku: under 0.25% (too thin).
+  context.boards=[board({'Aaron Rodgers':['player_pass_yds',215.5,106,-120],'Nick Chubb':['player_rush_yds',62.5,110,-120],'David Njoku':['player_receptions',3.5,101,-120]})];
   const official=run(`officialCandidates(boards,${now})`);
   assert.equal(JSON.stringify(official.map(p=>p.player)),'["Nick Chubb"]','the official bar is unchanged');
   context.official=official;

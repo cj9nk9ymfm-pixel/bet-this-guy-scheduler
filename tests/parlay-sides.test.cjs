@@ -18,6 +18,7 @@ assert.ok(plan.every(p=>!p.legs.some(l=>l.player==='Kyren Williams'&&l.side==='U
 const sb=(player,game,side)=>({player,gameId:'NFL--'+game,gameTime:gt,market:'Receptions',side,line:3.5,odds:110,edge:.8,playerKey:'NFL--'+game+'|'+player.toLowerCase()});
 context.cands=[];context.legPool=[sb('A','a','Under'),sb('B','b','Over'),sb('C','c','Over'),sb('D','d','Over')];
 context.saved=[{id:'official|2026-10-06|reasonable|parlay|x',kind:'parlay',game_id:'NFL--a',legs_json:JSON.stringify([sb('A','a','Over'),sb('E','e','Over')])}];
+vm.runInContext('PARLAYS_PER_DAY=Infinity',context);// this checks sides, not the daily limit
 const sbPlan=JSON.parse(JSON.stringify(vm.runInContext(`officialPlan(cands,saved,'2026-10-06',${now},legPool)`,context)));
 assert.ok(sbPlan.length>0&&sbPlan.every(p=>!p.legs.some(l=>l.player==='A')),'sportsbook parlays never flip a prop either');
 console.log('PASS: parlays never take both sides of a prop, and a prediction-market game gets at most 3 parlays');

@@ -11,6 +11,7 @@ for(const f of ['0003_shared_movement.sql','0017_lean_shadow.sql'])db.exec(read(
 const wrap=(sql,args=[])=>({bind(...values){return wrap(sql,values)},async first(){return db.prepare(sql).get(...args)||null},async all(){return{results:db.prepare(sql).all(...args)}},async run(){const r=db.prepare(sql).run(...args);return{success:true,meta:{changes:Number(r.changes)}}}});
 context.env={DB:{prepare:sql=>wrap(sql),async batch(list){for(const s of list)await s.run()}}};
 const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v));
+run('RETIRED_SHADOWS.clear()'); // these tests exercise the retired shadow loggers
 (async()=>{
   const kickoff=Date.parse('2026-10-11T17:00:00Z');
   const market=(key,player,over,under,point,fresh)=>({key,last_update:fresh,outcomes:[{name:'Over',description:player,point,price:over},{name:'Under',description:player,point,price:under}]});
