@@ -1393,7 +1393,8 @@ async function runCron(controller,env,ctx){
         const near=await gradeNearShadow(env);
         const leans=await gradeLeanShadow(env).catch(error=>({error:error.message}));
         const backfill=await backfillLeans(env).catch(error=>({error:error.message}));
-        return {near,leans,backfill};
+        const sharp=await gradeSharpShadow(env).catch(error=>({error:error.message}));
+        return {near,leans,backfill,sharp};
       }
       return gradeLineShadow(env);
     }};
