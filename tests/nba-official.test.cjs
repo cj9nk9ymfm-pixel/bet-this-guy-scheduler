@@ -36,7 +36,7 @@ const context=vm.createContext({Date:Clock,URL,URLSearchParams,Request,Response,
   }});
 const template=read('worker/index.template.js');
 vm.runInContext(template.slice(template.indexOf('const API_BASE')).replace('__MOVEMENT_SERVER__',read('worker/movement.js')).replace('__LIVE_SERVER__',read('worker/live.js')).replace('__STATS_SHARED__',read('dist/stats.js')).replace('__RECORDS_SERVER__',read('worker/records.js')).replace('__ACCOUNTS_SERVER__',read('worker/accounts.js')).replace('export default {','this.worker={'),context);
-const db=new DatabaseSync(':memory:');for(const f of ['0000_public_record.sql','0001_record_settlement.sql','0002_historical_replays.sql','0012_nba_shadow.sql','0018_player_form.sql','0021_injuries.sql','0006_push_alerts.sql','0008_book_alerts.sql','0013_follow_alerts.sql','0027_alert_price_view.sql','0031_alert_kinds.sql','0033_alert_nba.sql','0004_user_accounts.sql','0007_email_alerts.sql','0029_email_predictions.sql','0034_email_nba.sql'])db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''));db.exec('CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT)');
+const db=new DatabaseSync(':memory:');for(const f of ['0000_public_record.sql','0001_record_settlement.sql','0002_historical_replays.sql','0012_nba_shadow.sql','0018_player_form.sql','0021_injuries.sql','0006_push_alerts.sql','0008_book_alerts.sql','0013_follow_alerts.sql','0027_alert_price_view.sql','0031_alert_kinds.sql','0033_alert_nba.sql','0004_user_accounts.sql','0007_email_alerts.sql','0029_email_predictions.sql','0034_email_nba.sql','0028_prediction_picks.sql','0032_prediction_early.sql','0036_void_reason.sql'])db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''));db.exec('CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT)');
 const wrap=(sql,args=[])=>({bind(...v){return wrap(sql,v)},async first(){return db.prepare(sql).get(...args)||null},async all(){return{results:db.prepare(sql).all(...args)}},async run(){const r=db.prepare(sql).run(...args);return{success:true,meta:{changes:Number(r.changes)}}}});
 const env={DB:{prepare:sql=>wrap(sql),async batch(l){const out=[];for(const s of l)out.push(await s.run());return out}},THE_ODDS_API_KEY:'k',BALLDONTLIE_API_KEY:'k',X_API_KEY:'a',X_API_SECRET:'b',X_ACCESS_TOKEN:'1-c',X_ACCESS_SECRET:'d'};context.env=env;
 const run=c=>vm.runInContext(c,context),req='new Request("https://betthisguy.com/api/maintenance")';
@@ -82,7 +82,10 @@ const run=c=>vm.runInContext(c,context),req='new Request("https://betthisguy.com
   // X: no card until 35 minutes before the first tip; then one card with every pick.
   assert.equal((await run(`postNbaCardToX(env,${now})`)).due,false);
   const cardAt=Date.parse(tip1)-30*60000;
+  // The night's prediction-app pick goes on the card too.
+  db.prepare("INSERT INTO prediction_picks(id,exchange,event_id,player,team,market,side,line,odds,net_odds,fair_pct,edge,game_time,posted_at) VALUES('pm|NBA--x|jaysontatum','Novig','NBA--x','Jaylen Brown','x','Points','Over',24.5,110,110,51,3,?,'2026-10-01')").run(tip1);
   assert.equal((await run(`postNbaCardToX(env,${cardAt})`)).posted,1);
+  assert.match(posts.at(-1).text,/Prediction apps:\n• Jaylen Brown Over 24.5 points \(48% on Novig\)/);
   assert.equal((await run(`postNbaCardToX(env,${cardAt+600000})`)).posted,0,'once a night');
   assert.match(posts[0].text,/^🏀 (Tonight|Today)’s NBA picks/);
   // Singles also get their own post as they lock (two a run, 3 a day), never twice.

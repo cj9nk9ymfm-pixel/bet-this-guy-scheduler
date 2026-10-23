@@ -1447,7 +1447,9 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     const chip=done?{won:{cls:'g',icon:'check',text:'Hit'},lost:{cls:'r',icon:'over',text:'Lost'},push:{cls:'n',icon:'fair',text:voidOf(r)?'Void':'Push'}}[r.result]:r.status==='provisional'?{cls:'n',icon:'fair',text:'Provisional'}:{cls:'n',icon:'lock',text:r.pm?'Prediction pick · Locked':'Official pick · Locked'};
     const bet=isParlay?legs.map(l=>l.player).join(' + '):(t=>t.charAt(0).toUpperCase()+t.slice(1))(legText({side:r.side,line:r.line,market:String(r.market||'').toLowerCase()}));
     const team=String(first.team||'').replace(' · ',' '),game=[isParlay?`${new Set(legs.map(l=>l.gameId||l.team)).size} game${new Set(legs.map(l=>l.gameId||l.team)).size===1?'':'s'}`:team,when(r.game_time||first.gameTime),done?(r.status==='provisional'?'Decided in game':'Final'):''].filter(Boolean).join(' · ');
-    const posted=[first.book&&!isParlay?first.book:'',when(r.posted_at)].filter(Boolean).join(' · ');
+    // How far ahead it posted: "26 hours before tip-off".
+    const ahead=(()=>{const m=(Date.parse(r.game_time||first.gameTime||'')-Date.parse(r.posted_at||''))/60000;if(!(m>0))return '';const start=r.sport==='NBA'||String(r.id||'').startsWith('nba|')||String(r.eventId||r.event_id||'').startsWith('NBA--')?'tip-off':'kickoff';return `${m>=120?`${Math.round(m/60)} hours`:m>=60?'1 hour':`${Math.round(m)} min`} before ${start}`})();
+    const posted=[first.book&&!isParlay?first.book:'',when(r.posted_at),ahead].filter(Boolean).join(' · ');
     const rows=[];
     if(!isParlay){
       if(done&&voidOf(r)){rows.push(['Result',`${voidOf(r)} before kickoff · bet voided, stake back`,'']);rows.push(['Posted at',posted,''])}
@@ -1552,6 +1554,10 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     {let tk=$('#heroTicker');const list=heroSeason?.latest||[];if(list.length){if(!tk){tk=document.createElement('div');tk.id='heroTicker';tk.className='hero-ticker'}hero.after(tk);
       const day=iso=>{const d=new Date(iso);return Number.isFinite(d.getTime())?d.toLocaleDateString([],{month:'short',day:'numeric'}):''};
       tk.innerHTML=`<span class="tk-label">Latest results</span><div class="tk-row">${list.map(r=>{const w=r.result==='won',l=r.result==='lost';return `<span class="tk-item ${w?'won':l?'lost':'push'}"><i aria-hidden="true">${w?'✓':l?'✗':'–'}</i><em>${htmlEscape(day(r.day))}</em><b>${htmlEscape(r.player||'')}</b> ${htmlEscape(r.bet||'')} <small>${htmlEscape(formatOdds(r.odds))}</small><strong>${htmlEscape(r.result==='push'?'push':money(r.pay))}</strong></span>`}).join('')}</div><a class="tk-all" href="/trust#official">Every pick ›</a>`}else tk?.remove()}
+    // One email field right under the record: the simplest way to get picks (hidden once on email or push).
+    {let em=$('#heroEmail');const on=/\b(email-on|alerts-on)\b/.test(document.documentElement.className);if(on){em?.remove()}else if(!em){em=document.createElement('section');em.id='heroEmail';em.className='hero-email';
+      em.innerHTML='<div class="he-copy"><b>Get each pick the moment it locks</b><span>Free, by email. No account, one-tap unsubscribe.</span></div>';($('#heroTicker')||hero).after(em);
+      let tries=0;const mount=()=>{if(window.BTGEmailSub?.inline){window.BTGEmailSub.inline(em,'home');window.btgCount?.('email:home-shown')}else if(tries++<40)setTimeout(mount,50)};mount()}}
     if(!strip||!s.hits.length)return;
     $('#hitsTitle').textContent=['LAST WEEK','THIS WEEK SO FAR','LAST NIGHT','TONIGHT SO FAR'].includes(s.label)?`${periodOwner(s.label).replace(/^./,c=>c.toUpperCase())} hits`:'Recent hits';
     $('#hitsRow').innerHTML=s.hits.map((r,i)=>{const n=pickName(r),odds=r.kind==='parlay'?r.combined_odds:r.odds;return `<button type="button" class="hit-card-mini" data-hit="${i}" aria-label="Details for ${htmlEscape(n.title)}"><span class="hit-tag">${icon('check')} HIT</span><strong>${htmlEscape(n.title)}</strong><small>${htmlEscape(n.detail)}</small><div class="hit-foot"><b>${htmlEscape(formatOdds(odds))}</b><span>${htmlEscape(stakeText())} → ${htmlEscape(money(payout(r)))}</span></div><em class="hit-more">Tap for details ›</em></button>`}).join('');

@@ -397,6 +397,8 @@ const NBA_OFFICIAL_MARKETS=new Set(['Points','Rebounds','Assists','3-Pointers Ma
 // The night a game belongs to: its US Eastern date (a 10:30 PM ET tip is
 // after midnight UTC, so 6 hours back keeps it on the same night).
 const nbaNight=time=>new Date(Number(time)-6*3600000).toISOString().slice(0,10);
+// "Locked 26 hours before tip-off.": how far ahead a pick posted, the proof that early beats the market.
+const xLocked=(gameTime,now=Date.now(),start='tip-off')=>{const m=(Date.parse(gameTime)-now)/60000;if(!(m>0))return `Locked before ${start}.`;return `Locked ${m>=120?`${Math.round(m/60)} hours`:m>=60?'1 hour':`${Math.max(1,Math.round(m))} min`} before ${start}.`};
 // An NBA pick for a later night leads its X post with the day, so nobody bets it tonight.
 const nbaAhead=(gameTime,now=Date.now())=>{const n=nbaNight(Date.parse(gameTime)),t=nbaNight(now);if(!(n>t))return '';const day=new Date(`${n}T12:00:00Z`),tomorrow=nbaNight(now+86400000)===n;return `🗓️ For ${tomorrow?`TOMORROW (${day.toLocaleDateString('en-US',{weekday:'short',timeZone:'UTC'})})`:day.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',timeZone:'UTC'})}\n`};
 const nbaConfig=night=>({prefix:`nba|${night}|`,caps:NBA_CAPS,perGame:NBA_PER_GAME,top:NBA_TOP,sport:'NBA',note:'Official nightly NBA selection. Pregame odds locked; multi-book price signal, not a player projection. Parlay payout is an estimate.'});
@@ -855,7 +857,7 @@ async function gradePredictionNow(env,now=Date.now()){
 // invocation (SELF binding), so their reads, uploads and posts get their own
 // request allowance instead of crowding out the main X run.
 // One-off post set by the owner: app_settings x-custom-post holds JSON
-// {"text":"…","quoteKey":"xid:…"} (quoteKey optional; image: a dist/x PNG; video: a dist/x MP4; id: saves xid:x-custom:<id>). It posts once, after
+// {"text":"…","quoteKey":"xid:…"} (quoteKey optional; image: a dist/x PNG; video: a dist/x MP4; slate: a pick-list card; id: saves xid:x-custom:<id>). It posts once, after
 // the post it quotes exists, then the request is cleared.
 async function postCustomToX(env,now=Date.now()){
   if(!env.DB||!xReady(env))return {posted:0,disabled:true};
@@ -869,9 +871,11 @@ async function postCustomToX(env,now=Date.now()){
   // image: a PNG shipped with the site in dist/x/ (an image made outside the card templates).
   const png=req.image?(typeof X_POST_IMAGES==='object'&&X_POST_IMAGES?X_POST_IMAGES[String(req.image)]:null):null;if(req.image&&!png)return {posted:0,invalid:true};
   // video: an MP4 shipped the same way, sent with the chunked upload.
+  // slate: a pick-list card drawn now ({kicker,day,date,dateLine,note,note2,foot,picks:[{text,odds,sub,color}]}), like the nightly cards.
+  const slate=req.slate&&typeof req.slate==='object'&&Array.isArray(req.slate.picks)&&req.slate.picks.length?req.slate:null;if(req.slate&&!slate)return {posted:0,invalid:true};
   const mp4=req.video?(typeof X_POST_IMAGES==='object'&&X_POST_IMAGES?X_POST_IMAGES[String(req.video)]:null):null;if(req.video&&!mp4)return {posted:0,invalid:true};
   const claim=await env.DB.prepare('DELETE FROM app_settings WHERE key=? AND value=?').bind('x-custom-post',raw).run();if(!Number(claim?.meta?.changes??claim?.changes))return {posted:0,claimed:false};
-  try{const mediaId=mp4?await xUploadVideo(env,Uint8Array.from(atob(mp4),c=>c.charCodeAt(0))):png?await xUploadImage(env,Uint8Array.from(atob(png),c=>c.charCodeAt(0))):svg&&typeof renderCardPng==='function'?await xUploadImage(env,await renderCardPng(svg)):null;
+  try{const mediaId=mp4?await xUploadVideo(env,Uint8Array.from(atob(mp4),c=>c.charCodeAt(0))):slate&&typeof renderCardPng==='function'?await xUploadImage(env,await renderCardPng(await xSlateSvgFaces({final:true,season:'',...slate}))):png?await xUploadImage(env,Uint8Array.from(atob(png),c=>c.charCodeAt(0))):svg&&typeof renderCardPng==='function'?await xUploadImage(env,await renderCardPng(svg)):null;
     const sent=await xPost(env,text,mediaId,null,quote);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} custom ${sent?.data?.id||''}`).catch(()=>{});if(req.id&&sent?.data?.id)await setAppSetting(env,`xid:x-custom:${req.id}`,String(sent.data.id)).catch(()=>{});return {posted:1,graphic:Boolean(mediaId)}}
   // A failed post is put back for the next run, three tries in all (each try costs X credits).
   catch(error){const tries=Number(req.tries||0)+1;if(tries<3)await setAppSetting(env,'x-custom-post',JSON.stringify({...req,tries})).catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} custom: ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
@@ -2815,7 +2819,7 @@ async function trustSnapshot(env,now=Date.now()){
 
 // Anonymous usage counts: daily totals per metric. No cookies, IP addresses or
 // per-person identifiers are stored; unknown metric names are ignored.
-const USAGE_METRICS=new Set(['card:stats','slip:copy','slip:topm','alerts:x','alerts:chooser','alerts:choose-email','alerts:choose-site','go:safari','go:novig','a2hs:shown','alerts:banner-hide','alerts:fromweek','alerts:lapsed','alerts:denied','alerts:unsupported','board:browse','board:value','empty:alerts','email:pitch','hero:picks','official:bet','prop:bet','slip:addpicks','view:nba','sheet:alerts','sheet:email','sheet:xproof','email:subscribe','email:open','reply:copy','reply:image','partner:novig:copy','app:novig','app:prophetx','app:kalshi','app:polymarket','app:betopenly','welcome:shown','welcome:alerts','welcome:account','welcome:skip','welcome:close','welcome:reopen','view:home','view:trust','view:picks','view:week','visit:new','visit:return','card:open','slip:add','parlay:add','share','hit:open','profile:open','affiliate:click','alerts:on','alerts:off','gate:shown','gate:signup','gate:login','nudge:shown','nudge:alerts','nudge:signup','alerts:email','view:post','post:copy','post:open','post:image','src:reddit','src:x','src:google','src:social','src:other','src:direct','welcome:email','email:inline-welcome','email:inline-banner','email:inline-sheet','live:strip','slip:parlay']);
+const USAGE_METRICS=new Set(['card:stats','slip:copy','slip:topm','alerts:x','alerts:chooser','alerts:choose-email','alerts:choose-site','go:safari','go:novig','a2hs:shown','alerts:banner-hide','alerts:fromweek','alerts:lapsed','alerts:denied','alerts:unsupported','board:browse','board:value','empty:alerts','email:pitch','hero:picks','official:bet','prop:bet','slip:addpicks','view:nba','sheet:alerts','sheet:email','sheet:xproof','email:subscribe','email:open','reply:copy','reply:image','partner:novig:copy','app:novig','app:prophetx','app:kalshi','app:polymarket','app:betopenly','welcome:shown','welcome:alerts','welcome:account','welcome:skip','welcome:close','welcome:reopen','view:home','view:trust','view:picks','view:week','visit:new','visit:return','card:open','slip:add','parlay:add','share','hit:open','profile:open','affiliate:click','alerts:on','alerts:off','gate:shown','gate:signup','gate:login','nudge:shown','nudge:alerts','nudge:signup','alerts:email','view:post','post:copy','post:open','post:image','src:reddit','src:x','src:google','src:social','src:other','src:direct','welcome:email','email:inline-welcome','email:inline-banner','email:inline-sheet','email:inline-home','email:home-shown','live:strip','slip:parlay']);
 const USAGE_BOTS=/bot|crawl|spider|slurp|preview|facebookexternalhit|curl|wget|python|headless|lighthouse/i;
 function usageGeo(request){
   const cf=request.cf||{},country=String(cf.country||'').toUpperCase(),region=String(cf.regionCode||'').toUpperCase();
@@ -4086,6 +4090,11 @@ async function recordNbaExchangePrices(env,boards,now=Date.now()){
   for(const {b,id,kick} of due){try{
     const ex=await fetchNbaExchangeOdds(oddsEventId(id),env.THE_ODDS_API_KEY);
     statements.push(env.DB.prepare('INSERT OR REPLACE INTO exchange_prices (event_id,game_time,prices_json,updated_at) VALUES (?,?,?,?)').bind(id,new Date(kick).toISOString(),JSON.stringify(exchangePriceList(ex)),stamp));
+    // NBA prediction picks: the same app's latest price for the same line and side, until tip-off (the closing price).
+    const mine=(await env.DB.prepare('SELECT id,exchange,player,market,side,line FROM prediction_picks WHERE event_id=? AND game_time>?').bind(id,stamp).all().catch(()=>({results:[]}))).results||[];
+    for(const r of mine){const key=Object.keys(EXCHANGES).find(k=>EXCHANGES[k]===r.exchange);let price=null;
+      for(const bk of ex.bookmakers||[])if(bk.key===key)for(const m of bk.markets||[])if(recordLabels[m.key]===r.market)for(const o of m.outcomes||[])if(normalizedName(o.description)===normalizedName(r.player)&&exchangeOutcome(o).side===r.side.toLowerCase()&&exchangeOutcome(o).line===Number(r.line))price=BTGStats.number(o.price);
+      if(price!==null)statements.push(env.DB.prepare('UPDATE prediction_picks SET close_odds=?,close_at=? WHERE id=?').bind(price,stamp,r.id))}
     if(kick-now>PREDICTION_LOCK)continue;
     nbaPmAudit(audit,b,ex,fairs);
     pool.push(...predictionCandidates(b,ex,fairs,now,{min:.5,max:1,perExchange:true}).filter(p=>NBA_PM.markets.has(p.market)));
@@ -4153,7 +4162,7 @@ async function postNbaLaunchToX(env,now=Date.now()){
 }
 // NBA prediction picks on X: one text post each, once. Off until
 // app_settings x-nba-pm = on (Tim approves the format first).
-const nbaPmXText=r=>xShort(`📈 NBA prediction app pick\n${r.player} ${weeklyLegText(r)}\n${exchangePct(r.odds)}% on ${r.exchange} · our fair chance ${Math.round(r.fair_pct)}%\n\nLocked before tip-off. Own record, separate from our sportsbook picks. 21+`);
+const nbaPmXText=r=>xShort(`📈 NBA prediction app pick\n${r.player} ${weeklyLegText(r)}\n${exchangePct(r.odds)}% on ${r.exchange} · our fair chance ${Math.round(r.fair_pct)}%\n\n${xLocked(r.game_time)} Own record, separate from our sportsbook picks. 21+`);
 async function postNbaPredictionToX(env,now=Date.now()){
   if(!env.DB||!xReady(env)||await appSetting(env,'x-nba-pm')!=='on')return {posted:0,disabled:true};
   // New picks first, each with its graphic (player photo, team colors, price).
@@ -4188,8 +4197,8 @@ async function postNbaPicksToX(env,now=Date.now()){
     let mediaId=null;
     try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(xCardSvg(await xCardData(env,r,await nbaRecordSummary(env)))))}catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} nba pick graphic: ${error.message}`).catch(()=>{})}
     const ahead=nbaAhead(r.game_time,now);
-    const text=parlay?xShort(`${ahead}🔒 Official parlay · NBA\n${legs.length}-leg parlay ${weeklyOdds(r.combined_odds)}\n${legs.map(l=>`• ${l.player} ${weeklyLegText(l)}`).join('\n')}\n${xShortWhen(r.game_time)}\n\nLocked before tip-off. Every pick graded in public, link in bio. 21+`)
-      :xShort(`${ahead}${edge>=NBA_TOP?'⭐ Top pick':'🔒 Official pick'} · NBA\n${r.player} ${weeklyLegText(r)}\n${[`${weeklyOdds(r.odds)}${f.book?` at ${f.book}`:''}`,xMatchup(f.team),xShortWhen(r.game_time)].filter(Boolean).join(' · ')}\n\nLocked before tip-off. Every pick graded in public, link in bio. 21+`);
+    const text=parlay?xShort(`${ahead}🔒 Official parlay · NBA\n${legs.length}-leg parlay ${weeklyOdds(r.combined_odds)}\n${legs.map(l=>`• ${l.player} ${weeklyLegText(l)}`).join('\n')}\n${xShortWhen(r.game_time)}\n\n${xLocked(r.game_time,now)} Every pick graded in public, link in bio. 21+`)
+      :xShort(`${ahead}${edge>=NBA_TOP?'⭐ Top pick':'🔒 Official pick'} · NBA\n${r.player} ${weeklyLegText(r)}\n${[`${weeklyOdds(r.odds)}${f.book?` at ${f.book}`:''}`,xMatchup(f.team),xShortWhen(r.game_time)].filter(Boolean).join(' · ')}\n\n${xLocked(r.game_time,now)} Every pick graded in public, link in bio. 21+`);
     try{const sent=await xPost(env,text,mediaId);await xDone(env,`xi:${r.id}`,now);
       if(sent?.data?.id)await setAppSetting(env,`xid:${r.id}`,String(sent.data.id)).catch(()=>{});
       await env.DB.prepare('INSERT OR IGNORE INTO app_settings (key,value) VALUES (?,?)').bind(`x-nba-pick:${r.id}`,new Date(now).toISOString()).run().catch(()=>{});
@@ -4201,21 +4210,24 @@ async function postNbaPicksToX(env,now=Date.now()){
 async function postNbaCardToX(env,now=Date.now()){
   if(!env.DB||!xReady(env)||await appSetting(env,'x-nba')==='hold')return {posted:0,disabled:true};
   const night=nbaNight(now),key=`x-nba-card:${night}`,rows=await nbaRows(env,night);
-  if(!rows.length)return {posted:0,empty:true};
-  const first=Math.min(...rows.map(r=>Date.parse(recordLegs(r).map(l=>l.gameTime).sort()[0]||r.game_time)));
+  // The night's prediction-app picks go on the card too, after the sportsbook ones.
+  const pm=((await env.DB.prepare("SELECT * FROM prediction_picks WHERE event_id LIKE 'NBA--%' AND game_time>? AND game_time<? ORDER BY game_time").bind(new Date(now-12*3600000).toISOString(),new Date(now+36*3600000).toISOString()).all().catch(()=>({results:[]}))).results||[]).filter(r=>nbaNight(Date.parse(r.game_time))===night);
+  if(!rows.length&&!pm.length)return {posted:0,empty:true};
+  const first=Math.min(...rows.map(r=>Date.parse(recordLegs(r).map(l=>l.gameTime).sort()[0]||r.game_time)),...pm.map(r=>Date.parse(r.game_time)));
   if(first-now>35*60000||first-now<0)return {posted:0,due:false};
   if(!(await xClaimable(env,key,now))||!(await xClaim(env,key,now)))return {posted:0,done:true};
-  const season=await nbaRecordSummary(env),singles=rows.filter(r=>r.kind==='prop').length,parlays=rows.length-singles;
+  const season=await nbaRecordSummary(env),singles=rows.filter(r=>r.kind==='prop').length,parlays=rows.length-singles,apps=pm.length;
+  const pmLine=r=>`• ${r.player} ${weeklyLegText(r)} (${exchangePct(r.odds)}% on ${r.exchange})`,counts=`${singles} pick${singles===1?'':'s'}${parlays?` + ${parlays} parlay${parlays===1?'':'s'}`:''}${apps?` + ${apps} prediction-app pick${apps===1?'':'s'}`:''}`;
   const rec=season.wins+season.losses>=1?`\nNBA record: ${season.wins}–${season.losses}${season.pushes?`–${season.pushes}`:''}, ${weeklyMoney(season.profit)}.`:'';
   // Every pick in the text when it fits; otherwise the counts, with the full list on the graphic.
-  const tail=`${rec}\nLate games can add more. Every pick graded in public, link in bio. 21+`,when=Number(new Date(first).toLocaleString('en-US',{hour:'numeric',hour12:false,timeZone:'America/Los_Angeles'}))<15?'Today’s':'Tonight’s',full=`🏀 ${when} NBA picks\n${rows.map(nbaLine).join('\n')}\n${tail}`;
-  const text=full.length<=280?full:xShort(`🏀 ${when} NBA picks: ${singles} pick${singles===1?'':'s'}${parlays?` + ${parlays} parlay${parlays===1?'':'s'}`:''}, all on the card 👇\n${tail}`);
+  const tail=`${rec}\nLate games can add more. Every pick graded in public, link in bio. 21+`,when=Number(new Date(first).toLocaleString('en-US',{hour:'numeric',hour12:false,timeZone:'America/Los_Angeles'}))<15?'Today’s':'Tonight’s',full=`🏀 ${when} NBA picks\n${[...rows.map(nbaLine),...(apps?['Prediction apps:',...pm.map(pmLine)]:[])].join('\n')}\n${tail}`;
+  const text=full.length<=280?full:xShort(`🏀 ${when} NBA picks: ${counts}, all on the card 👇\n${tail}`);
   let mediaId=null;
   // Each single carries its player's headshot (ESPN's small copy, up to 8) when the card has room for photos.
   const singlesRows=rows.filter(r=>r.kind==='prop'),faces=new Map();
   if(singlesRows.length<=8&&typeof playerHeadshot==='function')await Promise.all(singlesRows.map(async r=>{const shot=await playerHeadshot(r.player,'NBA',true).catch(()=>null);if(shot?.bytes)faces.set(r.player,{type:shot.type||'image/png',b64:xBase64(shot.bytes)})}));
-  const cardPicks=nbaSlatePicks(rows).map(p=>p.player&&faces.has(p.player)?{...p,photo:faces.get(p.player)}:p);
-  try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(await xSlateSvgFaces({final:true,kicker:'NBA · OFFICIAL PICKS',day:etDate(first,{weekday:'long'}),date:etDate(first,{month:'short',day:'numeric'}),dateLine:`${etDate(first,{month:'short',day:'numeric'})} · ${singles} pick${singles===1?'':'s'}${parlays?` + ${parlays} parlay${parlays===1?'':'s'}`:''}`,note:`First tip ${etDate(first,{hour:'numeric',minute:'2-digit'})} ET`,note2:'Late games can add more',foot:'LOCKED BEFORE TIP-OFF · 21+',picks:cardPicks,season:season.wins+season.losses>=1?`${season.wins}–${season.losses} · ${weeklyMoney(season.profit)}`:''})))}
+  const cardPicks=[...nbaSlatePicks(rows).map(p=>p.player&&faces.has(p.player)?{...p,photo:faces.get(p.player)}:p),...pm.map(r=>({color:'#2ee6a8',text:`${r.player} · ${weeklyLegText(r)}`,odds:`${exchangePct(r.odds)}%`,sub:`${r.exchange} · prediction app`,res:['won','lost','push'].includes(r.result)?r.result:null}))];
+  try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(await xSlateSvgFaces({final:true,kicker:'NBA · OFFICIAL PICKS',day:etDate(first,{weekday:'long'}),date:etDate(first,{month:'short',day:'numeric'}),dateLine:`${etDate(first,{month:'short',day:'numeric'})} · ${counts}`,note:`First tip ${etDate(first,{hour:'numeric',minute:'2-digit'})} ET`,note2:'Late games can add more',foot:apps?'LOCKED PRE-TIP · 18+/21+':'LOCKED BEFORE TIP-OFF · 21+',picks:cardPicks,season:season.wins+season.losses>=1?`${season.wins}–${season.losses} · ${weeklyMoney(season.profit)}`:''})))}
   catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} nba card graphic: ${error.message}`).catch(()=>{})}
   try{const sent=await xPost(env,text,mediaId);await xDone(env,key,now);if(sent?.data?.id)await setAppSetting(env,`xid:${key}`,String(sent.data.id)).catch(()=>{});
     // Picks on the card count as announced, so only later ones get an "added" reply.
