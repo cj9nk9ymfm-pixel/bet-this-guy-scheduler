@@ -1714,7 +1714,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     $('#officialNowCount').textContent=nS?String(nS):'';
     if($('#parlaysCount'))$('#parlaysCount').textContent=nP?String(nP):'';
     fill('#officialNowList',singles,'pick',NBA?'<div class="on-empty"><strong>No NBA picks yet tonight.</strong><span>They post as soon as a price qualifies, often the day before. Only the best: 1.5% or more over the fair price, up to 10 a night.</span></div>':'<div class="on-empty"><strong>No picks yet this week.</strong><span>They post the moment a price qualifies, any day before kickoff.</span></div>');
-    fill('#parlaysList',parlays,'parlay',NBA?'<div class="on-empty"><strong>No NBA parlays yet tonight.</strong><span>Up to 2 a night, when two or more props that just missed line up.</span></div>':'<div class="on-empty"><strong>No parlays yet this week.</strong><span>They post when two or more props that just missed line up.</span></div>');
+    fill('#parlaysList',parlays,'parlay',NBA?'<div class="on-empty"><strong>No NBA parlays yet tonight.</strong><span>One a night, when two or more props line up.</span></div>':'<div class="on-empty"><strong>No parlays yet this week.</strong><span>They post when two or more props that just missed line up.</span></div>');
     // Tap the row for the bet screen; tap a single's price to add it to the slip.
     $$('#officialNowList button[data-on], #parlaysList button[data-on]').forEach(b=>b.onclick=e=>{const r=list[+b.dataset.on];if(e.target.closest('[data-slip-price]')&&r&&!['won','lost','push'].includes(r.result)&&(r.kind==='parlay'?addParlayToSlip(r):addBetToSlip(r)))return;openPick(r)});
     officialLiveList=list;updateOfficialLive();window.btgOfficialForm?.(list);focusPick();
@@ -3121,7 +3121,7 @@ function statsProp(l){
     const tonight=night(Date.now()),laterOf=r=>LEAGUE==='NBA'&&!r.result&&night(Date.parse(r.gameTime))>tonight,now_=list.filter(r=>!laterOf(r)),later=list.filter(laterOf);
     const dayHead=n=>{const d=new Date(`${n}T12:00:00Z`),next=new Date(Date.parse(`${tonight}T12:00:00Z`)+86400000).toISOString().slice(0,10);return `<p class="on-group on-group-later">${d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',timeZone:'UTC'})}${n===next?' · tomorrow':''}</p>`};
     const laterHtml=[...new Set(later.map(r=>night(Date.parse(r.gameTime))))].sort().map(n=>dayHead(n)+later.filter(r=>night(Date.parse(r.gameTime))===n).map(pickRow).join('')).join('');
-    document.getElementById('pmPicksList').innerHTML=list.length?(later.length&&now_.length?'<p class="on-group">Tonight</p>':'')+now_.map(pickRow).join('')+laterHtml:'<div class="on-empty"><strong>'+(LEAGUE==='NBA'?'No NBA picks yet tonight.':'No picks yet this week.')+'</strong><span>They post when an app’s price beats the sportsbooks’ fair chance by 1.5+ points after its fee.</span></div>';
+    document.getElementById('pmPicksList').innerHTML=list.length?(later.length&&now_.length?'<p class="on-group">Tonight</p>':'')+now_.map(pickRow).join('')+laterHtml:'<div class="on-empty"><strong>'+(LEAGUE==='NBA'?'No NBA picks yet tonight.':'No picks yet this week.')+'</strong><span>They post when an app’s price beats the sportsbooks’ fair chance by 2+ points after its fee.</span></div>';
     bindPmRows();focusPick();window.BTGTagInjuries?.();
   }
   // Board: every prop's best prediction-market chance in the visitor's state.

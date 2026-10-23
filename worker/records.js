@@ -93,6 +93,12 @@ async function verifiedRecordStatements(records,request,env,ctx) {
 // Tuesday noon UTC keeps Monday-night NFL games in the preceding slate.
 const OFFICIAL_START=Date.parse('2026-09-22T12:00:00Z');
 const OFFICIAL_CAPS={props:100,reasonable:15,swing:10,moonshot:3};
+// NFL singles post at 0.5% over fair (1% until Oct 23): the 0.5–1% band went
+// 30–27, +$974 in the near-miss test with 46 of 57 beating the kickoff price.
+const OFFICIAL_MIN=.5;
+// One official parlay per slate (an ET game day; an NBA night): since $25
+// parlays started (Oct 12) they went 2–6.
+let PARLAYS_PER_DAY=1;
 // At most two official props per game: picks in one game win or lose
 // together, so a third goes to the leans list instead.
 const OFFICIAL_PER_GAME=2;
@@ -107,8 +113,8 @@ const OFFICIAL_HORIZON=8*86400000,LOW_ODDS_CREDITS=250000;
 function officialWeek(time){const d=new Date(Number(time)-12*3600000);d.setUTCHours(0,0,0,0);d.setUTCDate(d.getUTCDate()-(d.getUTCDay()+5)%7);return d.toISOString().slice(0,10)}
 const officialPlayer=leg=>`${leg.gameId}|${normalizedName(leg.player)}`;
 // stats (optional) collects what a run saw, for the pick_runs log.
-// opts.min/opts.below set the edge band (official: 1% up, capped at 12%);
-// the near-miss shadow uses 0.5% to just under 1%.
+// opts.min/opts.below set the edge band (official NFL: 0.5% up, capped at 12%);
+// the near-miss shadow logs 0.25% up that didn't post.
 function officialCandidates(events,now=Date.now(),stats={},opts={}){
   const min=opts.min??1,below=opts.below??Infinity;
   const result=[];
@@ -166,7 +172,9 @@ const PARLAYS_PER_GAME=3;
 // in-game 113-134, defensive matchups 40-57, injury bumps and game lines never
 // filled, and the NBA shadow gave way to official NBA picks. They log nothing
 // new; rows already logged still grade. Tests re-enable them with .clear().
-const RETIRED_SHADOWS=new Set(['line','bump','book','live','game','nba']);
+// Retired Oct 23: game leans 18–25, sportsbook TD test 37–145, prediction
+// model variant 2 77–105 and touchdowns on the apps 25–59.
+const RETIRED_SHADOWS=new Set(['line','bump','book','live','game','nba','leans','sbtd','prop2','td1']);
 // A player rides in at most PARLAYS_PER_PLAYER parlays a week (a night for
 // NBA), so one miss can't sink several parlays at once.
 const PARLAYS_PER_PLAYER=1;
@@ -201,8 +209,8 @@ async function playerTeams(env){const rows=(await env.DB.prepare('SELECT player,
 const withTeams=(list,teams)=>list.map(p=>({...p,playerTeam:teams.get(normalizedName(p.player))||null}));
 // Parlay price from its legs: multiplied, then the same-game cut when two legs share a game.
 function parlayDecimal(legs){const d=legs.reduce((p,l)=>p*recordDecimal(l.odds),1),same=new Set(legs.map(l=>l.gameId)).size<legs.length;return same?1+(d-1)*(1-SGP_CUT):d}
-// Singles are the top tier (1%+ edge). Parlays are built from the next tier
-// down (pool: props 0.5% to just under 1%), one leg per game, and never use
+// Singles are the top tier (NFL 0.5%+ edge). Parlays are built from the next tier
+// down (NFL pool: 0.25% up, players not posted as singles), one per slate, and never use
 // a player who is an official single: a bad single can't also sink a parlay.
 // cfg (NBA): its own id prefix, caps and per-game limit; NFL uses the defaults.
 function officialPlan(candidates,existing,week,now=Date.now(),pool=candidates,cfg={}){
@@ -218,6 +226,8 @@ function officialPlan(candidates,existing,week,now=Date.now(),pool=candidates,cf
   // Hardest tiers first: they need the most unshared legs.
   // 2 to 5 legs: 2-3 leg and 3-4 leg tiers carry most parlays; 4-5 legs only when a long price forms.
   const tiers=[['moonshot',4,5,2501,15000],['swing',3,4,1000,2500],['reasonable',2,3,100,999]];
+  const PER_DAY=cfg.parlaysPerDay??PARLAYS_PER_DAY,dayOf=legs=>{const t=Math.min(...legs.map(l=>Date.parse(l.gameTime)).filter(Number.isFinite));return Number.isFinite(t)?new Date(t-(String(prefix).startsWith('nba|')?6:5)*3600000).toISOString().slice(0,10):''},days=new Map();
+  saved.filter(r=>r.kind==='parlay').forEach(r=>{const d=dayOf(r.legs.length?r.legs:[{gameTime:r.game_time}]);days.set(d,(days.get(d)||0)+1)});
   const legPool=pool.filter(p=>!used.has(p.playerKey));
   if(legPool.length<2)return plan;
   for(const [tier,min,max,low,high] of tiers){
@@ -238,6 +248,7 @@ function officialPlan(candidates,existing,week,now=Date.now(),pool=candidates,cf
       if(legs.length!==size)continue;
       const odds=recordAmerican(parlayDecimal(legs)),keys=legs.map(p=>p.playerKey);
       if(odds<low||odds>high||prior.some(p=>p.filter(k=>keys.includes(k)).length>1))continue;
+      const day=dayOf(legs);if((days.get(day)||0)>=PER_DAY)continue;days.set(day,(days.get(day)||0)+1);
       legs.forEach(l=>sides.set(sideKey(l.gameId,l.player,l.market),l.side));new Set(legs.map(l=>l.gameId)).forEach(g=>perGame.set(g,(perGame.get(g)||0)+1));
       plan.push({tier,legs:legs.map(l=>legs.some(o=>o!==l&&o.gameId===l.gameId)?{...l,sameGame:true}:l)});counts[tier]++;prior.push(keys);keys.forEach(k=>exposure.set(k,(exposure.get(k)||0)+1));
     }
@@ -483,7 +494,7 @@ function bigFivePrice(event,r){
   return best;
 }
 // Near-miss shadow: NFL props that pass every official rule but the edge
-// (0.5% to just under 1%), logged the first time they're seen per player and
+// (0.25% up but not posted: under the 0.5% bar or past a cap), logged the first time they're seen per player and
 // game, never posted. Players who qualify officially this run are left out.
 // Each run keeps the best big-5 price at the same line, so the last one before
 // kickoff is the closing price.
@@ -513,7 +524,7 @@ async function recordNearShadow(env,boards,official=[],now=Date.now()){
   const locked=new Set(((await env.DB.prepare("SELECT game_id,player FROM public_recommendations WHERE id LIKE 'official|%' AND kind='prop' AND game_time>?").bind(stamp).all()).results||[]).map(r=>`${r.game_id}|${normalizedName(r.player)}`));
   // 0.5% to just under the bar, plus qualifying props held back by the
   // per-game limit; both are shown as leans.
-  const picks=officialCandidates(boards,now,{},{min:.5}).filter(p=>!taken.has(p.playerKey)&&!locked.has(`${p.gameId}|${normalizedName(p.player)}`));
+  const picks=officialCandidates(boards,now,{},{min:.25}).filter(p=>!taken.has(p.playerKey)&&!locked.has(`${p.gameId}|${normalizedName(p.player)}`));
   const statements=picks.map(p=>env.DB.prepare('INSERT OR IGNORE INTO near_shadow (id,event_id,player,team,market,side,line,odds,book,edge,game_time,logged_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)').bind(`${p.gameId}|${normalizedName(p.player)}`,p.gameId,p.player,p.team||null,p.market,p.side,p.line,p.odds,p.book,+p.edge.toFixed(2),p.gameTime,stamp));
   const open=(await env.DB.prepare('SELECT id,event_id,player,market,side,line FROM near_shadow WHERE game_time>?').bind(stamp).all()).results||[];
   for(const r of open){
@@ -550,7 +561,7 @@ function leanFor(board,now){
 }
 const leanRow=(env,p,gameId,stamp,source)=>env.DB.prepare('INSERT OR IGNORE INTO lean_shadow (id,event_id,player,team,market,side,line,odds,book,edge,game_time,logged_at,source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(gameId,gameId,p.player,p.team||null,p.market,p.side,p.line,p.odds,p.book,+p.edge.toFixed(2),p.gameTime,stamp,source);
 async function recordLeans(env,boards,now=Date.now()){
-  if(!env.DB)return {logged:0};
+  if(!env.DB||RETIRED_SHADOWS.has('leans'))return {logged:0,retired:true};
   const stamp=new Date(now).toISOString(),statements=[];let logged=0;
   const open=(await env.DB.prepare('SELECT id,event_id,player,market,side,line FROM lean_shadow WHERE game_time>?').bind(stamp).all()).results||[],have=new Set(open.map(r=>r.id));
   for(const board of boards){
@@ -1551,7 +1562,8 @@ const PREDICTION_PARLAY_FEES={novig:p=>10*p*(1-p)};
 function predictionParlayNet(key,decimal){const p=1/decimal,fee=(PREDICTION_PARLAY_FEES[key]||(()=>0))(p)/100;return 1/Math.min(.99,p+fee)}
 // Oct 18: 1 point and 2 a game made 23 prediction picks on one Sunday; now
 // 1.5 points and one a game.
-const PREDICTION_MIN=1.5,PREDICTION_MAX=12,PREDICTION_PER_GAME=1;
+// 2 points over fair after the app's fee (1.5 until Oct 23: NFL prediction picks went 16–21).
+const PREDICTION_MIN=2,PREDICTION_MAX=12,PREDICTION_PER_GAME=1;
 // Picks and parlay legs lock only inside 24 hours of kickoff: earlier prices
 // beat the app's own closing price far less often (41% at 24-48 hours out vs
 // 66% inside 6 hours in the price test).
@@ -1562,7 +1574,8 @@ function predictionNet(key,odds){const d=recordDecimal(odds),p=1/d,win=PREDICTIO
 const PREDICTION_PAUSED=new Set(['Pass Completions']);
 // Higher bars by app and market: Novig receptions, our biggest prediction
 // market, beat the kickoff price only 51% of the time (Oct 2026).
-const PREDICTION_MIN_BY={'Novig|Receptions':2.5};
+// Raised to 3 Oct 23 (8–13 so far).
+const PREDICTION_MIN_BY={'Novig|Receptions':3};
 function predictionCandidates(board,exchangeBoard,fairs,now=Date.now(),opts={}){
   const gameId=board.eventID||`NFL--${board.id}`,kick=Date.parse(board.commence_time),best=new Map();
   if(!(kick>now+5*60000)||kick-now>PREDICTION_LOCK)return [];
@@ -1754,8 +1767,10 @@ function predictionParlayPlan(pool,existing,week,now=Date.now()){
   }
   return plan;
 }
+// Prediction-app parlays are paused (Oct 23): 2–10 on Novig, 0–4 in the NBA test.
+let PM_PARLAYS_ON=false;
 async function recordPredictionParlays(env,pool,now=Date.now()){
-  if(!env.DB||pool.length<2)return {posted:0};
+  if(!env.DB||pool.length<2||!PM_PARLAYS_ON)return {posted:0,paused:!PM_PARLAYS_ON};
   const week=officialWeek(now),existing=(await env.DB.prepare('SELECT tier,legs_json,game_time FROM prediction_parlays WHERE week=?').bind(week).all()).results||[];
   const picks=new Set((((await env.DB.prepare('SELECT event_id,player FROM prediction_picks WHERE game_time>?').bind(new Date(now).toISOString()).all()).results)||[]).map(r=>`${r.event_id}|${normalizedName(r.player)}`));
   const dirs=await pickDirections(env,now);
@@ -1851,9 +1866,9 @@ async function recordExchangeProps(env,boards,now=Date.now()){
     statements.push(env.DB.prepare('INSERT OR REPLACE INTO exchange_prices (event_id,game_time,prices_json,updated_at) VALUES (?,?,?,?)').bind(board.eventID||`NFL--${board.id}`,new Date(kick).toISOString(),JSON.stringify(exchangePriceList(ex)),stamp));
     for(const [k,c] of Object.entries(out.coverage)){const t=coverage[k]||={lines:0,matched:0};t.lines+=c.lines;t.matched+=c.matched}
     for(const p of out.picks){statements.push(exchangeInsert(env,p,stamp));picks++}
-    const two=exchangePropCandidates(board,ex,fairs2,now,'prop2');for(const p of two.picks){statements.push(exchangeInsert(env,p,stamp));picks2++}
+    const two=exchangePropCandidates(board,ex,fairs2,now,'prop2');if(!RETIRED_SHADOWS.has('prop2'))for(const p of two.picks){statements.push(exchangeInsert(env,p,stamp));picks2++}
     for(const [k,c] of Object.entries(two.coverage)){const t=coverage[k]||={lines:0,matched:0};t.matched2=(t.matched2||0)+c.matched}
-    const td=exchangePropCandidates(board,ex,fairsTd,now,'td1');for(const p of td.picks){statements.push(exchangeInsert(env,p,stamp));picks2++}
+    const td=exchangePropCandidates(board,ex,fairsTd,now,'td1');if(!RETIRED_SHADOWS.has('td1'))for(const p of td.picks){statements.push(exchangeInsert(env,p,stamp));picks2++}
     for(const [k,c] of Object.entries(td.coverage)){const t=coverage[k]||={lines:0,matched:0};t.matchedTd=(t.matchedTd||0)+c.matched}
     // Closing price at the same exchange, line and side.
     const open=(await env.DB.prepare("SELECT id,exchange,player,market,side,line FROM exchange_shadow WHERE kind IN ('prop','prop2','td1') AND event_id=? AND game_time>?").bind(board.eventID||`NFL--${board.id}`,stamp).all()).results||[];
@@ -1910,12 +1925,16 @@ async function gradeExchangeShadow(env,now=Date.now(),limit=30){
     if(r.kind==='game'){const g=games.find(g=>normalizedName(g.home_team?.full_name)===normalizedName(r.home)&&normalizedName(g.visitor_team?.full_name)===normalizedName(r.away));
       if(!g||nflGameState(g)!=='final')continue;const hs=Number(g.home_team_score),as=Number(g.visitor_team_score);if(!Number.isFinite(hs)||!Number.isFinite(as))continue;
       statements.push(env.DB.prepare('UPDATE exchange_shadow SET home_score=?,away_score=?,result=?,graded_at=? WHERE id=?').bind(hs,as,gameLineResult(r,hs,as),stamp,r.id));continue}
-    const record={sport:'NFL',player:r.player,team:r.team,gameTime:r.game_time,market:r.market,side:r.side,line:r.line};
+    const nba=String(r.event_id||'').startsWith('NBA--'),record={sport:nba?'NBA':'NFL',player:r.player,team:r.team,gameTime:r.game_time,market:r.market,side:r.side,line:r.line};
     // Anytime TD: the box score leaves 0 TDs blank, so use the official grader (play-by-play).
     if(r.market==='Anytime Touchdown'&&typeof gradePublicRecord==='function'){const rec={kind:'prop',sport:'NFL',player:r.player,market:r.market,side:r.side,line:r.line,odds:r.odds,game_time:r.game_time,legs_json:JSON.stringify([{...record,odds:r.odds}])};
       const res=await gradePublicRecord(rec,env,tdCache).catch(()=>null);if(['won','lost','push'].includes(res))statements.push(env.DB.prepare('UPDATE exchange_shadow SET actual=?,result=?,graded_at=? WHERE id=?').bind(rec.gradedLegs?.[0]?.actualValue??null,res,stamp,r.id));continue}
     const stat=await recordPlayerStats(record,env,undefined,cache).catch(()=>null);
-    if(shadowVoid(stat,r.game_time,now)){statements.push(env.DB.prepare('UPDATE exchange_shadow SET result=?,graded_at=? WHERE id=?').bind('void',stamp,r.id));continue}
+    // NBA: a final box score; a player who didn't play is no action.
+    if(nba&&stat?.scoreboardFinal&&!stat.missingPlayerStats&&!BTGStats.nbaPlayed(stat)){statements.push(env.DB.prepare('UPDATE exchange_shadow SET result=?,graded_at=? WHERE id=?').bind('void',stamp,r.id));continue}
+    if(!nba&&shadowVoid(stat,r.game_time,now)){statements.push(env.DB.prepare('UPDATE exchange_shadow SET result=?,graded_at=? WHERE id=?').bind('void',stamp,r.id));continue}
+    // Still no stats 3 days after the game: no action, so it stops holding a place in the queue.
+    if((!stat||stat.missingPlayerStats)&&now-Date.parse(r.game_time)>3*86400000){statements.push(env.DB.prepare('UPDATE exchange_shadow SET result=?,graded_at=? WHERE id=?').bind('void',stamp,r.id));continue}
     if(!stat||stat.missingPlayerStats||!(stat.scoreboardFinal||nflGameState(stat.game||{})==='final'))continue;
     const value=BTGStats.metric(record,stat).value,result=value===null?null:BTGStats.grade(r.side,r.line,value);
     if(result)statements.push(env.DB.prepare('UPDATE exchange_shadow SET actual=?,result=?,graded_at=? WHERE id=?').bind(value,result,stamp,r.id));
@@ -2328,9 +2347,9 @@ async function publishOfficialPicks(request,env,ctx,opts={}){
     const injuries=await injuryMap(env).catch(()=>new Map());boards.splice(0,boards.length,...withoutInjured(boards,injuries));
     if(!opts.soonOnly)jobStep('publish','plan');const existing=await env.DB.prepare('SELECT * FROM public_recommendations WHERE id>=? AND id<?').bind(prefix,prefix+'\uffff').all();
     const dirs=await pickDirections(env),ok=p=>sameDirection(dirs,p.gameId,p.player,p.side);
-    const stats={};const candidates=officialCandidates(boards,Date.now(),stats).filter(ok);
-    // Parlay legs come from the next tier down (0.5% to just under 1%), not from the singles.
-    const nextTier=withTeams(officialCandidates(boards,Date.now(),{},{min:.5,below:1}).filter(ok),await playerTeams(env));
+    const stats={};const candidates=officialCandidates(boards,Date.now(),stats,{min:OFFICIAL_MIN}).filter(ok);
+    // Parlay legs: 0.25% up, from players not already posted as singles.
+    const nextTier=withTeams(officialCandidates(boards,Date.now(),{},{min:.25}).filter(ok),await playerTeams(env));
     const plan=officialPlan(candidates,existing.results||[],week,Date.now(),nextTier);
     const posted=await writeOfficialPlan(plan,week,env);
     await stampExchangePrices(env,Date.now()).catch(error=>console.warn('exchange_stamp_failed',error.message));
@@ -2357,7 +2376,7 @@ async function publishOfficialPicks(request,env,ctx,opts={}){
     if(!opts.soonOnly)jobStep('publish','exchange props');await recordExchangeProps(env,boards,Date.now()).catch(error=>console.warn('exchange_shadow_failed',error.message));
     if(!opts.soonOnly)await stampExchangePrices(env,Date.now()).catch(error=>console.warn('exchange_stamp_failed',error.message));
     if(!opts.soonOnly)jobStep('publish','book shadow');await recordBookShadow(env,boards,Date.now()).catch(error=>console.warn('book_shadow_failed',error.message));
-    if(!opts.soonOnly&&(TD_SHADOW_ON||SB_TD_TEST_ON)){jobStep('publish','td shadow');await recordTdShadow(env,boards,Date.now(),TD_SHADOW_ON?null:sbTdRule).catch(error=>console.warn('td_shadow_failed',error.message))}
+    if(!opts.soonOnly&&(TD_SHADOW_ON||(SB_TD_TEST_ON&&!RETIRED_SHADOWS.has('sbtd')))){jobStep('publish','td shadow');await recordTdShadow(env,boards,Date.now(),TD_SHADOW_ON?null:sbTdRule).catch(error=>console.warn('td_shadow_failed',error.message))}
     if(!opts.soonOnly)jobStep('publish','form wanted');await recordFormWanted(env,boards,Date.now()).catch(error=>console.warn('player_form_failed',error.message));
 
     // New picks go out right away (X post and phone alerts) instead of on the
@@ -4007,6 +4026,26 @@ const nbaDecided=r=>['won','lost','push'].includes(r.result)&&(r.status==='final
 // next NBA game's main props (points, rebounds, assists, threes; about 4
 // credits) records which apps list NBA player props, for the NBA prediction view.
 const NBA_EXCHANGE_MARKETS=['player_points','player_rebounds','player_assists','player_threes'];
+// Sharp-book check: once a day, does the odds feed carry Pinnacle player
+// props for the next NFL and NBA game? (2 credits each.) If it does, a
+// Pinnacle-referenced fair price can be tested in shadow against our 5-book average.
+async function checkSharpBook(request,env,ctx,now=Date.now()){
+  if(!env.DB||!env.THE_ODDS_API_KEY)return {disabled:true};
+  let saved={};try{saved=JSON.parse(await appSetting(env,'sharp-check')||'{}')}catch{}
+  if(now-Date.parse(saved.at||0)<24*3600000)return {skipped:true};
+  const out={at:new Date(now).toISOString()};
+  for(const [league,sport,markets] of [['NFL',SPORTS[0].key,['player_receptions','player_pass_yds']],['NBA',NBA_SPORT.key,['player_points','player_rebounds']]]){try{
+    const schedule=await futureSchedule(new Request(new URL(`/api/schedule${league==='NBA'?'?sport=NBA':''}`,request.url)),env,ctx);if(!schedule.ok){out[league]={error:'schedule'};continue}
+    const next=((await schedule.json()).data||[]).filter(e=>Date.parse(e.status?.startsAt)>now+30*60000).sort((a,b)=>Date.parse(a.status.startsAt)-Date.parse(b.status.startsAt))[0];if(!next){out[league]={games:0};continue}
+    const q=new URLSearchParams({apiKey:env.THE_ODDS_API_KEY,bookmakers:'pinnacle',markets:markets.join(','),oddsFormat:'american',dateFormat:'iso'});
+    const r=await fetch(`${API_BASE}/sports/${sport}/events/${oddsEventId(next.eventID)}/odds?${q}`,{headers:{accept:'application/json'},signal:AbortSignal.timeout(15000)});
+    if(!r.ok){out[league]={error:r.status};continue}
+    const d=await r.json(),props=(d.bookmakers||[]).flatMap(b=>(b.markets||[]).flatMap(m=>(m.outcomes||[]).filter(o=>o.description))).length;
+    out[league]={game:`${d.away_team||''} @ ${d.home_team||''}`,pinnacleProps:props};
+  }catch(error){out[league]={error:String(error.message).slice(0,80)}}}
+  await setAppSetting(env,'sharp-check',JSON.stringify(out)).catch(()=>{});
+  return out;
+}
 async function checkNbaExchanges(request,env,ctx,now=Date.now()){
   if(!env.DB||!env.THE_ODDS_API_KEY)return {disabled:true};
   let saved={};try{saved=JSON.parse(await appSetting(env,'nba-exchange-check')||'{}')}catch{}
@@ -4077,7 +4116,7 @@ async function recordNbaPredictionPicks(env,board,ex,fairs,now,ctx){
 // site, X, alerts or the record): the NFL parlay rules (ProphetX, 2 short and
 // 1 mid, at most 2 a day) per NBA night, graded from box scores.
 async function recordNbaPmParlays(env,pool,now=Date.now()){
-  if(!env.DB)return {posted:0};
+  if(!env.DB||!PM_PARLAYS_ON)return {posted:0,paused:!PM_PARLAYS_ON};
   const night=nbaNight(now),existing=(await env.DB.prepare('SELECT tier,legs_json,game_time FROM nba_pm_parlays WHERE night=?').bind(night).all()).results||[];
   const picks=new Set((((await env.DB.prepare("SELECT event_id,player FROM prediction_picks WHERE event_id LIKE 'NBA--%' AND game_time>?").bind(new Date(now).toISOString()).all()).results)||[]).map(r=>`${r.event_id}|${normalizedName(r.player)}`));
   const dirs=await pickDirections(env,now),listed=await injuryMap(env,'NBA').catch(()=>new Map());

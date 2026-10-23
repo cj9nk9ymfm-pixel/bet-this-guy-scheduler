@@ -10,6 +10,8 @@ for(const f of fs.readdirSync('drizzle').filter(f=>/^000[0-2]_|^0006_|^0008_|^00
 const wrap=(sql,args=[])=>({bind(...values){return wrap(sql,values)},async first(){return db.prepare(sql).get(...args)||null},async all(){return{results:db.prepare(sql).all(...args)}},async run(){const r=db.prepare(sql).run(...args);return{success:true,meta:{changes:Number(r.changes)}}}});
 context.env={DB:{prepare:sql=>wrap(sql),async batch(list){for(const s of list)await s.run()}},THE_ODDS_API_KEY:'k',BALLDONTLIE_API_KEY:'b'};
 const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v));
+// Prediction parlays are paused live; these tests still cover how they build.
+run("PM_PARLAYS_ON=true");
 (async()=>{
   const now=Date.parse('2026-10-11T12:00:00Z'),kick='2026-10-11T17:00:00.000Z',upd=new Date(now-60000).toISOString();
   const m=(over,under)=>({key:'player_receptions',last_update:upd,outcomes:[{name:'Over',description:'Tre Tucker',point:3.5,price:over},{name:'Under',description:'Tre Tucker',point:3.5,price:under}]});
@@ -84,7 +86,7 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
    const full=[0,1].map(i=>({tier:'short',game_time:'2026-10-18T17:00:00.000Z',legs_json:JSON.stringify([{eventId:'NFL--x'+i,player:'Z'+i,market:'Receptions',side:'Over',gameTime:'2026-10-18T17:00:00.000Z'}])}));
    assert.equal(J(run(`predictionParlayPlan(${JSON.stringify(pool)},${JSON.stringify(full)},'2026-10-13',${now})`)).length,0,'a day with 2 parlays gets no more');
    assert.equal(run("PREDICTION_PAUSED.has('Pass Completions')"),true,'pass completions are paused on prediction picks');
-   assert.equal(run("PREDICTION_MIN_BY['Novig|Receptions']"),2.5,'Novig receptions need 2.5 points');
+   assert.equal(run("PREDICTION_MIN_BY['Novig|Receptions']"),3,'Novig receptions need 3 points');
    assert.deepEqual(J(run('TD_PICK')),{min:3.5,books:5,perWeek:2,lead:6000000},'TD picks: 3.5 points, 5 books, 2 a week, last 100 minutes');
    {const nowT=Date.now(),bk=(key,over,under)=>({key,markets:[{key:'player_receptions',last_update:new Date(nowT).toISOString(),outcomes:[{name:'Over',description:'P One',point:4.5,price:over},{name:'Under',description:'P One',point:4.5,price:under}]}]});
     const board=b=>[{eventID:'NFL--z',bookmakers:b}];
