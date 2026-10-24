@@ -1453,7 +1453,8 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     const rows=[];
     if(!isParlay){
       if(done&&voidOf(r)){rows.push(['Result',`${voidOf(r)} before kickoff · bet voided, stake back`,'']);rows.push(['Posted at',posted,''])}
-      else if(done){const unit=String(r.market||'').toLowerCase(),v=first.actualValue!=null?`${first.minimumOnly?'At least ':''}${first.actualValue} ${Number(first.actualValue)===1?unit.replace(/s$/,''):unit}${first.noStats?' · played, no stats recorded':''}`:'—';rows.push(['Result',v,r.result==='won'?'pos':r.result==='lost'?'neg':'']);rows.push(['Posted at',posted,'']);
+      else if(done){const unit=String(r.market||'').toLowerCase(),v=first.actualValue!=null?`${first.minimumOnly?'At least ':''}${first.actualValue} ${Number(first.actualValue)===1?unit.replace(/s$/,''):unit}${first.noStats?' · played, no stats recorded':''}`:'—';rows.push(['Result',v,r.result==='won'?'pos':r.result==='lost'?'neg':'']);
+        if(first.correctedValue!=null)rows.push(['Stat correction',`Changed to ${first.correctedValue} after we graded it${first.correctedResult&&first.correctedResult!==r.result?` (would be ${first.correctedResult==='won'?'a win':first.correctedResult==='lost'?'a loss':'a push'})`:''} · our record keeps the first grade; your book may settle on the corrected stat`,'']);rows.push(['Posted at',posted,'']);
         const move=moveOf(r.line,r.closing_line,r.side);
         if(move)rows.push(['Closing line',`${move.line} · ${move.ourWay?'moved our way':'moved against us'}`,move.ourWay?'pos':'']);
         else if(r.closing_odds!=null){const a=oddsDecimal(r.odds),c=oddsDecimal(r.closing_odds),e=a&&c?(a/c-1)*100:0;rows.push(['Closing price',`${formatOdds(r.closing_odds)} · ${e>.05?'we beat the close':e<-.05?'close was better':'same as the close'}`,e>.05?'pos':''])}

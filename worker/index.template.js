@@ -1179,6 +1179,37 @@ async function settlePublicRecords(env) {
   }));
 }
 
+// Stat corrections (Oct 24): for 48 hours after a pick settles, re-read its
+// box score every 2 hours. A changed stat is saved on the leg as
+// correctedValue with the result it would have given; the record's own
+// result never changes (graded once, corrections noted, not re-graded).
+const CORRECTION_WINDOW=48*3600000,CORRECTION_EVERY=2*3600000;
+async function recheckSettledRecords(env,now=Date.now(),limit=20){
+  if(!env.DB||!env.BALLDONTLIE_API_KEY)return {checked:0,corrected:0};
+  const rows=(await env.DB.prepare("SELECT * FROM public_recommendations WHERE status = 'final' AND result IN ('won','lost','push') AND source = 'market-verified-v2' AND settled_at > ? ORDER BY settled_at LIMIT 200").bind(new Date(now-CORRECTION_WINDOW).toISOString()).all().catch(()=>({results:[]}))).results||[];
+  const statsCache=new Map(),signal=AbortSignal.timeout(20000);let checked=0,corrected=0;
+  for(const record of rows){
+    if(checked>=limit)break;
+    const legs=recordLegs(record);
+    if(!legs.length||legs.some(leg=>leg.recheckedAt&&now-Date.parse(leg.recheckedAt)<CORRECTION_EVERY))continue;
+    checked++;let changed=false;
+    const stamp=new Date(now).toISOString();
+    const next=await Promise.all(legs.map(async leg=>{
+      if(leg.voided||leg.actualValue==null||leg.minimumOnly)return {...leg,recheckedAt:stamp};
+      const row=await recordPlayerStats({...leg,gameTime:leg.gameTime||record.game_time},env,signal,statsCache).catch(()=>null);
+      const value=row&&!row.missingPlayerStats?recordMarketValue(leg,row):null;
+      if(value===null||!Number.isFinite(Number(value)))return {...leg,recheckedAt:stamp};
+      if(Number(value)===Number(leg.actualValue)){if(leg.correctedValue==null)return {...leg,recheckedAt:stamp};const {correctedValue,correctedResult,correctedAt,...rest}=leg;changed=true;return {...rest,recheckedAt:stamp}}
+      if(Number(value)===Number(leg.correctedValue))return {...leg,recheckedAt:stamp};
+      changed=true;corrected++;
+      return {...leg,correctedValue:Number(value),correctedResult:gradeRecordSide(leg.side,Number(leg.line),Number(value)),correctedAt:stamp,recheckedAt:stamp};
+    }));
+    await env.DB.prepare("UPDATE public_recommendations SET legs_json = ? WHERE id = ? AND status = 'final'").bind(JSON.stringify(next),record.id).run();
+    if(changed)console.log('stat_correction',record.id);
+  }
+  return {checked,corrected};
+}
+
 let recordMaintenancePromise=null, recordMaintenanceAt=0, closingMaintenanceAt=0;
 // Publishing, grading and closing-line capture run on the GitHub scheduler and
 // the closing-line cron. Visitor traffic only triggers them as a fallback when
@@ -1336,7 +1367,7 @@ async function scheduledMaintenance(request,env,ctx){
   if(!await maintenanceAuthorized(request,env))return json({success:false,error:'Unauthorized'},401);
   if(!env.DB||!env.THE_ODDS_API_KEY||!env.BALLDONTLIE_API_KEY)return json({success:false,error:'Maintenance configuration incomplete'},503);
   const job=new URL(request.url).searchParams.get('job');
-  const jobs={publish:()=>publishOfficialPicks(request,env,ctx),digest:()=>sendWeeklyDigest(env),alerts:()=>sendDueAlerts(env),xpost:()=>runXPosts(env),xresults:()=>runXResults(env,Date.now(),Number(new URL(request.url).searchParams.get('chain'))||0),tdGrade:async()=>({td:await gradeTdShadow(env),bump:await gradeBumpShadow(env).catch(error=>({error:error.message})),live:await gradeLiveShadow(env).catch(error=>({error:error.message})),games:await gradeGameShadow(env).catch(error=>({error:error.message})),books:await gradeBookShadow(env).catch(error=>({error:error.message})),exchanges:await gradeExchangeShadow(env).catch(error=>({error:error.message})),predictions:await gradePredictionPicks(env).catch(error=>({error:error.message})),predictionParlays:await gradePredictionParlays(env).catch(error=>({error:error.message})),nbaPmParlays:await gradeNbaPmParlays(env).catch(error=>({error:error.message}))}),live:()=>recordLiveShadow(env,ctx),form:()=>{const q=new URL(request.url).searchParams,size=Math.min(8,Math.max(1,Number(q.get('size'))||5)),part=Math.min(7,Math.max(0,Number(q.get('part'))||0));return fillPlayerForm(env,ctx,Date.now(),size,part*size)},lineGrade:()=>gradeLineShadow(env),nearGrade:()=>gradeNearShadow(env),statsCheck:()=>runStatsChecks(env,ctx),grade:()=>settlePublicRecords(env),closing:()=>captureClosingLines(env)};
+  const jobs={publish:()=>publishOfficialPicks(request,env,ctx),digest:()=>sendWeeklyDigest(env),alerts:()=>sendDueAlerts(env),xpost:()=>runXPosts(env),xresults:()=>runXResults(env,Date.now(),Number(new URL(request.url).searchParams.get('chain'))||0),tdGrade:async()=>({td:await gradeTdShadow(env),bump:await gradeBumpShadow(env).catch(error=>({error:error.message})),live:await gradeLiveShadow(env).catch(error=>({error:error.message})),games:await gradeGameShadow(env).catch(error=>({error:error.message})),books:await gradeBookShadow(env).catch(error=>({error:error.message})),exchanges:await gradeExchangeShadow(env).catch(error=>({error:error.message})),predictions:await gradePredictionPicks(env).catch(error=>({error:error.message})),predictionParlays:await gradePredictionParlays(env).catch(error=>({error:error.message})),nbaPmParlays:await gradeNbaPmParlays(env).catch(error=>({error:error.message}))}),live:()=>recordLiveShadow(env,ctx),form:()=>{const q=new URL(request.url).searchParams,size=Math.min(8,Math.max(1,Number(q.get('size'))||5)),part=Math.min(7,Math.max(0,Number(q.get('part'))||0));return fillPlayerForm(env,ctx,Date.now(),size,part*size)},lineGrade:()=>gradeLineShadow(env),nearGrade:()=>gradeNearShadow(env),statsCheck:()=>runStatsChecks(env,ctx),grade:async()=>({settle:await settlePublicRecords(env),corrections:await recheckSettledRecords(env).catch(error=>({error:error.message}))}),closing:()=>captureClosingLines(env)};
   if(!Object.hasOwn(jobs,job))return json({success:false,error:'Unknown maintenance job'},400);
   // Form fills run in parts at once; each part is its own job.
   // xresults can chain itself (chain=1,2…), so each link is its own job.
@@ -1378,7 +1409,7 @@ async function runCron(controller,env,ctx){
   const due=cronJobs(new Date(controller.scheduledTime));
   if(!due.length||!env.DB||!env.BALLDONTLIE_API_KEY)return;
   if(!env.THE_ODDS_API_KEY)due.splice(0,due.length,...due.filter(job=>['xpost','lineGrade','form','leans','live'].includes(job)));
-  const request=new Request(`${SITE_URL}/api/maintenance`),jobs={publish:()=>publishOfficialPicks(request,env,ctx),grade:async()=>({settle:await settlePublicRecords(env),xresults:await runXResultsNow(env).catch(error=>({error:error.message}))}),nbaShadow:async()=>({launch:await watchNbaLaunch(request,env,ctx).catch(error=>({error:error.message})),links:await checkBetLinks(env).catch(error=>({error:error.message})),novig:await novigLinkResearch(env).catch(error=>({error:error.message})),prophetx:await prophetxLinkResearch(env).catch(error=>({error:error.message})),apps:await checkNbaExchanges(request,env,ctx).catch(error=>({error:error.message})),sharp:await checkSharpBook(request,env,ctx).catch(error=>({error:error.message})),official:await publishNbaPicks(request,env,ctx).catch(error=>({error:error.message})),season:await recordNbaShadow(request,env,ctx).catch(error=>({error:error.message})),preseason:await recordNbaPreseason(env).catch(error=>({error:error.message}))}),nbaGrade:()=>gradeNbaShadow(env),digest:()=>sendWeeklyDigest(env),alerts:()=>sendDueAlerts(env),xpost:()=>runXPosts(env),form:()=>fillFormBurst(env,ctx),live:()=>recordLiveShadow(env,ctx),leans:async()=>({injuries:await refreshInjuries(env).catch(error=>({error:error.message})),ruledOut:await voidRuledOut(env).catch(error=>({error:error.message})),leans:await backfillLeans(env),td:TD_SHADOW_ON?await backfillTdShadow(env).catch(error=>({error:error.message})):{off:true},tdGrade:await gradeTdShadowNow(env).catch(error=>({error:error.message})),xresults:await runXResultsNow(env).catch(error=>({error:error.message})),games:await recordGameShadow(env).catch(error=>({error:error.message})),weather:await refreshWeatherFromSchedule(env,ctx).catch(error=>({error:error.message}))}),
+  const request=new Request(`${SITE_URL}/api/maintenance`),jobs={publish:()=>publishOfficialPicks(request,env,ctx),grade:async()=>({settle:await settlePublicRecords(env),corrections:await recheckSettledRecords(env).catch(error=>({error:error.message})),xresults:await runXResultsNow(env).catch(error=>({error:error.message}))}),nbaShadow:async()=>({launch:await watchNbaLaunch(request,env,ctx).catch(error=>({error:error.message})),links:await checkBetLinks(env).catch(error=>({error:error.message})),novig:await novigLinkResearch(env).catch(error=>({error:error.message})),prophetx:await prophetxLinkResearch(env).catch(error=>({error:error.message})),apps:await checkNbaExchanges(request,env,ctx).catch(error=>({error:error.message})),sharp:await checkSharpBook(request,env,ctx).catch(error=>({error:error.message})),official:await publishNbaPicks(request,env,ctx).catch(error=>({error:error.message})),season:await recordNbaShadow(request,env,ctx).catch(error=>({error:error.message})),preseason:await recordNbaPreseason(env).catch(error=>({error:error.message}))}),nbaGrade:()=>gradeNbaShadow(env),digest:()=>sendWeeklyDigest(env),alerts:()=>sendDueAlerts(env),xpost:()=>runXPosts(env),form:()=>fillFormBurst(env,ctx),live:()=>recordLiveShadow(env,ctx),leans:async()=>({injuries:await refreshInjuries(env).catch(error=>({error:error.message})),ruledOut:await voidRuledOut(env).catch(error=>({error:error.message})),leans:await backfillLeans(env),td:TD_SHADOW_ON?await backfillTdShadow(env).catch(error=>({error:error.message})):{off:true},tdGrade:await gradeTdShadowNow(env).catch(error=>({error:error.message})),xresults:await runXResultsNow(env).catch(error=>({error:error.message})),games:await recordGameShadow(env).catch(error=>({error:error.message})),weather:await refreshWeatherFromSchedule(env,ctx).catch(error=>({error:error.message}))}),
     // Line-value grading, near-miss grading and the stats check take turns
     // (minutes 15/45, 25/55 and 5/35) so each run stays inside the request limit.
     // While games kick off within 4 hours, the 15/45 and 25/55 slots check
