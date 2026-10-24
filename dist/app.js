@@ -1557,7 +1557,11 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
       tk.innerHTML=`<span class="tk-label">Latest results</span><div class="tk-row">${list.map(r=>{const w=r.result==='won',l=r.result==='lost';return `<span class="tk-item ${w?'won':l?'lost':'push'}"><i aria-hidden="true">${w?'✓':l?'✗':'–'}</i><em>${htmlEscape(day(r.day))}</em><b>${htmlEscape(r.player||'')}</b> ${htmlEscape(r.bet||'')} <small>${htmlEscape(formatOdds(r.odds))}</small><strong>${htmlEscape(r.result==='push'?'push':money(r.pay))}</strong></span>`}).join('')}</div><a class="tk-all" href="/trust#official">Every pick ›</a>`}else tk?.remove()}
     // One email field right under the record: the simplest way to get picks (hidden once on email or push).
     {let em=$('#heroEmail');const on=/\b(email-on|alerts-on)\b/.test(document.documentElement.className);if(on){em?.remove()}else if(!em){em=document.createElement('section');em.id='heroEmail';em.className='hero-email';
-      em.innerHTML='<div class="he-copy"><b>Get each pick the moment it locks</b><span>Free, by email. No account, one-tap unsubscribe.</span></div>';($('#heroTicker')||hero).after(em);
+      em.innerHTML='<div class="he-copy"><b>Get each pick the moment it locks</b><span>Free, by email. No account, one-tap unsubscribe. Or <button type="button" class="he-alerts">turn on phone alerts</button>.</span></div>';
+      // The record bar keeps the real alerts button (hidden); this link presses it.
+      em.querySelector('.he-alerts').onclick=()=>document.querySelector('#heroBanner [data-alerts-toggle]')?.click();
+      // After the picks, parlays and Just missed, before the board.
+      const board=document.getElementById('propsSection');if(board)board.before(em);else hero.after(em);
       let tries=0;const mount=()=>{if(window.BTGEmailSub?.inline){window.BTGEmailSub.inline(em,'home');window.btgCount?.('email:home-shown')}else if(tries++<40)setTimeout(mount,50)};mount()}}
     if(!strip||!s.hits.length)return;
     $('#hitsTitle').textContent=['LAST WEEK','THIS WEEK SO FAR','LAST NIGHT','TONIGHT SO FAR'].includes(s.label)?`${periodOwner(s.label).replace(/^./,c=>c.toUpperCase())} hits`:'Recent hits';
@@ -2508,9 +2512,8 @@ function statsProp(l){
     const el=document.createElement('div');el.id='leagueSwitch';el.className='league-switch';el.setAttribute('role','group');el.setAttribute('aria-label','League');
     el.innerHTML=['NFL','NBA'].map(l=>`<button type="button" data-league="${l}" aria-pressed="${l===LEAGUE}">${l}</button>`).join('');
     el.addEventListener('click',e=>{const b=e.target.closest('[data-league]');if(b&&b.dataset.league!==LEAGUE)switchLeague(b.dataset.league)});
-    // Desktop: the switch leads the row above the picks instead of floating alone.
-    const place=()=>{const bar=document.getElementById('jumpBar'),wide=window.matchMedia?.('(min-width: 721px)')?.matches;if(wide&&bar){if(el.parentNode!==bar)bar.prepend(el)}else if(el.parentNode!==main)main.prepend(el)};
-    main.prepend(el);place();window.matchMedia?.('(min-width: 721px)')?.addEventListener?.('change',place);
+    // One control bar on every screen: NFL|NBA beside Sportsbook|Prediction apps.
+    const bar=document.getElementById('jumpBar');if(bar)bar.prepend(el);else main.prepend(el);
   };
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount);else mount();
   if(LEAGUE!=='NBA')return;
@@ -2671,7 +2674,8 @@ function statsProp(l){
   const board=document.querySelector('.workspace .board'),rail=document.createElement('aside');rail.className='desk-rail';rail.setAttribute('aria-label','Your corner');
   const parts=['heroBanner','pmHero','myRecord','alertsHero','howPick','leansNow','pmNow'].map(id=>document.getElementById(id)).filter(Boolean),marks=parts.map(el=>{const m=document.createComment('rail');el.before(m);return m});
   const official=document.getElementById('officialNow');
-  const wide=window.matchMedia?.('(min-width: 1180px)');
+  // One centered column on every screen (Oct 24 simplify): the rail stays off.
+  const wide=null;
   function place(){if(!board)return;if(wide?.matches){board.classList.add('has-rail');board.prepend(rail);parts.forEach(el=>rail.appendChild(el));rail.appendChild(panel)}else{board.classList.remove('has-rail');parts.forEach((el,i)=>marks[i].after(el));rail.remove();(document.getElementById('alertsHero')||official?.lastElementChild)?.after?.(panel)}}
   if(official&&!document.getElementById('alertsHero'))official.appendChild(panel);
   place();wide?.addEventListener?.('change',place);drawPanel();
@@ -2761,7 +2765,7 @@ function statsProp(l){
     // A stats button on every card: "Over in 7 of last 10 · avg 78.3 yds" (green when it
     // usually clears, red when it usually misses), opening the bet screen at the last-10 chart.
     const f=formFor(p),statsIcon='<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>';
-    if(!f)return html.replace('<p class="card-money">',()=>`<button type="button" class="card-form cf-btn" data-card-stats>${statsIcon}<span>Last 10 games &amp; stats</span><i aria-hidden="true">›</i></button><p class="card-money">`);
+    if(!f)return html;
     const td=p.binary||/anytime|first|last|scorer/i.test(p.market||''),rate=f.n?f.hits/f.n:0,cls=f.n>=5?(rate>=.6?' good':rate<=.4?' bad':''):'';
     const m=String(p.market||'').toLowerCase(),unit=/yards/.test(m)?' yds':/reception/.test(m)?' rec':/completion/.test(m)?' comp':/attempt/.test(m)?' att':/touchdown/.test(m)?' TD':'';
     const lead=td?(p.side==='Under'?'No TD in':'Scored in'):`${p.side} in`,count=`<b class="cf-count${cls}">${f.hits} of last ${f.n}</b>`;
@@ -3080,11 +3084,8 @@ function statsProp(l){
     const w=rec.wins+pr.wins,l=rec.losses+pr.losses,pu=(rec.pushes||0)+(pr.pushes||0),net=(rec.profit||0)+(pr.profit||0);
     const title=document.getElementById('pmHeroTitle'),panel=document.getElementById('pmHeroPicks');
     if(!w&&!l){title.innerHTML=`${nbaRec?'NBA prediction record':'Prediction record'} <b>First picks grading now</b>`;panel.hidden=true;hero.classList.remove('open');return}
-    // Lead with the full track record (sportsbook picks, the long sample), then
-    // the newer prediction-app record, both labeled.
-    const sea=window.BTG_SEASON,spl=sea?(sea.parlayWins||0)+(sea.parlayLosses||0):0,row=(label,w,l,p,v)=>`<span class="pm-row">${label} <b>${w}–${l}${p?`–${p}`:''}</b> <span class="hero-profit ${v>=0?'up':'down'}">${htmlEscape(money(v))}</span></span>`;
-    // Sportsbooks first (the long sample): singles and parlays on their own rows, like the X cards.
-    const lead=!nbaRec&&sea&&sea.wins+sea.losses>=10?`<span class="pm-lead"><small class="pm-cap">Sportsbooks${sea.tracked?` · beat the kickoff price ${sea.beat} of ${sea.tracked}`:''}</small>${row('Singles',sea.wins,sea.losses,sea.pushes,sea.profit)}${spl?row('Parlays',sea.parlayWins,sea.parlayLosses,0,sea.parlayProfit||0):''}</span>`:'';
+    // The prediction view shows the prediction record only; the sportsbook record lives on the Sportsbook view.
+    const lead='';
     title.innerHTML=`${lead}<button type="button" class="hero-toggle${lead?' pm-second':''}" id="pmHeroToggle" aria-expanded="${!panel.hidden}" aria-controls="pmHeroPicks">${lead?'Prediction-app picks':nbaRec?'NBA prediction record':'Prediction record'} <b>${w}–${l}${pu?`–${pu}`:''}</b> <span class="hero-profit ${net>=0?'up':'down'}">${htmlEscape(money(net))}</span>${lead&&w+l<20?'<em class="pm-new">new</em>':''}<i aria-hidden="true"><svg class="ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></i></button>`;
     const stat=(value,label,tone='')=>`<div><strong class="${tone}">${htmlEscape(value)}</strong><span>${htmlEscape(label)}</span></div>`;
     const graded=[...(data.pmPicks||[]),...(data.pmParlays||[])].filter(r=>['won','lost','push'].includes(r.result)).sort((a,b)=>String(b.gameTime).localeCompare(String(a.gameTime)));
@@ -3227,9 +3228,9 @@ function statsProp(l){
       if(v==='predictions'){
         if(!note){note=document.createElement('section');note.id='pmNbaNote';note.className='official-now pm-nba-note';const anchor=document.getElementById('officialNow');(anchor||document.querySelector('main')).before(note)}
         const apps=Object.keys(d.nbaApps?.apps||{}),stateApps=apps.filter(a=>!d.state||names.includes(a));
-        note.innerHTML=nbaPm?`<div class="on-head"><h2>NBA on prediction apps</h2></div><p class="on-sub">Posted only when an app’s price, after its fee, beats the sportsbooks’ fair price by 2.5 points or more (2 on ProphetX). Own record, separate from NFL and from our sportsbook picks.</p>`:`<div class="on-head"><h2>NBA on prediction apps</h2></div><div class="on-empty"><strong>${apps.length?`${htmlEscape(list(apps))} ${apps.length===1?'lists':'list'} NBA player props.`:'Prediction apps don’t list NBA player props yet.'}</strong><span>${apps.length?`NBA prediction picks start once we’ve priced them against the sportsbooks${stateApps.length||!d.state?'':`; none of these apps are open in ${htmlEscape(d.stateName||'your state')} yet`}. Until then, our NBA picks are on the Sportsbook side.`:'We check Novig, ProphetX and the rest every few hours. Until they list NBA props, our NBA picks are on the Sportsbook side.'}</span></div><p class="pm-nba-switch"><button type="button" class="on-toggle" data-view-odds>See today’s NBA picks and props</button></p>`;
+        note.innerHTML=nbaPm?'':`<div class="on-head"><h2>NBA on prediction apps</h2></div><div class="on-empty"><strong>${apps.length?`${htmlEscape(list(apps))} ${apps.length===1?'lists':'list'} NBA player props.`:'Prediction apps don’t list NBA player props yet.'}</strong><span>${apps.length?`NBA prediction picks start once we’ve priced them against the sportsbooks${stateApps.length||!d.state?'':`; none of these apps are open in ${htmlEscape(d.stateName||'your state')} yet`}. Until then, our NBA picks are on the Sportsbook side.`:'We check Novig, ProphetX and the rest every few hours. Until they list NBA props, our NBA picks are on the Sportsbook side.'}</span></div><p class="pm-nba-switch"><button type="button" class="on-toggle" data-view-odds>See today’s NBA picks and props</button></p>`;
         note.querySelector('[data-view-odds]')?.addEventListener('click',()=>{store(VIEW,'odds');render();resync()});
-        note.hidden=false;document.getElementById('officialNow')?.setAttribute('hidden','');document.getElementById('parlaysNow')?.setAttribute('hidden','');
+        note.hidden=nbaPm;document.getElementById('officialNow')?.setAttribute('hidden','');document.getElementById('parlaysNow')?.setAttribute('hidden','');
       }else{document.body.classList.remove('nba-pm-empty');if(note)note.hidden=true;const on=document.getElementById('officialNow');if(on&&on.dataset.nbaHidden!=='1')on.removeAttribute('hidden');const pn=document.getElementById('parlaysNow');if(pn&&pn.dataset.empty!=='1')pn.removeAttribute('hidden')}
     }
   }
@@ -3561,3 +3562,12 @@ function statsProp(l){
       const ahead=(typeof LEAGUE!=='undefined'&&LEAGUE==='NBA'?36:96)*3600000;box.innerHTML=`<strong>No prediction app prices for these props yet.</strong><span>We load prediction app prices ${ahead<96*3600000?'about a day and a half':'about 4 days'} before each game${soon&&soon-Date.now()>ahead?`; the next game’s load ${new Date(soon-ahead).toLocaleDateString([],{weekday:'long'})}`:''}, and the apps don’t list every prop. Switch to Sportsbook to see every prop now.</span>`}
     else if(box.innerHTML!==box.dataset.plain)box.innerHTML=box.dataset.plain}catch{}return out};
   window.render=render})();
+
+// One name for the board in every view (NFL or NBA, sportsbook or prediction
+// apps). A player search, movement and the Good value filter keep their own titles.
+(()=>{
+  const BOARD_TITLES=new Set(['Top props this week','Top props today','Today’s closest calls','This week’s closest calls','No one’s earned a Bet This Guy yet']);
+  const base=render;
+  render=function(...args){const out=base.apply(this,args);const t=typeof document.getElementById==='function'?document.getElementById('viewTitle'):null;if(t&&BOARD_TITLES.has(t.textContent))t.textContent='More props';return out};
+  window.render=render;
+})();
