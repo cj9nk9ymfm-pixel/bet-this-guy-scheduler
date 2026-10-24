@@ -176,8 +176,18 @@ function livePlayerName(row) {
 }
 function liveNameKey(value){return String(value||'').toLowerCase().replace(/\b(jr|sr|ii|iii|iv)\b/g,'').replace(/[^a-z0-9]/g,'')}
 function livePlayerRow(gameID, player) {
-  const snapshot=liveBoard.gameStats.get(String(gameID)), wanted=liveNameKey(player);
-  return snapshot?.stats?.find(row=>{const name=liveNameKey(livePlayerName(row));return Boolean(name&&wanted&&name===wanted)})||null;
+  const snapshot=liveBoard.gameStats.get(String(gameID)), wanted=liveNameKey(player), rows=snapshot?.stats||[];
+  const exact=rows.find(row=>{const name=liveNameKey(livePlayerName(row));return Boolean(name&&wanted&&name===wanted)});
+  if(exact)return exact;
+  // Feeds disagree on first names (Alex vs Alexandre), as grading allows:
+  // within one game, a unique last name plus first initial is the same player.
+  const close=rows.filter(row=>liveSameInitialAndSurname(livePlayerName(row),player));
+  return close.length===1?close[0]:null;
+}
+function liveSameInitialAndSurname(a,b){
+  const parts=name=>String(name||'').replace(/,?\s+(Jr|Sr|II|III|IV|V)\.?$/i,'').trim().split(/\s+/).filter(Boolean);
+  const x=parts(a),y=parts(b);
+  return x.length>1&&y.length>1&&liveNameKey(x.at(-1))===liveNameKey(y.at(-1))&&liveNameKey(x[0])[0]===liveNameKey(y[0])[0];
 }
 // Touchdown markets: the feed has no single total, so add every TD field.
 const LIVE_TD_FIELDS=['rushing_touchdowns','receiving_touchdowns','kick_return_touchdowns','punt_return_touchdowns','interception_touchdowns','fumbles_touchdowns'];

@@ -892,6 +892,19 @@ async function postCustomToX(env,now=Date.now()){
   // A failed post is put back for the next run, three tries in all (each try costs X credits).
   catch(error){const tries=Number(req.tries||0)+1;if(tries<3)await setAppSetting(env,'x-custom-post',JSON.stringify({...req,tries})).catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} custom: ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
 }
+// One-off reply set by the owner: app_settings x-custom-reply holds JSON
+// {"text":"…","replyKey":"xid:…"}, a reply under the post that key names
+// (a stat-correction note under a pick, for example). Posts once, then clears.
+async function postCustomReplyToX(env,now=Date.now()){
+  if(!env.DB||!xReady(env))return {posted:0,disabled:true};
+  const raw=await appSetting(env,'x-custom-reply');if(!raw)return {posted:0,none:true};
+  let req;try{req=JSON.parse(raw)}catch{return {posted:0,invalid:true}}
+  const text=String(req.text||'').trim();if(!text||[...text].length>280||!req.replyKey)return {posted:0,invalid:true};
+  const parent=await appSetting(env,String(req.replyKey));if(!parent)return {posted:0,waiting:true};
+  const claim=await env.DB.prepare('DELETE FROM app_settings WHERE key=? AND value=?').bind('x-custom-reply',raw).run();if(!Number(claim?.meta?.changes??claim?.changes))return {posted:0,claimed:false};
+  try{const sent=await xPost(env,text,null,parent);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} reply ${sent?.data?.id||''}`).catch(()=>{});return {posted:1}}
+  catch(error){const tries=Number(req.tries||0)+1;if(tries<3)await setAppSetting(env,'x-custom-reply',JSON.stringify({...req,tries})).catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} reply: ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
+}
 async function runXResults(env,now=Date.now(),chain=0){
   if(typeof loadEspnIds==='function')await loadEspnIds(env,now).catch(()=>null);
   const grading=await gradePredictionNow(env,now).catch(error=>({error:error.message}));
@@ -900,13 +913,14 @@ async function runXResults(env,now=Date.now(),chain=0){
   const recap=await postCardRecapToX(env,now).catch(error=>({posted:0,error:error.message}));
   const week=recap.posted?{posted:0,waiting:true}:await postPredictionWeekToX(env,now).catch(error=>({posted:0,error:error.message}));
   const custom=week.posted?{posted:0,waiting:true}:await postCustomToX(env,now).catch(error=>({posted:0,error:error.message}));
+  const reply=await postCustomReplyToX(env,now).catch(error=>({posted:0,error:error.message}));
   // Results still waiting after this run's limit (one graphic a run): the next
   // run starts now in its own invocation instead of on the next 5-minute tick,
   // so every win or loss posts within a minute or two of being decided.
   let next=null;
   if((nba.more||results.more)&&chain<6&&env.SELF?.fetch&&env.MAINTENANCE_TOKEN)
     next=await env.SELF.fetch(new Request(`${SITE_URL}/api/maintenance?job=xresults&chain=${chain+1}`,{method:'POST',headers:{authorization:`Bearer ${env.MAINTENANCE_TOKEN}`},signal:AbortSignal.timeout(240000)})).then(r=>r.status).catch(error=>error.message);
-  return {grading,results,nba,recap,week,custom,...(next?{next}:{})};
+  return {grading,results,nba,recap,week,custom,reply,...(next?{next}:{})};
 }
 async function runXResultsNow(env){
   if(!xReady(env))return {disabled:true};
@@ -2544,7 +2558,7 @@ function weeklyPickItem(r){
   const legs=recordLegs(r),res=weeklyGraded(r)?r.result:'pending',label={won:'Won',lost:'Lost',push:'Push',pending:'Pending'}[res];
   if(r.kind==='parlay')return `<li class="pick"><div><strong>${legs.length}-leg parlay</strong> <span class="res ${res}">${label}</span></div><div class="price">${weeklyOdds(r.combined_odds)}</div><ul class="legs">${legs.map(l=>`<li>${weeklyEscape(l.player)} — ${weeklyEscape(weeklyLegText(l))} (${weeklyOdds(l.odds)})${l.actualValue!=null?` · had ${weeklyEscape(l.actualValue)}`:''}</li>`).join('')}</ul><div class="meta">Posted ${weeklyEscape(weeklyDay(r.posted_at))}</div></li>`;
   const leg=legs[0]||{},close=r.closing_odds!=null&&(r.closing_line==null||Math.abs(Number(r.closing_line)-Number(r.line))<=.01)?` · final price ${weeklyOdds(r.closing_odds)}`:'';
-  return `<li class="pick"><div><strong>${weeklyEscape(r.player)}</strong> <span class="res ${res}">${label}</span></div><div class="price">${weeklyOdds(r.odds)}</div><div class="bet">${weeklyEscape(weeklyLegText({...leg,side:r.side,line:r.line,market:r.market}))}${leg.actualValue!=null?` · had ${weeklyEscape(leg.actualValue)}`:''}</div><div class="meta">${weeklyEscape(String(leg.team||'').replace(' · ',' '))} · ${weeklyEscape(weeklyDay(r.game_time))}${leg.book?` · ${weeklyEscape(leg.book)}`:''}${close}</div></li>`;
+  return `<li class="pick"><div><strong>${weeklyEscape(r.player)}</strong> <span class="res ${res}">${label}</span></div><div class="price">${weeklyOdds(r.odds)}</div><div class="bet">${weeklyEscape(weeklyLegText({...leg,side:r.side,line:r.line,market:r.market}))}${leg.actualValue!=null?` · had ${weeklyEscape(leg.actualValue)}`:''}${leg.correctedValue!=null?` (corrected to ${weeklyEscape(leg.correctedValue)} after grading)`:''}</div><div class="meta">${weeklyEscape(String(leg.team||'').replace(' · ',' '))} · ${weeklyEscape(weeklyDay(r.game_time))}${leg.book?` · ${weeklyEscape(leg.book)}`:''}${close}</div></li>`;
 }
 // Where can I bet? Every state: sportsbooks or not, and the prediction apps
 // listed there (those with NFL player props marked). From the same tables the
@@ -2809,7 +2823,7 @@ function postKitClient(kit,texts){
 async function postKitData(env,now=Date.now()){
   const week=officialWeek(now),previous=new Date(Date.parse(`${week}T00:00:00Z`)-7*86400000).toISOString().slice(0,10);
   const beat=r=>r.kind==='prop'&&r.closing_captured_at&&r.closing_odds!=null&&(r.closing_line==null||Math.abs(Number(r.closing_line)-Number(r.line))<=.01)?(weeklyDecimal(r.odds)/weeklyDecimal(r.closing_odds)-1)*100>.05:null;
-  const slim=r=>{const legs=recordLegs(r);return {kind:r.kind,posted_at:r.posted_at,player:r.player,market:r.market,side:r.side,line:r.line,odds:r.odds,combined_odds:r.combined_odds,game_time:r.game_time,result:weeklyGraded(r)?r.result:null,book:legs[0]?.book||null,team:legs[0]?.team||null,beat:beat(r),closing_odds:r.closing_odds??null,legs:legs.map(l=>({player:l.player,market:l.market,side:l.side,line:l.line,odds:l.odds,team:l.team||null,actualValue:l.actualValue??null}))}};
+  const slim=r=>{const legs=recordLegs(r);return {kind:r.kind,posted_at:r.posted_at,player:r.player,market:r.market,side:r.side,line:r.line,odds:r.odds,combined_odds:r.combined_odds,game_time:r.game_time,result:weeklyGraded(r)?r.result:null,book:legs[0]?.book||null,team:legs[0]?.team||null,beat:beat(r),closing_odds:r.closing_odds??null,legs:legs.map(l=>({player:l.player,market:l.market,side:l.side,line:l.line,odds:l.odds,team:l.team||null,actualValue:l.actualValue??null,correctedValue:l.correctedValue??null}))}};
   const pack=(start,rows)=>{const nfl=nflWeekOf(start);return {week:nfl?.week||null,season:nfl?.season||null,path:nfl?`/picks/${nfl.season}/week-${nfl.week}`:'/picks',summary:weeklySummary(rows),rows:rows.map(slim)}};
   const [thisWeek,lastWeek]=await Promise.all([weeklyRows(env,week),weeklyRows(env,previous)]);
   // Replies: every official pick (NFL this week, NBA tonight and later) whose first game hasn't started.
