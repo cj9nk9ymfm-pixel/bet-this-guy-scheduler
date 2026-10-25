@@ -2511,3 +2511,6 @@ html body .official-now .on-sub,html body .official-now .on-head p{font-size:13p
 html body #heroEmail{margin:4px 0 20px!important}
 html body #heroEmail .he-alerts{background:none;border:0;padding:0;color:inherit;font:inherit;font-weight:600;text-decoration:underline;cursor:pointer}
 @media (max-width:360px){html body #jumpBar{flex-wrap:wrap!important}html body #jumpBar .price-view{margin-left:0!important}}
+/* Phone tabs other than Picks show only their own panel (the column above is forced on for the home layout). */
+@media (max-width:720px){html body[data-mobile-page="slip"] main .workspace .board{display:none!important}}
+html body:is([data-mobile-page="live"],[data-desktop-page="live"]) :is(#jumpBar,#heroBanner,#pmHero,#heroTicker,#heroEmail,#officialNow,#pmPicksNow,#parlaysNow,#pmParlaysNow,#leansNow,#pmNow,#pmNbaNote,#verdictGuide,#propsSection){display:none!important}
