@@ -2137,20 +2137,31 @@ async function predictionsResponse(request,env,now=Date.now()){
   const where=bettingOptions(request),head={'content-type':'application/json; charset=utf-8','cache-control':'private, no-store'};
   const {exchangeKeys,...pub}=where;
   if(!env.DB||where.mode==='unknown')return new Response(JSON.stringify({success:true,...pub,picks:{},value:[]}),{headers:head});
-  const stamp=new Date(now).toISOString(),allowed=new Set(exchangeKeys);
-  const boards=new Map((((await env.DB.prepare('SELECT event_id,prices_json,updated_at FROM exchange_prices WHERE game_time>?').bind(stamp).all()).results)||[]).filter(r=>now-Date.parse(r.updated_at)<3*3600000).map(r=>{let list=[];try{list=JSON.parse(r.prices_json)}catch{}return [r.event_id,list.filter(p=>allowed.has(p[0]))]}));
+  const stamp=new Date(now).toISOString(),allowed=new Set(exchangeKeys),nbaView=new URL(request.url).searchParams.get('league')==='NBA';
+  // The lookups don't depend on each other, so they run at the same time.
+  const [boardRows,officialRows,parlayLegRows,pmTakenRows,shadowRows,recentRows,pmAllRows,pmParlayAll,nbaApps]=await Promise.all([
+    env.DB.prepare('SELECT event_id,prices_json,updated_at FROM exchange_prices WHERE game_time>?').bind(stamp).all(),
+    env.DB.prepare("SELECT id,game_id,player,market,side,line,odds,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND kind='prop' AND game_time>?").bind(stamp).all(),
+    env.DB.prepare('SELECT legs_json FROM prediction_parlays WHERE game_time>?').bind(stamp).all().catch(()=>({results:[]})),
+    env.DB.prepare('SELECT event_id,player FROM prediction_picks WHERE game_time>?').bind(stamp).all().catch(()=>({results:[]})),
+    env.DB.prepare("SELECT exchange,event_id,player,team,market,side,line,fair_pct,game_time FROM exchange_shadow WHERE kind='prop' AND game_time>?").bind(new Date(now+5*60000).toISOString()).all(),
+    env.DB.prepare("SELECT id,odds,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND kind='prop' AND game_time>? AND game_time<=?").bind(new Date(now-8*86400000).toISOString(),stamp).all(),
+    env.DB.prepare('SELECT * FROM prediction_picks ORDER BY game_time,posted_at').all(),
+    nbaView?Promise.resolve({results:[]}):env.DB.prepare('SELECT * FROM prediction_parlays ORDER BY game_time,posted_at').all().catch(()=>({results:[]})),
+    nbaExchangeStatus(env)]);
+  const boards=new Map(((boardRows.results)||[]).filter(r=>now-Date.parse(r.updated_at)<3*3600000).map(r=>{let list=[];try{list=JSON.parse(r.prices_json)}catch{}return [r.event_id,list.filter(p=>allowed.has(p[0]))]}));
   const find=(eventId,player,market,side,line)=>(boards.get(eventId)||[]).filter(p=>normalizedName(p[1])===normalizedName(player)&&p[2]===market&&p[3]===side&&Number(p[4])===Number(line));
-  const official=(await env.DB.prepare("SELECT id,game_id,player,market,side,line,odds,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND kind='prop' AND game_time>?").bind(stamp).all()).results||[];
+  const official=officialRows.results||[];
   // Each price also says whether it's still good value: its chance at least
   // 1 point under the pick's fair chance (the official bar).
   const picks={},fairs={};
   for(const r of official){const fair=pickFairPct(r);if(fair!==null)fairs[r.id]=+fair.toFixed(1);const list=find(r.game_id,r.player,r.market,r.side,r.line).sort((a,b)=>recordDecimal(b[5])-recordDecimal(a[5]));if(list.length)picks[r.id]=list.map(p=>({exchange:EXCHANGES[p[0]],odds:p[5],...(fair!==null?{good:fair-100/recordDecimal(p[5])>=EXCHANGE_VALUE_MIN}:{})}))}
   // Worth a look (prediction view) leaves out official picks and players in prediction parlays.
   const taken=new Set(official.map(r=>`${r.game_id}|${normalizedName(r.player)}`)),value=[];
-  for(const r of (((await env.DB.prepare('SELECT legs_json FROM prediction_parlays WHERE game_time>?').bind(stamp).all().catch(()=>({results:[]}))).results)||[])){try{for(const l of JSON.parse(r.legs_json))taken.add(`${l.eventId}|${normalizedName(l.player)}`)}catch{}}
+  for(const r of (parlayLegRows.results||[])){try{for(const l of JSON.parse(r.legs_json))taken.add(`${l.eventId}|${normalizedName(l.player)}`)}catch{}}
   // ...and the official prediction picks themselves (a value play that locked as a pick leaves the list).
-  for(const r of (((await env.DB.prepare('SELECT event_id,player FROM prediction_picks WHERE game_time>?').bind(stamp).all().catch(()=>({results:[]}))).results)||[]))taken.add(`${r.event_id}|${normalizedName(r.player)}`);
-  const rows=(await env.DB.prepare("SELECT exchange,event_id,player,team,market,side,line,fair_pct,game_time FROM exchange_shadow WHERE kind='prop' AND game_time>?").bind(new Date(now+5*60000).toISOString()).all()).results||[];
+  for(const r of (pmTakenRows.results||[]))taken.add(`${r.event_id}|${normalizedName(r.player)}`);
+  const rows=shadowRows.results||[];
   for(const r of rows){
     if(taken.has(`${r.event_id}|${normalizedName(r.player)}`))continue;
     const key=Object.keys(EXCHANGES).find(k=>EXCHANGES[k]===r.exchange),cur=find(r.event_id,r.player,r.market,r.side,r.line).find(p=>p[0]===key);
@@ -2160,17 +2171,16 @@ async function predictionsResponse(request,env,now=Date.now()){
   }
   value.sort((a,b)=>b.edge-a.edge);
   // Prices saved when each of this week's picks locked (for started and final picks).
-  const recent=(await env.DB.prepare("SELECT id,odds,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND kind='prop' AND game_time>? AND game_time<=?").bind(new Date(now-8*86400000).toISOString(),stamp).all()).results||[];
+  const recent=recentRows.results||[];
   const locked={};
   for(const r of recent){const ex=recordLegs(r)[0]?.exchanges;if(Array.isArray(ex)&&ex.length){const list=ex.filter(p=>allowed.has(p.key));if(list.length)locked[r.id]=list.map(p=>({exchange:p.exchange,odds:p.odds,good:exchangeGood(r,p)}))}}
   // Prediction-market picks: this week's card and the season record.
   // ?league=NBA: the NBA prediction picks and their own record (NFL's stays separate).
-  const nbaView=new URL(request.url).searchParams.get('league')==='NBA';
-  const pmRows=((await env.DB.prepare('SELECT * FROM prediction_picks ORDER BY game_time,posted_at').all()).results||[]).filter(r=>String(r.event_id||'').startsWith('NBA--')===nbaView);
+  const pmRows=(pmAllRows.results||[]).filter(r=>String(r.event_id||'').startsWith('NBA--')===nbaView);
   const pmPicks=pmRows.filter(r=>Date.parse(r.game_time)>now-5*86400000).slice(-24).map(r=>{const key=Object.keys(EXCHANGES).find(k=>EXCHANGES[k]===r.exchange);return {id:r.id,exchange:r.exchange,open:allowed.has(key),eventId:r.event_id,player:r.player,team:r.team||'',market:r.market,side:r.side,line:r.line,odds:r.odds,netOdds:r.net_odds,fair:r.fair_pct,edge:r.edge,gameTime:r.game_time,postedAt:r.posted_at,closeOdds:r.close_odds,nowOdds:Date.parse(r.game_time)>now?(find(r.event_id,r.player,r.market,r.side,r.line).find(p=>p[0]===key)?.[5]??null):null,result:r.result,actual:r.actual}});
-  const pmParlayRows=nbaView?[]:(await env.DB.prepare('SELECT * FROM prediction_parlays ORDER BY game_time,posted_at').all().catch(()=>({results:[]}))).results||[];
+  const pmParlayRows=pmParlayAll.results||[];
   const pmParlays=pmParlayRows.filter(r=>Date.parse(r.game_time)>now-5*86400000).slice(-16).map(r=>{let legs=[];try{legs=JSON.parse(r.legs_json)}catch{}const key=Object.keys(EXCHANGES).find(k=>EXCHANGES[k]===r.exchange);return {id:r.id,parlay:true,exchange:r.exchange,open:allowed.has(key),odds:r.odds,gameTime:legs.map(l=>l.gameTime).sort()[0]||r.game_time,postedAt:r.posted_at,result:r.result,legs:legs.map(l=>({player:l.player,market:l.market,side:l.side,line:l.line,odds:l.netOdds??l.odds??null,eventId:l.eventId,gameTime:l.gameTime,team:l.team,sameGame:Boolean(l.sameGame),result:l.result||null}))}});
-  return new Response(JSON.stringify({success:true,...pub,picks,fairs,locked,value:nbaView?[]:value.slice(0,8),pmPicks,pmRecord:predictionRecord(pmRows),pmParlays,pmParlayRecord:predictionParlayRecord(pmParlayRows),nbaApps:await nbaExchangeStatus(env)}),{headers:head});
+  return new Response(JSON.stringify({success:true,...pub,picks,fairs,locked,value:nbaView?[]:value.slice(0,8),pmPicks,pmRecord:predictionRecord(pmRows),pmParlays,pmParlayRecord:predictionParlayRecord(pmParlayRows),nbaApps}),{headers:head});
 }
 function bettingOptionsResponse(request){
   const {exchangeKeys,...where}=bettingOptions(request);
