@@ -54,7 +54,12 @@ function focusPick(){let id='';try{id=new URLSearchParams(location.search).get('
 const leagueParam=(prefix='?')=>LEAGUE==='NBA'?`${prefix}sport=NBA`:'';
 // The URL's ?league= wins over the saved choice, so switching rewrites it
 // (a reload of /?league=NBA would otherwise land on NBA again).
-function switchLeague(league){const l=league==='NBA'?'NBA':'NFL';try{localStorage.setItem('btg-league',l)}catch{}const u=new URL(location.href);u.searchParams.set('league',l);location.assign(u.toString())}
+// Switching league loads that league's page. The tapped button lights up and the
+// page dims at once (painted before the navigation starts), and the next page
+// times the switch from the tap (perf:switch:*).
+function switchLeague(league){const l=league==='NBA'?'NBA':'NFL';try{localStorage.setItem('btg-league',l)}catch{}try{sessionStorage.setItem('btg-switch-at',String(Date.now()))}catch{}
+  document.querySelectorAll?.('#leagueSwitch [data-league]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.league===l)));document.body?.classList.add('league-switching');
+  const u=new URL(location.href);u.searchParams.set('league',l);const go=()=>location.assign(u.toString());if(typeof requestAnimationFrame==='function')requestAnimationFrame(()=>requestAnimationFrame(go));else go()}
 let state={sport:LEAGUE,game:'All',team:'All',day:'All',timeSlot:'All',market:'All',side:'All',move:'All',minEdge:0,minConf:0,oddsType:'All',sort:'edge',search:'',high:false,heat:null,view:'board',boardSport:LEAGUE,boardMarket:'All',boardGame:'All',saved:new Set(readStored('propedge-saved',[]).filter(value=>typeof value==='string'&&value.startsWith('['))),slip:[]};
 const initializedPages=new Set(['props']);
 let mixerSetup=false,selectedPlayer='',propRenderLimit=24,visiblePropTotal=0;
@@ -1723,7 +1728,8 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     // Tap the row for the bet screen; tap a single's price to add it to the slip.
     $$('#officialNowList button[data-on], #parlaysList button[data-on]').forEach(b=>b.onclick=e=>{const r=list[+b.dataset.on];if(e.target.closest('[data-slip-price]')&&r&&!['won','lost','push'].includes(r.result)&&(r.kind==='parlay'?addParlayToSlip(r):addBetToSlip(r)))return;openPick(r)});
     officialLiveList=list;updateOfficialLive();window.btgOfficialForm?.(list);focusPick();
-    $$('#officialNowList [data-on-player]').forEach(row=>{const player=row.dataset.onPlayer;if(!player||typeof playerStatsFor!=='function')return;const r=list[+row.dataset.on];playerStatsFor({sport:r?.sport||'NFL',player,team:row.dataset.onTeam}).then(payload=>window.BTGPaintTeam?.(row,payload?.player?.team,r?.sport||'NFL')).catch(()=>{})});
+    const later=f=>typeof requestIdleCallback==='function'?requestIdleCallback(f,{timeout:3000}):setTimeout(f,1200);
+    later(()=>$$('#officialNowList [data-on-player]').forEach(row=>{const player=row.dataset.onPlayer;if(!player||typeof playerStatsFor!=='function')return;const r=list[+row.dataset.on];playerStatsFor({sport:r?.sport||'NFL',player,team:row.dataset.onTeam}).then(payload=>window.BTGPaintTeam?.(row,payload?.player?.team,r?.sport||'NFL')).catch(()=>{})}));
     host.hidden=false;if($('#parlaysNow')){$('#parlaysNow').hidden=!parlays.length;$('#parlaysNow').dataset.empty=parlays.length?'':'1'}
     window.BTGTagInjuries?.();
   }
@@ -3570,4 +3576,22 @@ function statsProp(l){
   const base=render;
   render=function(...args){const out=base.apply(this,args);const t=typeof document.getElementById==='function'?document.getElementById('viewTitle'):null;if(t&&BOARD_TITLES.has(t.textContent))t.textContent='More props';return out};
   window.render=render;
+})();
+
+// Speed (Oct 25). The other league's page is fetched in the background
+// (speculation rules prefetch: HTML only, no scripts run), so a switch skips the
+// server wait in browsers that support it. And real load times, as anonymous
+// daily counts by bucket: how long until the picks show (perf:picks:*) and, after
+// a league switch, from the tap (perf:switch:*).
+(()=>{
+  if(typeof document.createElement!=='function'||typeof performance==='undefined')return;
+  try{if(HTMLScriptElement.supports?.('speculationrules')&&typeof LEAGUE!=='undefined'){const other=LEAGUE==='NBA'?'NFL':'NBA',u=new URL(location.href);u.searchParams.set('league',other);u.hash='';
+    const rules=document.createElement('script');rules.type='speculationrules';rules.textContent=JSON.stringify({prefetch:[{urls:[u.pathname+u.search],eagerness:'eager'}]});document.head.appendChild(rules)}}catch{}
+  const bucket=ms=>ms<1000?'<1s':ms<2000?'1-2s':ms<4000?'2-4s':'4s+';
+  let switchAt=0;try{switchAt=Number(sessionStorage.getItem('btg-switch-at'))||0;sessionStorage.removeItem('btg-switch-at')}catch{}
+  const start=Date.now();
+  const check=()=>{const shown=[...document.querySelectorAll('#officialNowList,#pmPicksList')].some(el=>el.children.length&&!el.closest('[hidden]'));
+    if(shown){window.btgCount?.(`perf:picks:${bucket(performance.now())}`);if(switchAt&&Date.now()-switchAt<60000)window.btgCount?.(`perf:switch:${bucket(Date.now()-switchAt)}`);return}
+    if(Date.now()-start<20000)setTimeout(check,100)};
+  if(!document.prerendering)check();
 })();
