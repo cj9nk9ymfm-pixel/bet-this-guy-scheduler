@@ -3244,7 +3244,12 @@ function statsProp(l){
   window.BTGPriceView={view,state:()=>stored(KEY)||data?.state||'',set:v=>{store(VIEW,v==='predictions'?'predictions':'odds');render();resync()}};
   const resync=()=>{try{window.BTGSyncAlertBooks?.()}catch{}};
   document.getElementById('priceView')?.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{store(VIEW,b.dataset.view);render();resync()});
-  async function load(){try{const st=stored(KEY),q=new URLSearchParams();if(st)q.set('state',st);if(typeof LEAGUE!=='undefined'&&LEAGUE==='NBA')q.set('league','NBA');const r=await fetch(`/api/predictions${q.toString()?`?${q}`:''}`);const body=await r.json();if(!r.ok||!body?.success)return;data=body;render();try{dispatchEvent(new Event('btg:where'))}catch{}}catch{}}
+  // The last answer is kept on the phone and shown at once on the next visit
+  // (up to 6 hours old), then replaced by the fresh one, the way the sportsbook
+  // picks arrive with the page.
+  const cacheKey=()=>`btg-pm-last:${typeof LEAGUE!=='undefined'&&LEAGUE==='NBA'?'NBA':'NFL'}|${stored(KEY)||''}`;
+  try{const saved=JSON.parse(localStorage.getItem(cacheKey())||'null');if(saved?.body?.success&&Date.now()-saved.at<6*3600000){data=saved.body;render()}}catch{}
+  async function load(){try{const st=stored(KEY),q=new URLSearchParams();if(st)q.set('state',st);if(typeof LEAGUE!=='undefined'&&LEAGUE==='NBA')q.set('league','NBA');const r=await fetch(`/api/predictions${q.toString()?`?${q}`:''}`);const body=await r.json();if(!r.ok||!body?.success)return;data=body;try{localStorage.setItem(cacheKey(),JSON.stringify({at:Date.now(),body}))}catch{}render();try{dispatchEvent(new Event('btg:where'))}catch{}}catch{}}
   const host=document.getElementById('officialNowList');if(host)new MutationObserver(paintPicks).observe(host,{childList:true});
   render();load();setInterval(load,10*60000);
 })();
