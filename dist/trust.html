@@ -119,6 +119,21 @@ html.light .lt{background:#fff;border-color:#e2e6ec}html.light .lt-kpis div{back
 html.light .bs-fullstats{background:linear-gradient(135deg,#e8f0ff,#f5f8ff)!important;border-color:#b9cff5!important;color:#1e3a8a!important}
 </style>
 <!--SITE_HEAD-->
+<style>
+/* Simplified Results (Oct 25): control bar, one-line record, picks by week. */
+.rec-bar{display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px;margin:0 0 14px}.rec-bar .rec-tabs{margin:0}
+.sum-line{display:flex;flex-wrap:wrap;gap:4px 18px;margin:0 0 12px;padding:14px 16px;border:1px solid #272c35;border-radius:14px;background:#15181d;font-size:17px}
+.sum-line b{font-weight:700}.sum-line .pos{color:#22c55e}.sum-line .neg{color:#f87171}
+.sum-stats{display:block!important}
+.sum-week{border-top:1px solid #272c35}.sum-week>summary{list-style:none;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 14px;font-weight:700}
+.sum-week>summary::-webkit-details-marker{display:none}.sum-week>summary .sw-name::before{content:"▸";display:inline-block;width:16px;color:#98a1ad;transition:transform .15s}.sum-week[open]>summary .sw-name::before{transform:rotate(90deg)}
+.sum-week .sw-rec{font-weight:600;color:#c7cdd6}.sum-week .sw-rec .pos{color:#22c55e}.sum-week .sw-rec .neg{color:#f87171}
+.by-night .sum-date{visibility:hidden}
+.rec-more{margin:18px 0 0}.rec-more>summary{cursor:pointer;font-weight:700}
+.rec-links{margin:18px 0 0}.rec-links a{font-weight:600}
+@media(max-width:480px){.rec-bar{flex-wrap:nowrap;gap:8px}.rec-bar .rec-tabs a{padding:7px 10px!important;font-size:13px!important;white-space:nowrap}}
+html.light .sum-line,body.light .sum-line{background:#fff;border-color:#e2e8f0}html.light .sum-week,body.light .sum-week{border-color:#e2e8f0}html.light .sum-week .sw-rec,body.light .sum-week .sw-rec{color:#334155}
+</style>
 </head>
 <body>
 <!--SITE_HEADER-->
@@ -132,31 +147,28 @@ html.light .bs-fullstats{background:linear-gradient(135deg,#e8f0ff,#f5f8ff)!impo
 <div id="officialGroups"></div>
 </section>
 <section id="overviewPanel">
-<nav class="rec-tabs" aria-label="Which record"><a href="#overview" aria-current="page">NFL</a><a href="#nba">NBA</a><a href="#predictions">Predictions</a></nav>
-<h1>Results</h1><p class="lede">Every official pick, graded from box scores.</p><p class="x-proof">Since Oct 8, every pick goes on <a href="https://x.com/BetThisGuy" target="_blank" rel="noopener">X</a> before its game, so X’s timestamp proves it came first. “On X ✓” links to the post.</p><p class="stake-note">Singles are graded at $100 a pick. Parlays are graded at $25 from Oct 12, 2026; earlier parlays at $100.</p><!--RECORD_SNAPSHOT--><div id="summary" class="summary" hidden><div id="summaryStats" class="sum-stats"></div><div id="clvBanner" class="clv-banner" hidden></div><div class="sum-card"><div class="sum-head"><h2>Profit over time</h2><span id="summaryStake" class="subtle"></span></div><div id="summaryChart"></div></div><div class="sum-head sum-list-head"><h2>Every official pick</h2><div class="sum-tabs" role="group" aria-label="Show"><button type="button" class="on" aria-pressed="true" data-sum="all">All</button><button type="button" aria-pressed="false" data-sum="prop">Singles</button><button type="button" aria-pressed="false" data-sum="parlay">Parlays</button></div></div><div id="summaryTable" class="sum-table"></div></div><details class="by-cat-wrap"><summary><span><b class="by-cat">Records by category</b><small>Singles, parlays by price, and past weeks</small></span><i aria-hidden="true">›</i></summary><div class="toolbar"><label>Record <select id="recordScope"><option value="all">All posted history</option><option value="legacy">Pre-season test picks (not official)</option><option value="2026-09-22">Official · Week of Sep 22</option></select></label><span class="subtle">Official weekly picks start with the Sept. 24–28 slate.</span></div>
+<div class="rec-bar" data-rec-bar></div>
+<h1>Results</h1><p class="lede">Every official pick, graded from box scores.</p><!--RECORD_SNAPSHOT--><div id="summary" class="summary" hidden><div id="summaryStats" class="sum-stats"></div><div id="clvBanner" class="clv-banner" hidden></div><div class="sum-card"><div class="sum-head"><h2>Profit over time</h2><span id="summaryStake" class="subtle"></span></div><div id="summaryChart"></div></div><div class="sum-head sum-list-head"><h2>Every official pick</h2><div class="sum-tabs" role="group" aria-label="Show"><button type="button" class="on" aria-pressed="true" data-sum="all">All</button><button type="button" aria-pressed="false" data-sum="prop">Singles</button><button type="button" aria-pressed="false" data-sum="parlay">Parlays</button></div></div><div id="summaryTable" class="sum-table"></div></div><details class="by-cat-wrap"><summary><span><b class="by-cat">Records by category</b><small>Singles, parlays by price, and past weeks</small></span><i aria-hidden="true">›</i></summary><div class="toolbar"><label>Record <select id="recordScope"><option value="all">All posted history</option><option value="legacy">Pre-season test picks (not official)</option><option value="2026-09-22">Official · Week of Sep 22</option></select></label><span class="subtle">Official weekly picks start with the Sept. 24–28 slate.</span></div>
 <div id="recordEmptyNote" class="empty-note" hidden><strong>No graded picks yet.</strong> The public record starts fresh with the Sept. 24–28 slate. Picks are only published when a sportsbook price beats the market consensus by at least 0.5%, so early days may have none. Every pick will appear here with its original timestamp and be graded automatically after the game. <a href="#official">See this week’s slate →</a></div>
-<div id="tierGrid" class="section-grid" aria-label="Browse posted picks"></div></details>
+<div id="tierGrid" class="section-grid" aria-label="Browse posted picks"></div></details><p class="rec-links"><a href="#methodology">How we grade →</a></p>
 </section>
 <section id="nbaPanel" hidden>
-<nav class="rec-tabs" aria-label="Which record"><a href="#overview">NFL</a><a href="#nba" aria-current="page">NBA</a><a href="#predictions">Predictions</a></nav>
-<h1>NBA record</h1><p class="lede">Every official NBA pick, graded from box scores. Its own record, separate from our NFL picks.</p>
-<p class="lede stake-note">Singles at $100, parlays at $25. Every prop whose price beats the market posts, one pick per player, as soon as it qualifies (often the day before). A player who doesn’t play is no action, the same as at the sportsbook.</p>
-<div id="nbaSummary" class="summary"><div id="nbaSumStats" class="sum-stats"><p class="subtle">Loading…</p></div><div id="nbaClv" class="clv-banner" hidden></div><div id="nbaMarkets" class="pm-apps"></div><div class="sum-card"><div class="sum-head"><h2>Profit over time</h2><span id="nbaSumStake" class="subtle"></span></div><div id="nbaChart"></div></div><div class="sum-head sum-list-head"><h2>Every NBA pick</h2><div class="sum-tabs" role="group" aria-label="Show"><button type="button" class="on" aria-pressed="true" data-nbasum="all">All</button><button type="button" aria-pressed="false" data-nbasum="prop">Singles</button><button type="button" aria-pressed="false" data-nbasum="parlay">Parlays</button></div></div><div id="nbaTable" class="sum-table"></div></div>
+<div class="rec-bar" data-rec-bar></div>
+<h1>Results</h1><p class="lede">Every official NBA pick, graded from box scores.</p>
+<div id="nbaSummary" class="summary"><div id="nbaSumStats" class="sum-stats"><p class="subtle">Loading…</p></div><div id="nbaClv" class="clv-banner" hidden></div><div id="nbaMarkets" class="pm-apps"></div><div class="sum-card"><div class="sum-head"><h2>Profit over time</h2><span id="nbaSumStake" class="subtle"></span></div><div id="nbaChart"></div></div><div class="sum-head sum-list-head"><h2>Every NBA pick</h2><div class="sum-tabs" role="group" aria-label="Show"><button type="button" class="on" aria-pressed="true" data-nbasum="all">All</button><button type="button" aria-pressed="false" data-nbasum="prop">Singles</button><button type="button" aria-pressed="false" data-nbasum="parlay">Parlays</button></div></div><div id="nbaTable" class="sum-table"></div></div><p class="rec-links"><a href="#methodology">How we grade →</a></p>
 </section>
 <section id="predictionsPanel" hidden>
-<nav class="rec-tabs" aria-label="Which record"><a href="#overview">NFL</a><a href="#nba">NBA</a><a href="#predictions" aria-current="page">Predictions</a></nav>
-<h1>Prediction app record</h1><p class="lede">Every pick and parlay we post on prediction apps (Novig, ProphetX and others), graded from box scores. Its own record, separate from our sportsbook picks, with NFL and NBA kept apart.</p>
-<div class="sum-tabs pm-sport" style="margin:4px 0 16px" role="group" aria-label="Sport"><button type="button" class="on" aria-pressed="true" data-pmsport="NFL">NFL</button><button type="button" aria-pressed="false" data-pmsport="NBA">NBA</button></div>
-<p class="lede stake-note">Singles at $100, parlays at $25, at each app’s price after its fee. A price like 60% means you pay 60¢ to win $1.</p>
+<div class="rec-bar" data-rec-bar></div>
+<h1>Results</h1><p class="lede">Every prediction-app pick, graded from box scores at the app’s price after its fee.</p>
 <div id="pmSummary" class="summary"><div id="pmSumStats" class="sum-stats"><p class="subtle">Loading…</p></div><div id="pmClv" class="clv-banner" hidden></div><div id="pmApps" class="pm-apps"></div><div class="sum-card"><div class="sum-head"><h2>Profit over time</h2><span id="pmSumStake" class="subtle"></span></div><div id="pmChart"></div></div><div class="sum-head sum-list-head"><h2>Every prediction pick</h2><div class="sum-tabs" role="group" aria-label="Show"><button type="button" class="on" aria-pressed="true" data-pmsum="all">All</button><button type="button" aria-pressed="false" data-pmsum="prop">Singles</button><button type="button" aria-pressed="false" data-pmsum="parlay">Parlays</button></div></div><div id="pmTable" class="sum-table"></div></div>
-<div class="pm-rules"><h2>How prediction picks work</h2><ul>
+<details class="pm-rules rec-more"><summary>How prediction picks work</summary><ul>
 <li><b>What qualifies:</b> a single posts when an app’s price, after its fee, is at least 2 points under our fair chance from the sportsbooks, inside 24 hours of kickoff, one per game. Novig receptions need 3 points. Prediction parlays are paused (2–10 so far).</li>
 <li><b>NBA:</b> its own record. A single needs 2.5 points (2 on ProphetX), one per game and up to 3 a night, on the five core stats. No NBA prediction parlays yet.</li>
 <li><b>Fees:</b> we grade at the after-fee price, from each app’s published fees: Novig charges nothing on pre-game single bets and 0.10 × P × (1 − P) per contract on parlays; ProphetX takes 2% of net winnings on singles and nothing on parlays; Kalshi and Polymarket about 7 × P × (1 − P) per contract (P is the price). Fees change, so check the app before you trade.</li>
 <li><b>Grading:</b> from the official box score, with play-by-play when a player is missing from it. A player who doesn’t play is voided after 36 hours; check your app’s own rules, which may differ.</li>
-<li><b>Stat corrections:</b> a pick is graded once, on the official box score about an hour after the game. We re-check it for 48 hours; if the league changes the stat, the pick shows the corrected number, but its result stays as first graded. Your book may settle on the corrected stat.</li>
+
 <li><b>Where you can bet:</b> availability changes by state and app (18+ or 21+ by app). Each app checks your location. We’re not affiliated with any app. <a href="/where">Where you can bet →</a></li>
-</ul></div>
+</ul></details><p class="rec-links"><a href="#methodology">How we grade →</a></p>
 </section>
 <section id="detailPanel" hidden>
 <a href="#overview" class="back">← All results</a><h2 class="h1" id="detailTitle"></h2><p id="detailOddsRange" class="subtle" hidden></p>
@@ -165,7 +177,11 @@ html.light .bs-fullstats{background:linear-gradient(135deg,#e8f0ff,#f5f8ff)!impo
 <div id="propRecordList" class="record-list"></div><div id="recordList" class="record-list"></div>
 </section>
 <section id="methodPanel" class="method" hidden>
-<a href="#overview" class="back">← All results</a><h2 class="h1">How we track results</h2>
+<a href="#overview" class="back">← All results</a><h2 class="h1">How we grade</h2>
+<p><strong>Stakes.</strong> Singles are graded at $100 a pick and parlays at $25 (from Oct 12, 2026; earlier parlays at $100), at the posted price. Prediction picks use each app’s price after its fee.</p>
+<p><strong>Proof.</strong> Since Oct 8, every pick goes on <a href="https://x.com/BetThisGuy" target="_blank" rel="noopener">X</a> before its game, so X’s timestamp proves it came first. “On X ✓” links to the post.</p>
+<p><strong>Stat corrections.</strong> A pick is graded once, on the official box score about an hour after the game. We re-check it for 48 hours; if the league changes the stat, the pick shows the corrected number, but its result stays as first graded. Your book may settle on the corrected stat.</p>
+<p><strong>Players who don’t play.</strong> No action, stake back, the same as at the sportsbook.</p>
 <p>Final statistics exclude provisional results and pending picks. Win rate is wins ÷ (wins + losses); pushes are excluded. Profit estimates use your standard bet amount from Settings (default $100) per selection, and same-game sportsbook pricing may differ.</p>
 <p><strong>Better than the final price</strong> answers a simple question: did we get a better deal than someone who waited until just before kickoff? About 20 minutes before each game, we record the best price any of the licensed sportsbooks we track still offers on the same bet. If the price we posted pays more, the pick counts as better than the final price. For parlays, we compare the whole parlay, and only when every leg has a final price. Beating the final price again and again is one of the clearest signs of real skill, and it shows up much sooner than a win–loss record does.</p>
 <p><strong>Decided early</strong> means the stats already settled the bet before the game ended (for example, an Under that a player has already gone past). It becomes final once the official box score is in and a second check five minutes later agrees.</p>
@@ -273,9 +289,10 @@ function renderSummaryTable(){
     const vo=done&&isProp&&row.result==='push'&&legs[0]?.voided?legs[0].voidReason||'Ruled out':null;
     const title=isProp?row.player:`${legs.length}-leg parlay`,sub=isProp?`${legName(row)}${vo?` · ${vo}, bet voided`:''}`:legs.map(leg=>`${leg.player}${leg.voided?' (out, void)':''}`).join(' + ');
     const tag=vo?'No action':{won:'Won',lost:'Lost',push:'Push',provisional:'Decided early',pending:'Pending'}[grade];
-    return `<button type="button" class="sum-row" data-record="${escape(row.id)}"><span class="sum-date">${escape(shortDate(row.game_time||row.posted_at))}</span><span class="sum-pick"><b><span class="sum-name">${escape(title)}</span>${isProp&&closingValue(row)?.edge>0.05?'<em class="sum-clv" title="Our price beat the closing price">Beat close</em>':''}${/^\d{5,25}$/.test(String(row.x_id||''))?'<em class="sum-x" title="Posted on X before kickoff">On X ✓</em>':''}</b><small>${escape(sub)}</small></span><span class="sum-odds">${escape(Number(odds)>0?'+'+odds:odds)}</span><span class="sum-tag sum-${grade}">${tag}</span><span class="sum-net ${p>0?'pos':p<0?'neg':''}">${p===null?'—':escape(dollars(p))}</span></button>`};
+    return `<button type="button" class="sum-row" data-record="${escape(row.id)}" data-t="${escape(row.game_time||row.posted_at||'')}" data-g="${vo?'push':grade}" data-n="${p===null?'':Math.round(p)}"><span class="sum-date">${escape(shortDate(row.game_time||row.posted_at))}</span><span class="sum-pick"><b><span class="sum-name">${escape(title)}</span>${isProp&&closingValue(row)?.edge>0.05?'<em class="sum-clv" title="Our price beat the closing price">Beat close</em>':''}${/^\d{5,25}$/.test(String(row.x_id||''))?'<em class="sum-x" title="Posted on X before kickoff">On X ✓</em>':''}</b><small>${escape(sub)}</small></span><span class="sum-odds">${escape(Number(odds)>0?'+'+odds:odds)}</span><span class="sum-tag sum-${grade}">${tag}</span><span class="sum-net ${p>0?'pos':p<0?'neg':''}">${p===null?'—':escape(dollars(p))}</span></button>`};
   const waiting=list.filter(row=>!confirmed(row)&&row.status!=='provisional'),graded=list.filter(row=>!waiting.includes(row));
   host.innerHTML=list.length?(waiting.length?`<details class="sum-pending"><summary>Still to play <b>${waiting.length}</b></summary>${waiting.map(rowHtml).join('')}</details>`:'')+graded.map(rowHtml).join(''):'<p class="subtle" style="padding:14px">No official picks in this view yet.</p>';
+  groupWeeks(host,'NFL');
 }
 function renderSummary(rows=[]){
   const host=resultNode('#summary');if(!host)return;
@@ -291,7 +308,7 @@ function renderSummary(rows=[]){
   // Singles and parlays are reported separately, the same as the home and weekly pages.
   const singlesNet=singles.reduce((sum,row)=>sum+profit(row),0),parlayNet=parlays.reduce((sum,row)=>sum+profit(row),0);
   const stats=[[`${count(singles,'won')}–${count(singles,'lost')}${sp?'–'+sp:''}`,'Singles record',''],[dollars(singlesNet),'Singles profit',singlesNet>=0?'pos':'neg'],[singles.filter(r=>r.result!=='push').length?`${Math.round(100*count(singles,'won')/singles.filter(r=>r.result!=='push').length)}%`:'—','Singles win rate',''],[`${count(parlays,'won')}–${count(parlays,'lost')}${pp?'–'+pp:''}`,parlays.length?`Parlays · ${dollars(parlayNet)}`:'Parlays','']];
-  resultNode('#summaryStats').innerHTML=stats.map(([v,l,c])=>`<div class="sum-stat"><b class="${c}">${escape(v)}</b><span>${escape(l)}</span></div>`).join('');
+  resultNode('#summaryStats').innerHTML=recordLine(stats);
   resultNode('#summaryStake').textContent=`Singles at ${stakeLabel()} a pick, plus parlays`;
   host.hidden=!summaryRows.length;
   resultNode('#summaryChart').innerHTML=profitChart(points);
@@ -461,7 +478,7 @@ function recordBoard(k,opts){
   // Server totals when given (rows carry rounded dollars).
   const s=part('prop'),p=part('parlay');if(totals.prop!=null)s.net=totals.prop;if(totals.parlay!=null)p.net=totals.parlay;
   const stats=[[`${s.w}–${s.l}${s.p?'–'+s.p:''}`,'Singles record',''],[money(s.net),'Singles profit',tone(s.net)],[s.w+s.l?`${Math.round(100*s.w/(s.w+s.l))}%`:'—','Singles win rate',''],opts.noParlays?[String(s.w+s.l+(s.p||0)),'Plays graded','']:[`${p.w}–${p.l}${p.p?'–'+p.p:''}`,p.n?`Parlays · ${money(p.net)}`:'Parlays','']];
-  resultNode(`#${k}SumStats`).innerHTML=done.length?stats.map(([v,l,c])=>`<div class="sum-stat"><b class="${c}">${escape(v)}</b><span>${escape(l)}</span></div>`).join(''):`<p class="subtle">${escape(empty)}</p>`;
+  resultNode(`#${k}SumStats`).innerHTML=done.length?recordLine(stats,opts.noParlays):`<p class="subtle">${escape(empty)}</p>`;
   const banner=resultNode(`#${k}Clv`);
   if(banner){banner.hidden=!clv?.of;banner.innerHTML=clv?.of?`<div class="clv-main"><span class="clv-eyebrow">Did we get good prices?</span><p class="clv-big"><b>${clv.beat} of ${clv.of}</b> picks beat the kickoff price</p><p class="clv-sub">We got a better price than the final one before ${escape(kickoff)} ${Math.round(100*clv.beat/clv.of)}% of the time${Math.abs(clv.avg||0)>=.05?`, paying ${Math.abs(clv.avg).toFixed(1)}% ${clv.avg>0?'more':'less'} on average`:''}.</p></div><details class="clv-why"><summary>Why this matters</summary><p>The final price before ${escape(kickoff)} is the market’s sharpest estimate, after all the money and news are in. A single game is mostly luck, but beating that final price again and again is the clearest sign a method finds real value. It’s the number professional bettors judge themselves by.</p></details>`:''}
   // Nothing posted yet: just the note (no empty chart or list).
@@ -471,9 +488,10 @@ function recordBoard(k,opts){
   resultNode(`#${k}Chart`).innerHTML=profitChart(points,`#${k}Chart`);
   const kind=sum.dataset?.kind||'all',list=rows.filter(r=>kind==='all'||r.kind===kind).sort((a,b)=>String(b.date).localeCompare(String(a.date)));
   const tag={won:'Won',lost:'Lost',push:'Push',void:'No action',pending:'Pending'};
-  const rowHtml=r=>`<button type="button" class="sum-row" data-rb="${escape(String(r.id))}"><span class="sum-date">${escape(shortDate(r.date))}</span><span class="sum-pick"><b>${escape(r.title)}${r.clv?'<em class="sum-clv">Beat closing price</em>':''}</b><small>${escape(r.sub)}</small></span><span class="sum-odds">${escape(r.price)}</span><span class="sum-tag sum-${r.grade==='void'?'push':r.grade}">${tag[r.grade]}</span><span class="sum-net ${tone(r.net||0)}">${r.grade==='pending'?'—':escape(money(r.net||0))}</span></button>`;
+  const rowHtml=r=>`<button type="button" class="sum-row" data-rb="${escape(String(r.id))}" data-t="${escape(String(r.date||''))}" data-g="${r.grade==='void'?'push':r.grade}" data-n="${r.grade==='pending'?'':Math.round(r.net||0)}"><span class="sum-date">${escape(shortDate(r.date))}</span><span class="sum-pick"><b>${escape(r.title)}${r.clv?'<em class="sum-clv">Beat closing price</em>':''}</b><small>${escape(r.sub)}</small></span><span class="sum-odds">${escape(r.price)}</span><span class="sum-tag sum-${r.grade==='void'?'push':r.grade}">${tag[r.grade]}</span><span class="sum-net ${tone(r.net||0)}">${r.grade==='pending'?'—':escape(money(r.net||0))}</span></button>`;
   const waiting=list.filter(r=>r.grade==='pending'),graded=list.filter(r=>r.grade!=='pending');
   resultNode(`#${k}Table`).innerHTML=list.length?(waiting.length?`<details class="sum-pending"><summary>Still to play <b>${waiting.length}</b></summary>${waiting.map(rowHtml).join('')}</details>`:'')+graded.map(rowHtml).join(''):'<p class="subtle" style="padding:14px">No picks in this view yet.</p>';
+  groupWeeks(resultNode(`#${k}Table`),k==='nba'?'NBA':k==='pm'?pmSport:'NFL');
   // Every row opens the bet screen.
   resultNode(`#${k}Table`).querySelectorAll?.('[data-rb]').forEach(b=>b.onclick=()=>{const r=rows.find(x=>String(x.id)===b.dataset.rb);if(r&&opts.open)betSheet(opts.open(r.src))});
   document.querySelectorAll?.(`[data-${k}sum]`).forEach(b=>b.onclick=()=>{sum.dataset.kind=b.dataset[`${k}sum`];document.querySelectorAll(`[data-${k}sum]`).forEach(x=>{x.classList.toggle('on',x===b);x.setAttribute('aria-pressed',String(x===b))});recordBoard(k,opts)});
@@ -517,8 +535,50 @@ function renderNbaRecord(){const d=nbaData;if(!d)return;const s=d.season||{},lis
   resultNode('#nbaMarkets').innerHTML=Object.entries(markets).sort((a,b)=>(b[1].w+b[1].l)-(a[1].w+a[1].l)).map(([n,m])=>`<span class="pm-app"><b>${escape(n)}</b> ${m.w}–${m.l} · ${escape(pmMoney(m.net))}</span>`).join('');
 }
 
+// One-line record: "Singles 24–18 +$1,183 · Parlays 7–8 +$1,657" (no tiles).
+function recordLine(stats,noParlays){
+  const [rec,profitCell]=[stats[0],stats[1]],par=stats[3],amount=String(par?.[1]||'').split(' · ')[1]||'';
+  const tone=v=>/^\+/.test(v)&&v!=='+$0'?'pos':/^[−-]/.test(v)?'neg':'';
+  return `<p class="sum-line"><span>Singles <b>${escape(rec[0])}</b> <b class="${profitCell[2]}">${escape(profitCell[0])}</b></span>${!noParlays&&amount?`<span>Parlays <b>${escape(par[0])}</b> <b class="${tone(amount)}">${escape(amount)}</b></span>`:''}</p>`;
+}
+// Picks grouped by week (NFL weeks run Tuesday noon UTC to Tuesday noon UTC) or
+// by night (NBA, US Eastern date). The latest two open; older ones fold to one
+// line with their record. Rows move as they are, so their click handlers stay.
+function groupWeeks(host,sport){
+  if(!host)return;const rows=[...host.querySelectorAll(':scope>.sum-row')];if(!rows.length)return;
+  const DAY=86400000,TUE=Date.UTC(2026,0,6,12),nba=sport==='NBA',now=Date.now(),et=t=>new Date(t).toLocaleDateString('en-CA',{timeZone:'America/New_York'});
+  host.classList.toggle('by-night',nba);
+  const keyOf=t=>nba?et(t):String(Math.floor((t-TUE)/(7*DAY)));
+  const label=(key,t)=>{if(nba)return key===et(now)?'Tonight':key===et(now-DAY)?'Last night':new Date(t).toLocaleDateString('en-US',{timeZone:'America/New_York',weekday:'short',month:'short',day:'numeric'});
+    const cur=Math.floor((now-TUE)/(7*DAY)),k=+key;return k===cur?'This week':k===cur-1?'Last week':'Week of '+new Date(TUE+k*7*DAY).toLocaleDateString('en-US',{month:'short',day:'numeric',timeZone:'UTC'})};
+  const groups=new Map();
+  for(const row of rows){const t=Date.parse(row.dataset.t||''),key=Number.isFinite(t)?keyOf(t):'?';if(!groups.has(key))groups.set(key,{t,rows:[]});groups.get(key).rows.push(row)}
+  let i=0;
+  for(const [key,g] of groups){
+    const count=r=>g.rows.filter(x=>x.dataset.g===r).length,w=count('won'),l=count('lost'),p=count('push'),net=g.rows.reduce((a,x)=>a+(Number(x.dataset.n)||0),0);
+    const box=document.createElement('details');box.className='sum-week';box.open=i++<2;
+    box.innerHTML=`<summary><span class="sw-name">${escape(key==='?'?'Earlier':label(key,g.t))}</span><span class="sw-rec">${w}–${l}${p?'–'+p:''} <b class="${net>0?'pos':net<0?'neg':''}">${escape(dollars(net))}</b></span></summary>`;
+    g.rows.forEach(r=>box.appendChild(r));host.appendChild(box);
+  }
+}
+// The same control bar as the home page: NFL|NBA beside Sportsbook|Prediction apps.
+function paintRecBar(){
+  const pm=selectedSection==='predictions',league=pm?pmSport:selectedSection==='nba'?'NBA':'NFL';
+  const seg=(label,items)=>`<nav class="rec-tabs" aria-label="${label}">${items.map(([text,on,attr])=>`<a href="#" ${attr}${on?' aria-current="page"':''}>${text}</a>`).join('')}</nav>`;
+  const html=seg('League',[['NFL',league==='NFL','data-rb-league="NFL"'],['NBA',league==='NBA','data-rb-league="NBA"']])+seg('Where you bet',[['Sportsbook',!pm,'data-rb-mode="odds"'],['Prediction apps',pm,'data-rb-mode="predictions"']]);
+  document.querySelectorAll('[data-rec-bar]').forEach(bar=>{bar.innerHTML=html});
+}
+function goRecord(league,pm){
+  if(pm){const changed=pmSport!==league;pmSport=league;if(location.hash!=='#predictions')location.hash='predictions';else if(changed){resultNode('#pmSumStats').innerHTML='<p class="subtle">Loading…</p>';loadPredictionRecord()}}
+  else location.hash=league==='NBA'?'nba':'overview';
+  paintRecBar();
+}
+document.addEventListener('click',event=>{const a=event.target.closest?.('[data-rb-league],[data-rb-mode]');if(!a)return;event.preventDefault();
+  const pm=selectedSection==='predictions',league=pm?pmSport:selectedSection==='nba'?'NBA':'NFL';
+  if(a.dataset.rbLeague)goRecord(a.dataset.rbLeague,pm);else goRecord(league,a.dataset.rbMode==='predictions')});
+addEventListener('hashchange',paintRecBar);
 addEventListener('hashchange',()=>{resultNode('#gradeFilter').value='all';showResultSection(location.hash.slice(1));window.scrollTo({top:0,behavior:'auto'})});
-showResultSection(location.hash.slice(1));refreshRecord();setInterval(refreshRecord,15000);document.addEventListener('visibilitychange',refreshRecord);
+showResultSection(location.hash.slice(1));paintRecBar();refreshRecord();setInterval(refreshRecord,15000);document.addEventListener('visibilitychange',refreshRecord);
 
 // Anonymous page count (no cookies or IDs); see the privacy policy.
 try{if(localStorage.getItem('btg-owner')==='1')throw 0;const seen=localStorage.getItem('btg-seen'),first=!sessionStorage.getItem('btg-visit'),ref=document.referrer?new URL(document.referrer).hostname:'',utm=(new URLSearchParams(location.search).get('utm_source')||'').toLowerCase(),v=(utm||ref).toLowerCase(),src=ref===location.hostname&&!utm?null:!v?'src:direct':/reddit|redd\.it/.test(v)?'src:reddit':/(^|\.)(x|twitter)\.com$|^t\.co$|^x$|twitter/.test(v)?'src:x':/google\./.test(v)||v==='google'?'src:google':/facebook|instagram|threads|tiktok|discord|t\.me|telegram|whatsapp|snapchat|linkedin/.test(v)?'src:social':'src:other',m=['view:trust',...(first?[seen?'visit:return':'visit:new',...(src?[src]:[])]:[])];if(first){sessionStorage.setItem('btg-visit','1');localStorage.setItem('btg-seen','1')}const body=JSON.stringify({m});navigator.sendBeacon?.('/api/hit',new Blob([body],{type:'application/json'}))||fetch('/api/hit',{method:'POST',body,keepalive:true}).catch(()=>{})}catch{}
