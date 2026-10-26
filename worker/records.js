@@ -98,8 +98,20 @@ const OFFICIAL_CAPS={props:100,reasonable:15,swing:10,moonshot:3};
 // went 4–9 (−$518) while 1%+ picks are 39–30 (+$1,685), so it's back in the
 // near-miss test. Receptions lines of 2.5 or less need 1.5% (season 10–18,
 // −$411; higher receptions lines 9–6): those turn on playing time, not price.
-const OFFICIAL_MIN=1,LOW_RECEPTIONS={line:2.5,min:1.5};
-const officialBar=p=>!(p.market==='Receptions'&&Number(p.line)<=LOW_RECEPTIONS.line&&p.edge<LOW_RECEPTIONS.min);
+// From the NBA week audit (Oct 26): NBA three-point Overs need 2.5% (3–5, the
+// one pick type whose prices moved against us: 1 of 5 beat the close), and a
+// pick whose best price is at FanDuel needs 0.5 more in either sport
+// (NFL 5–12, NBA 10–11, beating the close by 3.2% and 0.9% against 6–9% at
+// BetMGM and DraftKings). Picks held back stay near-miss / leans candidates.
+const OFFICIAL_MIN=1,LOW_RECEPTIONS={line:2.5,min:1.5},NBA_THREES_OVER_MIN=2.5,FANDUEL_EXTRA=.5;
+function officialBarFor(p,sport='NFL'){
+  let bar=sport==='NBA'?NBA_MIN:OFFICIAL_MIN;
+  if(sport!=='NBA'&&p.market==='Receptions'&&Number(p.line)<=LOW_RECEPTIONS.line)bar=Math.max(bar,LOW_RECEPTIONS.min);
+  if(sport==='NBA'&&p.market==='3-Pointers Made'&&p.side==='Over')bar=Math.max(bar,NBA_THREES_OVER_MIN);
+  if(/^fanduel$/i.test(String(p.book||'')))bar+=FANDUEL_EXTRA;
+  return bar;
+}
+const officialBar=p=>p.edge>=officialBarFor(p,'NFL'),nbaOfficialBar=p=>p.edge>=officialBarFor(p,'NBA');
 // One official parlay per slate (an ET game day; an NBA night): since $25
 // parlays started (Oct 12) they went 2–6.
 let PARLAYS_PER_DAY=1;
@@ -434,7 +446,7 @@ async function publishNbaPicks(request,env,ctx,now=Date.now()){
     const cfg=nbaConfig(night),tonight=boards.filter(b=>nbaNight(Date.parse(b.commence_time))===night);
     const existing=(await env.DB.prepare('SELECT * FROM public_recommendations WHERE id>=? AND id<?').bind(cfg.prefix,cfg.prefix+'\uffff').all()).results||[];
     const dirs=await pickDirections(env),ok=p=>sameDirection(dirs,p.gameId,p.player,p.side);
-    const stats={},candidates=core(officialCandidates(tonight,Date.now(),stats,{min:NBA_MIN})).filter(ok);
+    const stats={},candidates=core(officialCandidates(tonight,Date.now(),stats,{min:NBA_MIN})).filter(ok).filter(nbaOfficialBar);
     const nextTier=withTeams(core(officialCandidates(tonight,Date.now(),{},{min:.5,below:NBA_MIN})).filter(ok),await playerTeams(env));
     const plan=officialPlan(candidates,existing,night,Date.now(),nextTier,cfg);
     posted+=Number(await writeOfficialPlan(plan,night,env,cfg))||0;

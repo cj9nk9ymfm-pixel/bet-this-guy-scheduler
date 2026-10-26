@@ -174,6 +174,8 @@ const run=c=>vm.runInContext(c,context),req='new Request("https://betthisguy.com
   assert.equal(run(`nbaNight(Date.parse('${late}'))`),'2026-10-27');
   // Cron: NBA nights grade every publish run.
   assert.deepEqual(run(`cronJobs(new Date('2026-10-28T01:00:00Z'))`).includes('grade'),true);
+  // Friday NBA nights sit outside the NFL windows: closing prices are captured by this cron (Oct 20/23 went unrecorded).
+  assert.ok(run(`cronJobs(new Date('2026-10-23T23:00:00Z'))`).includes('closing'),'NBA nights capture closing prices');
   // NBA limits: 10 singles a night, 2 a game; a 2.5%+ top pick posts past both.
   {const c=(i,g,edge)=>({playerKey:'g'+g+'|p'+i,player:'P'+i,gameId:'g'+g,edge,market:'Points',side:'Over',line:20.5,odds:110,gameTime:'2026-10-21T00:00:00Z'});
    const pool=[...Array(14)].map((_,i)=>c(i,Math.floor(i/3),2-i*.01)),cfg=JSON.stringify({caps:{props:10,reasonable:0,swing:0,moonshot:0},perGame:2,top:2.5,prefix:'nba|2026-10-20|'});

@@ -21,4 +21,17 @@ assert.equal(run('OFFICIAL_MIN'),1,'NFL bar is 1%');
 assert.deepEqual(posted,['High Line','Low Line Big'],'1%+ posts; receptions at 2.5 or less need 1.5%');
 const all=JSON.parse(JSON.stringify(run(`officialCandidates(boards,${now},{},{min:.25}).map(p=>p.player).sort()`)));
 assert.ok(all.includes('Low Line')&&all.includes('Thin Edge'),'held-back picks are still candidates for the near-miss test');
-console.log('PASS: NFL official bar 1%, receptions lines of 2.5 or less need 1.5%, smaller edges stay near-miss candidates');
+// NBA three-point Overs need 2.5%; FanDuel needs 0.5 more in either sport.
+const bar=(p,sport)=>run(`officialBarFor(${JSON.stringify(p)},'${sport}')`);
+assert.equal(bar({market:'Rebounds',side:'Over',line:5.5,book:'DraftKings'},'NBA'),1.5,'NBA bar 1.5%');
+assert.equal(bar({market:'3-Pointers Made',side:'Over',line:1.5,book:'BetMGM'},'NBA'),2.5,'NBA three-point Overs need 2.5%');
+assert.equal(bar({market:'3-Pointers Made',side:'Under',line:1.5,book:'BetMGM'},'NBA'),1.5,'three-point Unders stay at 1.5%');
+assert.equal(bar({market:'3-Pointers Made',side:'Over',line:1.5,book:'FanDuel'},'NBA'),3,'FanDuel adds 0.5');
+assert.equal(bar({market:'Receptions',side:'Under',line:1.5,book:'FanDuel'},'NFL'),2,'NFL low receptions at FanDuel: 1.5 + 0.5');
+assert.equal(bar({market:'Passing Touchdowns',side:'Over',line:1.5,book:'fanduel'},'NFL'),1.5,'NFL at FanDuel: 1 + 0.5');
+// A FanDuel price 1.25% over fair no longer posts in the NFL.
+context.fdBoards=board([market('player_receptions','FanDuel Edge',4.5,110,-133)]).map(e=>({...e,bookmakers:e.bookmakers.map(b=>b.key==='draftkings'?{...b,key:'fanduel',title:'FanDuel'}:b.key==='fanduel'?{...b,key:'draftkings',title:'DraftKings'}:b)}));
+const fd=JSON.parse(JSON.stringify(run(`officialCandidates(fdBoards,${now},{},{min:OFFICIAL_MIN})`)));
+assert.equal(fd.length,1);assert.equal(fd[0].book,'FanDuel');
+assert.equal(JSON.parse(JSON.stringify(run(`officialCandidates(fdBoards,${now},{},{min:OFFICIAL_MIN}).filter(officialBar).length`))),0,'FanDuel at 1.25% is held back');
+console.log('PASS: NFL official bar 1% (receptions at 2.5 or less 1.5%), NBA three-point Overs 2.5%, FanDuel +0.5 in either sport; held-back picks stay near-miss candidates');
