@@ -1491,7 +1491,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
       actions:r.pm?[...betAction(r,legs,done),...(!done&&window.BTGApps?.link(r.pm.exchange)?[{label:`Open ${r.pm.exchange}`,icon:'external',wide:true,onClick:()=>{const app=String(r.pm.exchange).toLowerCase();window.btgCount?.(`app:${app}`);
         // With a partner code, the tap also copies the code for the app's sign-up screen.
         if(pmOffer){try{navigator.clipboard?.writeText(pmOffer.code).then(()=>window.btgCount?.(`partner:${app}:copy`)).catch(()=>{})}catch{}}
-        window.open(window.BTGApps.link(r.pm.exchange),'_blank','noopener')}}]:[]),{...pmShare,label:'Share'}]:[...betAction(r,legs,done),...bookAction(r,legs,done),{label:done&&r.result==='won'?'Share this hit':'Share',icon:'share',primary:false,wide:true,share:`${done&&r.result==='won'?'✅ Hit':'Bet This Guy pick'}: ${isParlay?`${legs.length}-leg parlay (${formatOdds(odds)})`:`${r.player} ${bet} (${formatOdds(odds)})`} · ${location.origin}`}],
+        window.open(window.BTGApps.link(r.pm.exchange),'_blank','noopener')}}]:[]),{...pmShare,label:'Share'}]:[...betAction(r,legs,done),...bookAction(r,legs,done),{label:done&&r.result==='won'?'Share this hit':'Share',icon:'share',primary:false,wide:true,image:()=>window.BTGShareCard?.official?.(r),share:`${done&&r.result==='won'?'✅ Hit':'Bet This Guy pick'}: ${isParlay?`${legs.length}-leg parlay (${formatOdds(odds)})`:`${r.player} ${bet} (${formatOdds(odds)})`} · ${location.origin}`}],
       // Timestamp proof: the pick's own X post (NBA: the night's card), posted before the game.
       links:[...(/^\d{5,25}$/.test(String(r.x_id||''))&&!r.pm?[{text:`Posted on X before ${r.sport==='NBA'||String(r.id||'').startsWith('nba|')?'tip-off':'kickoff'} ›`,href:`https://x.com/i/web/status/${r.x_id}`,external:true,onClick:()=>window.btgCount?.('sheet:xproof')}]:[]),...(isParlay?[]:[{text:`${String(r.player||'').split(' ').slice(-1)[0]}’s stats & game log ›`,onClick:()=>openPlayerProfile(statsProp({...first,player:r.player,market:r.market,line:r.line,side:r.side,odds:r.odds,gameTime:r.game_time||first.gameTime}))}]),{text:'See every pick on Results ›',href:'/trust#official'}]};
   }
@@ -1555,6 +1555,8 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     // With 5+ tracked it leads as a big share, with why it matters and why we post early.
     {let pf=$('#heroProof');const sea=heroSeason,start=NBA?'tip-off':'kickoff';if(sea?.tracked){if(!pf){pf=document.createElement('div');pf.id='heroProof';pf.className='hero-proof'}$('#heroTitle').after(pf);
       pf.innerHTML=sea.tracked>=5?`<div class="hp-big"><strong>${Math.round(100*sea.beat/sea.tracked)}%</strong><span><b>of our picks beat the ${start} price</b><small>${sea.beat} of ${sea.tracked}: the market moved our way after we posted</small></span></div><p class="hp-why">We post the moment a price qualifies, often a day early, before the market catches up. A hot streak can be luck; beating the final price, pick after pick, is the steadiest sign of a real edge.</p>`:`Beat the ${start} price on <b>${sea.beat} of ${sea.tracked}</b> picks`}else pf?.remove()}
+    // One line under the record: how often our price beat the kickoff price.
+    {let cl=$('#heroClose');const sea=heroSeason,start=NBA?'tip-off':'kickoff';if(sea?.tracked>=5){if(!cl){cl=document.createElement('p');cl.id='heroClose';cl.className='hero-close'}hero.querySelector('.hero-actions')?.before(cl);cl.innerHTML=`Beat the ${start} price on <b>${sea.beat} of ${sea.tracked}</b> picks <a href="/trust#methodology">why it matters</a>`}else cl?.remove()}
     // Running profit, every graded pick in order, and the latest results (wins and losses).
     {let box=$('#heroCurve');const pts=heroSeason?.curve||[];if(pts.length>=3){if(!box){box=document.createElement('div');box.id='heroCurve';box.className='hero-curve'}$('#heroStats').after(box);box.innerHTML=heroCurveSvg(pts)}else box?.remove()}
     {let tk=$('#heroTicker');const list=heroSeason?.latest||[];if(list.length){if(!tk){tk=document.createElement('div');tk.id='heroTicker';tk.className='hero-ticker'}hero.after(tk);
@@ -1596,7 +1598,10 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     const vo=voidOf(r);if(vo)return `<i class="on-win push">${htmlEscape(`${vo} · bet voided · stake back`)}</i>`;
     const stake=done?heroStake*share(r):myStake(r),d=isParlay?parlayDec(r):oddsDecimal(odds);if(!d)return '';
     const money=n=>`$${Number.isInteger(n)?n:n.toFixed(2).replace(/\.00$/,'')}`;
-    const txt=done?(r.result==='won'?`Won +${money(Math.round(payout(r)))}`:r.result==='lost'?`Lost −${money(stake)}`:'Push · $0'):r.pm?`${money(stake)} ${pmPays(stake,d)}`:`${money(stake)} wins ${money(Math.round(stake*(d-1)))} · pays ${money(Math.round(stake*d))}`;
+    // Open singles say why it's a pick in dollars, the same as the pick sheet:
+    // "$100 wins $99 · $5 more than it should" (fair from the locked edge).
+    const edge=Number(recordLegs(r)[0]?.edge),fairPct=100/d+edge,extra=!isParlay&&Number.isFinite(edge)&&fairPct>0&&fairPct<100?Math.round(stake*(d-1))-Math.round(stake*(100/fairPct-1)):0;
+    const txt=done?(r.result==='won'?`Won +${money(Math.round(payout(r)))}`:r.result==='lost'?`Lost −${money(stake)}`:'Push · $0'):r.pm?`${money(stake)} ${pmPays(stake,d)}`:`${money(stake)} wins ${money(Math.round(stake*(d-1)))} · ${extra>=1?`${money(extra)} more than it should`:`pays ${money(Math.round(stake*d))}`}`;
     return `<i class="on-win ${done?r.result:'open'}">${htmlEscape(txt)}</i>`;
   }
   function officialRow(r,i){
@@ -1700,7 +1705,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     return `<div class="bs-live ${state}${s.final?' final':''}"><p class="bs-live-top">${top}${delayed}</p><div class="bs-live-num"><strong>${s.value==null?'–':htmlEscape(String(s.value))}</strong><span>/ ${htmlEscape(String(p.line))} ${htmlEscape(unit)}</span><em>${htmlEscape(s.value==null?(s.loaded?'No stats yet':'Loading…'):need)}</em></div>${barOf(s)}${also?`<p class="bs-live-also">Today: ${htmlEscape(also)}</p>`:''}</div>`;
   }
   (window.btgLiveHooks||=[]).push(updateOfficialLive);
-  window.BTGOfficialLive=liveLine;window.BTGOpenPick=openPick;window.BTGOfficialRows=()=>officialLiveList;
+  window.BTGOfficialLive=liveLine;window.BTGOpenPick=openPick;window.BTGOfficialRows=()=>officialLiveList;window.BTGOfficialBits={recordLegs,graded,legText,winLine};
   function renderOfficialNow(rows){
     const host=$('#officialNow');if(!host||!Array.isArray(rows))return;
     const list=officialNow(rows),indexed=list.map((r,i)=>[r,i]);
@@ -1960,7 +1965,33 @@ if(typeof fetch==='function')window.btgCountVisit?.('view:home');
     ctx.fillStyle='#7f96b8';ctx.font="500 26px 'DM Sans', sans-serif";ctx.textAlign='right';ctx.fillText('21+ · Odds change. Check before you bet.',W-72,990);ctx.textAlign='left';
     return new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(new File([blob],`bet-this-guy-${String(p.player).toLowerCase().replace(/[^a-z0-9]+/g,'-')}.jpg`,{type:'image/jpeg'})):reject(new Error('no image')),'image/jpeg',.9));
   }
-  window.BTGShareCard={drawPickCard};
+  // Official picks: 1200×675 (X's image size): the pick, its price and book,
+  // what it wins against a fair price (or the result), and the record.
+  function drawOfficialCard(r){
+    const {recordLegs,graded,legText,winLine}=window.BTGOfficialBits||{};if(!winLine)return Promise.resolve(null);
+    const legs=recordLegs(r),isParlay=r.kind==='parlay',done=graded(r),won=done&&r.result==='won',W=1200,H=675,canvas=document.createElement('canvas');canvas.width=W;canvas.height=H;const ctx=canvas.getContext('2d');
+    const bg=ctx.createLinearGradient(0,0,W,H);bg.addColorStop(0,'#0b1d3f');bg.addColorStop(1,'#050b1d');ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
+    const glow=ctx.createRadialGradient(W*.12,H*.1,10,W*.12,H*.1,W*.7);glow.addColorStop(0,won?'rgba(31,216,143,.3)':'rgba(28,108,255,.3)');glow.addColorStop(1,'rgba(0,0,0,0)');ctx.fillStyle=glow;ctx.fillRect(0,0,W,H);
+    if(logo.complete&&logo.naturalWidth)ctx.drawImage(logo,64,52,260,260*logo.naturalHeight/logo.naturalWidth);
+    const tag=won?'✅  HIT':done&&r.result==='lost'?'LOST':'OFFICIAL PICK';ctx.font="700 30px 'Space Grotesk', sans-serif";const tw=ctx.measureText(tag).width+52;
+    ctx.fillStyle=won?'rgba(31,216,143,.16)':'rgba(255,255,255,.08)';ctx.strokeStyle=won?'rgba(31,216,143,.6)':'rgba(255,255,255,.2)';ctx.lineWidth=3;ctx.beginPath();ctx.roundRect(W-64-tw,48,tw,62,31);ctx.fill();ctx.stroke();ctx.fillStyle=won?'#5ff0b5':'#cfe0f5';ctx.textBaseline='middle';ctx.fillText(tag,W-64-tw+26,80);ctx.textBaseline='alphabetic';
+    const title=isParlay?`${legs.length}-leg parlay`:r.player,bet=isParlay?legs.map(l=>`${l.player} ${legText(l)}`).join(' + '):legText({side:r.side,line:r.line,market:String(r.market||'').toLowerCase()});
+    ctx.fillStyle='#ffffff';fit(ctx,title,W-128,92);ctx.fillText(title,64,250);
+    ctx.fillStyle='#cfe0f5';fit(ctx,bet.charAt(0).toUpperCase()+bet.slice(1),W-128,46,'600',"'DM Sans', sans-serif");ctx.fillText(bet.charAt(0).toUpperCase()+bet.slice(1),64,318);
+    const odds=isParlay?r.combined_odds:r.odds,book=[...new Set(legs.map(l=>l.book).filter(Boolean))][0]||'';
+    ctx.fillStyle='rgba(255,255,255,.06)';ctx.strokeStyle='rgba(255,255,255,.14)';ctx.lineWidth=3;ctx.beginPath();ctx.roundRect(64,360,W-128,150,28);ctx.fill();ctx.stroke();
+    ctx.fillStyle='#ffffff';ctx.font="700 72px 'Space Grotesk', sans-serif";const o=formatOdds(odds);ctx.fillText(o,100,462);const ow=ctx.measureText(o).width;
+    ctx.fillStyle='#9fb6d6';ctx.font="500 32px 'DM Sans', sans-serif";if(book)ctx.fillText(`at ${book}`,116+ow,458);
+    const line=document.createElement('div');line.innerHTML=winLine(r,isParlay,odds,done);const money=line.textContent||'';
+    ctx.fillStyle=won?'#5ff0b5':done&&r.result==='lost'?'#ff9d9d':'#5ff0b5';ctx.font="700 34px 'DM Sans', sans-serif";ctx.textAlign='right';fit(ctx,money,W-200-ow-(book?ctx.measureText(`at ${book}`).width:0),34,'700',"'DM Sans', sans-serif");ctx.fillText(money,W-100,458);ctx.textAlign='left';
+    const sea=window.BTG_SEASON,start=String(r.id||'').startsWith('nba|')?'tip-off':'kickoff';
+    const rec=sea&&sea.wins+sea.losses>=5?`Season ${sea.wins}–${sea.losses}${sea.tracked>=5?` · beat the ${start} price on ${sea.beat} of ${sea.tracked}`:''}`:'Every pick posted before the game and graded in public';
+    ctx.fillStyle='#9fb6d6';fit(ctx,rec,W-128,30,'500',"'DM Sans', sans-serif");ctx.fillText(rec,64,568);
+    ctx.fillStyle='#ffffff';ctx.font="700 34px 'Space Grotesk', sans-serif";ctx.fillText('betthisguy.com',64,628);
+    ctx.fillStyle='#7f96b8';ctx.font="500 24px 'DM Sans', sans-serif";ctx.textAlign='right';ctx.fillText('21+ · Odds change. Check before you bet.',W-64,628);ctx.textAlign='left';
+    return new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(new File([blob],`bet-this-guy-${String(title).toLowerCase().replace(/[^a-z0-9]+/g,'-')}.png`,{type:'image/png'})):reject(new Error('no image')),'image/png'));
+  }
+  window.BTGShareCard={drawPickCard,official:drawOfficialCard};
   const prepare=p=>{const key=shareKey(p),have=ready.get(p.id);if(have?.key===key)return;ready.set(p.id,{key,file:null});drawPickCard(p).then(file=>{const entry=ready.get(p.id);if(entry?.key===key)entry.file=file}).catch(()=>{})};
   // Draw the image as soon as a card opens (or on hover/press on desktop).
   document.addEventListener('click',event=>{const card=event.target.closest?.('.prop-card.compact-card');if(!card)return;setTimeout(()=>{if(!card.classList.contains('expanded'))return;const p=props.find(x=>x.id===+card.dataset.id);if(p)prepare(p)},0)},true);
@@ -2173,8 +2204,9 @@ function addBetToSlip(x){
   function bind(host,m,dialog){
     host.querySelectorAll('[data-bs-gate]').forEach(b=>b.onclick=()=>{dialog?.close?.();window.btgCount?.('gate:signup');window.BTGAuth?.open?.('signup')});
     host.querySelector('[data-bs-history]')?.addEventListener('click',()=>{dialog?.close?.();m.chart.open()});
+    (m.actions||[]).forEach(a=>{if(a.image&&!a.file)Promise.resolve(a.image()).then(f=>{if(f)a.file=f}).catch(()=>{})});
     host.querySelectorAll('[data-bs-act]').forEach(b=>b.onclick=async()=>{const a=m.actions[+b.dataset.bsAct];
-      if(a.share){try{if(navigator.share)await navigator.share({text:a.share});else{await navigator.clipboard.writeText(a.share);b.textContent='Copied ✓'}}catch{}return}
+      if(a.share){try{const file=a.file;if(file&&navigator.canShare?.({files:[file]})){window.btgCount?.('share');await navigator.share({files:[file],text:a.share});return}if(navigator.share)await navigator.share({text:a.share});else{await navigator.clipboard.writeText(a.share);b.textContent='Copied ✓'}}catch{}return}
       a.onClick?.(b,dialog)});
     host.querySelectorAll('[data-bs-leg]').forEach(b=>{const l=m.legs?.[+b.dataset.bsLeg];if(l?.onClick)b.onclick=()=>l.onClick(dialog)});
     host.querySelectorAll('[data-bs-link]').forEach(a=>a.addEventListener('click',e=>{e.preventDefault();dialog?.close?.();(m.links||[m.link])[+a.dataset.bsLink]?.onClick?.()}));

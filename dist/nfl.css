@@ -2516,3 +2516,8 @@ html body #heroEmail .he-alerts{background:none;border:0;padding:0;color:inherit
 html body:is([data-mobile-page="live"],[data-desktop-page="live"]) :is(#jumpBar,#heroBanner,#pmHero,#heroTicker,#heroEmail,#officialNow,#pmPicksNow,#parlaysNow,#pmParlaysNow,#leansNow,#pmNow,#pmNbaNote,#verdictGuide,#propsSection){display:none!important}
 /* League switch: dim the page the moment a league is tapped, until the next page loads. */
 html body.league-switching main{opacity:.45;pointer-events:none;transition:opacity .12s}
+/* Record bar: the beat-the-kickoff line sits under the record, full width. */
+html body #heroBanner .hero-close{flex:1 0 100%;order:2;margin:2px 0 0!important;font-size:13px;color:var(--muted,#98a1ad)}
+html body #heroBanner .hero-close b{color:#22c55e;font-weight:700}
+html body #heroBanner .hero-close a{margin-left:6px;color:inherit;text-decoration:underline;font-weight:600}
+html body #heroBanner .hero-picks{order:3}
