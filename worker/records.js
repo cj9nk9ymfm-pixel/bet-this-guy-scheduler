@@ -93,9 +93,13 @@ async function verifiedRecordStatements(records,request,env,ctx) {
 // Tuesday noon UTC keeps Monday-night NFL games in the preceding slate.
 const OFFICIAL_START=Date.parse('2026-09-22T12:00:00Z');
 const OFFICIAL_CAPS={props:100,reasonable:15,swing:10,moonshot:3};
-// NFL singles post at 0.5% over fair (1% until Oct 23): the 0.5–1% band went
-// 30–27, +$974 in the near-miss test with 46 of 57 beating the kickoff price.
-const OFFICIAL_MIN=.5;
+// NFL singles post at 1% over fair. Oct 23–25 they posted from 0.5% (the
+// 0.5–1% band had gone 30–27, +$974 in the near-miss test); live, that band
+// went 4–9 (−$518) while 1%+ picks are 39–30 (+$1,685), so it's back in the
+// near-miss test. Receptions lines of 2.5 or less need 1.5% (season 10–18,
+// −$411; higher receptions lines 9–6): those turn on playing time, not price.
+const OFFICIAL_MIN=1,LOW_RECEPTIONS={line:2.5,min:1.5};
+const officialBar=p=>!(p.market==='Receptions'&&Number(p.line)<=LOW_RECEPTIONS.line&&p.edge<LOW_RECEPTIONS.min);
 // One official parlay per slate (an ET game day; an NBA night): since $25
 // parlays started (Oct 12) they went 2–6.
 let PARLAYS_PER_DAY=1;
@@ -113,7 +117,7 @@ const OFFICIAL_HORIZON=8*86400000,LOW_ODDS_CREDITS=250000;
 function officialWeek(time){const d=new Date(Number(time)-12*3600000);d.setUTCHours(0,0,0,0);d.setUTCDate(d.getUTCDate()-(d.getUTCDay()+5)%7);return d.toISOString().slice(0,10)}
 const officialPlayer=leg=>`${leg.gameId}|${normalizedName(leg.player)}`;
 // stats (optional) collects what a run saw, for the pick_runs log.
-// opts.min/opts.below set the edge band (official NFL: 0.5% up, capped at 12%);
+// opts.min/opts.below set the edge band (official NFL: 1% up, capped at 12%);
 // the near-miss shadow logs 0.25% up that didn't post.
 function officialCandidates(events,now=Date.now(),stats={},opts={}){
   const min=opts.min??1,below=opts.below??Infinity;
@@ -209,7 +213,7 @@ async function playerTeams(env){const rows=(await env.DB.prepare('SELECT player,
 const withTeams=(list,teams)=>list.map(p=>({...p,playerTeam:teams.get(normalizedName(p.player))||null}));
 // Parlay price from its legs: multiplied, then the same-game cut when two legs share a game.
 function parlayDecimal(legs){const d=legs.reduce((p,l)=>p*recordDecimal(l.odds),1),same=new Set(legs.map(l=>l.gameId)).size<legs.length;return same?1+(d-1)*(1-SGP_CUT):d}
-// Singles are the top tier (NFL 0.5%+ edge). Parlays are built from the next tier
+// Singles are the top tier (NFL 1%+ edge). Parlays are built from the next tier
 // down (NFL pool: 0.25% up, players not posted as singles), one per slate, and never use
 // a player who is an official single: a bad single can't also sink a parlay.
 // cfg (NBA): its own id prefix, caps and per-game limit; NFL uses the defaults.
@@ -2374,7 +2378,7 @@ async function publishOfficialPicks(request,env,ctx,opts={}){
     const injuries=await injuryMap(env).catch(()=>new Map());boards.splice(0,boards.length,...withoutInjured(boards,injuries));
     if(!opts.soonOnly)jobStep('publish','plan');const existing=await env.DB.prepare('SELECT * FROM public_recommendations WHERE id>=? AND id<?').bind(prefix,prefix+'\uffff').all();
     const dirs=await pickDirections(env),ok=p=>sameDirection(dirs,p.gameId,p.player,p.side);
-    const stats={};const candidates=officialCandidates(boards,Date.now(),stats,{min:OFFICIAL_MIN}).filter(ok);
+    const stats={};const candidates=officialCandidates(boards,Date.now(),stats,{min:OFFICIAL_MIN}).filter(ok).filter(officialBar);
     // Parlay legs: 0.25% up, from players not already posted as singles.
     const nextTier=withTeams(officialCandidates(boards,Date.now(),{},{min:.25}).filter(ok),await playerTeams(env));
     const plan=officialPlan(candidates,existing.results||[],week,Date.now(),nextTier);
