@@ -8,13 +8,15 @@ assert.equal(activeWindow(utc("2026-09-23T11:59:00")), false, "Wednesday morning
 assert.equal(activeWindow(utc("2026-09-23T12:00:00")), true, "Wednesday from 12:00 is active");
 assert.equal(activeWindow(utc("2026-09-24T03:00:00")), true, "Thursday is active");
 assert.equal(activeWindow(utc("2026-09-25T07:59:00")), true, "Friday before 08:00 is active");
-assert.equal(activeWindow(utc("2026-09-25T08:00:00")), false, "Friday from 08:00 is quiet");
+assert.equal(activeWindow(utc("2026-09-25T09:00:00")), false, "Friday from 09:00 is quiet");
+assert.equal(activeWindow(utc("2026-09-25T23:00:00")), true, "Friday night (NBA) is active");
 assert.equal(activeWindow(utc("2026-09-26T11:00:00")), false, "Saturday morning is quiet");
 assert.equal(activeWindow(utc("2026-09-26T12:00:00")), true, "Saturday from 12:00 is active");
 assert.equal(activeWindow(utc("2026-09-27T20:00:00")), true, "Sunday is active");
 assert.equal(activeWindow(utc("2026-09-28T23:00:00")), true, "Monday is active");
 assert.equal(activeWindow(utc("2026-09-29T07:59:00")), true, "Tuesday before 08:00 is active");
-assert.equal(activeWindow(utc("2026-09-29T08:00:00")), false, "Tuesday from 08:00 is quiet");
+assert.equal(activeWindow(utc("2026-09-29T09:00:00")), false, "Tuesday from 09:00 is quiet");
+assert.equal(activeWindow(utc("2026-09-29T19:00:00")), true, "Tuesday evening (NBA) is active");
 
 const env = { MAINTENANCE_TOKEN: "fixture-token-only-01234567890123456789" };
 const noWait = async () => {};

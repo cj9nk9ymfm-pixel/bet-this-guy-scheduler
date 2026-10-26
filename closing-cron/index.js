@@ -2,10 +2,11 @@
 // schedule can run 5-10 minutes late. Publishing and grading stay on GitHub.
 const ENDPOINT = "https://betthisguy.com/api/maintenance?job=closing";
 
-// Same UTC windows as .github/workflows/btg-maintenance.yml.
+// NFL windows (as in .github/workflows/btg-maintenance.yml) plus NBA nights,
+// 16:00-09:00 UTC every day: NBA plays on the days the NFL windows skip.
 export function activeWindow(date) {
   const weekday = (date.getUTCDay() + 6) % 7, hour = date.getUTCHours();
-  return (
+  return hour >= 16 || hour < 9 || (
     (weekday === 2 && hour >= 12)
     || weekday === 3
     || (weekday === 4 && hour < 8)

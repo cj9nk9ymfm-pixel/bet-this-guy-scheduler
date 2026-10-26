@@ -1401,8 +1401,10 @@ function cronJobs(date){
   if(minute%10>=5){const grade=nflActiveWindow(date)||(date.getUTCHours()%6===0&&minute<10);return ['xpost',...(grade?['lineGrade']:[]),'form','leans',...(LIVE_SHADOW_ON&&nflActiveWindow(date)?['live']:[])]}
   const publish=['publish'];
   if(nflActiveWindow(date))return [...publish,'grade',...(LIVE_SHADOW_ON?['live']:[])];
-  // NBA nights (about noon ET to 5 AM ET): official NBA picks grade live too.
-  if(nbaActiveWindow(date))return [...publish,'grade','form'];
+  // NBA nights (about noon ET to 5 AM ET): official NBA picks grade live too,
+  // and closing prices are captured here (closing-cron/ only covered NFL
+  // windows, so Tuesday and Friday NBA nights went unrecorded until Oct 26).
+  if(nbaActiveWindow(date))return [...publish,'grade','closing','form'];
   return [...publish,...(date.getUTCHours()%6===0&&minute<5?['grade']:[]),'form'];
 }
 async function runCron(controller,env,ctx){
@@ -1428,7 +1430,8 @@ async function runCron(controller,env,ctx){
         return {near,leans,backfill,sharp};
       }
       return gradeLineShadow(env);
-    }};
+    },
+    closing:()=>captureClosingLines(env)};
   // NBA shadow runs after the NFL jobs and on its own: it can never hold up
   // or fail NFL publishing or grading.
   if(due.includes('publish'))due.push('nbaShadow');
