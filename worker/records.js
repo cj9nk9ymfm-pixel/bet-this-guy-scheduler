@@ -1739,7 +1739,6 @@ async function postPredictionPicksToX(env,now=Date.now()){
   const rows=(await env.DB.prepare('SELECT * FROM prediction_picks WHERE event_id NOT LIKE \'NBA--%\' AND posted_at>? AND game_time>? ORDER BY posted_at LIMIT 40').bind(new Date(now-24*3600000).toISOString(),new Date(now).toISOString()).all()).results||[];
   const today=await xHeadCount(env,'xpm:pm|',now);
   for(const r of rows){
-    if(!(Number(r.edge)>=X_HEAD.pm.edge)||(today>=X_HEAD.pm.day&&!(Number(r.edge)>=TOP_PICK.pm)))continue;
     const key=`xpm:${r.id}`;if(!(await xClaimable(env,key,now)))continue;
     if(!(await xClaim(env,key,now)))continue;
     const rec=await xRecords(env).catch(()=>null);
@@ -3382,11 +3381,21 @@ function xPostText({head,lines=[],legs=null,extra='',rec,age='21+'}){
 }
 // " (Q)" after a player on the injury report as Questionable.
 const xQuestionable=async(env,name)=>name&&injuryClass((await injuryMap(env).catch(()=>new Map())).get(normalizedName(name))?.status)==='questionable'?' (Q)':'';
+// "$100 wins $99 · $5 more than it should": what a $100 bet wins against a
+// fair price (fair from the locked edge), the line the site shows on each pick.
+// Result replies (Oct 26) go only under top picks; recap cards carry the rest.
+const xTopPick=r=>r.kind==='prop'&&Number(recordLegs(r)[0]?.edge)>=(String(r.id||'').startsWith('nba|')?NBA_TOP:TOP_PICK.sb);
+function xWhyLine(r){
+  const d=weeklyDecimal(r.odds),edge=Number(recordLegs(r)[0]?.edge);if(!d||!Number.isFinite(edge))return '';
+  const fair=100/d+edge;if(!(fair>0&&fair<100))return '';
+  const win=Math.round(100*(d-1)),extra=win-Math.round(100*(100/fair-1));
+  return extra>=1?`\u0024100 wins \u0024${win} · \u0024${extra} more than it should`:'';
+}
 function xSportsbookText(r,rec,q=''){
   const legs=recordLegs(r),first=legs[0]||{},when=xShortWhen(r.game_time||first.gameTime),matchup=xMatchup(first.team);
   if(r.kind==='parlay'){const odds=weeklyOdds(r.combined_odds),same=legs.some(l=>l.sameGame);
     return xPostText({head:`🔒 Official parlay · Sportsbook${recordShare(r)<1?' · $25':''}`,lines:[[`${odds} · ${legs.length} legs${same?` · same-game: bet it at ${odds} or better`:''}`,`${odds} · ${legs.length} legs${same?' · same-game':''}`]],legs,rec});}
-  return xPostText({head:`${Number(first.edge)>=TOP_PICK.sb?'⭐ Top pick':'🔒 Official pick'} · Sportsbook`,lines:[`${r.player}${q} ${weeklyLegText(r)}`,[`${weeklyOdds(r.odds)}${first.book?` at ${first.book}`:''}`,matchup,when].filter(Boolean).join(' · ')],rec});
+  return xPostText({head:`${Number(first.edge)>=TOP_PICK.sb?'⭐ Top pick':'🔒 Official pick'} · Sportsbook`,lines:[`${r.player}${q} ${weeklyLegText(r)}`,[`${weeklyOdds(r.odds)}${first.book?` at ${first.book}`:''}`,matchup,when].filter(Boolean).join(' · '),xWhyLine(r)].filter(Boolean),rec});
 }
 // X post claims read "pending <time>" while a post is in flight and the post
 // time once it's confirmed. A run cut off mid-post (Tez Johnson's result,
@@ -3409,11 +3418,11 @@ const xSetTail=(env,id,sent)=>sent?.data?.id?setAppSetting(env,`xtail:${id}`,Str
 // Each new official pick is posted once with its graphic. If the graphic
 // can't be made or uploaded three runs in a row, the text version posts
 // instead (unless that text was already posted), so a pick is never lost.
-// Only the strongest picks get their own X post the moment they lock: sportsbook
-// singles with a 1.5-point edge (3 a day) and prediction singles with a 2-point
-// edge (2 a day). Every other pick goes out on the day's pick card, or on a
-// catch-up card before its game, so every pick is still on X before kickoff.
-const X_HEAD={sb:{edge:1.5,day:3},pm:{edge:2,day:2}};
+// Every official pick gets its own X post the moment it locks: the alerts
+// chooser tells people to turn on the X bell because "every pick posts there
+// the second it locks". (Until Oct 26 only 1.5-point sportsbook edges, 3 a day,
+// and 2-point prediction edges, 2 a day, did; the 1% bar now keeps volume
+// down.) Cards still collect each day's picks.
 async function xHeadCount(env,prefix,now){
   const midnight=Date.parse(`${etDate(now,{year:'numeric',month:'2-digit',day:'2-digit'}).replace(/(\d+)\/(\d+)\/(\d+)/,'$3-$1-$2')}T00:00:00-05:00`);
   return Number((await env.DB.prepare("SELECT count(*) n FROM app_settings WHERE key LIKE ? AND value>=? AND value NOT LIKE 'pending%'").bind(`${prefix}%`,new Date(midnight-3600000).toISOString()).first().catch(()=>null))?.n||0);
@@ -3428,9 +3437,6 @@ async function postPicksToX(env,now=Date.now()){
   const seasonRows=(await env.DB.prepare("SELECT kind,posted_at,line,odds,combined_odds,status,result,closing_line,closing_odds,closing_captured_at,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%'").all()).results||[];
   const season=weeklySummary(seasonRows),rec=await xRecords(env).catch(()=>null);let posted=0,attempts=0,today=await xHeadCount(env,'xi:official|',now);
   for(const r of picks){
-    // Parlays and smaller edges ride the pick cards instead.
-    if(r.kind!=='prop'||!(Number(recordLegs(r)[0]?.edge)>=X_HEAD.sb.edge))continue;
-    if(today>=X_HEAD.sb.day&&!(Number(recordLegs(r)[0]?.edge)>=TOP_PICK.sb))continue;
     if(!(await xClaimable(env,`xi:${r.id}`,now)))continue;
     // At most two picks per run: each uses about a dozen requests.
     if(++attempts>2)break;
@@ -3605,6 +3611,9 @@ async function postWeeklyToX(env,now=Date.now()){
   const s=weeklySummary(rows),info=nflWeekOf(week),name=info?`Week ${info.week}`:'Last week';
   const all=(await env.DB.prepare("SELECT kind,posted_at,line,odds,combined_odds,status,result,closing_line,closing_odds,closing_captured_at,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND id<?").bind(`official|${week}|￿`).all()).results||[];
   const season=weeklySummary(all),hits=rows.filter(r=>r.kind==='prop'&&r.result==='won').slice(0,3).map(r=>`✅ ${r.player} ${weeklyLegText(r)} (${weeklyOdds(r.odds)})`);
+  // One honest line (Oct 26): the week's toughest loss, the one we liked most (biggest edge).
+  const miss=rows.filter(r=>r.kind==='prop'&&r.result==='lost').sort((a,b)=>Number(recordLegs(b)[0]?.edge||0)-Number(recordLegs(a)[0]?.edge||0))[0],had=miss&&recordLegs(miss)[0]?.actualValue;
+  if(miss)hits.splice(2,hits.length,`❌ Toughest miss: ${miss.player} ${weeklyLegText(miss)}${had!=null?` (had ${had})`:''}`);
   const text=xShort(`📊 ${name} results: ${s.wins}–${s.losses}${s.pushes?`–${s.pushes}`:''} on props, ${weeklyMoney(s.profit)} at $100 a pick.${s.parlayWins+s.parlayLosses?` Parlays ${s.parlayWins}–${s.parlayLosses}.`:''}\n${hits.join('\n')}${hits.length?'\n':''}Season: ${season.wins}–${season.losses}, ${weeklyMoney(season.profit)}.${season.tracked>=10?` ${Math.round(100*season.beat/season.tracked)}% beat the kickoff price.`:''}\n\nEvery pick, wins and losses: link in bio.`);
   let mediaId=null;
   try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(xWeekSvg(xWeekData(rows,s,season,name,weeklyRange(week)))))}
@@ -3651,7 +3660,9 @@ async function postResultsToX(env,now=Date.now(),limit=1){
   let posted=0,season=null;
   for(const r of rows){
     if(posted>=limit)break;
-    // Only picks that went out on X get a result post.
+    // Only picks that went out on X get a result post, and since Oct 26 only
+    // top picks: the day's recap card carries every result.
+    if(!xTopPick(r))continue;
     if(!(await appSetting(env,`xi:${r.id}`))||!(await xClaim(env,`xr:${r.id}`,now)))continue;
     // Count tries before the heavy work: after three cut-off tries the result posts as text.
     const tries=Number(await appSetting(env,`xrtry:${r.id}`)||0)+1;await setAppSetting(env,`xrtry:${r.id}`,String(tries));
@@ -3685,22 +3696,30 @@ function xCloseText(r,move){
   // "on Thursday", or "earlier today" when it locked on game day (Eastern).
   const et=t=>new Date(t).toLocaleDateString('en-US',{weekday:'long',month:'numeric',day:'numeric',timeZone:'America/New_York'});
   const day=new Date(r.posted_at).toLocaleDateString('en-US',{weekday:'long',timeZone:'America/New_York'});
-  const when=day==='Invalid Date'?'':et(r.posted_at)===et(r.game_time)?' earlier today':` on ${day}`;
-  const locked=`We locked ${r.player} ${weeklyLegText(r)} at ${weeklyOdds(r.odds)}${when}.`;
-  const now=move.kind==='price'?`By kickoff the same bet was ${move.close}.`:`By kickoff the line had moved to ${move.close}.`;
-  return xShort(`📈 We beat the closing line.\n${locked}\n${now}\n\nWin or lose, that's how you know the price was good. Result after the game.`);
+  const when=day==='Invalid Date'?'':et(r.posted_at)===et(r.game_time)?' earlier today':` on ${day}`,start=String(r.id||'').startsWith('nba|')?'tip-off':'kickoff';
+  const locked=`We posted ${r.player} ${weeklyLegText(r)} at ${weeklyOdds(r.odds)}${when}.`;
+  const now=move.kind==='price'?`By ${start} the same bet was ${move.close}.`:`By ${start} the line had moved to ${move.close}.`;
+  return xShort(`📈 The line moved our way.\n${locked}\n${now}\n\nWin or lose, that's how you know the price was good.`);
 }
-// Closing-line posts go out around kickoff, under the original pick.
-async function postClosingToX(env,now=Date.now(),limit=2){
+// How far the market moved our way: the payout we got over the closing one, or
+// for a line move, a fixed 5% plus 5% a point.
+const xMoveSize=(r,move)=>move.kind==='price'?weeklyDecimal(r.odds)/weeklyDecimal(r.closing_odds)-1:.05+.05*Math.abs(Number(r.closing_line)-Number(r.line));
+// Closing-line proof (Oct 26): the day's 1-2 biggest moves, NFL and NBA, as
+// their own posts quoting the pick (it was a reply under every pick at
+// kickoff, about 40 a week, which buried the strongest ones).
+const X_MOVES_PER_DAY=2;
+async function postClosingToX(env,now=Date.now(),limit=1){
   if(!env.DB||!xReady(env))return {posted:0,disabled:true};
-  const rows=(await env.DB.prepare("SELECT id,kind,player,market,side,line,odds,posted_at,game_time,closing_line,closing_odds,closing_captured_at FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND kind='prop' AND closing_captured_at IS NOT NULL AND game_time>? AND game_time<? ORDER BY game_time LIMIT 8").bind(new Date(now-3*3600000).toISOString(),new Date(now+3600000).toISOString()).all()).results||[];
+  if(await xHeadCount(env,'xmove:',now)>=X_MOVES_PER_DAY)return {posted:0,done:true};
+  const rows=(await env.DB.prepare("SELECT id,kind,player,market,side,line,odds,posted_at,game_time,closing_line,closing_odds,closing_captured_at FROM public_recommendations WHERE source='market-verified-v2' AND (id LIKE 'official|%' OR id LIKE 'nba|%') AND kind='prop' AND closing_captured_at IS NOT NULL AND game_time>? AND game_time<? ORDER BY game_time LIMIT 40").bind(new Date(now-3*3600000).toISOString(),new Date(now+3600000).toISOString()).all()).results||[];
+  const moves=rows.map(r=>({r,move:xBeatClose(r)})).filter(x=>x.move).sort((a,b)=>xMoveSize(b.r,b.move)-xMoveSize(a.r,a.move));
   let posted=0;
-  for(const r of rows){
+  for(const {r,move} of moves){
     if(posted>=limit)break;
-    const move=xBeatClose(r);
-    if(!move||!(await appSetting(env,`xi:${r.id}`))||!(await xClaim(env,`xc:${r.id}`,now)))continue;
-    try{const sent=await xPost(env,xCloseText(r,move),null,await xThreadTail(env,r.id));await xDone(env,`xc:${r.id}`,now);await xSetTail(env,r.id,sent);posted++;await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} close ${sent?.data?.id||''} ${r.id}`).catch(()=>{})}
-    catch(error){console.warn('x_close_failed',error.message);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(`xc:${r.id}`).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});break}
+    const pick=await appSetting(env,`xid:${r.id}`);
+    if(!pick||await appSetting(env,`xc:${r.id}`)||!(await xClaim(env,`xmove:${r.id}`,now)))continue;
+    try{await xPost(env,xCloseText(r,move),null,null,pick);await xDone(env,`xmove:${r.id}`,now);await xDone(env,`xc:${r.id}`,now);posted++;await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} move ${r.id}`).catch(()=>{})}
+    catch(error){console.warn('x_close_failed',error.message);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(`xmove:${r.id}`).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});break}
   }
   return {posted};
 }
@@ -4348,7 +4367,7 @@ async function postNbaPredictionToX(env,now=Date.now()){
     catch(error){await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}}
   // Then results: a reply under the pick's own post with the result graphic, once graded.
   const done=(await env.DB.prepare("SELECT * FROM prediction_picks WHERE event_id LIKE 'NBA--%' AND result IN ('won','lost','push','void') AND game_time>? ORDER BY game_time LIMIT 10").bind(new Date(now-3*86400000).toISOString()).all()).results||[];
-  for(const r of done){const parent=await appSetting(env,`xid:${r.id}`);if(!parent)continue;const key=`x-nba-pm-r:${r.id}`;if(!(await xClaimable(env,key,now))||!(await xClaim(env,key,now)))continue;
+  for(const r of done){if(!(Number(r.edge)>=TOP_PICK.pm))continue;const parent=await appSetting(env,`xid:${r.id}`);if(!parent)continue;const key=`x-nba-pm-r:${r.id}`;if(!(await xClaimable(env,key,now))||!(await xClaim(env,key,now)))continue;
     const look={won:['✅','HIT'],lost:['❌','MISS'],push:['➖','PUSH'],void:['➖','NO ACTION']}[r.result],unit=String(r.market||'').toLowerCase(),win=r.result==='won'?100*(recordDecimal(r.net_odds||r.odds)-1):r.result==='lost'?-100:0;
     const text=xShort(`${look[0]} ${look[1]}: ${r.player} ${weeklyLegText(r)} (${exchangePct(r.odds)}% on ${r.exchange})${r.result==='void'?`\n${r.player} didn’t play: no action, stake back.`:r.actual!=null?`\nFinal: ${r.actual} ${Number(r.actual)===1?unit.replace(/s$/,''):unit}.`:''}${['won','lost'].includes(r.result)?`\n${weeklyMoney(win)} on a $100 pick.`:''}`);
     try{const mediaId=await xPredictionMedia(env,r,false,null,r.result);const sent=await xPost(env,text,mediaId,parent);await xDone(env,key,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} nba prediction result ${sent?.data?.id||''} ${r.id}`).catch(()=>{});return {posted:1,result:true}}
@@ -4374,7 +4393,7 @@ async function postNbaPicksToX(env,now=Date.now()){
     try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(xCardSvg(await xCardData(env,r,await nbaRecordSummary(env)))))}catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} nba pick graphic: ${error.message}`).catch(()=>{})}
     const ahead=nbaAhead(r.game_time,now);
     const text=parlay?xShort(`${ahead}🔒 Official parlay · NBA\n${legs.length}-leg parlay ${weeklyOdds(r.combined_odds)}\n${legs.map(l=>`• ${l.player} ${weeklyLegText(l)}`).join('\n')}\n${xShortWhen(r.game_time)}\n\n${xLocked(r.game_time,now)} Every pick graded in public, link in bio. 21+`)
-      :xShort(`${ahead}${edge>=NBA_TOP?'⭐ Top pick':'🔒 Official pick'} · NBA\n${r.player} ${weeklyLegText(r)}\n${[`${weeklyOdds(r.odds)}${f.book?` at ${f.book}`:''}`,xMatchup(f.team),xShortWhen(r.game_time)].filter(Boolean).join(' · ')}\n\n${xLocked(r.game_time,now)} Every pick graded in public, link in bio. 21+`);
+      :xShort(`${ahead}${edge>=NBA_TOP?'⭐ Top pick':'🔒 Official pick'} · NBA\n${r.player} ${weeklyLegText(r)}\n${[`${weeklyOdds(r.odds)}${f.book?` at ${f.book}`:''}`,xMatchup(f.team),xShortWhen(r.game_time)].filter(Boolean).join(' · ')}${xWhyLine(r)?`\n${xWhyLine(r)}`:''}\n\n${xLocked(r.game_time,now)} Every pick graded in public, link in bio. 21+`);
     try{const sent=await xPost(env,text,mediaId);await xDone(env,`xi:${r.id}`,now);
       if(sent?.data?.id)await setAppSetting(env,`xid:${r.id}`,String(sent.data.id)).catch(()=>{});
       await env.DB.prepare('INSERT OR IGNORE INTO app_settings (key,value) VALUES (?,?)').bind(`x-nba-pick:${r.id}`,new Date(now).toISOString()).run().catch(()=>{});
@@ -4421,7 +4440,7 @@ async function postNbaRepliesToX(env,now=Date.now(),limit=2){
     const rows=await nbaRows(env,night),look={won:['✅','HIT'],lost:['❌','MISS'],push:['➖','NO ACTION']};
     const jobs=[
       ...rows.filter(r=>Date.parse(r.game_time)>now).map(r=>({key:`x-nba-pick:${r.id}`,kind:'added',save:r.id,media:async()=>xUploadImage(env,await renderCardPng(xCardSvg(await xCardData(env,r,await nbaRecordSummary(env))))),text:()=>`🔒 Added for the late games:\n${nbaLine(r)}\n\nLocked before tip-off. 21+`})),
-      ...rows.filter(nbaDecided).map(r=>({key:`x-nba-r:${r.id}`,kind:'results',pick:r.id,media:async()=>xUploadImage(env,await renderCardPng(xCardSvg(await xResultData(env,r,await nbaRecordSummary(env))))),text:()=>{const legs=recordLegs(r),f=legs[0]||{},[e,w]=r.result==='push'&&legs.every(l=>l.voided)?['➖','NO ACTION']:look[r.result],stake=r.kind==='parlay'?25:100,d=recordDecimal(r.kind==='parlay'?r.combined_odds:r.odds),win=r.result==='won'?stake*(d-1):r.result==='lost'?-stake:0,unit=String(r.market||'').toLowerCase();
+      ...rows.filter(nbaDecided).filter(xTopPick).map(r=>({key:`x-nba-r:${r.id}`,kind:'results',pick:r.id,media:async()=>xUploadImage(env,await renderCardPng(xCardSvg(await xResultData(env,r,await nbaRecordSummary(env))))),text:()=>{const legs=recordLegs(r),f=legs[0]||{},[e,w]=r.result==='push'&&legs.every(l=>l.voided)?['➖','NO ACTION']:look[r.result],stake=r.kind==='parlay'?25:100,d=recordDecimal(r.kind==='parlay'?r.combined_odds:r.odds),win=r.result==='won'?stake*(d-1):r.result==='lost'?-stake:0,unit=String(r.market||'').toLowerCase();
         if(r.kind==='parlay')return `${e} ${w}: ${legs.length}-leg parlay (${weeklyOdds(r.combined_odds)})\n${legs.map(l=>`${l.result==='won'?'✅':l.result==='lost'?'❌':'➖'} ${l.player} ${weeklyLegText(l)}`).join('\n')}\n${r.result==='push'?'Stake back.':`${weeklyMoney(win)} on a $25 ticket.`}`;
         return `${e} ${w}: ${r.player} ${weeklyLegText(r)} (${weeklyOdds(r.odds)})${f.voided?`\n${r.player} didn’t play: no action, stake back.`:f.actualValue!=null?`\n${r.status!=='final'&&f.decidedEarly?'Already':'Final:'} ${f.actualValue} ${Number(f.actualValue)===1?unit.replace(/s$/,''):unit}${r.status!=='final'&&f.decidedEarly?', with the game still on.':'.'}`:''}${r.result==='push'?'':`\n${weeklyMoney(win)} on a $100 pick.`}`}}))
     ];
@@ -4467,7 +4486,7 @@ async function postPredictionResultsToX(env,now=Date.now(),limit=3){
   const rec=predictionRecord((await env.DB.prepare('SELECT result,odds,net_odds,close_odds FROM prediction_picks WHERE event_id NOT LIKE \'NBA--%\'').all()).results||[]);
   const recLine=rec.wins+rec.losses>=3?`\nPrediction record: ${rec.wins}–${rec.losses}${rec.pushes?`–${rec.pushes}`:''}, ${weeklyMoney(rec.profit)} at $100 a pick after fees.`:'';
   const look={won:['✅','HIT'],lost:['❌','MISS'],push:['➖','PUSH']};
-  const jobs=[...picks.map(r=>({id:r.id,posted:`xpm:${r.id}`,match:pmPickMatch(r),text:()=>{const [e,w]=look[r.result],win=r.result==='won'?100*(recordDecimal(r.net_odds??r.odds)-1):r.result==='lost'?-100:0,unit=String(r.market||'').toLowerCase();
+  const jobs=[...picks.filter(r=>Number(r.edge)>=TOP_PICK.pm).map(r=>({id:r.id,posted:`xpm:${r.id}`,match:pmPickMatch(r),text:()=>{const [e,w]=look[r.result],win=r.result==='won'?100*(recordDecimal(r.net_odds??r.odds)-1):r.result==='lost'?-100:0,unit=String(r.market||'').toLowerCase();
       return `${e} ${w}: ${r.player} ${weeklyLegText(r)} (${exchangePct(r.odds)}% on ${r.exchange})${r.actual!=null?(r.early?`\n${r.player} already has ${r.actual} ${Number(r.actual)===1?unit.replace(/s$/,''):unit}, with the game still on.`:`\nFinal: ${r.actual} ${Number(r.actual)===1?unit.replace(/s$/,''):unit}.`):''}\n${r.result==='push'?'Stake back.':`${weeklyMoney(win)} on a $100 pick after fees.`}${recLine}\n\nEvery pick graded in public. 18+/21+ by app.`}})),
     ...parlays.map(r=>{let legs=[];try{legs=JSON.parse(r.legs_json)}catch{}return {id:r.id,posted:`xpmp:${r.id}`,match:pmParlayMatch(legs),text:()=>{const [e,w]=look[r.result];
       return `${e} ${w}: ${legs.length}-leg parlay on ${r.exchange} (${exchangePct(r.odds)}%)\n${legs.map(l=>`${l.result==='won'?'✅':l.result==='lost'?'❌':'➖'} ${l.player} ${weeklyLegText(l)}`).join('\n')}\n${r.result==='push'?'Stake back.':`${weeklyMoney(predictionParlayPay(r))} on a $25 ticket.`}\n\nEvery pick graded in public. 18+/21+ by app.`}}})];
