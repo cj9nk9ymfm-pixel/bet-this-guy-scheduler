@@ -3887,6 +3887,13 @@ function xSlateSvg(d){
   const mark=(res,x,y)=>res==='won'?`<circle cx="${x}" cy="${y}" r="11" fill="${M}"/><path d="M${x-5} ${y}l3.5 3.5 7-7.5" fill="none" stroke="#06231a" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>`:res==='lost'?`<circle cx="${x}" cy="${y}" r="11" fill="#f87171"/><path d="M${x-4.5} ${y-4.5}l9 9M${x+4.5} ${y-4.5}l-9 9" fill="none" stroke="#2a0909" stroke-width="2.6" stroke-linecap="round"/>`:res==='push'?`<circle cx="${x}" cy="${y}" r="11" fill="#cbd5e1"/>`:`<circle cx="${x}" cy="${y}" r="6" fill="${M}"/>`;
   // Locked and closing prices side by side when the picks have a close.
   const hasClose=picks.some(p=>p.close);
+  // The date line wraps onto a second line at a " + " when it's wider than the
+  // left panel (Oct 26: "2 picks + 1 parlay + 3 prediction-app picks" ran
+  // under the pick list); the lines below it move down.
+  const dateText=d.dateLine||`${d.date} · ${d.picks.length} pick${d.picks.length===1?'':'s'}${d.final?'':' so far'}`,fitsLeft=t=>String(t).length*26*.53<=380;
+  let dateLines=[dateText];
+  if(!fitsLeft(dateText)){const parts=dateText.split(' + ');for(let k=parts.length-1;k>0;k--){const a=parts.slice(0,k).join(' + ');if(fitsLeft(a)){dateLines=[a,`+ ${parts.slice(k).join(' + ')}`];break}}}
+  const dy=dateLines.length>1?32:0;
   const heads=hasClose?`<text x="${R-120}" y="104" text-anchor="end" font-family="${F.xb}" font-size="15" letter-spacing="2" fill="#9fb0cc">LOCKED</text><text x="${R}" y="104" text-anchor="end" font-family="${F.xb}" font-size="15" letter-spacing="2" fill="#9fb0cc">CLOSED</text>`:'';
   // A pick row with a photo (the NBA card): a round headshot first, the status mark on its corner.
   const face=(p,i,y)=>p.photo?`<clipPath id="ph${i}"><circle cx="${X+24}" cy="${y-9}" r="24"/></clipPath><circle cx="${X+24}" cy="${y-9}" r="24" fill="#1b2a4a"/><image href="data:${p.photo.type};base64,${p.photo.b64}" x="${X-9}" y="${y-33}" width="66" height="48" preserveAspectRatio="xMidYMid slice" clip-path="url(#ph${i})"/>${p.res?mark(p.res,X+42,y+8):''}`:'';
@@ -3896,9 +3903,9 @@ function xSlateSvg(d){
 <rect width="1200" height="${H}" fill="#0b1530"/><rect width="470" height="${H}" fill="url(#tm)"/>
 <text x="56" y="120" font-family="${F.xb}" font-size="22" letter-spacing="4" fill="#ffffff" fill-opacity=".8">${xEsc(d.kicker||(d.final?'LOCKED SO FAR':'OFFICIAL PICKS'))}</text>
 <text x="50" y="260" font-family="${F.g}" font-size="${xFit(d.day,380,120,.62)}" fill="${d.dayColor||"#ffffff"}">${xEsc(d.day)}</text>
-<text x="56" y="318" font-family="${F.sb}" font-size="26" fill="#ffffff" fill-opacity=".75">${xEsc(d.dateLine||`${d.date} · ${d.picks.length} pick${d.picks.length===1?'':'s'}${d.final?'':' so far'}`)}</text>
-<text x="56" y="352" font-family="${F.sb}" font-size="22" fill="#ffffff" fill-opacity=".6">${xEsc(d.note||(d.final?`More can drop until kickoff · ${d.kick}`:'More can drop up to kickoff'))}</text>${d.note2?`<text x="56" y="384" font-family="${F.sb}" font-size="22" fill="#ffffff" fill-opacity=".6">${xEsc(d.note2)}</text>`:''}
-${d.records?d.records.map((r,i)=>{const y=410+i*90+Math.max(0,B-56);return `<text x="56" y="${y}" font-family="${F.xb}" font-size="15" letter-spacing="2.5" fill="${r.color||'#ffffff'}" fill-opacity=".85">${xEsc(r.label)}</text>${r.lines.map((l,j)=>`<text x="56" y="${y+28+j*28}" font-family="${F.sb}" font-size="21" fill="#ffffff">${xEsc(l)}</text>`).join('')}`}).join(''):d.season?`<text x="56" y="${d.note2?446:430}" font-family="${F.sb}" font-size="24" fill="#ffffff" fill-opacity=".75">Season <tspan font-family="${F.xb}" fill="#ffffff" fill-opacity="1">${xEsc(d.season)}</tspan></text>`:''}
+${dateLines.map((l,i)=>`<text x="56" y="${318+32*i}" font-family="${F.sb}" font-size="${xFit(l,380,26,.53)}" fill="#ffffff" fill-opacity=".75">${xEsc(l)}</text>`).join('')}
+<text x="56" y="${352+dy}" font-family="${F.sb}" font-size="22" fill="#ffffff" fill-opacity=".6">${xEsc(d.note||(d.final?`More can drop until kickoff · ${d.kick}`:'More can drop up to kickoff'))}</text>${d.note2?`<text x="56" y="${384+dy}" font-family="${F.sb}" font-size="22" fill="#ffffff" fill-opacity=".6">${xEsc(d.note2)}</text>`:''}
+${d.records?d.records.map((r,i)=>{const y=410+dy+i*90+Math.max(0,B-56);return `<text x="56" y="${y}" font-family="${F.xb}" font-size="15" letter-spacing="2.5" fill="${r.color||'#ffffff'}" fill-opacity=".85">${xEsc(r.label)}</text>${r.lines.map((l,j)=>`<text x="56" y="${y+28+j*28}" font-family="${F.sb}" font-size="21" fill="#ffffff">${xEsc(l)}</text>`).join('')}`}).join(''):d.season?`<text x="56" y="${(d.note2?446:430)+dy}" font-family="${F.sb}" font-size="24" fill="#ffffff" fill-opacity=".75">Season <tspan font-family="${F.xb}" fill="#ffffff" fill-opacity="1">${xEsc(d.season)}</tspan></text>`:''}
 ${xLogo(56,520+B,56)}<text x="128" y="${558+B}" font-family="${F.g}" font-size="30" fill="#ffffff">Bet This Guy</text>
 <text x="56" y="${643+B}" font-family="${F.xb}" font-size="20" letter-spacing="2.5" fill="#ffffff" fill-opacity=".85">${xEsc(d.foot||"LOCKED BEFORE KICKOFF · 21+")}</text>
 ${heads}${rows}${more>0?`<text x="${X+30}" y="${end}" font-family="${F.sb}" font-size="22" fill="#9fb0cc">+ ${more} more</text>`:''}
