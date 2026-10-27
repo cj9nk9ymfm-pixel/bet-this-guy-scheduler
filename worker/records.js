@@ -4451,8 +4451,14 @@ async function postNbaRepliesToX(env,now=Date.now(),limit=2){
         if(r.kind==='parlay')return `${e} ${w}: ${legs.length}-leg parlay (${weeklyOdds(r.combined_odds)})\n${legs.map(l=>`${l.result==='won'?'✅':l.result==='lost'?'❌':'➖'} ${l.player} ${weeklyLegText(l)}`).join('\n')}\n${r.result==='push'?'Stake back.':`${weeklyMoney(win)} on a $25 ticket.`}`;
         return `${e} ${w}: ${r.player} ${weeklyLegText(r)} (${weeklyOdds(r.odds)})${f.voided?`\n${r.player} didn’t play: no action, stake back.`:f.actualValue!=null?`\n${r.status!=='final'&&f.decidedEarly?'Already':'Final:'} ${f.actualValue} ${Number(f.actualValue)===1?unit.replace(/s$/,''):unit}${r.status!=='final'&&f.decidedEarly?', with the game still on.':'.'}`:''}${r.result==='push'?'':`\n${weeklyMoney(win)} on a $100 pick.`}`}}))
     ];
-    if(rows.length&&rows.every(r=>r.status==='final'))jobs.push({key:`x-nba-recap:${night}`,kind:'recap',text:async()=>{const s=weeklySummary(rows),season=await nbaRecordSummary(env),net=s.profit+s.parlayProfit;
-      return `🏀 NBA ${night===nbaNight(now)?'tonight':'last night'}: ${s.wins}–${s.losses}${s.pushes?`–${s.pushes}`:''}${s.parlayWins+s.parlayLosses?`, parlays ${s.parlayWins}–${s.parlayLosses}`:''}, ${weeklyMoney(net)}.\nNBA season: ${season.wins}–${season.losses}${season.pushes?`–${season.pushes}`:''}, ${weeklyMoney(season.profit+season.parlayProfit)}.\n\nEvery pick graded in public, losses included. Link in bio. 21+`}});
+    // The night's prediction-app picks are on the card too, so the recap counts
+    // them (Oct 26: it left them out). It waits for them to grade, up to a day.
+    const nightStart=Date.parse(`${night}T06:00:00Z`),pmNight=(((await env.DB.prepare("SELECT result,odds,net_odds FROM prediction_picks WHERE event_id LIKE 'NBA--%' AND game_time>=? AND game_time<?").bind(new Date(nightStart).toISOString(),new Date(nightStart+86400000).toISOString()).all().catch(()=>({results:[]}))).results)||[]);
+    const pmDone=pmNight.every(r=>['won','lost','push','void'].includes(r.result))||now-nightStart>48*3600000;
+    if(rows.length&&rows.every(r=>r.status==='final')&&pmDone)jobs.push({key:`x-nba-recap:${night}`,kind:'recap',text:async()=>{const s=weeklySummary(rows),season=await nbaRecordSummary(env),net=s.profit+s.parlayProfit;
+      const pw=pmNight.filter(r=>r.result==='won'),pl=pmNight.filter(r=>r.result==='lost'),pnet=pw.reduce((t,r)=>t+100*(recordDecimal(r.net_odds||r.odds)-1),0)-100*pl.length;
+      const apps=pw.length+pl.length?`\nPrediction apps: ${pw.length}–${pl.length}, ${weeklyMoney(pnet)}.`:'';
+      return `🏀 NBA ${night===nbaNight(now)?'tonight':'last night'}: ${s.wins}–${s.losses}${s.pushes?`–${s.pushes}`:''}${s.parlayWins+s.parlayLosses?`, parlays ${s.parlayWins}–${s.parlayLosses}`:''}, ${weeklyMoney(net)}.${apps}\nNBA season: ${season.wins}–${season.losses}${season.pushes?`–${season.pushes}`:''}, ${weeklyMoney(season.profit+season.parlayProfit)}.\n\nEvery pick graded in public, losses included. Link in bio. 21+`}});
     for(const j of jobs){
       if(posted>=limit){if(await xClaimable(env,j.key,now))more=true;break}
       if(!(await xClaimable(env,j.key,now))||!(await xClaim(env,j.key,now)))continue;
