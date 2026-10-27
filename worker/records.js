@@ -854,6 +854,39 @@ async function gradeTdShadow(env,now=Date.now(),limit=40){
   return {graded:statements.length,checked:rows.length};
 }
 
+// Unusual results (Oct 27): a backend list to check by hand, never shown on
+// the site. app_settings flag:<pick id> holds JSON {at,why:[...],player,
+// market,side,line,actual,minutes}; reasons from later checks are added, not
+// replaced. Query: SELECT key,value FROM app_settings WHERE key LIKE 'flag:%'.
+function gradeFlags(leg){
+  const why=[],line=Number(leg.line),v=Number(leg.actualValue),min=Number(leg.minutes);
+  if(leg.voided)why.push('voided: did not play');
+  if(leg.minutes!=null&&min>0&&min<12)why.push(`played ${min} min`);
+  if(leg.actualValue!=null&&Number.isFinite(v)&&Number.isFinite(line)){
+    if(v===0&&line>=2.5)why.push(`0 against a line of ${line}`);
+    else if(leg.side==='Over'&&line>=3.5&&v<line*.35)why.push(`${v} against a line of ${line}`);
+    else if(leg.side==='Under'&&line>=2.5&&v>line*2.5)why.push(`${v} against a line of ${line}`);
+  }
+  return why;
+}
+async function recordGradeFlags(env,id,legs=[],extra=[]){
+  if(!env.DB)return 0;
+  const why=[...extra,...legs.flatMap(l=>gradeFlags(l).map(w=>legs.length>1?`${l.player}: ${w}`:w))];if(!why.length)return 0;
+  let old=null;try{old=JSON.parse(await appSetting(env,`flag:${id}`)||'null')}catch{}
+  const l=legs[0]||{},value={at:old?.at||new Date().toISOString(),why:[...new Set([...(old?.why||[]),...why])],player:old?.player??l.player??null,market:old?.market??l.market??null,side:old?.side??l.side??null,line:old?.line??l.line??null,actual:l.actualValue??old?.actual??null,minutes:l.minutes??old?.minutes??null};
+  await env.DB.prepare('INSERT OR REPLACE INTO app_settings (key,value) VALUES (?,?)').bind(`flag:${id}`,JSON.stringify(value)).run().catch(()=>{});
+  return 1;
+}
+// Picks still not graded 8 hours after their start (stuck feeds, a player
+// the box score can't match) are flagged too, sportsbook and prediction.
+async function flagStuckPicks(env,now=Date.now()){
+  if(!env.DB)return {flagged:0};
+  const a=new Date(now-7*86400000).toISOString(),b=new Date(now-8*3600000).toISOString();let flagged=0;
+  const sb=(await env.DB.prepare("SELECT id,player,market,side,line FROM public_recommendations WHERE source='market-verified-v2' AND (id LIKE 'official|%' OR id LIKE 'nba|%') AND status IN ('pending','provisional') AND game_time>? AND game_time<?").bind(a,b).all().catch(()=>({results:[]}))).results||[];
+  const pm=(await env.DB.prepare('SELECT id,player,market,side,line FROM prediction_picks WHERE result IS NULL AND game_time>? AND game_time<?').bind(a,b).all().catch(()=>({results:[]}))).results||[];
+  for(const r of [...sb,...pm])flagged+=await recordGradeFlags(env,r.id,[{player:r.player,market:r.market,side:r.side,line:r.line}],['not graded 8+ hours after start']);
+  return {flagged};
+}
 // Live grading for prediction picks and parlays, with the same grader as
 // official picks (box score, play-by-play when a player is missing, and early
 // decisions): an Over that clears its line or an Under it passes is decided
@@ -867,6 +900,7 @@ async function gradePredictionNow(env,now=Date.now()){
     const final=await gradePublicRecord(rec,env,cache).catch(()=>null),leg=rec.gradedLegs?.[0]||{},early=!final&&leg.decidedEarly&&['won','lost'].includes(rec.provisionalResult);
     const result=final||(early?rec.provisionalResult:null);if(!result)continue;
     statements.push(env.DB.prepare('UPDATE prediction_picks SET actual=?,result=?,graded_at=?,early=? WHERE id=? AND result IS NULL').bind(leg.actualValue??null,result,stamp,early?1:0,r.id));graded++;
+    if(final)await recordGradeFlags(env,r.id,rec.gradedLegs).catch(()=>{});
   }
   const parlays=(await env.DB.prepare('SELECT * FROM prediction_parlays WHERE result IS NULL AND game_time>? ORDER BY game_time LIMIT 15').bind(old).all().catch(()=>({results:[]}))).results||[];
   for(const r of parlays){
