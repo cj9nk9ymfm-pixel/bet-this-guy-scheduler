@@ -1569,7 +1569,10 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
       em.querySelector('.he-alerts').onclick=()=>document.querySelector('#heroBanner [data-alerts-toggle]')?.click();
       // After the picks, parlays and Just missed, before the board.
       const board=document.getElementById('propsSection');if(board)board.before(em);else hero.after(em);
-      let tries=0;const mount=()=>{if(window.BTGEmailSub?.inline){window.BTGEmailSub.inline(em,'home');window.btgCount?.('email:home-shown')}else if(tries++<40)setTimeout(mount,50)};mount()}}
+      let tries=0;const mount=()=>{if(window.BTGEmailSub?.inline){window.BTGEmailSub.inline(em,'home');window.btgCount?.('email:home-shown')}else if(tries++<40)setTimeout(mount,50)};mount()}
+      // Lead with the best pick still to play, so the sign-up shows what you'd get.
+      if(em){const now=Date.now(),top=(heroRows||[]).filter(r=>r.kind==='prop'&&!r.result&&Date.parse(r.game_time||'')>now).map(r=>({r,edge:Number(recordLegs(r)[0]?.edge)||0})).sort((a,b)=>b.edge-a.edge)[0]?.r;
+        const b=em.querySelector('.he-copy b');if(b){if(top){const f=recordLegs(top)[0]||{};b.textContent=`${NBA?'Tonight’s':'This week’s'} top pick: ${top.player} ${top.side} ${top.line} ${String(top.market||'').toLowerCase()} ${formatOdds(top.odds)}${f.book?` at ${f.book}`:''}. Get the next one the moment it locks.`}else b.textContent='Get each pick the moment it locks'}}}
     if(!strip||!s.hits.length)return;
     $('#hitsTitle').textContent=['LAST WEEK','THIS WEEK SO FAR','LAST NIGHT','TONIGHT SO FAR'].includes(s.label)?`${periodOwner(s.label).replace(/^./,c=>c.toUpperCase())} hits`:'Recent hits';
     $('#hitsRow').innerHTML=s.hits.map((r,i)=>{const n=pickName(r),odds=r.kind==='parlay'?r.combined_odds:r.odds;return `<button type="button" class="hit-card-mini" data-hit="${i}" aria-label="Details for ${htmlEscape(n.title)}"><span class="hit-tag">${icon('check')} HIT</span><strong>${htmlEscape(n.title)}</strong><small>${htmlEscape(n.detail)}</small><div class="hit-foot"><b>${htmlEscape(formatOdds(odds))}</b><span>${htmlEscape(stakeText())} → ${htmlEscape(money(payout(r)))}</span></div><em class="hit-more">Tap for details ›</em></button>`}).join('');
@@ -2653,7 +2656,14 @@ function statsProp(l){
     el.querySelector('.a2hs-close').onclick=()=>{el.remove();store.set('btg-a2hs-hidden',String(Date.now()))};
     if(onAction)el.querySelector('.a2hs-go').onclick=()=>{el.remove();onAction()};
     document.body.appendChild(el);window.btgCount?.('a2hs:shown')};
-  if(ios&&visits>=2)setTimeout(()=>toast('<strong>Get the app on your iPhone</strong><span>Tap <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="Share"><path d="M12 3v12"/><path d="m8 7 4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg> then <b>Add to Home Screen</b>. Opens like an app, and pick alerts work.</span>'),4000);
+  // Back for a 2nd or 3rd visit without email or alerts: one email field at the bottom (iPhone's Home Screen tip waits until visit 4).
+  const signedUp=()=>/\b(email-on|alerts-on)\b/.test(document.documentElement.className)||store.get('btg-email-sub')==='1';
+  if(visits>=2&&visits<=3&&!signedUp()&&!recent('btg-nudge-hidden',14))setTimeout(()=>{if(signedUp()||document.getElementById('a2hs')||document.getElementById('emailNudge')||!window.BTGEmailSub?.inline)return;
+    const el=document.createElement('div');el.id='emailNudge';el.className='a2hs email-nudge';el.setAttribute('role','dialog');el.setAttribute('aria-label','Get picks by email');
+    el.innerHTML='<button type="button" class="a2hs-close" aria-label="Close">×</button><div class="en-copy"><strong>Back again? Get each pick by email.</strong><span>The moment it locks, with the price and the sportsbook. Free, one-tap unsubscribe.</span></div>';
+    el.querySelector('.a2hs-close').onclick=()=>{el.remove();store.set('btg-nudge-hidden',String(Date.now()));window.btgCount?.('email:nudge-close')};
+    document.body.appendChild(el);window.BTGEmailSub.inline(el,'nudge');window.btgCount?.('email:nudge-shown')},8000);
+  if(ios&&visits>=4)setTimeout(()=>toast('<strong>Get the app on your iPhone</strong><span>Tap <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="Share"><path d="M12 3v12"/><path d="m8 7 4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg> then <b>Add to Home Screen</b>. Opens like an app, and pick alerts work.</span>'),4000);
   window.addEventListener('beforeinstallprompt',event=>{event.preventDefault();if(visits<2)return;toast('<strong>Install Bet This Guy</strong><span>One tap to open picks, with alerts when they post.</span>',()=>{event.prompt();event.userChoice?.then(c=>window.btgCount?.(`a2hs:${c.outcome}`))})});
 })();
 
@@ -2949,6 +2959,9 @@ function statsProp(l){
     const acts=dlg.querySelector('.wd-actions'),alerts=document.getElementById('wdAlerts');emailHere(false);
     // Right under the headline, so it's on screen without scrolling the sheet.
     const slot=acts.querySelector('.wd-email'),lede=dlg.querySelector('.wd-lede');if(slot&&lede)lede.after(slot);if(alerts)alerts.hidden=true;
+    // iPhone Safari: alerts work once the site is on the Home Screen, so offer the steps under the email field (in-app browsers can't).
+    if(iphoneWeb&&!inApp&&slot&&!dlg.querySelector('.wd-a2hs')){const b=document.createElement('button');b.type='button';b.className='wd-a2hs';b.textContent='Or get phone alerts instead';
+      b.onclick=()=>{window.btgCount?.('welcome:a2hs');const p=document.createElement('p');p.className='wd-a2hs-steps';p.innerHTML='On iPhone, alerts work from your Home Screen: tap <b>Share</b> at the bottom of Safari, then <b>Add to Home Screen</b>. Open Bet This Guy from there and tap <b>Turn on pick alerts</b>.';b.replaceWith(p)};slot.after(b)}
     const why=dlg.querySelector('.wd-why');if(why)why.textContent='We email each pick the moment it locks, with the price and the sportsbook. Free, no account, one-tap unsubscribe.'};
   const open=()=>{paint(window.BTG_SEASON);const on=document.documentElement.classList.contains('alerts-on');document.getElementById('wdAlerts').hidden=on;emailFirst();document.getElementById('wdAccount').classList.toggle('wd-primary',on);document.getElementById('wdAccount').classList.toggle('wd-secondary',!on);if(!dlg.open)dlg.showModal()};
   const close=how=>{mark();strip.hidden=false;if(dlg.open)dlg.close();if(how)window.btgCount?.(`welcome:${how}`)};
