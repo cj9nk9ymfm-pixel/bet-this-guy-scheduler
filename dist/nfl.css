@@ -2521,3 +2521,7 @@ html body #heroBanner .hero-close{flex:1 0 100%;order:2;margin:2px 0 0!important
 html body #heroBanner .hero-close b{color:#22c55e;font-weight:700}
 html body #heroBanner .hero-close a{margin-left:6px;color:inherit;text-decoration:underline;font-weight:600}
 html body #heroBanner .hero-picks{order:3}
+/* Returning-visitor email nudge (reuses the bottom card) and the welcome sheet's iPhone alerts steps. */
+.a2hs.email-nudge{flex-wrap:wrap;align-items:flex-start}.email-nudge .en-copy{flex:1 1 calc(100% - 40px);display:flex;flex-direction:column;gap:2px}.email-nudge .en-copy span{font-size:13px;color:#98a1ad}.email-nudge .em-inline{flex-basis:100%}
+.wd-a2hs{display:block;margin:8px auto 0;background:none;border:0;color:#2ee6a8;font:600 14px inherit;font-size:14px;text-decoration:underline;cursor:pointer}
+.wd-a2hs-steps{margin:8px 0 0;font-size:13.5px;line-height:1.45;color:#c7d0dc}body.light .wd-a2hs-steps{color:#3b4452}body.light .wd-a2hs{color:#0f9a6c}
