@@ -97,7 +97,7 @@ globalThis.BTGStats = (() => {
     if(String(prop?.sport||'').toUpperCase()==='NBA')return Boolean(nbaFields[key]||nbaCombos[key]||key==='double-double'||key==='triple-double');
     return Boolean(fields[key]||combinations[key]||['tackles + assists','anytime touchdown','touchdowns','field goals','pats','longest completion'].includes(key));
   }
-  return {number,read,metric,grade,supports,nbaPlayed,nbaMinutes};
+  return {number,read,metric,grade,supports,nbaPlayed};
 })();
 
 // Line value: one fair-price curve per player market, so a price at a

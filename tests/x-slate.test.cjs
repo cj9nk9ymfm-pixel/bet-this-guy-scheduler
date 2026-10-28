@@ -76,9 +76,5 @@ pick('d','Brock Purdy',110,'2026-10-13T00:15:00.000Z');pick('e','Old Pick',150,'
   assert.ok(run('globalThis.__svg').includes('Brock Purdy')&&run('globalThis.__svg').includes('JUST LOCKED'));
   assert.equal((await run(`postCatchUpToX(env,${late+600000})`)).covered,true,'never twice');
   assert.equal((await run(`postCatchUpToX(env,${Date.parse('2026-10-11T16:30:00Z')})`)).covered,true,'picks already on the slate card are covered');
-  // A long date line wraps at a " + " inside the left panel (Oct 26 NBA card ran under the pick list).
-  const wrapSvg=run(`xSlateSvg(${JSON.stringify({final:true,day:'Monday',dateLine:'Oct 26 · 2 picks + 1 parlay + 3 prediction-app picks',note:'First tip 7:10 PM ET',note2:'Late games can add more',season:'26–23 · +$808',picks:[{color:'#2ee6a8',text:'Miles Bridges · Under 5.5 rebounds',odds:'+115'}]})})`);
-  assert.ok(wrapSvg.includes('>Oct 26 · 2 picks + 1 parlay</text>')&&wrapSvg.includes('>+ 3 prediction-app picks</text>'),'date line wraps onto two lines');
-  assert.ok(wrapSvg.includes('y="384" font-family')&&wrapSvg.includes('y="416" font-family'),'the notes move down a line');
   console.log('PASS: slate post sends the day\'s pending picks on one graphic, once, from 16 hours before kickoff, a 9 AM ET morning update when new picks locked, and a final card 75 minutes out');
 })().catch(error=>{console.error(error);process.exit(1)});

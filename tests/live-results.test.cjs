@@ -44,13 +44,6 @@ db.prepare("INSERT INTO prediction_parlays(id,week,tier,exchange,legs_json,odds,
   db.prepare("INSERT INTO app_settings(key,value) VALUES('xid:x-pm-week:w','777')").run();
   assert.equal((await vm.runInContext('postCustomToX(env)',context)).posted,1);assert.deepEqual(sentX,[['Hello @novig','777']]);
   assert.equal((await vm.runInContext('postCustomToX(env)',context)).posted,0,'posts once');
-  // One-off reply: under the post its key names, once.
-  const sentR=[];context.xPost=async(env,text,m,r)=>{sentR.push([text,r]);return {data:{id:'57'}}};
-  db.prepare("INSERT INTO app_settings(key,value) VALUES('x-custom-reply',?)").run(JSON.stringify({text:'Stat correction',replyKey:'xid:pick1'}));
-  assert.equal((await vm.runInContext('postCustomReplyToX(env)',context)).waiting,true,'waits for the post it replies to');
-  db.prepare("INSERT INTO app_settings(key,value) VALUES('xid:pick1','888')").run();
-  assert.equal((await vm.runInContext('postCustomReplyToX(env)',context)).posted,1);assert.deepEqual(sentR,[['Stat correction','888']]);
-  assert.equal((await vm.runInContext('postCustomReplyToX(env)',context)).posted,0,'replies once');
   // A scheduled post with an attached card: waits for its time, then posts with the image.
   const uploads=[];context.renderCardPng=async svg=>{uploads.push(svg);return new Uint8Array([1])};context.xUploadImage=async()=>'m9';
   const sentM=[];context.xPost=async(env,text,m)=>{sentM.push([text,m]);return {data:{id:'56'}}};

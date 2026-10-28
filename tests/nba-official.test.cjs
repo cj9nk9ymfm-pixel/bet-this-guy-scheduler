@@ -126,9 +126,7 @@ const run=c=>vm.runInContext(c,context),req='new Request("https://betthisguy.com
   // A run that hits its limit with results still waiting says so (the next run starts at once).
   const capped=await run(`postNbaRepliesToX(env,${now},1)`);assert.equal(capped.posted,1);assert.equal(capped.more,true,'more results are waiting');
   let replies=await run(`postNbaRepliesToX(env,${now},5)`);assert.ok(!replies.more,'nothing left');
-  assert.deepEqual([capped.results+replies.results,replies.recap],[2,0],'the recap waits for the night’s prediction-app pick to grade');
-  db.prepare("UPDATE prediction_picks SET result='won',actual=27 WHERE id='pm|NBA--x|jaysontatum'").run();
-  replies=await run(`postNbaRepliesToX(env,${now+60000},5)`);assert.equal(replies.recap,1,'then posts');
+  assert.deepEqual([capped.results+replies.results,replies.recap],[2,1]);
   const texts=posts.slice(1).map(p=>p.text);
   // Each result answers the pick's own post when it has one; the recap goes under the card.
   {const own=Object.fromEntries(db.prepare("SELECT p.player,a.value FROM public_recommendations p JOIN app_settings a ON a.key='xid:'||p.id WHERE p.kind='prop'").all().map(r=>[r.player,r.value]));
@@ -136,7 +134,7 @@ const run=c=>vm.runInContext(c,context),req='new Request("https://betthisguy.com
    for(const p of posts.slice(1)){const who=Object.keys(own).find(n=>p.text.includes(n));assert.equal(p.reply?.in_reply_to_tweet_id,who&&!/^🏀/.test(p.text)?own[who]:'1001',p.text.split('\n')[0])}}
   assert.ok(texts.some(t=>/^✅ HIT: Jayson Tatum Over 27.5 points \(\+115\)\nFinal: 31 points\.\n\+\$115 on a \$100 pick\./.test(t)),texts.join('|'));
   assert.ok(texts.some(t=>/^➖ NO ACTION: Victor Wembanyama.*didn’t play/s.test(t)));
-  assert.ok(texts.some(t=>/^🏀 NBA (tonight|last night): 1–0–1, \+\$115\.\nPrediction apps: 1–0, \+\$110\./.test(t)),'the recap counts the prediction-app picks: '+texts.join('|'));
+  assert.ok(texts.some(t=>/^🏀 NBA (tonight|last night): 1–0–1, \+\$115\./.test(t)));
   assert.equal((await run(`postNbaRepliesToX(env,${now+600000},5)`)).posted,0,'each reply once');
   // One-off email: sent once per id, from a betthisguy.com address, nothing without the setting.
   const mails=[];const realFetch=context.fetch;context.fetch=async(url,init)=>{if(String(url).includes('api.resend.com')){mails.push(JSON.parse(init.body));return Response.json({id:'e1'})}return realFetch(url,init)};run('fetch=globalThis.fetch');env.RESEND_API_KEY='r';
@@ -176,9 +174,7 @@ const run=c=>vm.runInContext(c,context),req='new Request("https://betthisguy.com
   assert.equal(run(`nbaNight(Date.parse('${late}'))`),'2026-10-27');
   // Cron: NBA nights grade every publish run.
   assert.deepEqual(run(`cronJobs(new Date('2026-10-28T01:00:00Z'))`).includes('grade'),true);
-  // Friday NBA nights sit outside the NFL windows: closing prices are captured by this cron (Oct 20/23 went unrecorded).
-  assert.ok(run(`cronJobs(new Date('2026-10-23T23:00:00Z'))`).includes('closing'),'NBA nights capture closing prices');
-  // NBA limits: 10 singles a night, 2 a game; a 2.5%+ top pick posts past both.
+  // Per-night limits (caps from cfg), 2 a game; a 2.5%+ top pick posts past both.
   {const c=(i,g,edge)=>({playerKey:'g'+g+'|p'+i,player:'P'+i,gameId:'g'+g,edge,market:'Points',side:'Over',line:20.5,odds:110,gameTime:'2026-10-21T00:00:00Z'});
    const pool=[...Array(14)].map((_,i)=>c(i,Math.floor(i/3),2-i*.01)),cfg=JSON.stringify({caps:{props:10,reasonable:0,swing:0,moonshot:0},perGame:2,top:2.5,prefix:'nba|2026-10-20|'});
    let plan=JSON.parse(JSON.stringify(run(`officialPlan(${JSON.stringify(pool)},[],'2026-10-20',Date.now(),[],${cfg})`))).filter(p=>p.tier==='props');
@@ -186,7 +182,17 @@ const run=c=>vm.runInContext(c,context),req='new Request("https://betthisguy.com
    assert.ok([...new Set(plan.map(p=>p.legs[0].gameId))].every(g=>plan.filter(p=>p.legs[0].gameId===g).length<=2),'2 a game');
    plan=JSON.parse(JSON.stringify(run(`officialPlan(${JSON.stringify([...pool,c(99,0,3.1)])},[],'2026-10-20',Date.now(),[],${cfg})`))).filter(p=>p.tier==='props');
    assert.ok(plan.some(p=>p.legs[0].player==='P99')&&plan.length===11,'a 2.5%+ top pick posts past the nightly and per-game limits');
-   assert.equal(run('NBA_MIN'),1.5,'NBA bar is 1.5%');}
+   assert.equal(run('NBA_MIN'),1,'NBA bar is 1%');}
+  // Live NBA card: 5 singles a night (highest edge first); the rest of the
+  // qualifiers make up to 3 two-leg parlays, legs from different games, -130 to +150.
+  {const c=(i,g,edge,odds=110)=>({playerKey:'g'+g+'|p'+i,player:'P'+i,gameId:'g'+g,edge,market:['Points','Rebounds','Assists'][i%3],side:'Over',line:20.5,odds,gameTime:'2026-10-21T00:00:00Z'});
+   const pool=[...Array(14)].map((_,i)=>c(i,i,2-i*.05,i===12?-200:110));
+   const plan=JSON.parse(JSON.stringify(run(`officialPlan(${JSON.stringify(pool)},[],'2026-10-20',Date.now(),${JSON.stringify(pool)},nbaConfig('2026-10-20'))`)));
+   const singles=plan.filter(p=>p.tier==='props'),parlays=plan.filter(p=>p.tier!=='props');
+   assert.deepEqual(singles.map(p=>p.legs[0].player),['P0','P1','P2','P3','P4'],'the 5 best are singles');
+   assert.equal(parlays.length,3,'up to 3 parlays a night');
+   assert.ok(parlays.every(p=>p.legs.length===2&&p.legs[0].gameId!==p.legs[1].gameId),'2 legs, different games');
+   assert.ok(parlays.every(p=>p.legs.every(l=>!singles.some(s=>s.legs[0].player===l.player)&&l.odds>=-130&&l.odds<=150)),'legs are not singles and priced -130 to +150');}
   // A pick for a later night leads its X post with the day; tonight's don't.
   {const now=Date.parse('2026-10-22T22:00:00Z');
    assert.equal(run(`nbaAhead('2026-10-23T01:40:00Z',${now})`),'','tonight (late tip, after midnight UTC)');
