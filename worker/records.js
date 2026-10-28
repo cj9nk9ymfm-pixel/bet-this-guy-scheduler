@@ -228,9 +228,10 @@ function officialPlan(candidates,existing,week,now=Date.now(),pool=candidates,cf
   const tiers=[['moonshot',4,5,2501,15000],['swing',3,4,1000,2500],['reasonable',2,3,100,999]];
   const PER_DAY=cfg.parlaysPerDay??PARLAYS_PER_DAY,dayOf=legs=>{const t=Math.min(...legs.map(l=>Date.parse(l.gameTime)).filter(Number.isFinite));return Number.isFinite(t)?new Date(t-(String(prefix).startsWith('nba|')?6:5)*3600000).toISOString().slice(0,10):''},days=new Map();
   saved.filter(r=>r.kind==='parlay').forEach(r=>{const d=dayOf(r.legs.length?r.legs:[{gameTime:r.game_time}]);days.set(d,(days.get(d)||0)+1)});
-  const legPool=pool.filter(p=>!used.has(p.playerKey));
+  const legPool=pool.filter(p=>!used.has(p.playerKey)&&(!cfg.legOdds||(p.odds>=cfg.legOdds[0]&&p.odds<=cfg.legOdds[1])));
   if(legPool.length<2)return plan;
-  for(const [tier,min,max,low,high] of tiers){
+  for(const [tier,min,maxT,low,high] of tiers){
+    const max=Math.max(min,Math.min(maxT,cfg.maxLegs||maxT));
     for(let attempt=0;attempt<500&&counts[tier]<(CAPS[tier]||0);attempt++){
       const size=min+attempt%(max-min+1),legs=[],gameIds=new Map(),markets=new Map();
       const pool=[...legPool].sort((a,b)=>(exposure.get(a.playerKey)||0)-(exposure.get(b.playerKey)||0)||b.edge-a.edge);
@@ -239,7 +240,7 @@ function officialPlan(candidates,existing,week,now=Date.now(),pool=candidates,cf
         const p=pool[(j+Math.floor(attempt/(max-min+1)))%pool.length];
         // A second leg from the same game only when the two are unlinked; never a third.
         const inGame=legs.filter(l=>l.gameId===p.gameId);
-        if((exposure.get(p.playerKey)||0)>=PARLAYS_PER_PLAYER||inGame.length>=2||(inGame.length&&!sgpOk(inGame[0],p))||(markets.get(p.market)||0)>=2)continue;
+        if((exposure.get(p.playerKey)||0)>=PARLAYS_PER_PLAYER||inGame.length>=2||(inGame.length&&(cfg.sameGame===false||!sgpOk(inGame[0],p)))||(markets.get(p.market)||0)>=2)continue;
         const was=sides.get(sideKey(p.gameId,p.player,p.market));if(was&&was!==p.side)continue;
         // Skip a leg that would make this parlay share two players with a posted one.
         if(prior.some(keys=>keys.includes(p.playerKey)&&legs.some(l=>keys.includes(l.playerKey))))continue;
@@ -401,9 +402,13 @@ async function recordNbaShadow(request,env,ctx,now=Date.now()){
 // action, never a loss. Ids are nba|<night>|<tier>|...,
 // so every NFL query (id LIKE 'official|%') leaves them out.
 const NBA_START=Date.parse('2026-10-20T14:00:00Z');
-// NBA plays nearly every night, so the bar is higher than NFL: 1.5% or better,
-// 10 singles a night, 2 a game; a 2.5%+ top pick posts past both limits.
-const NBA_CAPS={props:10,reasonable:1,swing:1,moonshot:0},NBA_PER_GAME=2,NBA_WINDOW=36*3600000,NBA_MIN=1.5,NBA_TOP=2.5;
+// NBA plays nearly every night, so the bar is higher than NFL: 1% or better
+// on the core stats (1.5% until Oct 28: the 1–1.5% band went 26–20, +$741 in
+// the sharp-book test). Up to 5 singles a night, 2 a game; a 2.5%+ top pick
+// posts past both limits. Qualifiers past the 5 singles go into up to 3
+// two-leg parlays a night ($25), legs from different games priced -130 to +150.
+const NBA_CAPS={props:5,reasonable:3,swing:0,moonshot:0},NBA_PER_GAME=2,NBA_WINDOW=36*3600000,NBA_MIN=1,NBA_TOP=2.5;
+const NBA_PARLAYS={perDay:3,maxLegs:2,sameGame:false,legOdds:[-130,150]};
 const NBA_OFFICIAL_MARKETS=new Set(['Points','Rebounds','Assists','3-Pointers Made','Points + Rebounds + Assists']);
 // The night a game belongs to: its US Eastern date (a 10:30 PM ET tip is
 // after midnight UTC, so 6 hours back keeps it on the same night).
@@ -412,7 +417,24 @@ const nbaNight=time=>new Date(Number(time)-6*3600000).toISOString().slice(0,10);
 const xLocked=(gameTime,now=Date.now(),start='tip-off')=>{const m=(Date.parse(gameTime)-now)/60000;if(!(m>0))return `Locked before ${start}.`;return `Locked ${m>=120?`${Math.round(m/60)} hours`:m>=60?'1 hour':`${Math.max(1,Math.round(m))} min`} before ${start}.`};
 // An NBA pick for a later night leads its X post with the day, so nobody bets it tonight.
 const nbaAhead=(gameTime,now=Date.now())=>{const n=nbaNight(Date.parse(gameTime)),t=nbaNight(now);if(!(n>t))return '';const day=new Date(`${n}T12:00:00Z`),tomorrow=nbaNight(now+86400000)===n;return `🗓️ For ${tomorrow?`TOMORROW (${day.toLocaleDateString('en-US',{weekday:'short',timeZone:'UTC'})})`:day.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',timeZone:'UTC'})}\n`};
-const nbaConfig=night=>({prefix:`nba|${night}|`,caps:NBA_CAPS,perGame:NBA_PER_GAME,top:NBA_TOP,sport:'NBA',note:'Official nightly NBA selection. Pregame odds locked; multi-book price signal, not a player projection. Parlay payout is an estimate.'});
+const nbaConfig=night=>({prefix:`nba|${night}|`,caps:NBA_CAPS,perGame:NBA_PER_GAME,top:NBA_TOP,sport:'NBA',parlaysPerDay:NBA_PARLAYS.perDay,maxLegs:NBA_PARLAYS.maxLegs,sameGame:NBA_PARLAYS.sameGame,legOdds:NBA_PARLAYS.legOdds,note:'Official nightly NBA selection. Pregame odds locked; multi-book price signal, not a player projection. Parlay payout is an estimate.'});
+// Why a qualifying NBA prop didn't post tonight: app_settings nba-skips:<night>
+// keeps the latest reason per player (direction, already in a pick, game or
+// nightly limit, parlay pool, or tipping off).
+async function logNbaSkips(env,night,cfg,qualified,ok,now=Date.now()){
+  if(!qualified.length)return {logged:0};
+  const rows=(await env.DB.prepare('SELECT kind,game_id,legs_json FROM public_recommendations WHERE id>=? AND id<?').bind(cfg.prefix,cfg.prefix+'\uffff').all()).results||[];
+  const singles=rows.filter(r=>r.kind==='prop'),inPick=new Map();rows.forEach(r=>recordLegs(r).forEach(l=>inPick.set(officialPlayer(l),r.kind)));
+  const perGame=new Map();singles.forEach(r=>perGame.set(r.game_id,(perGame.get(r.game_id)||0)+1));
+  let saved={};try{saved=JSON.parse(await appSetting(env,`nba-skips:${night}`)||'{}')}catch{}
+  for(const p of qualified){
+    const key=p.playerKey,was=inPick.get(key);
+    const why=was==='prop'?null:was==='parlay'?'parlay leg':!ok(p)?'other side already picked':Date.parse(p.gameTime)<=now+5*60000?'tipping off':(perGame.get(p.gameId)||0)>=cfg.perGame&&Number(p.edge)<cfg.top?'2 singles in this game':singles.length>=cfg.caps.props&&Number(p.edge)<cfg.top?'5 singles tonight (parlay pool)':'not written (check)';
+    if(why)saved[`${p.player}|${p.market}`]={why,edge:+Number(p.edge).toFixed(2),odds:p.odds,book:p.book,at:new Date(now).toISOString()};else delete saved[`${p.player}|${p.market}`];
+  }
+  await setAppSetting(env,`nba-skips:${night}`,JSON.stringify(saved));
+  return {logged:Object.keys(saved).length};
+}
 async function publishNbaPicks(request,env,ctx,now=Date.now()){
   if(!env.DB||now<NBA_START-NBA_WINDOW)return {state:'not_started'};
   const schedule=await futureSchedule(new Request(new URL('/api/schedule?sport=NBA',request.url)),env,ctx);
@@ -431,15 +453,17 @@ async function publishNbaPicks(request,env,ctx,now=Date.now()){
     const existing=(await env.DB.prepare('SELECT * FROM public_recommendations WHERE id>=? AND id<?').bind(cfg.prefix,cfg.prefix+'\uffff').all()).results||[];
     const dirs=await pickDirections(env),ok=p=>sameDirection(dirs,p.gameId,p.player,p.side);
     const stats={},candidates=core(officialCandidates(tonight,Date.now(),stats,{min:NBA_MIN})).filter(ok);
-    const nextTier=withTeams(core(officialCandidates(tonight,Date.now(),{},{min:.5,below:NBA_MIN})).filter(ok),await playerTeams(env));
+    // Parlay legs: qualifiers (1%+) not posted as singles, e.g. past the nightly 5.
+    const nextTier=withTeams(candidates,await playerTeams(env));
     const plan=officialPlan(candidates,existing,night,Date.now(),nextTier,cfg);
     posted+=Number(await writeOfficialPlan(plan,night,env,cfg))||0;
+    await logNbaSkips(env,night,cfg,core(officialCandidates(tonight,Date.now(),{},{min:NBA_MIN})),ok,Date.now()).catch(error=>console.warn('nba_skips_failed',error.message));
     const trail=officialTrailStatements(tonight,existing,env,Date.now());if(trail.length)await env.DB.batch(trail);
-    // Worth a look: props from 0.5% up that aren't a pick or a parlay leg
+    // Worth a look: props from 0.75% up that aren't a pick or a parlay leg
     // tonight, two a game, ten at most. Shown only, never graded or counted.
     const taken=new Set(((await env.DB.prepare('SELECT legs_json FROM public_recommendations WHERE id>=? AND id<?').bind(cfg.prefix,cfg.prefix+'\uffff').all()).results||[]).flatMap(r=>recordLegs(r).map(officialPlayer)));
     const perGame=new Map();
-    for(const p of core(officialCandidates(tonight,Date.now(),{},{min:.5}))){if(taken.has(p.playerKey)||(perGame.get(p.gameId)||0)>=2||leans.length>=10)continue;perGame.set(p.gameId,(perGame.get(p.gameId)||0)+1);leans.push({eventId:p.gameId,player:p.player,team:p.team||'',market:p.market,side:p.side,line:p.line,odds:p.odds,flagged:p.odds,book:p.book,edge:+Number(p.edge).toFixed(1),gameTime:p.gameTime})}
+    for(const p of core(officialCandidates(tonight,Date.now(),{},{min:.75}))){if(taken.has(p.playerKey)||(perGame.get(p.gameId)||0)>=2||leans.length>=10)continue;perGame.set(p.gameId,(perGame.get(p.gameId)||0)+1);leans.push({eventId:p.gameId,player:p.player,team:p.team||'',market:p.market,side:p.side,line:p.line,odds:p.odds,flagged:p.odds,book:p.book,edge:+Number(p.edge).toFixed(1),gameTime:p.gameTime})}
   }
   await setAppSetting(env,'nba-leans',JSON.stringify({at:new Date(now).toISOString(),leans})).catch(()=>{});
   // New NBA picks (sportsbook or prediction app) go out at once, like NFL ones:

@@ -174,7 +174,7 @@ const run=c=>vm.runInContext(c,context),req='new Request("https://betthisguy.com
   assert.equal(run(`nbaNight(Date.parse('${late}'))`),'2026-10-27');
   // Cron: NBA nights grade every publish run.
   assert.deepEqual(run(`cronJobs(new Date('2026-10-28T01:00:00Z'))`).includes('grade'),true);
-  // NBA limits: 10 singles a night, 2 a game; a 2.5%+ top pick posts past both.
+  // Per-night limits (caps from cfg), 2 a game; a 2.5%+ top pick posts past both.
   {const c=(i,g,edge)=>({playerKey:'g'+g+'|p'+i,player:'P'+i,gameId:'g'+g,edge,market:'Points',side:'Over',line:20.5,odds:110,gameTime:'2026-10-21T00:00:00Z'});
    const pool=[...Array(14)].map((_,i)=>c(i,Math.floor(i/3),2-i*.01)),cfg=JSON.stringify({caps:{props:10,reasonable:0,swing:0,moonshot:0},perGame:2,top:2.5,prefix:'nba|2026-10-20|'});
    let plan=JSON.parse(JSON.stringify(run(`officialPlan(${JSON.stringify(pool)},[],'2026-10-20',Date.now(),[],${cfg})`))).filter(p=>p.tier==='props');
@@ -182,7 +182,17 @@ const run=c=>vm.runInContext(c,context),req='new Request("https://betthisguy.com
    assert.ok([...new Set(plan.map(p=>p.legs[0].gameId))].every(g=>plan.filter(p=>p.legs[0].gameId===g).length<=2),'2 a game');
    plan=JSON.parse(JSON.stringify(run(`officialPlan(${JSON.stringify([...pool,c(99,0,3.1)])},[],'2026-10-20',Date.now(),[],${cfg})`))).filter(p=>p.tier==='props');
    assert.ok(plan.some(p=>p.legs[0].player==='P99')&&plan.length===11,'a 2.5%+ top pick posts past the nightly and per-game limits');
-   assert.equal(run('NBA_MIN'),1.5,'NBA bar is 1.5%');}
+   assert.equal(run('NBA_MIN'),1,'NBA bar is 1%');}
+  // Live NBA card: 5 singles a night (highest edge first); the rest of the
+  // qualifiers make up to 3 two-leg parlays, legs from different games, -130 to +150.
+  {const c=(i,g,edge,odds=110)=>({playerKey:'g'+g+'|p'+i,player:'P'+i,gameId:'g'+g,edge,market:['Points','Rebounds','Assists'][i%3],side:'Over',line:20.5,odds,gameTime:'2026-10-21T00:00:00Z'});
+   const pool=[...Array(14)].map((_,i)=>c(i,i,2-i*.05,i===12?-200:110));
+   const plan=JSON.parse(JSON.stringify(run(`officialPlan(${JSON.stringify(pool)},[],'2026-10-20',Date.now(),${JSON.stringify(pool)},nbaConfig('2026-10-20'))`)));
+   const singles=plan.filter(p=>p.tier==='props'),parlays=plan.filter(p=>p.tier!=='props');
+   assert.deepEqual(singles.map(p=>p.legs[0].player),['P0','P1','P2','P3','P4'],'the 5 best are singles');
+   assert.equal(parlays.length,3,'up to 3 parlays a night');
+   assert.ok(parlays.every(p=>p.legs.length===2&&p.legs[0].gameId!==p.legs[1].gameId),'2 legs, different games');
+   assert.ok(parlays.every(p=>p.legs.every(l=>!singles.some(s=>s.legs[0].player===l.player)&&l.odds>=-130&&l.odds<=150)),'legs are not singles and priced -130 to +150');}
   // A pick for a later night leads its X post with the day; tonight's don't.
   {const now=Date.parse('2026-10-22T22:00:00Z');
    assert.equal(run(`nbaAhead('2026-10-23T01:40:00Z',${now})`),'','tonight (late tip, after midnight UTC)');
