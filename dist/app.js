@@ -54,7 +54,12 @@ function focusPick(){let id='';try{id=new URLSearchParams(location.search).get('
 const leagueParam=(prefix='?')=>LEAGUE==='NBA'?`${prefix}sport=NBA`:'';
 // The URL's ?league= wins over the saved choice, so switching rewrites it
 // (a reload of /?league=NBA would otherwise land on NBA again).
-function switchLeague(league){const l=league==='NBA'?'NBA':'NFL';try{localStorage.setItem('btg-league',l)}catch{}const u=new URL(location.href);u.searchParams.set('league',l);location.assign(u.toString())}
+// Switching league loads that league's page. The tapped button lights up and the
+// page dims at once (painted before the navigation starts), and the next page
+// times the switch from the tap (perf:switch:*).
+function switchLeague(league){const l=league==='NBA'?'NBA':'NFL';try{localStorage.setItem('btg-league',l)}catch{}try{sessionStorage.setItem('btg-switch-at',String(Date.now()))}catch{}
+  document.querySelectorAll?.('#leagueSwitch [data-league]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.league===l)));document.body?.classList.add('league-switching');
+  const u=new URL(location.href);u.searchParams.set('league',l);const go=()=>location.assign(u.toString());if(typeof requestAnimationFrame==='function')requestAnimationFrame(()=>requestAnimationFrame(go));else go()}
 let state={sport:LEAGUE,game:'All',team:'All',day:'All',timeSlot:'All',market:'All',side:'All',move:'All',minEdge:0,minConf:0,oddsType:'All',sort:'edge',search:'',high:false,heat:null,view:'board',boardSport:LEAGUE,boardMarket:'All',boardGame:'All',saved:new Set(readStored('propedge-saved',[]).filter(value=>typeof value==='string'&&value.startsWith('['))),slip:[]};
 const initializedPages=new Set(['props']);
 let mixerSetup=false,selectedPlayer='',propRenderLimit=24,visiblePropTotal=0;
@@ -1453,7 +1458,8 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     const rows=[];
     if(!isParlay){
       if(done&&voidOf(r)){rows.push(['Result',`${voidOf(r)} before kickoff · bet voided, stake back`,'']);rows.push(['Posted at',posted,''])}
-      else if(done){const unit=String(r.market||'').toLowerCase(),v=first.actualValue!=null?`${first.minimumOnly?'At least ':''}${first.actualValue} ${Number(first.actualValue)===1?unit.replace(/s$/,''):unit}${first.noStats?' · played, no stats recorded':''}`:'—';rows.push(['Result',v,r.result==='won'?'pos':r.result==='lost'?'neg':'']);rows.push(['Posted at',posted,'']);
+      else if(done){const unit=String(r.market||'').toLowerCase(),v=first.actualValue!=null?`${first.minimumOnly?'At least ':''}${first.actualValue} ${Number(first.actualValue)===1?unit.replace(/s$/,''):unit}${first.noStats?' · played, no stats recorded':''}`:'—';rows.push(['Result',v,r.result==='won'?'pos':r.result==='lost'?'neg':'']);
+        if(first.correctedValue!=null)rows.push(['Stat correction',`Changed to ${first.correctedValue} after we graded it${first.correctedResult&&first.correctedResult!==r.result?` (would be ${first.correctedResult==='won'?'a win':first.correctedResult==='lost'?'a loss':'a push'})`:''} · our record keeps the first grade; your book may settle on the corrected stat`,'']);rows.push(['Posted at',posted,'']);
         const move=moveOf(r.line,r.closing_line,r.side);
         if(move)rows.push(['Closing line',`${move.line} · ${move.ourWay?'moved our way':'moved against us'}`,move.ourWay?'pos':'']);
         else if(r.closing_odds!=null){const a=oddsDecimal(r.odds),c=oddsDecimal(r.closing_odds),e=a&&c?(a/c-1)*100:0;rows.push(['Closing price',`${formatOdds(r.closing_odds)} · ${e>.05?'we beat the close':e<-.05?'close was better':'same as the close'}`,e>.05?'pos':''])}
@@ -1485,7 +1491,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
       actions:r.pm?[...betAction(r,legs,done),...(!done&&window.BTGApps?.link(r.pm.exchange)?[{label:`Open ${r.pm.exchange}`,icon:'external',wide:true,onClick:()=>{const app=String(r.pm.exchange).toLowerCase();window.btgCount?.(`app:${app}`);
         // With a partner code, the tap also copies the code for the app's sign-up screen.
         if(pmOffer){try{navigator.clipboard?.writeText(pmOffer.code).then(()=>window.btgCount?.(`partner:${app}:copy`)).catch(()=>{})}catch{}}
-        window.open(window.BTGApps.link(r.pm.exchange),'_blank','noopener')}}]:[]),{...pmShare,label:'Share'}]:[...betAction(r,legs,done),...bookAction(r,legs,done),{label:done&&r.result==='won'?'Share this hit':'Share',icon:'share',primary:false,wide:true,share:`${done&&r.result==='won'?'✅ Hit':'Bet This Guy pick'}: ${isParlay?`${legs.length}-leg parlay (${formatOdds(odds)})`:`${r.player} ${bet} (${formatOdds(odds)})`} · ${location.origin}`}],
+        window.open(window.BTGApps.link(r.pm.exchange),'_blank','noopener')}}]:[]),{...pmShare,label:'Share'}]:[...betAction(r,legs,done),...bookAction(r,legs,done),{label:done&&r.result==='won'?'Share this hit':'Share',icon:'share',primary:false,wide:true,image:()=>window.BTGShareCard?.official?.(r),share:`${done&&r.result==='won'?'✅ Hit':'Bet This Guy pick'}: ${isParlay?`${legs.length}-leg parlay (${formatOdds(odds)})`:`${r.player} ${bet} (${formatOdds(odds)})`} · ${location.origin}`}],
       // Timestamp proof: the pick's own X post (NBA: the night's card), posted before the game.
       links:[...(/^\d{5,25}$/.test(String(r.x_id||''))&&!r.pm?[{text:`Posted on X before ${r.sport==='NBA'||String(r.id||'').startsWith('nba|')?'tip-off':'kickoff'} ›`,href:`https://x.com/i/web/status/${r.x_id}`,external:true,onClick:()=>window.btgCount?.('sheet:xproof')}]:[]),...(isParlay?[]:[{text:`${String(r.player||'').split(' ').slice(-1)[0]}’s stats & game log ›`,onClick:()=>openPlayerProfile(statsProp({...first,player:r.player,market:r.market,line:r.line,side:r.side,odds:r.odds,gameTime:r.game_time||first.gameTime}))}]),{text:'See every pick on Results ›',href:'/trust#official'}]};
   }
@@ -1549,6 +1555,8 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     // With 5+ tracked it leads as a big share, with why it matters and why we post early.
     {let pf=$('#heroProof');const sea=heroSeason,start=NBA?'tip-off':'kickoff';if(sea?.tracked){if(!pf){pf=document.createElement('div');pf.id='heroProof';pf.className='hero-proof'}$('#heroTitle').after(pf);
       pf.innerHTML=sea.tracked>=5?`<div class="hp-big"><strong>${Math.round(100*sea.beat/sea.tracked)}%</strong><span><b>of our picks beat the ${start} price</b><small>${sea.beat} of ${sea.tracked}: the market moved our way after we posted</small></span></div><p class="hp-why">We post the moment a price qualifies, often a day early, before the market catches up. A hot streak can be luck; beating the final price, pick after pick, is the steadiest sign of a real edge.</p>`:`Beat the ${start} price on <b>${sea.beat} of ${sea.tracked}</b> picks`}else pf?.remove()}
+    // One line under the record: how often our price beat the kickoff price.
+    {let cl=$('#heroClose');const sea=heroSeason,start=NBA?'tip-off':'kickoff';if(sea?.tracked>=5){if(!cl){cl=document.createElement('p');cl.id='heroClose';cl.className='hero-close'}hero.querySelector('.hero-actions')?.before(cl);cl.innerHTML=`Beat the ${start} price on <b>${sea.beat} of ${sea.tracked}</b> picks <a href="/trust#methodology">why it matters</a>`}else cl?.remove()}
     // Running profit, every graded pick in order, and the latest results (wins and losses).
     {let box=$('#heroCurve');const pts=heroSeason?.curve||[];if(pts.length>=3){if(!box){box=document.createElement('div');box.id='heroCurve';box.className='hero-curve'}$('#heroStats').after(box);box.innerHTML=heroCurveSvg(pts)}else box?.remove()}
     {let tk=$('#heroTicker');const list=heroSeason?.latest||[];if(list.length){if(!tk){tk=document.createElement('div');tk.id='heroTicker';tk.className='hero-ticker'}hero.after(tk);
@@ -1556,7 +1564,11 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
       tk.innerHTML=`<span class="tk-label">Latest results</span><div class="tk-row">${list.map(r=>{const w=r.result==='won',l=r.result==='lost';return `<span class="tk-item ${w?'won':l?'lost':'push'}"><i aria-hidden="true">${w?'✓':l?'✗':'–'}</i><em>${htmlEscape(day(r.day))}</em><b>${htmlEscape(r.player||'')}</b> ${htmlEscape(r.bet||'')} <small>${htmlEscape(formatOdds(r.odds))}</small><strong>${htmlEscape(r.result==='push'?'push':money(r.pay))}</strong></span>`}).join('')}</div><a class="tk-all" href="/trust#official">Every pick ›</a>`}else tk?.remove()}
     // One email field right under the record: the simplest way to get picks (hidden once on email or push).
     {let em=$('#heroEmail');const on=/\b(email-on|alerts-on)\b/.test(document.documentElement.className);if(on){em?.remove()}else if(!em){em=document.createElement('section');em.id='heroEmail';em.className='hero-email';
-      em.innerHTML='<div class="he-copy"><b>Get each pick the moment it locks</b><span>Free, by email. No account, one-tap unsubscribe.</span></div>';($('#heroTicker')||hero).after(em);
+      em.innerHTML='<div class="he-copy"><b>Get each pick the moment it locks</b><span>Free, by email. No account, one-tap unsubscribe. Or <button type="button" class="he-alerts">turn on phone alerts</button>.</span></div>';
+      // The record bar keeps the real alerts button (hidden); this link presses it.
+      em.querySelector('.he-alerts').onclick=()=>document.querySelector('#heroBanner [data-alerts-toggle]')?.click();
+      // After the picks, parlays and Just missed, before the board.
+      const board=document.getElementById('propsSection');if(board)board.before(em);else hero.after(em);
       let tries=0;const mount=()=>{if(window.BTGEmailSub?.inline){window.BTGEmailSub.inline(em,'home');window.btgCount?.('email:home-shown')}else if(tries++<40)setTimeout(mount,50)};mount()}}
     if(!strip||!s.hits.length)return;
     $('#hitsTitle').textContent=['LAST WEEK','THIS WEEK SO FAR','LAST NIGHT','TONIGHT SO FAR'].includes(s.label)?`${periodOwner(s.label).replace(/^./,c=>c.toUpperCase())} hits`:'Recent hits';
@@ -1586,7 +1598,10 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     const vo=voidOf(r);if(vo)return `<i class="on-win push">${htmlEscape(`${vo} · bet voided · stake back`)}</i>`;
     const stake=done?heroStake*share(r):myStake(r),d=isParlay?parlayDec(r):oddsDecimal(odds);if(!d)return '';
     const money=n=>`$${Number.isInteger(n)?n:n.toFixed(2).replace(/\.00$/,'')}`;
-    const txt=done?(r.result==='won'?`Won +${money(Math.round(payout(r)))}`:r.result==='lost'?`Lost −${money(stake)}`:'Push · $0'):r.pm?`${money(stake)} ${pmPays(stake,d)}`:`${money(stake)} wins ${money(Math.round(stake*(d-1)))} · pays ${money(Math.round(stake*d))}`;
+    // Open singles say why it's a pick in dollars, the same as the pick sheet:
+    // "$100 wins $99 · $5 more than it should" (fair from the locked edge).
+    const edge=Number(recordLegs(r)[0]?.edge),fairPct=100/d+edge,extra=!isParlay&&Number.isFinite(edge)&&fairPct>0&&fairPct<100?Math.round(stake*(d-1))-Math.round(stake*(100/fairPct-1)):0;
+    const txt=done?(r.result==='won'?`Won +${money(Math.round(payout(r)))}`:r.result==='lost'?`Lost −${money(stake)}`:'Push · $0'):r.pm?`${money(stake)} ${pmPays(stake,d)}`:`${money(stake)} wins ${money(Math.round(stake*(d-1)))} · ${extra>=1?`${money(extra)} more than it should`:`pays ${money(Math.round(stake*d))}`}`;
     return `<i class="on-win ${done?r.result:'open'}">${htmlEscape(txt)}</i>`;
   }
   function officialRow(r,i){
@@ -1690,7 +1705,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     return `<div class="bs-live ${state}${s.final?' final':''}"><p class="bs-live-top">${top}${delayed}</p><div class="bs-live-num"><strong>${s.value==null?'–':htmlEscape(String(s.value))}</strong><span>/ ${htmlEscape(String(p.line))} ${htmlEscape(unit)}</span><em>${htmlEscape(s.value==null?(s.loaded?'No stats yet':'Loading…'):need)}</em></div>${barOf(s)}${also?`<p class="bs-live-also">Today: ${htmlEscape(also)}</p>`:''}</div>`;
   }
   (window.btgLiveHooks||=[]).push(updateOfficialLive);
-  window.BTGOfficialLive=liveLine;window.BTGOpenPick=openPick;window.BTGOfficialRows=()=>officialLiveList;
+  window.BTGOfficialLive=liveLine;window.BTGOpenPick=openPick;window.BTGOfficialRows=()=>officialLiveList;window.BTGOfficialBits={recordLegs,graded,legText,winLine};
   function renderOfficialNow(rows){
     const host=$('#officialNow');if(!host||!Array.isArray(rows))return;
     const list=officialNow(rows),indexed=list.map((r,i)=>[r,i]);
@@ -1718,7 +1733,8 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
     // Tap the row for the bet screen; tap a single's price to add it to the slip.
     $$('#officialNowList button[data-on], #parlaysList button[data-on]').forEach(b=>b.onclick=e=>{const r=list[+b.dataset.on];if(e.target.closest('[data-slip-price]')&&r&&!['won','lost','push'].includes(r.result)&&(r.kind==='parlay'?addParlayToSlip(r):addBetToSlip(r)))return;openPick(r)});
     officialLiveList=list;updateOfficialLive();window.btgOfficialForm?.(list);focusPick();
-    $$('#officialNowList [data-on-player]').forEach(row=>{const player=row.dataset.onPlayer;if(!player||typeof playerStatsFor!=='function')return;const r=list[+row.dataset.on];playerStatsFor({sport:r?.sport||'NFL',player,team:row.dataset.onTeam}).then(payload=>window.BTGPaintTeam?.(row,payload?.player?.team,r?.sport||'NFL')).catch(()=>{})});
+    const later=f=>typeof requestIdleCallback==='function'?requestIdleCallback(f,{timeout:3000}):setTimeout(f,1200);
+    later(()=>$$('#officialNowList [data-on-player]').forEach(row=>{const player=row.dataset.onPlayer;if(!player||typeof playerStatsFor!=='function')return;const r=list[+row.dataset.on];playerStatsFor({sport:r?.sport||'NFL',player,team:row.dataset.onTeam}).then(payload=>window.BTGPaintTeam?.(row,payload?.player?.team,r?.sport||'NFL')).catch(()=>{})}));
     host.hidden=false;if($('#parlaysNow')){$('#parlaysNow').hidden=!parlays.length;$('#parlaysNow').dataset.empty=parlays.length?'':'1'}
     window.BTGTagInjuries?.();
   }
@@ -1949,7 +1965,33 @@ if(typeof fetch==='function')window.btgCountVisit?.('view:home');
     ctx.fillStyle='#7f96b8';ctx.font="500 26px 'DM Sans', sans-serif";ctx.textAlign='right';ctx.fillText('21+ · Odds change. Check before you bet.',W-72,990);ctx.textAlign='left';
     return new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(new File([blob],`bet-this-guy-${String(p.player).toLowerCase().replace(/[^a-z0-9]+/g,'-')}.jpg`,{type:'image/jpeg'})):reject(new Error('no image')),'image/jpeg',.9));
   }
-  window.BTGShareCard={drawPickCard};
+  // Official picks: 1200×675 (X's image size): the pick, its price and book,
+  // what it wins against a fair price (or the result), and the record.
+  function drawOfficialCard(r){
+    const {recordLegs,graded,legText,winLine}=window.BTGOfficialBits||{};if(!winLine)return Promise.resolve(null);
+    const legs=recordLegs(r),isParlay=r.kind==='parlay',done=graded(r),won=done&&r.result==='won',W=1200,H=675,canvas=document.createElement('canvas');canvas.width=W;canvas.height=H;const ctx=canvas.getContext('2d');
+    const bg=ctx.createLinearGradient(0,0,W,H);bg.addColorStop(0,'#0b1d3f');bg.addColorStop(1,'#050b1d');ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
+    const glow=ctx.createRadialGradient(W*.12,H*.1,10,W*.12,H*.1,W*.7);glow.addColorStop(0,won?'rgba(31,216,143,.3)':'rgba(28,108,255,.3)');glow.addColorStop(1,'rgba(0,0,0,0)');ctx.fillStyle=glow;ctx.fillRect(0,0,W,H);
+    if(logo.complete&&logo.naturalWidth)ctx.drawImage(logo,64,52,260,260*logo.naturalHeight/logo.naturalWidth);
+    const tag=won?'✅  HIT':done&&r.result==='lost'?'LOST':'OFFICIAL PICK';ctx.font="700 30px 'Space Grotesk', sans-serif";const tw=ctx.measureText(tag).width+52;
+    ctx.fillStyle=won?'rgba(31,216,143,.16)':'rgba(255,255,255,.08)';ctx.strokeStyle=won?'rgba(31,216,143,.6)':'rgba(255,255,255,.2)';ctx.lineWidth=3;ctx.beginPath();ctx.roundRect(W-64-tw,48,tw,62,31);ctx.fill();ctx.stroke();ctx.fillStyle=won?'#5ff0b5':'#cfe0f5';ctx.textBaseline='middle';ctx.fillText(tag,W-64-tw+26,80);ctx.textBaseline='alphabetic';
+    const title=isParlay?`${legs.length}-leg parlay`:r.player,bet=isParlay?legs.map(l=>`${l.player} ${legText(l)}`).join(' + '):legText({side:r.side,line:r.line,market:String(r.market||'').toLowerCase()});
+    ctx.fillStyle='#ffffff';fit(ctx,title,W-128,92);ctx.fillText(title,64,250);
+    ctx.fillStyle='#cfe0f5';fit(ctx,bet.charAt(0).toUpperCase()+bet.slice(1),W-128,46,'600',"'DM Sans', sans-serif");ctx.fillText(bet.charAt(0).toUpperCase()+bet.slice(1),64,318);
+    const odds=isParlay?r.combined_odds:r.odds,book=[...new Set(legs.map(l=>l.book).filter(Boolean))][0]||'';
+    ctx.fillStyle='rgba(255,255,255,.06)';ctx.strokeStyle='rgba(255,255,255,.14)';ctx.lineWidth=3;ctx.beginPath();ctx.roundRect(64,360,W-128,150,28);ctx.fill();ctx.stroke();
+    ctx.fillStyle='#ffffff';ctx.font="700 72px 'Space Grotesk', sans-serif";const o=formatOdds(odds);ctx.fillText(o,100,462);const ow=ctx.measureText(o).width;
+    ctx.fillStyle='#9fb6d6';ctx.font="500 32px 'DM Sans', sans-serif";if(book)ctx.fillText(`at ${book}`,116+ow,458);
+    const line=document.createElement('div');line.innerHTML=winLine(r,isParlay,odds,done);const money=line.textContent||'';
+    ctx.fillStyle=won?'#5ff0b5':done&&r.result==='lost'?'#ff9d9d':'#5ff0b5';ctx.font="700 34px 'DM Sans', sans-serif";ctx.textAlign='right';fit(ctx,money,W-200-ow-(book?ctx.measureText(`at ${book}`).width:0),34,'700',"'DM Sans', sans-serif");ctx.fillText(money,W-100,458);ctx.textAlign='left';
+    const sea=window.BTG_SEASON,start=String(r.id||'').startsWith('nba|')?'tip-off':'kickoff';
+    const rec=sea&&sea.wins+sea.losses>=5?`Season ${sea.wins}–${sea.losses}${sea.tracked>=5?` · beat the ${start} price on ${sea.beat} of ${sea.tracked}`:''}`:'Every pick posted before the game and graded in public';
+    ctx.fillStyle='#9fb6d6';fit(ctx,rec,W-128,30,'500',"'DM Sans', sans-serif");ctx.fillText(rec,64,568);
+    ctx.fillStyle='#ffffff';ctx.font="700 34px 'Space Grotesk', sans-serif";ctx.fillText('betthisguy.com',64,628);
+    ctx.fillStyle='#7f96b8';ctx.font="500 24px 'DM Sans', sans-serif";ctx.textAlign='right';ctx.fillText('21+ · Odds change. Check before you bet.',W-64,628);ctx.textAlign='left';
+    return new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(new File([blob],`bet-this-guy-${String(title).toLowerCase().replace(/[^a-z0-9]+/g,'-')}.png`,{type:'image/png'})):reject(new Error('no image')),'image/png'));
+  }
+  window.BTGShareCard={drawPickCard,official:drawOfficialCard};
   const prepare=p=>{const key=shareKey(p),have=ready.get(p.id);if(have?.key===key)return;ready.set(p.id,{key,file:null});drawPickCard(p).then(file=>{const entry=ready.get(p.id);if(entry?.key===key)entry.file=file}).catch(()=>{})};
   // Draw the image as soon as a card opens (or on hover/press on desktop).
   document.addEventListener('click',event=>{const card=event.target.closest?.('.prop-card.compact-card');if(!card)return;setTimeout(()=>{if(!card.classList.contains('expanded'))return;const p=props.find(x=>x.id===+card.dataset.id);if(p)prepare(p)},0)},true);
@@ -2162,8 +2204,9 @@ function addBetToSlip(x){
   function bind(host,m,dialog){
     host.querySelectorAll('[data-bs-gate]').forEach(b=>b.onclick=()=>{dialog?.close?.();window.btgCount?.('gate:signup');window.BTGAuth?.open?.('signup')});
     host.querySelector('[data-bs-history]')?.addEventListener('click',()=>{dialog?.close?.();m.chart.open()});
+    (m.actions||[]).forEach(a=>{if(a.image&&!a.file)Promise.resolve(a.image()).then(f=>{if(f)a.file=f}).catch(()=>{})});
     host.querySelectorAll('[data-bs-act]').forEach(b=>b.onclick=async()=>{const a=m.actions[+b.dataset.bsAct];
-      if(a.share){try{if(navigator.share)await navigator.share({text:a.share});else{await navigator.clipboard.writeText(a.share);b.textContent='Copied ✓'}}catch{}return}
+      if(a.share){try{const file=a.file;if(file&&navigator.canShare?.({files:[file]})){window.btgCount?.('share');await navigator.share({files:[file],text:a.share});return}if(navigator.share)await navigator.share({text:a.share});else{await navigator.clipboard.writeText(a.share);b.textContent='Copied ✓'}}catch{}return}
       a.onClick?.(b,dialog)});
     host.querySelectorAll('[data-bs-leg]').forEach(b=>{const l=m.legs?.[+b.dataset.bsLeg];if(l?.onClick)b.onclick=()=>l.onClick(dialog)});
     host.querySelectorAll('[data-bs-link]').forEach(a=>a.addEventListener('click',e=>{e.preventDefault();dialog?.close?.();(m.links||[m.link])[+a.dataset.bsLink]?.onClick?.()}));
@@ -2507,9 +2550,8 @@ function statsProp(l){
     const el=document.createElement('div');el.id='leagueSwitch';el.className='league-switch';el.setAttribute('role','group');el.setAttribute('aria-label','League');
     el.innerHTML=['NFL','NBA'].map(l=>`<button type="button" data-league="${l}" aria-pressed="${l===LEAGUE}">${l}</button>`).join('');
     el.addEventListener('click',e=>{const b=e.target.closest('[data-league]');if(b&&b.dataset.league!==LEAGUE)switchLeague(b.dataset.league)});
-    // Desktop: the switch leads the row above the picks instead of floating alone.
-    const place=()=>{const bar=document.getElementById('jumpBar'),wide=window.matchMedia?.('(min-width: 721px)')?.matches;if(wide&&bar){if(el.parentNode!==bar)bar.prepend(el)}else if(el.parentNode!==main)main.prepend(el)};
-    main.prepend(el);place();window.matchMedia?.('(min-width: 721px)')?.addEventListener?.('change',place);
+    // One control bar on every screen: NFL|NBA beside Sportsbook|Prediction apps.
+    const bar=document.getElementById('jumpBar');if(bar)bar.prepend(el);else main.prepend(el);
   };
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount);else mount();
   if(LEAGUE!=='NBA')return;
@@ -2670,7 +2712,8 @@ function statsProp(l){
   const board=document.querySelector('.workspace .board'),rail=document.createElement('aside');rail.className='desk-rail';rail.setAttribute('aria-label','Your corner');
   const parts=['heroBanner','pmHero','myRecord','alertsHero','howPick','leansNow','pmNow'].map(id=>document.getElementById(id)).filter(Boolean),marks=parts.map(el=>{const m=document.createComment('rail');el.before(m);return m});
   const official=document.getElementById('officialNow');
-  const wide=window.matchMedia?.('(min-width: 1180px)');
+  // One centered column on every screen (Oct 24 simplify): the rail stays off.
+  const wide=null;
   function place(){if(!board)return;if(wide?.matches){board.classList.add('has-rail');board.prepend(rail);parts.forEach(el=>rail.appendChild(el));rail.appendChild(panel)}else{board.classList.remove('has-rail');parts.forEach((el,i)=>marks[i].after(el));rail.remove();(document.getElementById('alertsHero')||official?.lastElementChild)?.after?.(panel)}}
   if(official&&!document.getElementById('alertsHero'))official.appendChild(panel);
   place();wide?.addEventListener?.('change',place);drawPanel();
@@ -2760,7 +2803,7 @@ function statsProp(l){
     // A stats button on every card: "Over in 7 of last 10 · avg 78.3 yds" (green when it
     // usually clears, red when it usually misses), opening the bet screen at the last-10 chart.
     const f=formFor(p),statsIcon='<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>';
-    if(!f)return html.replace('<p class="card-money">',()=>`<button type="button" class="card-form cf-btn" data-card-stats>${statsIcon}<span>Last 10 games &amp; stats</span><i aria-hidden="true">›</i></button><p class="card-money">`);
+    if(!f)return html;
     const td=p.binary||/anytime|first|last|scorer/i.test(p.market||''),rate=f.n?f.hits/f.n:0,cls=f.n>=5?(rate>=.6?' good':rate<=.4?' bad':''):'';
     const m=String(p.market||'').toLowerCase(),unit=/yards/.test(m)?' yds':/reception/.test(m)?' rec':/completion/.test(m)?' comp':/attempt/.test(m)?' att':/touchdown/.test(m)?' TD':'';
     const lead=td?(p.side==='Under'?'No TD in':'Scored in'):`${p.side} in`,count=`<b class="cf-count${cls}">${f.hits} of last ${f.n}</b>`;
@@ -3079,11 +3122,8 @@ function statsProp(l){
     const w=rec.wins+pr.wins,l=rec.losses+pr.losses,pu=(rec.pushes||0)+(pr.pushes||0),net=(rec.profit||0)+(pr.profit||0);
     const title=document.getElementById('pmHeroTitle'),panel=document.getElementById('pmHeroPicks');
     if(!w&&!l){title.innerHTML=`${nbaRec?'NBA prediction record':'Prediction record'} <b>First picks grading now</b>`;panel.hidden=true;hero.classList.remove('open');return}
-    // Lead with the full track record (sportsbook picks, the long sample), then
-    // the newer prediction-app record, both labeled.
-    const sea=window.BTG_SEASON,spl=sea?(sea.parlayWins||0)+(sea.parlayLosses||0):0,row=(label,w,l,p,v)=>`<span class="pm-row">${label} <b>${w}–${l}${p?`–${p}`:''}</b> <span class="hero-profit ${v>=0?'up':'down'}">${htmlEscape(money(v))}</span></span>`;
-    // Sportsbooks first (the long sample): singles and parlays on their own rows, like the X cards.
-    const lead=!nbaRec&&sea&&sea.wins+sea.losses>=10?`<span class="pm-lead"><small class="pm-cap">Sportsbooks${sea.tracked?` · beat the kickoff price ${sea.beat} of ${sea.tracked}`:''}</small>${row('Singles',sea.wins,sea.losses,sea.pushes,sea.profit)}${spl?row('Parlays',sea.parlayWins,sea.parlayLosses,0,sea.parlayProfit||0):''}</span>`:'';
+    // The prediction view shows the prediction record only; the sportsbook record lives on the Sportsbook view.
+    const lead='';
     title.innerHTML=`${lead}<button type="button" class="hero-toggle${lead?' pm-second':''}" id="pmHeroToggle" aria-expanded="${!panel.hidden}" aria-controls="pmHeroPicks">${lead?'Prediction-app picks':nbaRec?'NBA prediction record':'Prediction record'} <b>${w}–${l}${pu?`–${pu}`:''}</b> <span class="hero-profit ${net>=0?'up':'down'}">${htmlEscape(money(net))}</span>${lead&&w+l<20?'<em class="pm-new">new</em>':''}<i aria-hidden="true"><svg class="ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></i></button>`;
     const stat=(value,label,tone='')=>`<div><strong class="${tone}">${htmlEscape(value)}</strong><span>${htmlEscape(label)}</span></div>`;
     const graded=[...(data.pmPicks||[]),...(data.pmParlays||[])].filter(r=>['won','lost','push'].includes(r.result)).sort((a,b)=>String(b.gameTime).localeCompare(String(a.gameTime)));
@@ -3226,9 +3266,9 @@ function statsProp(l){
       if(v==='predictions'){
         if(!note){note=document.createElement('section');note.id='pmNbaNote';note.className='official-now pm-nba-note';const anchor=document.getElementById('officialNow');(anchor||document.querySelector('main')).before(note)}
         const apps=Object.keys(d.nbaApps?.apps||{}),stateApps=apps.filter(a=>!d.state||names.includes(a));
-        note.innerHTML=nbaPm?`<div class="on-head"><h2>NBA on prediction apps</h2></div><p class="on-sub">Posted only when an app’s price, after its fee, beats the sportsbooks’ fair price by 2.5 points or more (2 on ProphetX). Own record, separate from NFL and from our sportsbook picks.</p>`:`<div class="on-head"><h2>NBA on prediction apps</h2></div><div class="on-empty"><strong>${apps.length?`${htmlEscape(list(apps))} ${apps.length===1?'lists':'list'} NBA player props.`:'Prediction apps don’t list NBA player props yet.'}</strong><span>${apps.length?`NBA prediction picks start once we’ve priced them against the sportsbooks${stateApps.length||!d.state?'':`; none of these apps are open in ${htmlEscape(d.stateName||'your state')} yet`}. Until then, our NBA picks are on the Sportsbook side.`:'We check Novig, ProphetX and the rest every few hours. Until they list NBA props, our NBA picks are on the Sportsbook side.'}</span></div><p class="pm-nba-switch"><button type="button" class="on-toggle" data-view-odds>See today’s NBA picks and props</button></p>`;
+        note.innerHTML=nbaPm?'':`<div class="on-head"><h2>NBA on prediction apps</h2></div><div class="on-empty"><strong>${apps.length?`${htmlEscape(list(apps))} ${apps.length===1?'lists':'list'} NBA player props.`:'Prediction apps don’t list NBA player props yet.'}</strong><span>${apps.length?`NBA prediction picks start once we’ve priced them against the sportsbooks${stateApps.length||!d.state?'':`; none of these apps are open in ${htmlEscape(d.stateName||'your state')} yet`}. Until then, our NBA picks are on the Sportsbook side.`:'We check Novig, ProphetX and the rest every few hours. Until they list NBA props, our NBA picks are on the Sportsbook side.'}</span></div><p class="pm-nba-switch"><button type="button" class="on-toggle" data-view-odds>See today’s NBA picks and props</button></p>`;
         note.querySelector('[data-view-odds]')?.addEventListener('click',()=>{store(VIEW,'odds');render();resync()});
-        note.hidden=false;document.getElementById('officialNow')?.setAttribute('hidden','');document.getElementById('parlaysNow')?.setAttribute('hidden','');
+        note.hidden=nbaPm;document.getElementById('officialNow')?.setAttribute('hidden','');document.getElementById('parlaysNow')?.setAttribute('hidden','');
       }else{document.body.classList.remove('nba-pm-empty');if(note)note.hidden=true;const on=document.getElementById('officialNow');if(on&&on.dataset.nbaHidden!=='1')on.removeAttribute('hidden');const pn=document.getElementById('parlaysNow');if(pn&&pn.dataset.empty!=='1')pn.removeAttribute('hidden')}
     }
   }
@@ -3236,7 +3276,12 @@ function statsProp(l){
   window.BTGPriceView={view,state:()=>stored(KEY)||data?.state||'',set:v=>{store(VIEW,v==='predictions'?'predictions':'odds');render();resync()}};
   const resync=()=>{try{window.BTGSyncAlertBooks?.()}catch{}};
   document.getElementById('priceView')?.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{store(VIEW,b.dataset.view);render();resync()});
-  async function load(){try{const st=stored(KEY),q=new URLSearchParams();if(st)q.set('state',st);if(typeof LEAGUE!=='undefined'&&LEAGUE==='NBA')q.set('league','NBA');const r=await fetch(`/api/predictions${q.toString()?`?${q}`:''}`);const body=await r.json();if(!r.ok||!body?.success)return;data=body;render();try{dispatchEvent(new Event('btg:where'))}catch{}}catch{}}
+  // The last answer is kept on the phone and shown at once on the next visit
+  // (up to 6 hours old), then replaced by the fresh one, the way the sportsbook
+  // picks arrive with the page.
+  const cacheKey=()=>`btg-pm-last:${typeof LEAGUE!=='undefined'&&LEAGUE==='NBA'?'NBA':'NFL'}|${stored(KEY)||''}`;
+  try{const saved=JSON.parse(localStorage.getItem(cacheKey())||'null');if(saved?.body?.success&&Date.now()-saved.at<6*3600000){data=saved.body;render()}}catch{}
+  async function load(){try{const st=stored(KEY),q=new URLSearchParams();if(st)q.set('state',st);if(typeof LEAGUE!=='undefined'&&LEAGUE==='NBA')q.set('league','NBA');const r=await fetch(`/api/predictions${q.toString()?`?${q}`:''}`);const body=await r.json();if(!r.ok||!body?.success)return;data=body;try{localStorage.setItem(cacheKey(),JSON.stringify({at:Date.now(),body}))}catch{}render();try{dispatchEvent(new Event('btg:where'))}catch{}}catch{}}
   const host=document.getElementById('officialNowList');if(host)new MutationObserver(paintPicks).observe(host,{childList:true});
   render();load();setInterval(load,10*60000);
 })();
@@ -3560,3 +3605,30 @@ function statsProp(l){
       const ahead=(typeof LEAGUE!=='undefined'&&LEAGUE==='NBA'?36:96)*3600000;box.innerHTML=`<strong>No prediction app prices for these props yet.</strong><span>We load prediction app prices ${ahead<96*3600000?'about a day and a half':'about 4 days'} before each game${soon&&soon-Date.now()>ahead?`; the next game’s load ${new Date(soon-ahead).toLocaleDateString([],{weekday:'long'})}`:''}, and the apps don’t list every prop. Switch to Sportsbook to see every prop now.</span>`}
     else if(box.innerHTML!==box.dataset.plain)box.innerHTML=box.dataset.plain}catch{}return out};
   window.render=render})();
+
+// One name for the board in every view (NFL or NBA, sportsbook or prediction
+// apps). A player search, movement and the Good value filter keep their own titles.
+(()=>{
+  const BOARD_TITLES=new Set(['Top props this week','Top props today','Today’s closest calls','This week’s closest calls','No one’s earned a Bet This Guy yet']);
+  const base=render;
+  render=function(...args){const out=base.apply(this,args);const t=typeof document.getElementById==='function'?document.getElementById('viewTitle'):null;if(t&&BOARD_TITLES.has(t.textContent))t.textContent='More props';return out};
+  window.render=render;
+})();
+
+// Speed (Oct 25). The other league's page is fetched in the background
+// (speculation rules prefetch: HTML only, no scripts run), so a switch skips the
+// server wait in browsers that support it. And real load times, as anonymous
+// daily counts by bucket: how long until the picks show (perf:picks:*) and, after
+// a league switch, from the tap (perf:switch:*).
+(()=>{
+  if(typeof document.createElement!=='function'||typeof performance==='undefined')return;
+  try{if(HTMLScriptElement.supports?.('speculationrules')&&typeof LEAGUE!=='undefined'){const other=LEAGUE==='NBA'?'NFL':'NBA',u=new URL(location.href);u.searchParams.set('league',other);u.hash='';
+    const rules=document.createElement('script');rules.type='speculationrules';rules.textContent=JSON.stringify({prefetch:[{urls:[u.pathname+u.search],eagerness:'eager'}]});document.head.appendChild(rules)}}catch{}
+  const bucket=ms=>ms<1000?'<1s':ms<2000?'1-2s':ms<4000?'2-4s':'4s+';
+  let switchAt=0;try{switchAt=Number(sessionStorage.getItem('btg-switch-at'))||0;sessionStorage.removeItem('btg-switch-at')}catch{}
+  const start=Date.now();
+  const check=()=>{const shown=[...document.querySelectorAll('#officialNowList,#pmPicksList')].some(el=>el.children.length&&!el.closest('[hidden]'));
+    if(shown){window.btgCount?.(`perf:picks:${bucket(performance.now())}`);if(switchAt&&Date.now()-switchAt<60000)window.btgCount?.(`perf:switch:${bucket(Date.now()-switchAt)}`);return}
+    if(Date.now()-start<20000)setTimeout(check,100)};
+  if(!document.prerendering)check();
+})();

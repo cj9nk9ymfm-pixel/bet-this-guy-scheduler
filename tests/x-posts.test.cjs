@@ -66,14 +66,14 @@ pick('official|2026-10-06|props|prop|a','Travis Kelce',105,null,new Date(now-20*
   // The pick post's id is saved so later posts can reply under it.
   const kelce='official|2026-10-06|props|prop|a';
   assert.equal(db.prepare("SELECT value FROM app_settings WHERE key=?").get(`xid:${kelce}`).value,'1');
-  // Closing line: posted under the pick when we beat the close, once; not when we didn't.
+  // Closing line: its own post quoting the pick when we beat the close, once; not when we didn't (at most 2 a day).
   const kick=Date.parse('2026-10-09T00:15:00Z');
   db.prepare("UPDATE public_recommendations SET closing_line=4.5,closing_odds=-120,closing_captured_at=? WHERE id=?").run(new Date(kick-15*60000).toISOString(),kelce);
   db.prepare("UPDATE public_recommendations SET closing_line=4.5,closing_odds=-105,closing_captured_at=? WHERE id=?").run(new Date(kick-15*60000).toISOString(),'official|2026-10-06|props|prop|b');
   let n=posts.length;out=await run(`postClosingToX(env,${kick-10*60000})`);assert.equal(out.posted,1);assert.equal(posts.length,n+1);
   const close=posts.at(-1).body;
-  assert.deepEqual(close.reply,{in_reply_to_tweet_id:'1'});const closeId=String(posts.length);
-  assert.ok(close.text.includes('We locked Travis Kelce Over 4.5 receptions at +105 earlier today.')&&close.text.includes('the same bet was -120'),close.text);
+  assert.equal(close.quote_tweet_id,'1','quotes the pick');assert.equal(close.reply,undefined,'not a reply');
+  assert.ok(close.text.includes('The line moved our way.')&&close.text.includes('We posted Travis Kelce Over 4.5 receptions at +105 earlier today.')&&close.text.includes('the same bet was -120'),close.text);
   assert.equal((await run(`postClosingToX(env,${kick})`)).posted,0,'once');
   assert.ok(run(`xCloseText({player:'A B',side:'Over',line:4.5,market:'Receptions',odds:110,posted_at:'2026-10-11T14:00:00Z',game_time:'2026-10-11T17:00:00Z'},{kind:'price',close:'-110'})`).includes('at +110 earlier today.'),'same-day lock');
   // A line that moved past ours counts too; a line that moved against us doesn't.
@@ -86,7 +86,7 @@ pick('official|2026-10-06|props|prop|a','Travis Kelce',105,null,new Date(now-20*
   n=posts.length;out=await run(`runXPosts(env,${kick+5*3600000})`);assert.equal(out.results.posted,1);
   const won=posts.at(-1).body;
   assert.ok(won.text.startsWith('✅ Cashed: Travis Kelce Over 4.5 receptions (+105)\nFinal: had 7 receptions.')&&won.text.includes('Season: 5–3'),won.text);
-  assert.deepEqual(won.reply,{in_reply_to_tweet_id:closeId},'the result continues the thread under the closing-line post');assert.ok(won.media);
+  assert.deepEqual(won.reply,{in_reply_to_tweet_id:'1'},'the result answers the pick');assert.ok(won.media);
   for(const bit of ['WINNER','Had 7 receptions · +\u0024105','Every pick graded','SPORTSBOOKS'])assert.ok(run('__svg').includes(bit),bit);
   // Losses post the same way, on the next run.
   out=await run(`runXPosts(env,${kick+5*3600000+600000})`);assert.equal(out.results.posted,1);
@@ -94,6 +94,12 @@ pick('official|2026-10-06|props|prop|a','Travis Kelce',105,null,new Date(now-20*
   const lost=posts.at(-1).body.text;assert.ok(lost.startsWith('❌ Lost: Josh Allen')&&lost.includes('We post every loss too.'),lost);
   assert.ok(run('__svg').includes('LOSS'));
   out=await run(`runXPosts(env,${kick+5*3600000+1200000})`);assert.equal(out.results.posted,0,'each result once');
+  // Ordinary picks (under the 2-point top-pick edge) get no result reply: the recap card carries them.
+  pick('official|2026-10-06|props|prop|f','Ordinary Pick',110,'won','2026-10-01T12:00:00Z','2026-10-04T17:00:00Z',{legs:[{player:'Ordinary Pick',market:'Receptions',side:'Over',line:4.5,odds:110,book:'DraftKings',edge:1.2,team:'Kansas City Chiefs · @ Buffalo Bills'}]});
+  db.prepare("UPDATE public_recommendations SET settled_at=? WHERE id='official|2026-10-06|props|prop|f'").run(new Date(kick+4*3600000).toISOString());
+  db.prepare("INSERT INTO app_settings(key,value) VALUES('xi:official|2026-10-06|props|prop|f','2026-10-01T12:00:00Z')").run();
+  assert.equal((await run(`postResultsToX(env,${kick+6*3600000})`)).posted,0,'no result reply for an ordinary pick');
+  assert.equal(run(`xWhyLine({odds:105,legs_json:JSON.stringify([{edge:2.4}])})`),'$100 wins $105 · $10 more than it should','why line in dollars');
   // Picks that never went out on X get no result post.
   pick('official|2026-10-06|props|prop|e','Never Posted',110,'won','2026-10-01T12:00:00Z','2026-10-04T17:00:00Z');
   db.prepare("UPDATE public_recommendations SET settled_at=? WHERE id='official|2026-10-06|props|prop|e'").run(new Date(kick+4*3600000).toISOString());
@@ -115,5 +121,5 @@ pick('official|2026-10-06|props|prop|a','Travis Kelce',105,null,new Date(now-20*
   assert.equal(await run(`xClaim(env,'xr:${cut}',${kick+9*3600000+31*60000})`),true);
   assert.equal(await run(`xClaim(env,'xr:${cut}',${kick+9*3600000+32*60000})`),false,'the retry holds the claim');
   assert.equal(await run(`xClaimable(env,'xi:${cut}',${kick+9*3600000})`),false,'a confirmed post is never redone');
-  console.log('PASS: X posts sign correctly, post each new official pick once with its graphic (text fallback after three failed uploads, never a duplicate), retry failures, post Tuesday results once with a graphic, reply with beat-the-close posts and with every result, wins and losses');
+  console.log('PASS: X posts sign correctly, post each new official pick once with its graphic (text fallback after three failed uploads, never a duplicate), retry failures, post Tuesday results once with a graphic, post the biggest line moves of the day quoting the pick, and reply with results under top picks only, wins and losses');
 })().catch(error=>{console.error(error);process.exit(1)});
