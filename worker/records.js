@@ -1027,7 +1027,7 @@ async function postCustomToX(env,now=Date.now()){
 // One-off reply set by the owner: app_settings x-custom-reply holds JSON
 // {"text":"…","replyKey":"xid:…"}, a reply under the post that key names
 // (a stat-correction note under a pick, for example). Posts once, then clears.
-// poll: {"options":["Tail ✅","Fade ❌"],"minutes":30} makes the reply a poll
+// image: a dist/x PNG to attach. poll: {"options":["Tail ✅","Fade ❌"],"minutes":30} makes the reply a poll
 // (X polls can't carry an image, so a graphic's poll goes right under it).
 async function postCustomReplyToX(env,now=Date.now()){
   if(!env.DB||!xReady(env))return {posted:0,disabled:true};
@@ -1038,7 +1038,9 @@ async function postCustomReplyToX(env,now=Date.now()){
   const claim=await env.DB.prepare('DELETE FROM app_settings WHERE key=? AND value=?').bind('x-custom-reply',raw).run();if(!Number(claim?.meta?.changes??claim?.changes))return {posted:0,claimed:false};
   const opts=Array.isArray(req.poll?.options)?req.poll.options.map(o=>String(o).slice(0,25)).filter(Boolean).slice(0,4):[];
   const poll=opts.length>=2?{options:opts,duration_minutes:Math.max(5,Math.min(10080,Math.round(Number(req.poll.minutes)||60)))}:null;
-  try{const sent=await xPost(env,text,null,parent,null,poll?{poll}:{});await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} reply${poll?' poll':''} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,...(poll?{poll:true}:{})}}
+  // image: a dist/x PNG attached to the reply (a poll's card goes right under it).
+  const png=!poll&&req.image&&typeof X_POST_IMAGES==='object'&&X_POST_IMAGES?X_POST_IMAGES[String(req.image)]:null;
+  try{const mediaId=png?await xUploadImage(env,Uint8Array.from(atob(png),c=>c.charCodeAt(0))):null;const sent=await xPost(env,text,mediaId,parent,null,poll?{poll}:{});await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} reply${poll?' poll':mediaId?' graphic':''} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,...(poll?{poll:true}:{})}}
   catch(error){const tries=Number(req.tries||0)+1;if(tries<3)await setAppSetting(env,'x-custom-reply',JSON.stringify({...req,tries})).catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} reply: ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
 }
 async function runXResults(env,now=Date.now(),chain=0){
