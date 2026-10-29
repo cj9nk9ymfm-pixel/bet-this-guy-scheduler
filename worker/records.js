@@ -103,8 +103,20 @@ const OFFICIAL_CAPS={props:100,reasonable:15,swing:10,moonshot:3};
 // pick whose best price is at FanDuel needs 0.5 more in either sport
 // (NFL 5–12, NBA 10–11, beating the close by 3.2% and 0.9% against 6–9% at
 // BetMGM and DraftKings). Picks held back stay near-miss / leans candidates.
+// From the deep audit (Oct 29, 630 graded sharp-shadow props plus the official
+// record): some pick types lost at every edge, so they don't post at all (as
+// singles or parlay legs): NBA three-point Overs at 1.5 or lower (22–45,
+// −$1,650; 2.5+ lines went 19–14), NBA points lines under 12 (bench roles,
+// 14–24), and NFL rushing-yards Overs (29–40), kicking-points Overs (5–11)
+// and field-goal Unders (4–9). They stay in the shadow tests.
 const OFFICIAL_MIN=1,LOW_RECEPTIONS={line:2.5,min:1.5},NBA_THREES_OVER_MIN=2.5,FANDUEL_EXTRA=.5;
+const PAUSED_PICKS={NFL:new Set(['Rushing Yards|Over','Kicking Points|Over','Field Goals Made|Under'])};
+function pausedPick(p,sport='NFL'){
+  if(sport==='NBA')return (p.market==='3-Pointers Made'&&p.side==='Over'&&Number(p.line)<=1.5)||(p.market==='Points'&&Number(p.line)<12);
+  return PAUSED_PICKS.NFL.has(`${p.market}|${p.side}`);
+}
 function officialBarFor(p,sport='NFL'){
+  if(pausedPick(p,sport))return Infinity;
   let bar=sport==='NBA'?NBA_MIN:OFFICIAL_MIN;
   if(sport!=='NBA'&&p.market==='Receptions'&&Number(p.line)<=LOW_RECEPTIONS.line)bar=Math.max(bar,LOW_RECEPTIONS.min);
   if(sport==='NBA'&&p.market==='3-Pointers Made'&&p.side==='Over')bar=Math.max(bar,NBA_THREES_OVER_MIN);
@@ -112,6 +124,19 @@ function officialBarFor(p,sport='NFL'){
   return bar;
 }
 const officialBar=p=>p.edge>=officialBarFor(p,'NFL'),nbaOfficialBar=p=>p.edge>=officialBarFor(p,'NBA');
+// Singles at +150 or longer post only when the sharp-book shadow priced the
+// same player, market, side and line in the last 3 hours (internal only, see
+// recordSharpShadow). Audit: NBA longshots with no sharp price went 5–28
+// (15% won against 38% implied, −$2,016); with one, 8–8 (+$544).
+const LONGSHOT_ODDS=150,LONGSHOT_PIN_AGE=3*3600000;
+const longshotKey=p=>[normalizedName(p.player),p.market,p.side,Number(p.line),new Date(Date.parse(p.gameTime)).toISOString()].join('|');
+async function sharpPriced(env,picks,now=Date.now()){
+  const long=picks.filter(p=>Number(p.odds)>=LONGSHOT_ODDS);if(!long.length||!env.DB)return new Set();
+  const times=[...new Set(long.map(p=>new Date(Date.parse(p.gameTime)).toISOString()))];
+  const rows=(await env.DB.prepare(`SELECT player,market,side,line,game_time FROM sharp_shadow WHERE pin_fair IS NOT NULL AND pin_at>? AND game_time IN (${times.map(()=>'?').join(',')})`).bind(new Date(now-LONGSHOT_PIN_AGE).toISOString(),...times).all().catch(()=>({results:[]}))).results||[];
+  return new Set(rows.map(r=>longshotKey({...r,gameTime:r.game_time})));
+}
+const longshotOk=priced=>p=>Number(p.odds)<LONGSHOT_ODDS||priced.has(longshotKey(p));
 // One official parlay per slate (an ET game day; an NBA night): since $25
 // parlays started (Oct 12) they went 2–6.
 let PARLAYS_PER_DAY=1;
@@ -131,6 +156,21 @@ const officialPlayer=leg=>`${leg.gameId}|${normalizedName(leg.player)}`;
 // stats (optional) collects what a run saw, for the pick_runs log.
 // opts.min/opts.below set the edge band (official NFL: 1% up, capped at 12%);
 // the near-miss shadow logs 0.25% up that didn't post.
+// Other ways to take the vig out of a two-sided price (shadow only, from
+// Oct 29). The average-of-books fair price spreads the vig evenly, which the
+// audit found overrates plus-money sides (35–40% bucket won 24%). Power and
+// Shin load more of the vig onto the longshot. Each returns the Over's chance.
+function devigPower(over,under){
+  const o=1/recordDecimal(over),u=1/recordDecimal(under);if(o+u<=1)return o/(o+u);
+  let lo=1,hi=20;for(let i=0;i<60;i++){const k=(lo+hi)/2;if(o**k+u**k>1)lo=k;else hi=k}
+  return o**((lo+hi)/2);
+}
+function devigShin(over,under){
+  const o=1/recordDecimal(over),u=1/recordDecimal(under),S=o+u;if(S<=1)return o/S;
+  const f=(pi,z)=>(Math.sqrt(z*z+4*(1-z)*pi*pi/S)-z)/(2*(1-z));
+  let lo=0,hi=.5;for(let i=0;i<60;i++){const z=(lo+hi)/2;if(f(o,z)+f(u,z)>1)lo=z;else hi=z}
+  return f(o,(lo+hi)/2);
+}
 function officialCandidates(events,now=Date.now(),stats={},opts={}){
   const min=opts.min??1,below=opts.below??Infinity;
   const result=[];
@@ -155,6 +195,7 @@ function officialCandidates(events,now=Date.now(),stats={},opts={}){
       const cov=(stats.markets||={})[group.market]||={lines:0,priced:0,books:0};cov.lines++;cov.books=Math.max(cov.books,group.books.size);if(pairs.length>=3)cov.priced++;
       if(opts.exactBooks?pairs.length!==opts.exactBooks:pairs.length<3)continue;
       const fair=pairs.reduce((sum,p)=>{const o=1/recordDecimal(p.over.odds),u=1/recordDecimal(p.under.odds);return sum+o/(o+u)},0)/pairs.length;
+      const avg=fn=>pairs.reduce((sum,p)=>sum+fn(p.over.odds,p.under.odds),0)/pairs.length,power=avg(devigPower),shin=avg(devigShin);
       // The fair price uses every licensed book; the pick itself must be
       // available at one of the five biggest (OFFICIAL_BOOKS).
       const options=['over','under'].map(side=>{const best=pairs.map(p=>p[side]).filter(o=>OFFICIAL_BOOKS.has(o.key)).sort((a,b)=>recordDecimal(b.odds)-recordDecimal(a.odds))[0];return best?{side:side==='over'?'Over':'Under',...best,edge:100*((side==='over'?fair:1-fair)-1/recordDecimal(best.odds))}:null}).filter(Boolean).sort((a,b)=>b.edge-a.edge);
@@ -163,7 +204,8 @@ function officialCandidates(events,now=Date.now(),stats={},opts={}){
       if(best){stats.best=Math.max(stats.best??-Infinity,best.edge);if(best.edge>=0.5&&best.edge<1)stats.near=(stats.near||0)+1;if(best.edge>=1&&best.edge<=12)stats.qualified=(stats.qualified||0)+1;if(best.edge>12)stats.capped=(stats.capped||0)+1}
       if(!best||best.edge<min||best.edge>=below||best.edge>12)continue;
       const leg=verifiedRecordLeg({...group,...best},event,now);
-      if(leg)result.push({...leg,edge:best.edge,book:best.book,playerKey:officialPlayer(leg)});
+      const over=best.side==='Over';
+      if(leg)result.push({...leg,edge:best.edge,book:best.book,playerKey:officialPlayer(leg),fairPower:100*(over?power:1-power),fairShin:100*(over?shin:1-shin)});
     }
   }
   // One market per player/game prevents alternate lines or opposite sides
@@ -470,12 +512,13 @@ async function publishNbaPicks(request,env,ctx,now=Date.now()){
     const cfg=nbaConfig(night),tonight=boards.filter(b=>nbaNight(Date.parse(b.commence_time))===night);
     const existing=(await env.DB.prepare('SELECT * FROM public_recommendations WHERE id>=? AND id<?').bind(cfg.prefix,cfg.prefix+'\uffff').all()).results||[];
     const dirs=await pickDirections(env),ok=p=>sameDirection(dirs,p.gameId,p.player,p.side);
-    const stats={},candidates=core(officialCandidates(tonight,Date.now(),stats,{min:NBA_MIN})).filter(ok).filter(nbaOfficialBar);
+    const stats={},qualified=core(officialCandidates(tonight,Date.now(),stats,{min:NBA_MIN})).filter(nbaOfficialBar),priced=await sharpPriced(env,qualified);
+    const candidates=qualified.filter(ok).filter(longshotOk(priced));
     // Parlay legs: qualifiers not posted as singles, e.g. past the nightly 5.
     const nextTier=withTeams(candidates,await playerTeams(env));
     const plan=officialPlan(candidates,existing,night,Date.now(),nextTier,cfg);
     posted+=Number(await writeOfficialPlan(plan,night,env,cfg))||0;
-    await logNbaSkips(env,night,cfg,core(officialCandidates(tonight,Date.now(),{},{min:NBA_MIN})).filter(nbaOfficialBar),ok,Date.now()).catch(error=>console.warn('nba_skips_failed',error.message));
+    await logNbaSkips(env,night,cfg,qualified.filter(longshotOk(priced)),ok,Date.now()).catch(error=>console.warn('nba_skips_failed',error.message));
     const trail=officialTrailStatements(tonight,existing,env,Date.now());if(trail.length)await env.DB.batch(trail);
     // Worth a look: props from 0.75% up that aren't a pick or a parlay leg
     // tonight, two a game, ten at most. Shown only, never graded or counted.
@@ -528,6 +571,17 @@ async function recordNbaPreseason(env,now=Date.now()){
   return {games:events.length,priced,props,logged:picks.length,tracked:open.length,...(errors.length?{error:errors[0].slice(0,80)}:{})};
 }
 // The best big-5 price on offer for a shadow pick's player, market, side and line.
+// The books' fair chance for r's side at r's line (3+ two-sided books), or null.
+function consensusFair(event,r){
+  const pairs=new Map();
+  for(const book of event.bookmakers||[])for(const market of book.markets||[]){
+    if(recordLabels[market.key]!==r.market||/_alternate$/.test(market.key))continue;
+    for(const o of market.outcomes||[]){const x=exchangeOutcome(o);if(String(o.description||'').trim()!==r.player||x.line!==Number(r.line))continue;const odds=BTGStats.number(o.price);if(odds===null)continue;const pair=pairs.get(book.key)||{};pair[x.side]=odds;pairs.set(book.key,pair)}
+  }
+  const two=[...pairs.values()].filter(p=>p.over!=null&&p.under!=null);if(two.length<3)return null;
+  const over=two.reduce((sum,p)=>{const o=1/recordDecimal(p.over),u=1/recordDecimal(p.under);return sum+o/(o+u)},0)/two.length;
+  return String(r.side).toLowerCase()==='over'?over:1-over;
+}
 function bigFivePrice(event,r){
   let best=null;
   for(const book of event.bookmakers||[])if(OFFICIAL_BOOKS.has(book.key))for(const market of book.markets||[]){
@@ -2449,9 +2503,10 @@ async function publishOfficialPicks(request,env,ctx,opts={}){
     const injuries=await injuryMap(env).catch(()=>new Map());boards.splice(0,boards.length,...withoutInjured(boards,injuries));
     if(!opts.soonOnly)jobStep('publish','plan');const existing=await env.DB.prepare('SELECT * FROM public_recommendations WHERE id>=? AND id<?').bind(prefix,prefix+'\uffff').all();
     const dirs=await pickDirections(env),ok=p=>sameDirection(dirs,p.gameId,p.player,p.side);
-    const stats={};const candidates=officialCandidates(boards,Date.now(),stats,{min:OFFICIAL_MIN}).filter(ok).filter(officialBar);
+    const stats={},qualified=officialCandidates(boards,Date.now(),stats,{min:OFFICIAL_MIN}).filter(ok).filter(officialBar);
+    const candidates=qualified.filter(longshotOk(await sharpPriced(env,qualified)));
     // Parlay legs: 0.25% up, from players not already posted as singles.
-    const nextTier=withTeams(officialCandidates(boards,Date.now(),{},{min:.25}).filter(ok),await playerTeams(env));
+    const nextTier=withTeams(officialCandidates(boards,Date.now(),{},{min:.25}).filter(ok).filter(p=>!pausedPick(p,'NFL')),await playerTeams(env));
     const plan=officialPlan(candidates,existing.results||[],week,Date.now(),nextTier);
     const posted=await writeOfficialPlan(plan,week,env);
     await stampExchangePrices(env,Date.now()).catch(error=>console.warn('exchange_stamp_failed',error.message));
@@ -4167,7 +4222,7 @@ const NBA_EXCHANGE_MARKETS=['player_points','player_rebounds','player_assists','
 // Internal only (Tim, Oct 23): Pinnacle takes no US customers, so it is never
 // named, priced or linked on the site, X, emails or alerts; it may only shape
 // which legal-book prices we pick.
-const SHARP_WINDOW=24*3600000,SHARP_EVERY=2*3600000;
+const SHARP_WINDOW=24*3600000,SHARP_EVERY=2*3600000,SHARP_CLOSE=3600000;
 const sharpKey=label=>Object.entries(recordLabels).find(([k,l])=>l===label&&!/_q1$|_alternate$/.test(k))?.[0]||null;
 async function recordSharpShadow(env,boards,now=Date.now()){
   if(!env.DB||!env.THE_ODDS_API_KEY||RETIRED_SHADOWS.has('sharp')||(oddsCreditsLeft!==null&&oddsCreditsLeft<LOW_ODDS_CREDITS))return {skipped:true};
@@ -4176,15 +4231,20 @@ async function recordSharpShadow(env,boards,now=Date.now()){
   for(const board of soon){
     const nba=String(board.eventID||'').startsWith('NBA--')||board.sport_label==='NBA',id=board.eventID||`NFL--${board.id}`;
     const picks=officialCandidates([board],now,{},{min:.25});
-    for(const p of picks){statements.push(env.DB.prepare('INSERT OR IGNORE INTO sharp_shadow (id,sport,event_id,player,team,market,side,line,odds,book,edge,game_time,logged_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(`${id}|${normalizedName(p.player)}|${p.market}`,nba?'NBA':'NFL',id,p.player,p.team||null,p.market,p.side,p.line,p.odds,p.book,+p.edge.toFixed(2),p.gameTime||new Date(Date.parse(board.commence_time)).toISOString(),stamp));logged++}
-    // Closing price: the best big-5 price at the same line, until kickoff.
+    for(const p of picks){statements.push(env.DB.prepare('INSERT OR IGNORE INTO sharp_shadow (id,sport,event_id,player,team,market,side,line,odds,book,edge,game_time,logged_at,fair_power,fair_shin) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(`${id}|${normalizedName(p.player)}|${p.market}`,nba?'NBA':'NFL',id,p.player,p.team||null,p.market,p.side,p.line,p.odds,p.book,+p.edge.toFixed(2),p.gameTime||new Date(Date.parse(board.commence_time)).toISOString(),stamp,Number.isFinite(p.fairPower)?+p.fairPower.toFixed(2):null,Number.isFinite(p.fairShin)?+p.fairShin.toFixed(2):null));logged++}
+    // Closing price: the best big-5 price at the same line, until kickoff,
+    // and the books' fair chance at that line then (close_fair: CLV against
+    // the fair price, not just the best price).
     const open=(await env.DB.prepare('SELECT id,player,market,side,line,odds,pin_at,logged_at,move_at FROM sharp_shadow WHERE event_id=?').bind(id).all().catch(()=>({results:[]}))).results||[];
-    for(const r of open){const best=bigFivePrice(board,r);if(best===null)continue;statements.push(env.DB.prepare('UPDATE sharp_shadow SET close_odds=?,close_at=? WHERE id=?').bind(best,stamp,r.id));
+    for(const r of open){const best=bigFivePrice(board,r);if(best===null)continue;const cf=consensusFair(board,r);statements.push(env.DB.prepare('UPDATE sharp_shadow SET close_odds=?,close_at=?,close_fair=COALESCE(?,close_fair) WHERE id=?').bind(best,stamp,cf===null?null:+(100*cf).toFixed(2),r.id));
       // Market-moving test: the same price about an hour after it was logged (45 to 150 minutes).
       const age=now-Date.parse(r.logged_at||'');if(!r.move_at&&age>=45*60000&&age<=150*60000)statements.push(env.DB.prepare('UPDATE sharp_shadow SET move_odds=?,move_at=? WHERE id=?').bind(best,stamp,r.id))}
     const rows=[...open,...picks.filter(p=>!open.some(r=>normalizedName(r.player)===normalizedName(p.player)&&r.market===p.market)).map(p=>({id:`${id}|${normalizedName(p.player)}|${p.market}`,player:p.player,market:p.market,side:p.side,line:p.line,odds:p.odds,pin_at:null}))];
     if(!rows.length)continue;
-    const last=Number(await appSetting(env,`sharp-at:${id}`)||0);if(now-last<SHARP_EVERY)continue;
+    // Every 2 hours, plus one pull in the last hour before tip-off for the
+    // sharp closing price (pin_close) if the last one was earlier than that.
+    const last=Number(await appSetting(env,`sharp-at:${id}`)||0),tip=Date.parse(board.commence_time),closing=tip-now<=SHARP_CLOSE;
+    if(now-last<SHARP_EVERY&&!(closing&&tip-last>SHARP_CLOSE))continue;
     // Plus the game spread (one more market) for the blowout check.
     const markets=[...new Set(rows.map(r=>sharpKey(r.market)).filter(Boolean))];if(!markets.length)continue;markets.push('spreads');
     await setAppSetting(env,`sharp-at:${id}`,String(now));
@@ -4200,7 +4260,8 @@ async function recordSharpShadow(env,boards,now=Date.now()){
         const pair={};for(const m of pin.markets||[])if(recordLabels[m.key]===row.market)for(const o of m.outcomes||[])if(normalizedName(o.description)===normalizedName(row.player)&&exchangeOutcome(o).line===Number(row.line))pair[exchangeOutcome(o).side]=BTGStats.number(o.price);
         if(pair.over==null||pair.under==null)continue;
         const o=1/recordDecimal(pair.over),u=1/recordDecimal(pair.under),fair=row.side==='Over'?o/(o+u):u/(o+u);
-        statements.push(env.DB.prepare('UPDATE sharp_shadow SET pin_fair=?,pin_edge=?,pin_at=? WHERE id=?').bind(+(100*fair).toFixed(2),+(100*(fair-1/recordDecimal(row.odds))).toFixed(2),stamp,row.id));
+        const pct=+(100*fair).toFixed(2);
+        statements.push(env.DB.prepare('UPDATE sharp_shadow SET pin_fair=?,pin_edge=?,pin_at=?,pin_first=COALESCE(pin_first,?),pin_close=CASE WHEN ? THEN ? ELSE pin_close END,pin_close_at=CASE WHEN ? THEN ? ELSE pin_close_at END WHERE id=?').bind(pct,+(100*(fair-1/recordDecimal(row.odds))).toFixed(2),stamp,pct,closing?1:0,pct,closing?1:0,stamp,row.id));
       }
     }catch(error){console.warn('sharp_pull_failed',error.message)}
   }
