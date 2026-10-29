@@ -999,7 +999,7 @@ async function gradePredictionNow(env,now=Date.now()){
 // invocation (SELF binding), so their reads, uploads and posts get their own
 // request allowance instead of crowding out the main X run.
 // One-off post set by the owner: app_settings x-custom-post holds JSON
-// {"text":"…","quoteKey":"xid:…"} (quoteKey optional; image: a dist/x PNG; video: a dist/x MP4; slate: a pick-list card; id: saves xid:x-custom:<id>). It posts once, after
+// {"text":"…","quoteKey":"xid:…"} (quoteKey optional; poll: {options,minutes}; image: a dist/x PNG; video: a dist/x MP4; slate: a pick-list card; id: saves xid:x-custom:<id>). It posts once, after
 // the post it quotes exists, then the request is cleared.
 async function postCustomToX(env,now=Date.now()){
   if(!env.DB||!xReady(env))return {posted:0,disabled:true};
@@ -1018,7 +1018,9 @@ async function postCustomToX(env,now=Date.now()){
   const mp4=req.video?(typeof X_POST_IMAGES==='object'&&X_POST_IMAGES?X_POST_IMAGES[String(req.video)]:null):null;if(req.video&&!mp4)return {posted:0,invalid:true};
   const claim=await env.DB.prepare('DELETE FROM app_settings WHERE key=? AND value=?').bind('x-custom-post',raw).run();if(!Number(claim?.meta?.changes??claim?.changes))return {posted:0,claimed:false};
   try{const mediaId=mp4?await xUploadVideo(env,Uint8Array.from(atob(mp4),c=>c.charCodeAt(0))):slate&&typeof renderCardPng==='function'?await xUploadImage(env,await renderCardPng(await xSlateSvgFaces({final:true,season:'',...slate}))):png?await xUploadImage(env,Uint8Array.from(atob(png),c=>c.charCodeAt(0))):svg&&typeof renderCardPng==='function'?await xUploadImage(env,await renderCardPng(svg)):null;
-    const sent=await xPost(env,text,mediaId,null,quote);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} custom ${sent?.data?.id||''}`).catch(()=>{});if(req.id&&sent?.data?.id)await setAppSetting(env,`xid:x-custom:${req.id}`,String(sent.data.id)).catch(()=>{});return {posted:1,graphic:Boolean(mediaId)}}
+    // poll: {"options":[…],"minutes":n} (no image; X allows a poll with a quote of our own post).
+    const opts=Array.isArray(req.poll?.options)?req.poll.options.map(o=>String(o).slice(0,25)).filter(Boolean).slice(0,4):[],poll=opts.length>=2?{options:opts,duration_minutes:Math.max(5,Math.min(10080,Math.round(Number(req.poll.minutes)||60)))}:null;
+    const sent=await xPost(env,text,poll?null:mediaId,null,quote,poll?{poll}:{});await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} custom${poll?' poll':''} ${sent?.data?.id||''}`).catch(()=>{});if(req.id&&sent?.data?.id)await setAppSetting(env,`xid:x-custom:${req.id}`,String(sent.data.id)).catch(()=>{});return {posted:1,graphic:Boolean(mediaId)}}
   // A failed post is put back for the next run, three tries in all (each try costs X credits).
   catch(error){const tries=Number(req.tries||0)+1;if(tries<3)await setAppSetting(env,'x-custom-post',JSON.stringify({...req,tries})).catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} custom: ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
 }
