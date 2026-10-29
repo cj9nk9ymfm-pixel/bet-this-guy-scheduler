@@ -1319,10 +1319,18 @@ const btgOwner=(()=>{try{const q=new URLSearchParams(location.search).get('me');
     setTimeout(()=>{const n=document.createElement('div');n.className='owner-toast';n.setAttribute('role','status');n.textContent=on?'This device won’t be counted in site stats.':'This device is counted in site stats again.';document.body.append(n);setTimeout(()=>n.remove(),4000)},300)}
   return localStorage.getItem('btg-owner')==='1'}catch{return false}})();
 // Where a visit came from, counted once per visit.
+// utm_source=xbio is the link in our X bio (X's in-app browser sends no
+// referrer, so bio taps used to count as direct). Other sites also count
+// their own host (ref:<host>) so "other" can be broken down.
 function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm_source')||'',ref=document.referrer?new URL(document.referrer).hostname:'',v=(utm||ref).toLowerCase();
-  if(ref&&ref===location.hostname&&!utm)return null;if(!v)return 'src:direct';
+  if(ref&&!utm&&(ref===location.hostname||/(^|\.)betthisguy\.com$/.test(ref)))return null;if(!v)return 'src:direct';
+  if(v==='xbio')return 'src:xbio';
   if(/reddit|redd\.it/.test(v))return 'src:reddit';if(/(^|\.)(x|twitter)\.com$|^t\.co$|^x$|twitter/.test(v))return 'src:x';if(/google\./.test(v)||v==='google')return 'src:google';
-  if(/facebook|instagram|threads|tiktok|discord|t\.me|telegram|whatsapp|snapchat|linkedin/.test(v))return 'src:social';return 'src:other'}catch{return null}}
+  if(/facebook|instagram|threads|tiktok|discord|t\.me|telegram|whatsapp|snapchat|linkedin/.test(v))return 'src:social';
+  if(/bing\.|duckduckgo|yahoo\.|brave\.|ecosia|baidu|yandex/.test(v))return 'src:search';
+  if(/mail|outlook|com\.google\.android\.gm/.test(v))return 'src:email';
+  return 'src:other'}catch{return null}}
+function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).hostname.toLowerCase().replace(/^www\./,''):'';return /^[a-z0-9.-]{3,40}$/.test(h)&&!/(^|\.)betthisguy\.com$/.test(h)?`ref:${h}`:null}catch{return null}}
 (function(){
   const queue=new Set();let timer=null;
   const flush=()=>{timer=null;if(!queue.size)return;const items=[...queue].slice(0,4);items.forEach(m=>queue.delete(m));if(queue.size)timer=setTimeout(flush,300);const body=JSON.stringify({m:items});try{if(navigator.sendBeacon?.('/api/hit',new Blob([body],{type:'application/json'})))return}catch{}try{fetch('/api/hit',{method:'POST',body,keepalive:true,headers:{'content-type':'application/json'}}).catch(()=>{})}catch{}};
@@ -1330,7 +1338,7 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
   addEventListener('pagehide',flush);
   window.btgCountVisit=view=>{
     window.btgCount(view);
-    try{if(!sessionStorage.getItem('btg-visit')){sessionStorage.setItem('btg-visit','1');window.btgCount(localStorage.getItem('btg-seen')?'visit:return':'visit:new');const src=btgSource();if(src)window.btgCount(src);localStorage.setItem('btg-seen','1')}}catch{}
+    try{if(!sessionStorage.getItem('btg-visit')){sessionStorage.setItem('btg-visit','1');window.btgCount(localStorage.getItem('btg-seen')?'visit:return':'visit:new');const src=btgSource();if(src)window.btgCount(src);if(src==='src:other'){const h=btgRefHost();if(h)window.btgCount(h)}localStorage.setItem('btg-seen','1')}}catch{}
   };
 })();
 
@@ -1564,12 +1572,14 @@ function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm
       tk.innerHTML=`<span class="tk-label">Latest results</span><div class="tk-row">${list.map(r=>{const w=r.result==='won',l=r.result==='lost';return `<span class="tk-item ${w?'won':l?'lost':'push'}"><i aria-hidden="true">${w?'✓':l?'✗':'–'}</i><em>${htmlEscape(day(r.day))}</em><b>${htmlEscape(r.player||'')}</b> ${htmlEscape(r.bet||'')} <small>${htmlEscape(formatOdds(r.odds))}</small><strong>${htmlEscape(r.result==='push'?'push':money(r.pay))}</strong></span>`}).join('')}</div><a class="tk-all" href="/trust#official">Every pick ›</a>`}else tk?.remove()}
     // One email field right under the record: the simplest way to get picks (hidden once on email or push).
     {let em=$('#heroEmail');const on=/\b(email-on|alerts-on)\b/.test(document.documentElement.className);if(on){em?.remove()}else if(!em){em=document.createElement('section');em.id='heroEmail';em.className='hero-email';
-      em.innerHTML='<div class="he-copy"><b>Get each pick the moment it locks</b><span>Free, by email. No account, one-tap unsubscribe. Or <button type="button" class="he-alerts">turn on phone alerts</button>.</span></div>';
+      // Wording test (Oct 29): half of visitors (kept per device) see the top-pick pitch.
+      let ev='a';try{ev=localStorage.getItem('btg-email-v')||(Math.random()<.5?'a':'b');localStorage.setItem('btg-email-v',ev)}catch{}
+      em.innerHTML=ev==='b'?'<div class="he-copy"><b>Get tonight’s top pick by email</b><span>One short email when our best pick locks. Free, no account, one-tap unsubscribe. Or <button type="button" class="he-alerts">turn on phone alerts</button>.</span></div>':'<div class="he-copy"><b>Get each pick the moment it locks</b><span>Free, by email. No account, one-tap unsubscribe. Or <button type="button" class="he-alerts">turn on phone alerts</button>.</span></div>';
       // The record bar keeps the real alerts button (hidden); this link presses it.
       em.querySelector('.he-alerts').onclick=()=>document.querySelector('#heroBanner [data-alerts-toggle]')?.click();
       // After the picks, parlays and Just missed, before the board.
       const board=document.getElementById('propsSection');if(board)board.before(em);else hero.after(em);
-      let tries=0;const mount=()=>{if(window.BTGEmailSub?.inline){window.BTGEmailSub.inline(em,'home');window.btgCount?.('email:home-shown')}else if(tries++<40)setTimeout(mount,50)};mount()}
+      let tries=0;const mount=()=>{if(window.BTGEmailSub?.inline){window.BTGEmailSub.inline(em,ev==='b'?'homeb':'home');window.btgCount?.(ev==='b'?'email:home-shown-b':'email:home-shown')}else if(tries++<40)setTimeout(mount,50)};mount()}
       // Lead with the best pick still to play, so the sign-up shows what you'd get.
       if(em){const now=Date.now(),top=(heroRows||[]).filter(r=>r.kind==='prop'&&!r.result&&Date.parse(r.game_time||'')>now).map(r=>({r,edge:Number(recordLegs(r)[0]?.edge)||0})).sort((a,b)=>b.edge-a.edge)[0]?.r;
         const b=em.querySelector('.he-copy b');if(b){if(top){const f=recordLegs(top)[0]||{};b.textContent=`${NBA?'Tonight’s':'This week’s'} top pick: ${top.player} ${top.side} ${top.line} ${String(top.market||'').toLowerCase()} ${formatOdds(top.odds)}${f.book?` at ${f.book}`:''}. Get the next one the moment it locks.`}else b.textContent='Get each pick the moment it locks'}}}
