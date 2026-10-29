@@ -4182,7 +4182,8 @@ async function recordSharpShadow(env,boards,now=Date.now()){
     const rows=[...open,...picks.filter(p=>!open.some(r=>normalizedName(r.player)===normalizedName(p.player)&&r.market===p.market)).map(p=>({id:`${id}|${normalizedName(p.player)}|${p.market}`,player:p.player,market:p.market,side:p.side,line:p.line,odds:p.odds,pin_at:null}))];
     if(!rows.length)continue;
     const last=Number(await appSetting(env,`sharp-at:${id}`)||0);if(now-last<SHARP_EVERY)continue;
-    const markets=[...new Set(rows.map(r=>sharpKey(r.market)).filter(Boolean))];if(!markets.length)continue;
+    // Plus the game spread (one more market) for the blowout check.
+    const markets=[...new Set(rows.map(r=>sharpKey(r.market)).filter(Boolean))];if(!markets.length)continue;markets.push('spreads');
     await setAppSetting(env,`sharp-at:${id}`,String(now));
     try{
       const q=new URLSearchParams({apiKey:env.THE_ODDS_API_KEY,bookmakers:'pinnacle',markets:markets.join(','),oddsFormat:'american',dateFormat:'iso'});
@@ -4190,6 +4191,8 @@ async function recordSharpShadow(env,boards,now=Date.now()){
       const left=r.headers.get('x-requests-remaining');if(left!==null&&Number.isFinite(Number(left)))oddsCreditsLeft=Number(left);
       if(!r.ok)continue;pulled++;
       const pin=((await r.json()).bookmakers||[]).find(b=>b.key==='pinnacle');if(!pin)continue;
+      const spread=BTGStats.number((pin.markets||[]).find(m=>m.key==='spreads')?.outcomes?.find(o=>o.name===board.home_team)?.point);
+      if(spread!==null)statements.push(env.DB.prepare('UPDATE sharp_shadow SET pin_spread=? WHERE event_id=?').bind(spread,id));
       for(const row of rows){
         const pair={};for(const m of pin.markets||[])if(recordLabels[m.key]===row.market)for(const o of m.outcomes||[])if(normalizedName(o.description)===normalizedName(row.player)&&exchangeOutcome(o).line===Number(row.line))pair[exchangeOutcome(o).side]=BTGStats.number(o.price);
         if(pair.over==null||pair.under==null)continue;
@@ -4201,6 +4204,22 @@ async function recordSharpShadow(env,boards,now=Date.now()){
   if(statements.length)await env.DB.batch(statements);
   return {games:soon.length,logged,pulled};
 }
+// Final margin from the player's team's side, from the graded box score row.
+function sharpMargin(stat){
+  const g=stat?.game,teamId=stat?.team?.id,hs=Number(g?.home_team_score),vs=Number(g?.visitor_team_score);
+  if(!g||teamId==null||!Number.isFinite(hs)||!Number.isFinite(vs)||!(hs+vs>0))return null;
+  const home=String(teamId)===String(g.home_team_id??g.home_team?.id);return {home:home?1:0,margin:home?hs-vs:vs-hs};
+}
+// Margins for props graded before the blowout check (a few dozen a run, games cached).
+async function backfillSharpMargins(env,now=Date.now(),limit=40){
+  if(!env.DB||!env.BALLDONTLIE_API_KEY)return {filled:0};
+  const rows=(await env.DB.prepare("SELECT * FROM sharp_shadow WHERE sport='NBA' AND result IN ('won','lost','push') AND final_margin IS NULL AND graded_at>? ORDER BY game_time LIMIT ?").bind(new Date(now-21*86400000).toISOString(),limit).all().catch(()=>({results:[]}))).results||[];
+  const cache=new Map(),statements=[];
+  for(const r of rows){const stat=await recordPlayerStats({sport:'NBA',player:r.player,team:r.team,gameTime:r.game_time,market:r.market,side:r.side,line:r.line},env,undefined,cache).catch(()=>null);
+    const m=sharpMargin(stat);statements.push(env.DB.prepare('UPDATE sharp_shadow SET final_margin=?,player_home=? WHERE id=?').bind(m?m.margin:-999,m?m.home:null,r.id))}
+  if(statements.length)await env.DB.batch(statements);
+  return {filled:statements.length};
+}
 async function gradeSharpShadow(env,now=Date.now(),limit=30){
   if(!env.DB||!env.BALLDONTLIE_API_KEY)return {graded:0};
   const rows=(await env.DB.prepare('SELECT * FROM sharp_shadow WHERE result IS NULL AND game_time<? AND game_time>? ORDER BY game_time LIMIT ?').bind(new Date(now-4*3600000).toISOString(),new Date(now-14*86400000).toISOString(),limit).all().catch(()=>({results:[]}))).results||[];
@@ -4211,8 +4230,8 @@ async function gradeSharpShadow(env,now=Date.now(),limit=30){
     const voided=nba?stat?.scoreboardFinal&&!stat.missingPlayerStats&&!BTGStats.nbaPlayed(stat):shadowVoid(stat,r.game_time,now);
     if(voided||((!stat||stat.missingPlayerStats)&&now-Date.parse(r.game_time)>3*86400000)){statements.push(env.DB.prepare('UPDATE sharp_shadow SET result=?,graded_at=? WHERE id=?').bind('void',stamp,r.id));continue}
     if(!stat||stat.missingPlayerStats||!(stat.scoreboardFinal||nflGameState(stat.game||{})==='final'))continue;
-    const value=BTGStats.metric(record,stat).value,result=value===null?null:BTGStats.grade(r.side,r.line,value);
-    if(result)statements.push(env.DB.prepare('UPDATE sharp_shadow SET actual=?,result=?,graded_at=? WHERE id=?').bind(value,result,stamp,r.id));
+    const value=BTGStats.metric(record,stat).value,result=value===null?null:BTGStats.grade(r.side,r.line,value),m=sharpMargin(stat);
+    if(result)statements.push(env.DB.prepare('UPDATE sharp_shadow SET actual=?,result=?,graded_at=?,final_margin=?,player_home=? WHERE id=?').bind(value,result,stamp,m?.margin??null,m?m.home:null,r.id));
   }
   if(statements.length)await env.DB.batch(statements);
   return {graded:statements.length,checked:rows.length};

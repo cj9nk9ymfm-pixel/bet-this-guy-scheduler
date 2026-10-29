@@ -8,7 +8,7 @@ const context=vm.createContext({URL,URLSearchParams,Request,Response,Headers,Abo
 const template=read('worker/index.template.js');
 vm.runInContext(template.slice(template.indexOf('const API_BASE')).replace('__MOVEMENT_SERVER__',read('worker/movement.js')).replace('__LIVE_SERVER__',read('worker/live.js')).replace('__STATS_SHARED__',read('dist/stats.js')).replace('__RECORDS_SERVER__',read('worker/records.js')).replace('__ACCOUNTS_SERVER__',read('worker/accounts.js')).replace('export default {','this.worker={'),context);
 const db=new DatabaseSync(':memory:');
-for(const f of ['0000_public_record.sql','0001_record_settlement.sql','0002_historical_replays.sql','0006_push_alerts.sql','0038_sharp_shadow.sql'])db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''));
+for(const f of ['0000_public_record.sql','0001_record_settlement.sql','0002_historical_replays.sql','0006_push_alerts.sql','0038_sharp_shadow.sql','0039_sharp_spread.sql'])db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''));
 const wrap=(sql,args=[])=>({bind(...values){return wrap(sql,values)},async first(){return db.prepare(sql).get(...args)||null},async all(){return{results:db.prepare(sql).all(...args)}},async run(){const r=db.prepare(sql).run(...args);return{success:true,meta:{changes:Number(r.changes)}}}});
 context.env={DB:{prepare:sql=>wrap(sql),async batch(list){for(const s of list)await s.run()}},THE_ODDS_API_KEY:'k'};
 const run=code=>vm.runInContext(code,context);
@@ -19,15 +19,21 @@ const run=code=>vm.runInContext(code,context);
   const books=[['fanduel','FanDuel'],['betmgm','BetMGM'],['williamhill_us','Caesars'],['draftkings','DraftKings']].map(([key,title])=>({key,title,last_update:fresh,markets:[key==='draftkings'?market('Puka Nacua',110,-130):market('Puka Nacua',-110,-110)]}));
   context.boards=[{id:'g1',eventID:'NFL--g1',sport_label:'NFL',commence_time:kickoff,home_team:'Los Angeles Rams',away_team:'Seattle Seahawks',bookmakers:books}];
   // Pinnacle: Over -125 / Under +105 (53.25% fair on the Over).
-  context.fetch=async url=>{calls.push(String(url));return Response.json({bookmakers:[{key:'pinnacle',markets:[{key:'player_receptions',outcomes:[{name:'Over',description:'Puka Nacua',point:4.5,price:-125},{name:'Under',description:'Puka Nacua',point:4.5,price:105}]}]}]})};
+  context.fetch=async url=>{calls.push(String(url));return Response.json({bookmakers:[{key:'pinnacle',markets:[{key:'player_receptions',outcomes:[{name:'Over',description:'Puka Nacua',point:4.5,price:-125},{name:'Under',description:'Puka Nacua',point:4.5,price:105}]},{key:'spreads',outcomes:[{name:'Los Angeles Rams',point:-11.5,price:-110},{name:'Seattle Seahawks',point:11.5,price:-110}]}]}]})};
   run('fetch=globalThis.fetch');
   const out=JSON.parse(JSON.stringify(await run(`recordSharpShadow(env,boards,${now})`)));
-  assert.equal(out.pulled,1);assert.match(calls[0],/bookmakers=pinnacle/);assert.match(calls[0],/markets=player_receptions/);
+  assert.equal(out.pulled,1);assert.match(calls[0],/bookmakers=pinnacle/);assert.match(calls[0],/markets=player_receptions%2Cspreads/);
   const r=db.prepare('SELECT * FROM sharp_shadow').get();
   assert.deepEqual([r.sport,r.player,r.side,r.line,r.odds,r.book],['NFL','Puka Nacua','Over',4.5,110,'DraftKings']);
   assert.ok(r.edge>1,'our 5-book edge is kept');
   assert.ok(Math.abs(r.pin_fair-53.25)<.05,`Pinnacle no-vig fair ${r.pin_fair}`);
   assert.ok(Math.abs(r.pin_edge-(r.pin_fair-100/2.1))<.05,'edge against Pinnacle at our price');
+  assert.equal(r.pin_spread,-11.5,'Pinnacle home spread for the blowout check');
+  // Final margin from the player's team's side (home win by 12; road player lost by 12).
+  const mg=g=>JSON.parse(JSON.stringify(run(`sharpMargin(${JSON.stringify(g)})`)));
+  const game={home_team_id:1,visitor_team_id:2,home_team_score:120,visitor_team_score:108};
+  assert.deepEqual(mg({game,team:{id:1}}),{home:1,margin:12});assert.deepEqual(mg({game,team:{id:2}}),{home:0,margin:-12});
+  assert.equal(mg({game:{...game,home_team_score:0,visitor_team_score:0},team:{id:1}}),null,'no score yet');
   // Within 2 hours: no second feed call; the row isn't duplicated.
   await run(`recordSharpShadow(env,boards,${now+3600000})`);assert.equal(calls.length,1);
   assert.equal(db.prepare('SELECT COUNT(*) n FROM sharp_shadow').get().n,1);
