@@ -1849,6 +1849,7 @@ async function xPredictionMedia(env,r,parlay,rec=null,result=null){
 }
 async function postPredictionPicksToX(env,now=Date.now()){
   if(!env.DB||!xReady(env))return {posted:0,disabled:true};
+  if(await xLean(env))return {posted:0,lean:true};
   // Prediction parlays go on the pick cards, not posts of their own.
   const rows=(await env.DB.prepare('SELECT * FROM prediction_picks WHERE event_id NOT LIKE \'NBA--%\' AND posted_at>? AND game_time>? ORDER BY posted_at LIMIT 40').bind(new Date(now-24*3600000).toISOString(),new Date(now).toISOString()).all()).results||[];
   const today=await xHeadCount(env,'xpm:pm|',now);
@@ -3444,15 +3445,49 @@ async function xOAuthHeader(env,method,url,extra={},nonce=crypto.randomUUID().re
   return 'OAuth '+Object.entries({...oauth,oauth_signature:sig}).sort(([a],[b])=>a.localeCompare(b)).map(([k,v])=>`${xEnc(k)}="${xEnc(v)}"`).join(', ');
 }
 const xReady=env=>Boolean(env.X_API_KEY&&env.X_API_SECRET&&env.X_ACCESS_TOKEN&&env.X_ACCESS_SECRET);
-async function xPost(env,text,mediaId=null,replyTo=null,quote=null){
+async function xPost(env,text,mediaId=null,replyTo=null,quote=null,extra={}){
   const url='https://api.twitter.com/2/tweets',body={text};
   if(quote)body.quote_tweet_id=String(quote);
+  if(extra.poll)body.poll=extra.poll;
   if(mediaId)body.media={media_ids:[mediaId]};
   if(replyTo)body.reply={in_reply_to_tweet_id:String(replyTo)};
   const response=await fetch(url,{method:'POST',headers:{authorization:await xOAuthHeader(env,'POST',url),'content-type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(15000)});
   if(!response.ok){const data=await response.json().catch(()=>({}));const why=String(data?.detail||data?.title||data?.errors?.[0]?.message||'').slice(0,200);throw new Error(`X post failed (${response.status})${why?`: ${why}`:''}`)}
-  return response.json().catch(()=>({}));
+  const sent=await response.json().catch(()=>({}));
+  // Every post we send is logged for the daily metrics read (xMetricsDaily).
+  if(sent?.data?.id&&env.DB)try{await env.DB.prepare('INSERT OR IGNORE INTO x_posts (id,text,reply_to,quote_of,media,poll,posted_at) VALUES (?,?,?,?,?,?,?)').bind(String(sent.data.id),String(text).slice(0,280),replyTo?String(replyTo):null,quote?String(quote):null,mediaId?1:0,extra.poll?1:0,new Date().toISOString()).run()}catch{}
+  return sent;
 }
+// Lean posting (Oct 29 X audit: 25–65 posts a day, most of them one pick
+// each). On by default; app_settings x-lean = 'off' brings back a post per
+// pick. Lean: one card per slate (NBA night; NFL day plus a card for each
+// later window), prediction-app picks on the same card, picks found after the
+// card in one reply under it, result replies for top picks and parlays only,
+// one recap image per slate under the card, and at most one big closing move a day.
+let X_LEAN_DEFAULT=true;
+const xLean=async env=>{const v=await appSetting(env,'x-lean').catch(()=>null);return v==='off'?false:v==='on'?true:X_LEAN_DEFAULT};
+// Daily poll (Oct 29): once a slate, right after its card, "Tail or fade?" on
+// the slate's top single (highest edge, game more than 10 minutes out). Polls
+// can't carry an image, so it's text, open until that game starts. Off until
+// app_settings x-poll = 'on'.
+function xPollText(r,now=Date.now()){
+  const f=recordLegs(r)[0]||{},night=Number(new Date(Date.parse(r.game_time)).toLocaleString('en-US',{hour:'numeric',hour12:false,timeZone:'America/Los_Angeles'}))>=15;
+  const price=r.exchange?`${exchangePct(r.odds)}% on ${r.exchange}`:`${weeklyOdds(r.odds)}${f.book?` at ${f.book}`:''}`;
+  return xShort(`🗳️ Tail or fade?\n\n${night?'Tonight’s':'Today’s'} top pick: ${r.player} ${weeklyLegText(r)} (${price})${xMatchup(f.team||r.team)?` · ${xMatchup(f.team||r.team)}`:''}\n\nVote, then watch it grade in public. Link in bio. ${r.exchange?'18+/21+ by app':'21+'}`);
+}
+function xPollPick(rows,now=Date.now()){
+  const edge=r=>Number(r.exchange?r.edge/2:(recordLegs(r)[0]?.edge??r.edge));
+  return rows.filter(r=>r.kind!=='parlay'&&r.player&&Date.parse(r.game_time)>now+10*60000).sort((a,b)=>Boolean(a.exchange)-Boolean(b.exchange)||edge(b)-edge(a))[0]||null;
+}
+async function xPoll(env,rows,now,day){
+  if(await appSetting(env,'x-poll')!=='on')return {posted:0,off:true};
+  const r=xPollPick(rows,now);if(!r)return {posted:0,none:true};
+  const key=`x-poll:${day}`;if(!(await xClaimable(env,key,now))||!(await xClaim(env,key,now)))return {posted:0,done:true};
+  const minutes=Math.max(5,Math.min(10080,Math.floor((Date.parse(r.game_time)-now)/60000)));
+  try{const sent=await xPost(env,xPollText(r,now),null,null,null,{poll:{options:['Tail ✅','Fade ❌'],duration_minutes:minutes}});await xDone(env,key,now);if(sent?.data?.id)await setAppSetting(env,`xid:${key}`,String(sent.data.id)).catch(()=>{});return {posted:1,pick:r.id}}
+  catch(error){await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} poll: ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
+}
+const xMarkCard=(env,ids,postId)=>postId&&ids.length?env.DB.batch(ids.map(id=>env.DB.prepare('INSERT OR IGNORE INTO app_settings (key,value) VALUES (?,?)').bind(`xcard:${id}`,String(postId)))).catch(()=>{}):null;
 const xShort=text=>{const t=String(text||'');return t.length>280?t.slice(0,277)+'…':t};
 // Every pick post, sportsbook or prediction app, single or parlay, uses one
 // layout: what kind of pick, the bet and price, then the whole record
@@ -3544,6 +3579,7 @@ async function xHeadCount(env,prefix,now){
 }
 async function postPicksToX(env,now=Date.now()){
   if(!env.DB||!xReady(env))return {posted:0,disabled:true};
+  if(await xLean(env))return {posted:0,lean:true};
   const since=new Date(now-24*3600000).toISOString(),start=new Date(now).toISOString();
   const picks=(await env.DB.prepare("SELECT id,kind,posted_at,sport,player,market,side,line,odds,combined_odds,legs_json,game_time FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND posted_at>? AND game_time>? ORDER BY posted_at LIMIT 40").bind(since,start).all()).results||[];
   if(!picks.length)return {posted:0};
@@ -3777,8 +3813,9 @@ async function postResultsToX(env,now=Date.now(),limit=1){
     if(posted>=limit)break;
     // Only picks that went out on X get a result post, and since Oct 26 only
     // top picks: the day's recap card carries every result.
-    if(!xTopPick(r))continue;
-    if(!(await appSetting(env,`xi:${r.id}`))||!(await xClaim(env,`xr:${r.id}`,now)))continue;
+    if(!xTopPick(r)&&r.kind!=='parlay')continue;
+    const parent=(await appSetting(env,`xi:${r.id}`))?await xThreadTail(env,r.id):await appSetting(env,`xcard:${r.id}`);
+    if(!parent||!(await xClaim(env,`xr:${r.id}`,now)))continue;
     // Count tries before the heavy work: after three cut-off tries the result posts as text.
     const tries=Number(await appSetting(env,`xrtry:${r.id}`)||0)+1;await setAppSetting(env,`xrtry:${r.id}`,String(tries));
     if(!season)season=weeklySummary((await env.DB.prepare("SELECT kind,posted_at,line,odds,combined_odds,status,result,closing_line,closing_odds,closing_captured_at,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%'").all()).results||[]);
@@ -3787,7 +3824,7 @@ async function postResultsToX(env,now=Date.now(),limit=1){
     try{if(tries<=3&&!(r.kind!=='parlay'&&recordLegs(r)[0]?.voided)&&typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(xCardSvg(await xResultData(env,r,season))))}
     catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} result graphic: ${error.message}`).catch(()=>{})}
     try{
-      const sent=await xPost(env,xResultText(r,season),mediaId,await xThreadTail(env,r.id));
+      const sent=await xPost(env,xResultText(r,season),mediaId,parent);
       await xDone(env,`xr:${r.id}`,now);await xSetTail(env,r.id,sent);
       posted++;await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} result ${mediaId?'graphic':'text'} ${sent?.data?.id||''} ${r.id}`).catch(()=>{});
     }catch(error){
@@ -3822,17 +3859,18 @@ const xMoveSize=(r,move)=>move.kind==='price'?weeklyDecimal(r.odds)/weeklyDecima
 // Closing-line proof (Oct 26): the day's 1-2 biggest moves, NFL and NBA, as
 // their own posts quoting the pick (it was a reply under every pick at
 // kickoff, about 40 a week, which buried the strongest ones).
-const X_MOVES_PER_DAY=2;
+const X_MOVES_PER_DAY=2,X_MOVES_LEAN=1,X_MOVE_BIG=.03;
 async function postClosingToX(env,now=Date.now(),limit=1){
   if(!env.DB||!xReady(env))return {posted:0,disabled:true};
-  if(await xHeadCount(env,'xmove:',now)>=X_MOVES_PER_DAY)return {posted:0,done:true};
+  const lean=await xLean(env);
+  if(await xHeadCount(env,'xmove:',now)>=(lean?X_MOVES_LEAN:X_MOVES_PER_DAY))return {posted:0,done:true};
   const rows=(await env.DB.prepare("SELECT id,kind,player,market,side,line,odds,posted_at,game_time,closing_line,closing_odds,closing_captured_at FROM public_recommendations WHERE source='market-verified-v2' AND (id LIKE 'official|%' OR id LIKE 'nba|%') AND kind='prop' AND closing_captured_at IS NOT NULL AND game_time>? AND game_time<? ORDER BY game_time LIMIT 40").bind(new Date(now-3*3600000).toISOString(),new Date(now+3600000).toISOString()).all()).results||[];
-  const moves=rows.map(r=>({r,move:xBeatClose(r)})).filter(x=>x.move).sort((a,b)=>xMoveSize(b.r,b.move)-xMoveSize(a.r,a.move));
+  const moves=rows.map(r=>({r,move:xBeatClose(r)})).filter(x=>x.move&&(!lean||xMoveSize(x.r,x.move)>=X_MOVE_BIG)).sort((a,b)=>xMoveSize(b.r,b.move)-xMoveSize(a.r,a.move));
   let posted=0;
   for(const {r,move} of moves){
     if(posted>=limit)break;
-    const pick=await appSetting(env,`xid:${r.id}`);
-    if(!pick||await appSetting(env,`xc:${r.id}`)||!(await xClaim(env,`xmove:${r.id}`,now)))continue;
+    const pick=await appSetting(env,`xid:${r.id}`)||(lean?await appSetting(env,`xcard:${r.id}`):null);
+    if(!pick||(!lean&&await appSetting(env,`xc:${r.id}`))||!(await xClaim(env,`xmove:${r.id}`,now)))continue;
     try{await xPost(env,xCloseText(r,move),null,null,pick);await xDone(env,`xmove:${r.id}`,now);await xDone(env,`xc:${r.id}`,now);posted++;await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} move ${r.id}`).catch(()=>{})}
     catch(error){console.warn('x_close_failed',error.message);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(`xmove:${r.id}`).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});break}
   }
@@ -4080,7 +4118,7 @@ async function postCatchUpToX(env,now=Date.now()){
   let mediaId=null;
   try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(await xSlateSvgFaces({final:true,kicker:'JUST LOCKED',day:etDate(first,{weekday:'long'}),dateLine:`${n} more pick${n===1?'':'s'} · first game ${kick}`,note:'Posted before kickoff',picks:rows,records:await xCardRecords(env).catch(()=>null),age:anyPm?'18+/21+':'21+'})))}
   catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} catch-up graphic: ${error.message}`).catch(()=>{})}
-  try{const sent=await xPost(env,text,mediaId);await xDone(env,key,now);await xCovered(env,open.map(x=>x.r.id),now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} catch-up ${n} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,picks:n,graphic:Boolean(mediaId)}}
+  try{const sent=await xPost(env,text,mediaId);await xDone(env,key,now);await xCovered(env,open.map(x=>x.r.id),now);await xMarkCard(env,open.map(x=>x.r.id),sent?.data?.id);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} catch-up ${n} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,picks:n,graphic:Boolean(mediaId)}}
   catch(error){await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
 }
 // Prediction-app slate: the day's prediction picks and parlays on one card,
@@ -4096,6 +4134,7 @@ async function postPredictionSlateToX(env,now=Date.now()){
   const P=picks.filter(same),PP=parlays.filter(same),date=new Date(firstAll).toISOString().slice(0,10);
   const req=String((await appSetting(env,'x-pm-slate-request'))||'');let key=`x-pm-slate:${date}`;
   if(/^\d{4}-\d{2}-\d{2}(#\w{1,8})?$/.test(req)&&!(await appSetting(env,`x-pm-slate-req:${req}`)))key=`x-pm-slate-req:${req}`;
+  else if(await xLean(env))return {posted:0,lean:true};
   else{
     // Due 20 minutes after the sportsbook slate for the same day.
     const sbDone=[await appSetting(env,`x-slate:${date}`),await appSetting(env,`x-slate-req:${await appSetting(env,'x-slate-request')}`)].map(v=>Date.parse(String(v||''))).filter(Number.isFinite);
@@ -4122,6 +4161,7 @@ async function postSlateRequestToX(env,now=Date.now()){
 }
 async function postSlateToX(env,now=Date.now(),final=false,morning=false,request=''){
   if(!env.DB||!xReady(env))return {posted:0,disabled:true};
+  const lean=!request&&await xLean(env);if(lean&&!final)return {posted:0,lean:true};
   const {rows,first}=await slatePicks(env,now),date=first?new Date(first).toISOString().slice(0,10):'';
   if(request){if(!rows.length)return {posted:0,empty:true}}
   else if(morning){
@@ -4135,16 +4175,27 @@ async function postSlateToX(env,now=Date.now(),final=false,morning=false,request
   const all=(await env.DB.prepare("SELECT kind,posted_at,line,odds,combined_odds,status,result,closing_line,closing_odds,closing_captured_at,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%'").all()).results||[];
   const season=weeklySummary(all);
   const picks=rows.map(r=>{const legs=recordLegs(r),f=legs[0]||{};return r.kind==='parlay'?{text:`${legs.length}-leg parlay`,odds:weeklyOdds(r.combined_odds),sub:legs.map(l=>l.player).join(' + '),legLines:legs.map(l=>({text:`${l.player} ${weeklyLegText(l)}`,odds:weeklyOdds(l.odds)}))}:{text:`${r.player} · ${weeklyLegText(r)}`,odds:weeklyOdds(r.odds),sub:[xMatchup(f.team),f.book,exchangeLine(r,null,1)].filter(Boolean).join(' · ')}});
+  // Lean: the same day's prediction-app picks and parlays go on this card.
+  const ymdOf=t=>etDate(t,{year:'numeric',month:'2-digit',day:'2-digit'}),etDay=first?ymdOf(first):'',sameDay=r=>ymdOf(Date.parse(r.game_time))===etDay;
+  const pmRows=lean?((await env.DB.prepare('SELECT * FROM prediction_picks WHERE event_id NOT LIKE \'NBA--%\' AND result IS NULL AND game_time>? AND game_time<? ORDER BY game_time').bind(new Date(now+5*60000).toISOString(),new Date(now+40*3600000).toISOString()).all().catch(()=>({results:[]}))).results||[]).filter(sameDay):[];
+  const pmParlays=lean?((await env.DB.prepare('SELECT * FROM prediction_parlays WHERE result IS NULL AND game_time>? AND game_time<? ORDER BY game_time').bind(new Date(now+5*60000).toISOString(),new Date(now+40*3600000).toISOString()).all().catch(()=>({results:[]}))).results||[]).filter(sameDay):[];
+  const legsOfPm=r=>{try{return JSON.parse(r.legs_json)}catch{return []}};
+  picks.push(...pmRows.map(r=>({color:'#2ee6a8',text:`${r.player} · ${weeklyLegText(r)}`,odds:`${exchangePct(r.odds)}%`,sub:[xMatchup(r.team),r.exchange,'prediction app'].filter(Boolean).join(' · ')})),
+    ...pmParlays.map(r=>{const legs=legsOfPm(r);return {color:'#2ee6a8',text:`${legs.length}-leg parlay`,odds:`${exchangePct(r.odds)}%`,sub:`${r.exchange} · $25`,legLines:legs.map(l=>({text:`${l.player} ${weeklyLegText(l)}`,odds:`${exchangePct(l.netOdds??l.odds)}%`}))}}));
+  const apps=pmRows.length+pmParlays.length;
   const dayName=etDate(first,{weekday:'long'}),kick=`${etDate(first,{hour:'numeric',minute:'2-digit'})} ET`;
   // The caption counts the picks (the card shows every one), so it never runs long.
   const singles=rows.filter(r=>r.kind!=='parlay').length,parlays=rows.length-singles,rec=await xRecords(env).catch(()=>null);
-  const counts=`${singles} single${singles===1?'':'s'}${parlays?` + ${parlays} parlay${parlays===1?'':'s'}`:''}, every one on the card 👇`;
+  const counts=`${singles} single${singles===1?'':'s'}${parlays?` + ${parlays} parlay${parlays===1?'':'s'}`:''}${apps?` + ${apps} prediction-app`:''}, every one on the card 👇`;
   const head=morning?`☀️ ${dayName} morning: ${rows.length} official pick${rows.length===1?'':'s'} so far`:final?`🔒 Locked for ${dayName}: ${rows.length} official pick${rows.length===1?'':'s'} so far`:`🔒 ${dayName}’s official picks: ${rows.length} so far`;
-  const text=xPostText({head,lines:[counts,final?`First kickoff ${kick}. More can drop until then: turn on alerts.`:'More can drop up to kickoff: turn on alerts.'],rec});
+  const text=xPostText({head,lines:[counts,final?`First kickoff ${kick}. More can drop until then: turn on alerts.`:'More can drop up to kickoff: turn on alerts.'],rec,...(apps?{age:'18+/21+ by app'}:{})});
   let mediaId=null;
   try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(await xSlateSvgFaces({final,kick,day:dayName,date:etDate(first,{month:'short',day:'numeric'}),picks,records:await xCardRecords(env).catch(()=>null),season:season.wins+season.losses>=5?`${season.wins}–${season.losses} · ${weeklyMoney(season.profit)}`:''})))}
   catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} slate graphic: ${error.message}`).catch(()=>{})}
-  try{await xPost(env,text,mediaId);await xDone(env,key,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} slate ${key}`).catch(()=>{});await xCovered(env,rows.map(r=>r.id),now);return {posted:1,final,morning,picks:rows.length,graphic:Boolean(mediaId)}}
+  try{const sent=await xPost(env,text,mediaId);await xDone(env,key,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} slate ${key}`).catch(()=>{});const ids=[...rows,...pmRows,...pmParlays].map(r=>r.id);await xCovered(env,ids,now);
+    // The day's card: results and the recap reply under it.
+    if(sent?.data?.id){await xMarkCard(env,ids,sent.data.id);const d=etDay.replace(/(\d+)\/(\d+)\/(\d+)/,'$3-$1-$2');await setAppSetting(env,`x-card-day:${d}`,new Date(now).toISOString()).catch(()=>{});await setAppSetting(env,`xid:x-card-day:${d}`,String(sent.data.id)).catch(()=>{});await xPoll(env,[...rows.filter(r=>r.kind==='prop'),...pmRows],now,d).catch(error=>console.warn('x_poll_failed',error.message))}
+    return {posted:1,final,morning,picks:rows.length+apps,graphic:Boolean(mediaId)}}
   catch(error){console.warn('x_slate_failed',error.message);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});return {posted:0,error:error.message}}
 }
 // Alerts post to pin: a day's locked picks as proof, and why alerts matter
@@ -4564,6 +4615,7 @@ async function postNbaLaunchToX(env,now=Date.now()){
 const nbaPmXText=r=>xShort(`📈 NBA prediction app pick\n${r.player} ${weeklyLegText(r)}\n${exchangePct(r.odds)}% on ${r.exchange} · our fair chance ${Math.round(r.fair_pct)}%\n\n${xLocked(r.game_time)} Own record, separate from our sportsbook picks. 21+`);
 async function postNbaPredictionToX(env,now=Date.now()){
   if(!env.DB||!xReady(env)||await appSetting(env,'x-nba-pm')!=='on')return {posted:0,disabled:true};
+  if(await xLean(env))return {posted:0,lean:true};
   // New picks first, each with its graphic (player photo, team colors, price).
   const rows=(await env.DB.prepare("SELECT * FROM prediction_picks WHERE event_id LIKE 'NBA--%' AND posted_at>? AND game_time>? ORDER BY posted_at LIMIT 5").bind(new Date(now-6*3600000).toISOString(),new Date(now).toISOString()).all()).results||[];
   for(const r of rows){const key=`x-nba-pm:${r.id}`;if(!(await xClaimable(env,key,now))||!(await xClaim(env,key,now)))continue;
@@ -4584,6 +4636,7 @@ async function postNbaPredictionToX(env,now=Date.now()){
 // "added" reply under the card.
 async function postNbaPicksToX(env,now=Date.now()){
   if(!env.DB||!xReady(env)||await appSetting(env,'x-nba')==='hold')return {posted:0,disabled:true};
+  if(await xLean(env))return {posted:0,lean:true};
   const rows=(await env.DB.prepare("SELECT * FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'nba|%' AND kind IN ('prop','parlay') AND posted_at>? AND game_time>? ORDER BY posted_at LIMIT 20").bind(new Date(now-24*3600000).toISOString(),new Date(now+5*60000).toISOString()).all()).results||[];
   let today=await xHeadCount(env,'xi:nba|',now),posted=0;
   for(const r of rows){
@@ -4631,6 +4684,7 @@ async function postNbaCardToX(env,now=Date.now()){
   try{const sent=await xPost(env,text,mediaId);await xDone(env,key,now);if(sent?.data?.id)await setAppSetting(env,`xid:${key}`,String(sent.data.id)).catch(()=>{});
     // Picks on the card count as announced, so only later ones get an "added" reply.
     await env.DB.batch(rows.map(r=>env.DB.prepare('INSERT OR IGNORE INTO app_settings (key,value) VALUES (?,?)').bind(`x-nba-pick:${r.id}`,new Date(now).toISOString())));
+    if(sent?.data?.id){await xMarkCard(env,[...rows,...pm].map(r=>r.id),sent.data.id);await xCovered(env,pm.map(r=>r.id),now);await xPoll(env,[...rows.filter(r=>r.kind==='prop'),...pm],now,`nba-${night}`).catch(error=>console.warn('x_poll_failed',error.message))}
     await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} nba card ${night} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,picks:rows.length,graphic:Boolean(mediaId)}}
   catch(error){console.warn('x_nba_card_failed',error.message);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
 }
@@ -4638,13 +4692,23 @@ async function postNbaCardToX(env,now=Date.now()){
 // land, then the recap once every pick is graded. Text only, limit per run.
 async function postNbaRepliesToX(env,now=Date.now(),limit=2){
   if(!env.DB||!xReady(env)||await appSetting(env,'x-nba')==='hold')return {posted:0,disabled:true};
-  let posted=0,more=false;const out={added:0,results:0,recap:0};
+  let posted=0,more=false;const out={added:0,results:0,recap:0},lean=await xLean(env);
   for(const night of [...new Set([nbaNight(now),nbaNight(now-86400000)])]){
     const card=await appSetting(env,`xid:x-nba-card:${night}`);if(!card)continue;
     const rows=await nbaRows(env,night),look={won:['✅','HIT'],lost:['❌','MISS'],push:['➖','NO ACTION']};
+    // Lean: every pick found after the card (sportsbook and prediction app) in one text reply.
+    const added=[];
+    if(lean){
+      for(const r of rows.filter(r=>Date.parse(r.game_time)>now))if(!(await appSetting(env,`x-nba-pick:${r.id}`)))added.push({r,line:nbaLine(r)});
+      const pmLate=((await env.DB.prepare("SELECT * FROM prediction_picks WHERE event_id LIKE 'NBA--%' AND game_time>? AND game_time<? ORDER BY game_time").bind(new Date(now).toISOString(),new Date(now+36*3600000).toISOString()).all().catch(()=>({results:[]}))).results||[]).filter(r=>nbaNight(Date.parse(r.game_time))===night);
+      for(const r of pmLate)if(!(await appSetting(env,`xc:${r.id}`)))added.push({r,pm:true,line:`• ${r.player} ${weeklyLegText(r)} (${exchangePct(r.odds)}% on ${r.exchange})`});
+    }
+    const leanAdded=added.length?[{key:`x-nba-added:${night}:${added[0].r.id}`,kind:'added',text:()=>`🔒 Added for the late games:\n${added.map(a=>a.line).join('\n')}\n\nLocked before tip-off. ${added.some(a=>a.pm)?'18+/21+ by app':'21+'}`,
+        after:async sent=>{const at=new Date(now).toISOString();await env.DB.batch(added.map(a=>env.DB.prepare('INSERT OR IGNORE INTO app_settings (key,value) VALUES (?,?)').bind(a.pm?`xc:${a.r.id}`:`x-nba-pick:${a.r.id}`,at))).catch(()=>{});await xMarkCard(env,added.map(a=>a.r.id),sent?.data?.id)}}]:[];
     const jobs=[
-      ...rows.filter(r=>Date.parse(r.game_time)>now).map(r=>({key:`x-nba-pick:${r.id}`,kind:'added',save:r.id,media:async()=>xUploadImage(env,await renderCardPng(xCardSvg(await xCardData(env,r,await nbaRecordSummary(env))))),text:()=>`🔒 Added for the late games:\n${nbaLine(r)}\n\nLocked before tip-off. 21+`})),
-      ...rows.filter(nbaDecided).filter(xTopPick).map(r=>({key:`x-nba-r:${r.id}`,kind:'results',pick:r.id,media:async()=>xUploadImage(env,await renderCardPng(xCardSvg(await xResultData(env,r,await nbaRecordSummary(env))))),text:()=>{const legs=recordLegs(r),f=legs[0]||{},[e,w]=r.result==='push'&&legs.every(l=>l.voided)?['➖','NO ACTION']:look[r.result],stake=r.kind==='parlay'?25:100,d=recordDecimal(r.kind==='parlay'?r.combined_odds:r.odds),win=r.result==='won'?stake*(d-1):r.result==='lost'?-stake:0,unit=String(r.market||'').toLowerCase();
+      ...leanAdded,
+      ...rows.filter(r=>!lean&&Date.parse(r.game_time)>now).map(r=>({key:`x-nba-pick:${r.id}`,kind:'added',save:r.id,media:async()=>xUploadImage(env,await renderCardPng(xCardSvg(await xCardData(env,r,await nbaRecordSummary(env))))),text:()=>`🔒 Added for the late games:\n${nbaLine(r)}\n\nLocked before tip-off. 21+`})),
+      ...rows.filter(nbaDecided).filter(r=>xTopPick(r)||(lean&&r.kind==='parlay')).map(r=>({key:`x-nba-r:${r.id}`,kind:'results',pick:r.id,media:async()=>xUploadImage(env,await renderCardPng(xCardSvg(await xResultData(env,r,await nbaRecordSummary(env))))),text:()=>{const legs=recordLegs(r),f=legs[0]||{},[e,w]=r.result==='push'&&legs.every(l=>l.voided)?['➖','NO ACTION']:look[r.result],stake=r.kind==='parlay'?25:100,d=recordDecimal(r.kind==='parlay'?r.combined_odds:r.odds),win=r.result==='won'?stake*(d-1):r.result==='lost'?-stake:0,unit=String(r.market||'').toLowerCase();
         if(r.kind==='parlay')return `${e} ${w}: ${legs.length}-leg parlay (${weeklyOdds(r.combined_odds)})\n${legs.map(l=>`${l.result==='won'?'✅':l.result==='lost'?'❌':'➖'} ${l.player} ${weeklyLegText(l)}`).join('\n')}\n${r.result==='push'?'Stake back.':`${weeklyMoney(win)} on a $25 ticket.`}`;
         return `${e} ${w}: ${r.player} ${weeklyLegText(r)} (${weeklyOdds(r.odds)})${f.voided?`\n${r.player} didn’t play: no action, stake back.`:f.actualValue!=null?`\n${r.status!=='final'&&f.decidedEarly?'Already':'Final:'} ${f.actualValue} ${Number(f.actualValue)===1?unit.replace(/s$/,''):unit}${r.status!=='final'&&f.decidedEarly?', with the game still on.':'.'}`:''}${r.result==='push'?'':`\n${weeklyMoney(win)} on a $100 pick.`}`}}))
     ];
@@ -4652,7 +4716,12 @@ async function postNbaRepliesToX(env,now=Date.now(),limit=2){
     // them (Oct 26: it left them out). It waits for them to grade, up to a day.
     const nightStart=Date.parse(`${night}T06:00:00Z`),pmNight=(((await env.DB.prepare("SELECT result,odds,net_odds FROM prediction_picks WHERE event_id LIKE 'NBA--%' AND game_time>=? AND game_time<?").bind(new Date(nightStart).toISOString(),new Date(nightStart+86400000).toISOString()).all().catch(()=>({results:[]}))).results)||[]);
     const pmDone=pmNight.every(r=>['won','lost','push','void'].includes(r.result))||now-nightStart>48*3600000;
-    if(rows.length&&rows.every(r=>r.status==='final')&&pmDone)jobs.push({key:`x-nba-recap:${night}`,kind:'recap',text:async()=>{const s=weeklySummary(rows),season=await nbaRecordSummary(env),net=s.profit+s.parlayProfit;
+    // Lean: the recap carries the night's card again, every pick marked won or lost.
+    const recapMedia=lean?async()=>{const pmRows=((await env.DB.prepare("SELECT * FROM prediction_picks WHERE event_id LIKE 'NBA--%' AND game_time>=? AND game_time<? ORDER BY game_time").bind(new Date(nightStart).toISOString(),new Date(nightStart+86400000).toISOString()).all().catch(()=>({results:[]}))).results)||[];
+      const s=weeklySummary(rows),net=s.profit+s.parlayProfit,first=Math.min(...rows.map(r=>Date.parse(r.game_time)));
+      const picks=[...nbaSlatePicks(rows),...pmRows.map(r=>({color:'#2ee6a8',text:`${r.player} · ${weeklyLegText(r)}`,odds:`${exchangePct(r.odds)}%`,sub:`${r.exchange} · prediction app`,res:['won','lost','push'].includes(r.result)?r.result:null}))];
+      return xUploadImage(env,await renderCardPng(await xSlateSvgFaces({final:true,kicker:'NBA · RESULTS',day:`${s.wins}–${s.losses}${s.pushes?`–${s.pushes}`:''}`,dayColor:net>=0?'#2ee6a8':'#f87171',date:etDate(first,{month:'short',day:'numeric'}),dateLine:`${etDate(first,{weekday:'long',month:'short',day:'numeric'})} · ${weeklyMoney(net)}`,note:s.parlayWins+s.parlayLosses?`Parlays ${s.parlayWins}–${s.parlayLosses}`:'$100 singles',note2:'Graded in public',picks})))}:null;
+    if(rows.length&&rows.every(r=>r.status==='final')&&pmDone)jobs.push({key:`x-nba-recap:${night}`,kind:'recap',...(recapMedia?{media:recapMedia}:{}),text:async()=>{const s=weeklySummary(rows),season=await nbaRecordSummary(env),net=s.profit+s.parlayProfit;
       const pw=pmNight.filter(r=>r.result==='won'),pl=pmNight.filter(r=>r.result==='lost'),pnet=pw.reduce((t,r)=>t+100*(recordDecimal(r.net_odds||r.odds)-1),0)-100*pl.length;
       const apps=pw.length+pl.length?`\nPrediction apps: ${pw.length}–${pl.length}, ${weeklyMoney(pnet)}.`:'';
       return `🏀 NBA ${night===nbaNight(now)?'tonight':'last night'}: ${s.wins}–${s.losses}${s.pushes?`–${s.pushes}`:''}${s.parlayWins+s.parlayLosses?`, parlays ${s.parlayWins}–${s.parlayLosses}`:''}, ${weeklyMoney(net)}.${apps}\nNBA season: ${season.wins}–${season.losses}${season.pushes?`–${season.pushes}`:''}, ${weeklyMoney(season.profit+season.parlayProfit)}.\n\nEvery pick graded in public, losses included. Link in bio. 21+`}});
@@ -4661,7 +4730,7 @@ async function postNbaRepliesToX(env,now=Date.now(),limit=2){
       if(!(await xClaimable(env,j.key,now))||!(await xClaim(env,j.key,now)))continue;
       // Added picks and results carry their graphic (one per run: each needs a photo, a team lookup and an upload).
       // A result answers the pick's own post (its solo post, or its "added" reply), else the card.
-      try{const mediaId=j.media?await j.media().catch(()=>null):null,parent=(j.pick&&await appSetting(env,`xid:${j.pick}`))||card;const sent=await xPost(env,xShort(await j.text()),mediaId,parent);await xDone(env,j.key,now);if(j.save&&sent?.data?.id)await setAppSetting(env,`xid:${j.save}`,String(sent.data.id)).catch(()=>{});posted++;out[j.kind]++;if(mediaId)limit=posted;await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} nba ${j.kind} ${sent?.data?.id||''} ${j.key}`).catch(()=>{})}
+      try{const mediaId=j.media?await j.media().catch(()=>null):null,parent=(j.pick&&(await appSetting(env,`xid:${j.pick}`)||await appSetting(env,`xcard:${j.pick}`)))||card;const sent=await xPost(env,xShort(await j.text()),mediaId,parent);await xDone(env,j.key,now);if(j.save&&sent?.data?.id)await setAppSetting(env,`xid:${j.save}`,String(sent.data.id)).catch(()=>{});if(j.after)await j.after(sent);posted++;out[j.kind]++;if(mediaId)limit=posted;await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} nba ${j.kind} ${sent?.data?.id||''} ${j.key}`).catch(()=>{})}
       catch(error){await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(j.key).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {posted,...out,error:error.message}}
     }
   }
@@ -4670,6 +4739,33 @@ async function postNbaRepliesToX(env,now=Date.now(),limit=2){
 // Our own recent posts (originals, no replies), to find a post to reply under
 // when its id wasn't saved. One read, cached 10 minutes. The account id is the
 // first part of the access token.
+// X metrics (Oct 29): once a day, one read of up to 100 of our posts that are
+// 20 hours to 7 days old and not yet measured (views, likes, replies, reposts,
+// quotes, bookmarks), stored on x_posts. Posts from before the log existed come
+// from the saved post ids (xid:*), dated by their id.
+const X_METRICS_EVERY=24*3600000;
+const xIdTime=id=>{try{return Number((BigInt(id)>>22n)+1288834974657n)}catch{return NaN}};
+async function xMetricsDaily(env,now=Date.now(),force=false){
+  if(!env.DB||!xReady(env))return {disabled:true};
+  const last=Date.parse(String(await appSetting(env,'x-metrics-at')||''));if(!force&&Number.isFinite(last)&&now-last<X_METRICS_EVERY)return {skipped:true};
+  await setAppSetting(env,'x-metrics-at',new Date(now).toISOString());
+  const from=new Date(now-7*86400000).toISOString(),to=new Date(now-20*3600000).toISOString();
+  const saved=((await env.DB.prepare("SELECT key,value FROM app_settings WHERE key LIKE 'xid:%'").all().catch(()=>({results:[]}))).results)||[];
+  const seed=saved.filter(r=>/^\d{15,20}$/.test(String(r.value))).map(r=>({id:String(r.value),key:r.key.slice(4),at:xIdTime(String(r.value))})).filter(r=>Number.isFinite(r.at)&&r.at>=Date.parse(from)&&r.at<=Date.parse(to));
+  if(seed.length)await env.DB.batch(seed.map(r=>env.DB.prepare('INSERT OR IGNORE INTO x_posts (id,key,posted_at) VALUES (?,?,?)').bind(r.id,r.key,new Date(r.at).toISOString()))).catch(()=>{});
+  if(seed.length)await env.DB.batch(seed.map(r=>env.DB.prepare('UPDATE x_posts SET key=COALESCE(key,?) WHERE id=?').bind(r.key,r.id))).catch(()=>{});
+  const rows=((await env.DB.prepare('SELECT id FROM x_posts WHERE metrics_at IS NULL AND posted_at>=? AND posted_at<=? ORDER BY posted_at LIMIT 100').bind(from,to).all()).results)||[];
+  if(!rows.length)return {read:0};
+  const base='https://api.twitter.com/2/tweets',params={ids:rows.map(r=>r.id).join(','),'tweet.fields':'public_metrics'};
+  const r=await fetch(`${base}?${new URLSearchParams(params)}`,{headers:{authorization:await xOAuthHeader(env,'GET',base,params)},signal:AbortSignal.timeout(15000)});
+  if(!r.ok)throw new Error(`X metrics read failed (${r.status})`);
+  const body=await r.json().catch(()=>({})),stamp=new Date(now).toISOString(),seen=new Set();
+  const statements=(body.data||[]).map(t=>{const m=t.public_metrics||{};seen.add(String(t.id));return env.DB.prepare('UPDATE x_posts SET impressions=?,likes=?,replies=?,reposts=?,quotes=?,bookmarks=?,metrics_at=?,text=COALESCE(text,?) WHERE id=?').bind(m.impression_count??null,m.like_count??null,m.reply_count??null,m.retweet_count??null,m.quote_count??null,m.bookmark_count??null,stamp,String(t.text||'').slice(0,280)||null,String(t.id))});
+  // Deleted posts come back as errors: marked measured (no numbers) so they aren't asked for again.
+  for(const x of rows)if(!seen.has(x.id))statements.push(env.DB.prepare('UPDATE x_posts SET metrics_at=? WHERE id=?').bind(stamp,x.id));
+  if(statements.length)await env.DB.batch(statements);
+  return {read:rows.length,found:seen.size};
+}
 async function xOwnPosts(env,now=Date.now()){
   const cached=await appSetting(env,'x-own-recent');try{const c=JSON.parse(cached||'null');if(c&&now-c.at<10*60000)return c.posts}catch{}
   const user=String(env.X_ACCESS_TOKEN||'').split('-')[0];if(!/^\d+$/.test(user))return [];
@@ -4719,7 +4815,7 @@ async function postCardRecapToX(env,now=Date.now()){
   // the last two days that has no recap yet.
   let req=String((await appSetting(env,'x-card-recap-request'))||'');
   if(!/^\d{4}-\d{2}-\d{2}(#\w{1,8})?$/.test(req)){
-    const cards=((await env.DB.prepare("SELECT key FROM app_settings WHERE key LIKE 'x-combo:%' AND value NOT LIKE 'pending %' AND value>?").bind(new Date(now-2*86400000).toISOString()).all()).results||[]).map(r=>r.key.slice(8,18));
+    const cards=((await env.DB.prepare("SELECT key FROM app_settings WHERE (key LIKE 'x-combo:%' OR key LIKE 'x-card-day:%') AND value NOT LIKE 'pending %' AND value>?").bind(new Date(now-2*86400000).toISOString()).all()).results||[]).map(r=>(r.key.match(/\d{4}-\d{2}-\d{2}/)||[''])[0]).filter(Boolean);
     for(const d of [...new Set(cards)])if(!(await env.DB.prepare("SELECT 1 AS n FROM app_settings WHERE key LIKE ?").bind(`x-card-recap:${d}%`).first())){req=d;break}
     if(!req)return {posted:0,none:true};
   }
@@ -4748,7 +4844,7 @@ async function postCardRecapToX(env,now=Date.now()){
   let mediaId=null;
   try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(await xSlateSvgFaces({final:true,kicker:'FULL CARD RESULTS',day:`${wins}–${losses}`,dayColor:total>=0?'#2ee6a8':'#f87171',dateLine:`${matchup} · ${weeklyMoney(total)}`,note:`Sportsbook ${weeklyMoney(sbMoney)} · Apps ${weeklyMoney(pmMoney)}`,note2:'$100 singles · $25 parlays',picks,cta:'Graded in public'})))}
   catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} card recap graphic: ${error.message}`).catch(()=>{})}
-  try{const comboReq=String((await appSetting(env,'x-combo-request'))||day);const reply=await appSetting(env,`xid:x-combo:${comboReq.slice(0,10)}`)||await xFindPost(env,`x-combo:${day}`,t=>/full card/i.test(t)&&/Wherever you are/.test(t),now);
+  try{const comboReq=String((await appSetting(env,'x-combo-request'))||day);const reply=(comboReq.slice(0,10)===day?await appSetting(env,`xid:x-combo:${day}`):null)||await appSetting(env,`xid:x-card-day:${day}`)||await xFindPost(env,`x-combo:${day}`,t=>/full card/i.test(t)&&/Wherever you are/.test(t),now);
     const sent=await xPost(env,text,mediaId,reply);await xDone(env,key,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} card-recap ${reply?'reply':'post'} ${mediaId?'graphic':'text'} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,graphic:Boolean(mediaId),reply:Boolean(reply)}}
   catch(error){await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
 }
@@ -4848,7 +4944,8 @@ async function runXPosts(env,now=Date.now()){
   const results=picks.posted||predictions.posted||combo.posted||weekly.posted||final.posted||slate.posted||pin.posted||recap.posted?{posted:0,waiting:true}:await postResultsToX(env,now);
   // The pinned summary waits for a run with nothing else heavy.
   const summary=picks.posted||predictions.posted||combo.posted||weekly.posted||final.posted||slate.posted||pin.posted||recap.posted||results.posted?{posted:0,waiting:true}:await postSummaryToX(env,now);
-  return {picks,weekly,closing,combo,final,catchUp,slate,pmSlate,pin,recap,proof,nbaLaunch,nba,nbaPick,nbaPm,predictions,results,summary};
+  const metrics=await xMetricsDaily(env,now).catch(error=>({error:error.message}));
+  return {metrics,picks,weekly,closing,combo,final,catchUp,slate,pmSlate,pin,recap,proof,nbaLaunch,nba,nbaPick,nbaPm,predictions,results,summary};
 }
 // "My book" alerts: a good-value price at one of someone's own sportsbooks.
 // The fair price always comes from every book (3+ pricing both sides, the same
