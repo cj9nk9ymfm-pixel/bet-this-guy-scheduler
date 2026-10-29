@@ -463,6 +463,7 @@ async function publishNbaPicks(request,env,ctx,now=Date.now()){
   const pmRun=await recordNbaExchangePrices(env,boards,now).catch(error=>{console.warn('nba_exchange_prices_failed',error.message);return {}});
   const injuries=await injuryMap(env,'NBA').catch(()=>new Map());boards.splice(0,boards.length,...withoutInjured(boards,injuries));
   await recordSharpShadow(env,boards,now).catch(error=>console.warn('sharp_shadow_failed',error.message));
+  await recordTeammateShadow(env,boards,injuries,now).catch(error=>console.warn('teammate_shadow_failed',error.message));
   const core=list=>list.filter(p=>NBA_OFFICIAL_MARKETS.has(p.market));
   let posted=0;const leans=[],nights=[...new Set(boards.map(b=>nbaNight(Date.parse(b.commence_time))))];
   for(const night of nights){
@@ -4177,8 +4178,10 @@ async function recordSharpShadow(env,boards,now=Date.now()){
     const picks=officialCandidates([board],now,{},{min:.25});
     for(const p of picks){statements.push(env.DB.prepare('INSERT OR IGNORE INTO sharp_shadow (id,sport,event_id,player,team,market,side,line,odds,book,edge,game_time,logged_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(`${id}|${normalizedName(p.player)}|${p.market}`,nba?'NBA':'NFL',id,p.player,p.team||null,p.market,p.side,p.line,p.odds,p.book,+p.edge.toFixed(2),p.gameTime||new Date(Date.parse(board.commence_time)).toISOString(),stamp));logged++}
     // Closing price: the best big-5 price at the same line, until kickoff.
-    const open=(await env.DB.prepare('SELECT id,player,market,side,line,odds,pin_at FROM sharp_shadow WHERE event_id=?').bind(id).all().catch(()=>({results:[]}))).results||[];
-    for(const r of open){const best=bigFivePrice(board,r);if(best!==null)statements.push(env.DB.prepare('UPDATE sharp_shadow SET close_odds=?,close_at=? WHERE id=?').bind(best,stamp,r.id))}
+    const open=(await env.DB.prepare('SELECT id,player,market,side,line,odds,pin_at,logged_at,move_at FROM sharp_shadow WHERE event_id=?').bind(id).all().catch(()=>({results:[]}))).results||[];
+    for(const r of open){const best=bigFivePrice(board,r);if(best===null)continue;statements.push(env.DB.prepare('UPDATE sharp_shadow SET close_odds=?,close_at=? WHERE id=?').bind(best,stamp,r.id));
+      // Market-moving test: the same price about an hour after it was logged (45 to 150 minutes).
+      const age=now-Date.parse(r.logged_at||'');if(!r.move_at&&age>=45*60000&&age<=150*60000)statements.push(env.DB.prepare('UPDATE sharp_shadow SET move_odds=?,move_at=? WHERE id=?').bind(best,stamp,r.id))}
     const rows=[...open,...picks.filter(p=>!open.some(r=>normalizedName(r.player)===normalizedName(p.player)&&r.market===p.market)).map(p=>({id:`${id}|${normalizedName(p.player)}|${p.market}`,player:p.player,market:p.market,side:p.side,line:p.line,odds:p.odds,pin_at:null}))];
     if(!rows.length)continue;
     const last=Number(await appSetting(env,`sharp-at:${id}`)||0);if(now-last<SHARP_EVERY)continue;
@@ -4203,6 +4206,61 @@ async function recordSharpShadow(env,boards,now=Date.now()){
   }
   if(statements.length)await env.DB.batch(statements);
   return {games:soon.length,logged,pulled};
+}
+// Teammate-out test (NBA, from Oct 29): a player newly listed Out (report
+// under 3 hours old) for a game in the next 24 hours triggers one log of each
+// teammate's Over on points, rebounds and assists at the main line: the best
+// big-5 price and the sportsbooks' fair chance (3+ two-sided books). Then
+// closing-priced each run and graded. The question: do books reprice the
+// teammates slowly enough to bet? Never posted.
+const TEAMMATE_MARKETS={player_points:'Points',player_rebounds:'Rebounds',player_assists:'Assists'};
+function teammateOvers(board,players){
+  const want=new Set(players.map(normalizedName)),groups=new Map();
+  for(const book of board.bookmakers||[])for(const m of book.markets||[]){const label=TEAMMATE_MARKETS[m.key];if(!label)continue;
+    for(const o of m.outcomes||[]){const name=String(o.description||'').trim();if(!want.has(normalizedName(name)))continue;const side=exchangeOutcome(o).side,line=Number(o.point),odds=BTGStats.number(o.price);if(!['over','under'].includes(side)||!Number.isFinite(line)||odds===null)continue;
+      const k=JSON.stringify([name,label,line]),g=groups.get(k)||{player:name,market:label,line,books:new Map()};const pair=g.books.get(book.key)||{};pair[side]={odds,book:book.title||book.key,key:book.key};g.books.set(book.key,pair);groups.set(k,g)}}
+  // Main line per player and market: the one most books price on both sides.
+  const best=new Map();
+  for(const g of groups.values()){const pairs=[...g.books.values()].filter(p=>p.over&&p.under);if(pairs.length<3)continue;const k=`${normalizedName(g.player)}|${g.market}`;if(best.has(k)&&best.get(k).pairs.length>=pairs.length)continue;best.set(k,{...g,pairs})}
+  return [...best.values()].map(g=>{const fair=g.pairs.reduce((s,p)=>{const o=1/recordDecimal(p.over.odds),u=1/recordDecimal(p.under.odds);return s+o/(o+u)},0)/g.pairs.length;
+    const top=g.pairs.map(p=>p.over).filter(o=>OFFICIAL_BOOKS.has(o.key)).sort((a,b)=>recordDecimal(b.odds)-recordDecimal(a.odds))[0];
+    return top?{player:g.player,market:g.market,line:g.line,odds:top.odds,book:top.book,fair:+(100*fair).toFixed(2),edge:+(100*(fair-1/recordDecimal(top.odds))).toFixed(2)}:null}).filter(Boolean);
+}
+async function recordTeammateShadow(env,boards,injuries,now=Date.now()){
+  if(!env.DB||RETIRED_SHADOWS.has('teammate')||!injuries?.size)return {skipped:true};
+  const stamp=new Date(now).toISOString(),statements=[];let triggers=0,logged=0;
+  let seen={};try{seen=JSON.parse(await appSetting(env,'teammate-out-seen')||'{}')}catch{}
+  for(const [k,v] of Object.entries(seen))if(now-Date.parse(v)>3*86400000)delete seen[k];
+  for(const inj of injuries.values()){
+    if(injuryClass(inj.status)!=='out'||!inj.team)continue;const reported=Date.parse(inj.reported_at||'');if(!(now-reported<=3*3600000))continue;
+    const board=boards.find(b=>{const k=Date.parse(b.commence_time);return k>now+5*60000&&k-now<=24*3600000&&[b.home_team,b.away_team].some(t=>normalizedName(t)===normalizedName(inj.team))});if(!board)continue;
+    const id=board.eventID||`NBA--${board.id}`,key=`${id}|${normalizedName(inj.player)}`;if(seen[key])continue;seen[key]=stamp;triggers++;
+    // Teammates: players with props in this game whose team is the injured player's.
+    const names=[...new Set((board.bookmakers||[]).flatMap(b=>(b.markets||[]).filter(m=>TEAMMATE_MARKETS[m.key]).flatMap(m=>(m.outcomes||[]).map(o=>String(o.description||'').trim()))))].filter(n=>n&&normalizedName(n)!==normalizedName(inj.player)).slice(0,20);
+    const teams=await Promise.all(names.map(n=>typeof playerTeamOf==='function'?playerTeamOf(env,'NBA',n,`${board.away_team} @ ${board.home_team}`).catch(()=>null):null));
+    const mates=names.filter((n,i)=>normalizedName(teams[i]?.full||'')===normalizedName(inj.team));
+    for(const p of teammateOvers(board,mates)){statements.push(env.DB.prepare('INSERT OR IGNORE INTO teammate_shadow (id,event_id,out_player,out_team,reported_at,player,market,side,line,odds,book,fair,edge,game_time,logged_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(`${id}|${normalizedName(p.player)}|${p.market}`,id,inj.player,inj.team,inj.reported_at||null,p.player,p.market,'Over',p.line,p.odds,p.book,p.fair,p.edge,new Date(Date.parse(board.commence_time)).toISOString(),stamp));logged++}
+  }
+  // Closing price: best big-5 Over at the same line, every run until tip-off.
+  const open=(await env.DB.prepare('SELECT id,event_id,player,market,side,line FROM teammate_shadow WHERE game_time>?').bind(stamp).all().catch(()=>({results:[]}))).results||[];
+  for(const r of open){const b=boards.find(x=>(x.eventID||`NBA--${x.id}`)===r.event_id);const best=b?bigFivePrice(b,r):null;if(best!==null)statements.push(env.DB.prepare('UPDATE teammate_shadow SET close_odds=?,close_at=? WHERE id=?').bind(best,stamp,r.id))}
+  if(triggers)await setAppSetting(env,'teammate-out-seen',JSON.stringify(seen));
+  if(statements.length)await env.DB.batch(statements);
+  return {triggers,logged,tracked:open.length};
+}
+async function gradeTeammateShadow(env,now=Date.now(),limit=30){
+  if(!env.DB||!env.BALLDONTLIE_API_KEY)return {graded:0};
+  const rows=(await env.DB.prepare('SELECT * FROM teammate_shadow WHERE result IS NULL AND game_time<? AND game_time>? ORDER BY game_time LIMIT ?').bind(new Date(now-4*3600000).toISOString(),new Date(now-14*86400000).toISOString(),limit).all().catch(()=>({results:[]}))).results||[];
+  const cache=new Map(),statements=[],stamp=new Date(now).toISOString();
+  for(const r of rows){const record={sport:'NBA',player:r.player,gameTime:r.game_time,market:r.market,side:r.side,line:r.line};
+    const stat=await recordPlayerStats(record,env,undefined,cache).catch(()=>null);
+    if((stat?.scoreboardFinal&&!stat.missingPlayerStats&&!BTGStats.nbaPlayed(stat))||((!stat||stat.missingPlayerStats)&&now-Date.parse(r.game_time)>3*86400000)){statements.push(env.DB.prepare('UPDATE teammate_shadow SET result=?,graded_at=? WHERE id=?').bind('void',stamp,r.id));continue}
+    if(!stat||stat.missingPlayerStats||!stat.scoreboardFinal)continue;
+    const value=BTGStats.metric(record,stat).value,result=value===null?null:BTGStats.grade(r.side,r.line,value);
+    if(result)statements.push(env.DB.prepare('UPDATE teammate_shadow SET actual=?,result=?,graded_at=? WHERE id=?').bind(value,result,stamp,r.id));
+  }
+  if(statements.length)await env.DB.batch(statements);
+  return {graded:statements.length,checked:rows.length};
 }
 // Final margin from the player's team's side, from the graded box score row.
 function sharpMargin(stat){
