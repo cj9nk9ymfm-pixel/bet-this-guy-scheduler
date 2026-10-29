@@ -4240,7 +4240,7 @@ async function postSlateToX(env,now=Date.now(),final=false,morning=false,request
   // The caption counts the picks (the card shows every one), so it never runs long.
   const singles=rows.filter(r=>r.kind!=='parlay').length,parlays=rows.length-singles,rec=await xRecords(env).catch(()=>null);
   const counts=`${singles} single${singles===1?'':'s'}${parlays?` + ${parlays} parlay${parlays===1?'':'s'}`:''}${apps?` + ${apps} prediction-app`:''}, every one on the card 👇`;
-  const shown=rows.length+apps,head=morning?`☀️ ${dayName} morning: ${shown} pick${shown===1?'':'s'} so far`:final?`🔒 Locked for ${dayName}: ${shown} pick${shown===1?'':'s'} so far`:`🔒 ${dayName}’s official picks: ${rows.length} so far`;
+  const shown=rows.length+apps,head=morning?`☀️ ${dayName} morning: ${shown} official pick${shown===1?'':'s'} so far`:final?`🔒 Locked for ${dayName}: ${shown} official pick${shown===1?'':'s'} so far`:`🔒 ${dayName}’s official picks: ${rows.length} so far`;
   const text=xPostText({head,lines:[counts,final?`First kickoff ${kick}. More can drop until then: turn on alerts.`:'More can drop up to kickoff: turn on alerts.'],rec,...(apps?{age:'18+/21+ by app'}:{})});
   let mediaId=null;
   try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(await xSlateSvgFaces({final,kick,day:dayName,date:etDate(first,{month:'short',day:'numeric'}),picks,records:await xCardRecords(env).catch(()=>null),season:season.wins+season.losses>=5?`${season.wins}–${season.losses} · ${weeklyMoney(season.profit)}`:''})))}
