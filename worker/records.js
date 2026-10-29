@@ -1025,6 +1025,8 @@ async function postCustomToX(env,now=Date.now()){
 // One-off reply set by the owner: app_settings x-custom-reply holds JSON
 // {"text":"…","replyKey":"xid:…"}, a reply under the post that key names
 // (a stat-correction note under a pick, for example). Posts once, then clears.
+// poll: {"options":["Tail ✅","Fade ❌"],"minutes":30} makes the reply a poll
+// (X polls can't carry an image, so a graphic's poll goes right under it).
 async function postCustomReplyToX(env,now=Date.now()){
   if(!env.DB||!xReady(env))return {posted:0,disabled:true};
   const raw=await appSetting(env,'x-custom-reply');if(!raw)return {posted:0,none:true};
@@ -1032,7 +1034,9 @@ async function postCustomReplyToX(env,now=Date.now()){
   const text=String(req.text||'').trim();if(!text||[...text].length>280||!req.replyKey)return {posted:0,invalid:true};
   const parent=await appSetting(env,String(req.replyKey));if(!parent)return {posted:0,waiting:true};
   const claim=await env.DB.prepare('DELETE FROM app_settings WHERE key=? AND value=?').bind('x-custom-reply',raw).run();if(!Number(claim?.meta?.changes??claim?.changes))return {posted:0,claimed:false};
-  try{const sent=await xPost(env,text,null,parent);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} reply ${sent?.data?.id||''}`).catch(()=>{});return {posted:1}}
+  const opts=Array.isArray(req.poll?.options)?req.poll.options.map(o=>String(o).slice(0,25)).filter(Boolean).slice(0,4):[];
+  const poll=opts.length>=2?{options:opts,duration_minutes:Math.max(5,Math.min(10080,Math.round(Number(req.poll.minutes)||60)))}:null;
+  try{const sent=await xPost(env,text,null,parent,null,poll?{poll}:{});await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} reply${poll?' poll':''} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,...(poll?{poll:true}:{})}}
   catch(error){const tries=Number(req.tries||0)+1;if(tries<3)await setAppSetting(env,'x-custom-reply',JSON.stringify({...req,tries})).catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} reply: ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
 }
 async function runXResults(env,now=Date.now(),chain=0){
