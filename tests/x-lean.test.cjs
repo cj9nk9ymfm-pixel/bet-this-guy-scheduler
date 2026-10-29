@@ -8,6 +8,7 @@ const posts=[],reads=[];
 const context=vm.createContext({URL,URLSearchParams,Request,Response,Headers,AbortSignal,Date,console,setTimeout,clearTimeout,crypto:webcrypto,TextEncoder,btoa,atob,FormData,Blob,
   fetch:async(url,init={})=>{url=String(url);if(/media\/upload/.test(url))return Response.json({data:{id:'m1'}});
     if(url==='https://api.twitter.com/2/tweets'){posts.push(JSON.parse(init.body));return Response.json({data:{id:String(1900000000000000000n+BigInt(posts.length))}})}
+    if(/^https:\/\/api\.twitter\.com\/2\/tweets\/\d+\?/.test(url))return Response.json({data:{id:'p'},includes:{polls:[{id:'pl',options:[{position:1,label:'Tailing ✅',votes:18},{position:2,label:'Fading ❌',votes:7}]}]}});
     if(url.startsWith('https://api.twitter.com/2/tweets?')){const ids=new URL(url).searchParams.get('ids').split(',');reads.push(ids);return Response.json({data:ids.slice(1).map((id,i)=>({id,text:'x',public_metrics:{impression_count:100+i,like_count:3,reply_count:1,retweet_count:0,quote_count:0,bookmark_count:2}})),errors:[{value:ids[0]}]})}
     return new Response(null,{status:404})}});
 const template=read('worker/index.template.js');
@@ -51,11 +52,13 @@ const pm=(id,player,eventId,gameTime,edge=3)=>db.prepare("INSERT INTO prediction
   nba(`nba|${night}|props|prop|1`,'Josh Hart',105,tip,1.4);nba(`nba|${night}|props|prop|2`,'Jalen Brunson',-110,tip,2.1);
   assert.equal((await run(`postNbaPicksToX(env,${nbaAt-3600000})`)).lean,true,'NBA picks wait for the card');
   const before=posts.length;assert.equal((await run(`postNbaCardToX(env,${nbaAt})`)).posted,1);
-  const nbaCard=posts[before],poll=posts[before+1];
-  assert.match(nbaCard.text,/NBA picks/);assert.ok(poll&&poll.poll,'poll right after the card');
-  assert.deepEqual(poll.poll.options,['Tail ✅','Fade ❌']);assert.equal(poll.poll.duration_minutes,30,'open until tip-off');
-  assert.match(poll.text,/^🗳️ Tail or fade\?/);assert.match(poll.text,/Jalen Brunson Over 6.5 rebounds \(-110 at DraftKings\)/,'the highest edge');assert.ok(!poll.media&&!/https?:\/\//.test(poll.text));
-  assert.equal(posts.length,before+2);
+  const nbaCard=posts[before],poll=posts[before+1],under=posts[before+2],pollId=String(1900000000000000000n+BigInt(before+2));
+  assert.match(nbaCard.text,/NBA picks/);assert.ok(poll&&poll.poll,'poll as its own post right after the card');assert.ok(!poll.reply,'not a reply');
+  assert.deepEqual(poll.poll.options,['Tailing ✅','Fading ❌']);assert.equal(poll.poll.duration_minutes,30,'open until tip-off');
+  assert.match(poll.text,/^🗳️ Are you tailing tonight’s top pick\?/);assert.match(poll.text,/Jalen Brunson Over 6.5 rebounds \(-110 at DraftKings\)/,'the highest edge');assert.match(poll.text,/full card in the replies 👇👇/);assert.ok(!poll.media&&!/https?:\/\//.test(poll.text));
+  assert.equal(under.reply.in_reply_to_tweet_id,pollId,'the card goes under the poll');assert.deepEqual(under.media,nbaCard.media,'same card image');
+  assert.equal(setting(`x-poll-pick:nba-${night}`),`nba|${night}|props|prop|2`);
+  assert.equal(posts.length,before+3);
   // Late picks: one reply under the card for everything new, then nothing again.
   nba(`nba|${night}|props|prop|3`,'Jayson Tatum',115,later,1.1);nba(`nba|${night}|props|prop|4`,'Jaylen Brown',120,later,1.3);
   const added=await run(`postNbaRepliesToX(env,${Date.parse(tip)+3600000},2)`);
@@ -63,6 +66,13 @@ const pm=(id,player,eventId,gameTime,edge=3)=>db.prepare("INSERT INTO prediction
   assert.match(reply.text,/^🔒 Added for the late games:\n• Jayson Tatum .*\n• Jaylen Brown /);assert.equal(reply.reply.in_reply_to_tweet_id,String(1900000000000000000n+BigInt(before+1)));
   assert.equal((await run(`postNbaRepliesToX(env,${Date.parse(tip)+3700000},2)`)).added,0,'never twice');
   assert.ok(setting(`xcard:nba|${night}|props|prop|3`),'late picks thread their results under the reply');
+  // Poll result: once the pick is graded, a reply under the poll with the vote.
+  assert.equal((await run(`postPollResultsToX(env,${Date.parse(tip)+3*3600000})`)).posted,0,'waits for the grade');
+  db.prepare("UPDATE public_recommendations SET status='final',result='won',legs_json=? WHERE id=?").run(JSON.stringify([{player:'Jalen Brunson',team:'Boston Celtics · @ New York Knicks',market:'Rebounds',side:'Over',line:6.5,odds:-110,edge:2.1,book:'DraftKings',gameTime:tip,actualValue:8}]),`nba|${night}|props|prop|2`);
+  const pr=await run(`postPollResultsToX(env,${Date.parse(tip)+3*3600000})`);
+  assert.equal(pr.posted,1);const res2=posts.at(-1);assert.equal(res2.reply.in_reply_to_tweet_id,pollId);
+  assert.match(res2.text,/^✅ HIT: Jalen Brunson Over 6.5 rebounds\nFinal: 8 rebounds\.\n72% of you tailed \(25 votes\)\.\nTailers: \+\$91 on a \$100 bet\./);
+  assert.equal((await run(`postPollResultsToX(env,${Date.parse(tip)+3*3600000+600000})`)).posted,0,'once');
   // Every post is logged; the metrics read takes posts 20 hours to 7 days old, once a day.
   assert.equal(db.prepare('SELECT COUNT(*) n FROM x_posts').get().n,posts.length);
   assert.equal(db.prepare('SELECT poll FROM x_posts WHERE text LIKE ?').get('🗳️%').poll,1);
@@ -75,5 +85,5 @@ const pm=(id,player,eventId,gameTime,edge=3)=>db.prepare("INSERT INTO prediction
   const t=Date.parse('2026-10-20T12:00:00Z'),id=((BigInt(t)-1288834974657n)<<22n).toString();assert.equal(run(`xIdTime('${id}')`),t,'post time from its id');
   // x-lean off brings back a post per pick.
   db.prepare("INSERT INTO app_settings(key,value) VALUES('x-lean','off')").run();assert.notEqual((await run(`postPicksToX(env,${cardAt})`)).lean,true);
-  console.log('PASS: lean X posting (one card per slate with prediction-app picks, late picks in one reply, top-pick/parlay results under the card), Tail-or-fade poll behind x-poll, every post logged, daily metrics read');
+  console.log('PASS: lean X posting (one card per slate with prediction-app picks, late picks in one reply, top-pick/parlay results under the card), standalone poll with the card under it and a vote result reply (behind x-poll), every post logged, daily metrics read');
 })().catch(e=>{console.error(e);process.exit(1)});

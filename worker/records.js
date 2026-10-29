@@ -1048,6 +1048,7 @@ async function runXResults(env,now=Date.now(),chain=0){
   const grading=await gradePredictionNow(env,now).catch(error=>({error:error.message}));
   const results=await postPredictionResultsToX(env,now,2).catch(error=>({posted:0,error:error.message}));
   const nba=await postNbaRepliesToX(env,now,2).catch(error=>({posted:0,error:error.message}));
+  const polls=await postPollResultsToX(env,now).catch(error=>({posted:0,error:error.message}));
   const recap=await postCardRecapToX(env,now).catch(error=>({posted:0,error:error.message}));
   const week=recap.posted?{posted:0,waiting:true}:await postPredictionWeekToX(env,now).catch(error=>({posted:0,error:error.message}));
   const custom=week.posted?{posted:0,waiting:true}:await postCustomToX(env,now).catch(error=>({posted:0,error:error.message}));
@@ -1058,7 +1059,7 @@ async function runXResults(env,now=Date.now(),chain=0){
   let next=null;
   if((nba.more||results.more)&&chain<6&&env.SELF?.fetch&&env.MAINTENANCE_TOKEN)
     next=await env.SELF.fetch(new Request(`${SITE_URL}/api/maintenance?job=xresults&chain=${chain+1}`,{method:'POST',headers:{authorization:`Bearer ${env.MAINTENANCE_TOKEN}`},signal:AbortSignal.timeout(240000)})).then(r=>r.status).catch(error=>error.message);
-  return {grading,results,nba,recap,week,custom,reply,...(next?{next}:{})};
+  return {grading,results,nba,polls,recap,week,custom,reply,...(next?{next}:{})};
 }
 async function runXResultsNow(env){
   if(!xReady(env))return {disabled:true};
@@ -3474,26 +3475,70 @@ async function xPost(env,text,mediaId=null,replyTo=null,quote=null,extra={}){
 // one recap image per slate under the card, and at most one big closing move a day.
 let X_LEAN_DEFAULT=true;
 const xLean=async env=>{const v=await appSetting(env,'x-lean').catch(()=>null);return v==='off'?false:v==='on'?true:X_LEAN_DEFAULT};
-// Daily poll (Oct 29): once a slate, right after its card, "Tail or fade?" on
-// the slate's top single (highest edge, game more than 10 minutes out). Polls
-// can't carry an image, so it's text, open until that game starts. Off until
-// app_settings x-poll = 'on'.
+// Daily poll (Oct 29): once a slate, right after its card, its own post:
+// "Are you tailing?" on the slate's top single (highest edge, game more than
+// 10 minutes out), open until that game starts. X won't put a poll and an
+// image (or a quote) in one post, so the card goes as a reply right under the
+// poll. When the pick is graded, a reply under the poll gives the result and
+// how the vote went (postPollResultsToX). Off unless app_settings x-poll = 'on'.
 function xPollText(r,now=Date.now()){
   const f=recordLegs(r)[0]||{},night=Number(new Date(Date.parse(r.game_time)).toLocaleString('en-US',{hour:'numeric',hour12:false,timeZone:'America/Los_Angeles'}))>=15;
-  const price=r.exchange?`${exchangePct(r.odds)}% on ${r.exchange}`:`${weeklyOdds(r.odds)}${f.book?` at ${f.book}`:''}`;
-  return xShort(`🗳️ Tail or fade?\n\n${night?'Tonight’s':'Today’s'} top pick: ${r.player} ${weeklyLegText(r)} (${price})${xMatchup(f.team||r.team)?` · ${xMatchup(f.team||r.team)}`:''}\n\nVote, then watch it grade in public. Link in bio. ${r.exchange?'18+/21+ by app':'21+'}`);
+  const price=r.exchange?`${exchangePct(r.odds)}% on ${r.exchange}`:`${weeklyOdds(r.odds)}${f.book?` at ${f.book}`:''}`,game=xMatchup(f.team||r.team);
+  return xShort(`🗳️ Are you tailing ${night?'tonight’s':'today’s'} top pick?\n\n${r.player} ${weeklyLegText(r)} (${price})${game?`\n${game}`:''}\n\nVote, then see the full card in the replies 👇👇 ${r.exchange?'18+/21+':'21+'}`);
 }
 function xPollPick(rows,now=Date.now()){
   const edge=r=>Number(r.exchange?r.edge/2:(recordLegs(r)[0]?.edge??r.edge));
   return rows.filter(r=>r.kind!=='parlay'&&r.player&&Date.parse(r.game_time)>now+10*60000).sort((a,b)=>Boolean(a.exchange)-Boolean(b.exchange)||edge(b)-edge(a))[0]||null;
 }
-async function xPoll(env,rows,now,day){
+async function xPoll(env,rows,now,day,mediaId=null){
   if(await appSetting(env,'x-poll')!=='on')return {posted:0,off:true};
   const r=xPollPick(rows,now);if(!r)return {posted:0,none:true};
   const key=`x-poll:${day}`;if(!(await xClaimable(env,key,now))||!(await xClaim(env,key,now)))return {posted:0,done:true};
   const minutes=Math.max(5,Math.min(10080,Math.floor((Date.parse(r.game_time)-now)/60000)));
-  try{const sent=await xPost(env,xPollText(r,now),null,null,null,{poll:{options:['Tail ✅','Fade ❌'],duration_minutes:minutes}});await xDone(env,key,now);if(sent?.data?.id)await setAppSetting(env,`xid:${key}`,String(sent.data.id)).catch(()=>{});return {posted:1,pick:r.id}}
+  let sent=null;
+  try{sent=await xPost(env,xPollText(r,now),null,null,null,{poll:{options:['Tailing ✅','Fading ❌'],duration_minutes:minutes}});await xDone(env,key,now);
+    if(sent?.data?.id){await setAppSetting(env,`xid:${key}`,String(sent.data.id)).catch(()=>{});await setAppSetting(env,`x-poll-pick:${day}`,String(r.id)).catch(()=>{})}}
   catch(error){await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} poll: ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
+  // The card under the poll (the same uploaded image; X keeps a media id usable for a day).
+  if(mediaId&&sent?.data?.id)try{await xPost(env,`👇 ${Date.parse(r.game_time)-now<12*3600000?'Tonight’s':'The'} full card. Locked before ${String(r.id||'').startsWith('nba|')||String(r.event_id||'').startsWith('NBA--')?'tip-off':'kickoff'}, every pick graded in public. Link in bio.`,mediaId,sent.data.id)}catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} poll card: ${error.message}`).catch(()=>{})}
+  return {posted:1,pick:r.id};
+}
+// A poll's votes (one X read): {tail, total} from the first option's share.
+async function xPollVotes(env,id){
+  const base=`https://api.twitter.com/2/tweets/${id}`,params={expansions:'attachments.poll_ids','poll.fields':'options,voting_status'};
+  const r=await fetch(`${base}?${new URLSearchParams(params)}`,{headers:{authorization:await xOAuthHeader(env,'GET',base,params)},signal:AbortSignal.timeout(15000)});
+  if(!r.ok)throw new Error(`X poll read failed (${r.status})`);
+  const opts=(await r.json().catch(()=>({})))?.includes?.polls?.[0]?.options||[];
+  const total=opts.reduce((t,o)=>t+Number(o.votes||0),0),first=Number(opts.find(o=>o.position===1)?.votes??opts[0]?.votes??0);
+  return {tail:first,total};
+}
+function xPollResultText(r,v){
+  const pm=String(r.id||'').startsWith('pm|'),f=pm?{}:recordLegs(r)[0]||{},actual=pm?r.actual:f.actualValue,unit=String(r.market||'').toLowerCase();
+  const look={won:['✅','HIT'],lost:['❌','MISS'],push:['➖','PUSH'],void:['➖','NO ACTION']}[r.result]||['➖','FINAL'];
+  const win=r.result==='won'?100*(recordDecimal(pm?(r.net_odds||r.odds):r.odds)-1):0;
+  const pct=v&&v.total?Math.round(100*v.tail/v.total):null;
+  const votes=pct===null?'':`\n${pct}% of you tailed (${v.total} vote${v.total===1?'':'s'}).`;
+  const verdict=r.result==='won'?`\nTailers: ${weeklyMoney(win)} on a $100 bet.`:r.result==='lost'?'\nFaders take this one.':'\nStake back.';
+  return xShort(`${look[0]} ${look[1]}: ${r.player} ${weeklyLegText(r)}${actual!=null&&r.result!=='void'?`\nFinal: ${actual} ${Number(actual)===1?unit.replace(/s$/,''):unit}.`:''}${votes}${verdict}\n\nEvery pick graded in public, wins and losses.`);
+}
+// Poll results: once a poll's pick is graded, a reply under the poll with the
+// result and the vote (x-poll-pick:<key> names the pick, xid:x-poll:<key> the poll).
+async function postPollResultsToX(env,now=Date.now()){
+  if(!env.DB||!xReady(env))return {posted:0,disabled:true};
+  const polls=((await env.DB.prepare("SELECT key,value FROM app_settings WHERE key LIKE 'x-poll-pick:%'").all().catch(()=>({results:[]}))).results)||[];
+  for(const p of polls){
+    const day=p.key.slice('x-poll-pick:'.length),done=`x-poll-r:${day}`;if(await appSetting(env,done))continue;
+    const pollId=await appSetting(env,`xid:x-poll:${day}`);if(!pollId)continue;
+    const pm=String(p.value).startsWith('pm|'),r=await env.DB.prepare(`SELECT * FROM ${pm?'prediction_picks':'public_recommendations'} WHERE id=?`).bind(p.value).first().catch(()=>null);
+    if(!r){await xDone(env,done,now);continue}
+    if(!['won','lost','push','void'].includes(r.result)||(!pm&&r.status!=='final'&&!recordLegs(r).some(l=>l.decidedEarly)))continue;
+    if(now-Date.parse(r.game_time)>4*86400000){await xDone(env,done,now);continue}
+    if(!(await xClaimable(env,done,now))||!(await xClaim(env,done,now)))continue;
+    const votes=await xPollVotes(env,pollId).catch(()=>null);
+    try{const sent=await xPost(env,xPollResultText(r,votes),null,pollId);await xDone(env,done,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} poll result ${sent?.data?.id||''} ${day}`).catch(()=>{});return {posted:1,votes}}
+    catch(error){await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(done).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} poll result: ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
+  }
+  return {posted:0};
 }
 const xMarkCard=(env,ids,postId)=>postId&&ids.length?env.DB.batch(ids.map(id=>env.DB.prepare('INSERT OR IGNORE INTO app_settings (key,value) VALUES (?,?)').bind(`xcard:${id}`,String(postId)))).catch(()=>{}):null;
 const xShort=text=>{const t=String(text||'');return t.length>280?t.slice(0,277)+'…':t};
@@ -4195,14 +4240,14 @@ async function postSlateToX(env,now=Date.now(),final=false,morning=false,request
   // The caption counts the picks (the card shows every one), so it never runs long.
   const singles=rows.filter(r=>r.kind!=='parlay').length,parlays=rows.length-singles,rec=await xRecords(env).catch(()=>null);
   const counts=`${singles} single${singles===1?'':'s'}${parlays?` + ${parlays} parlay${parlays===1?'':'s'}`:''}${apps?` + ${apps} prediction-app`:''}, every one on the card 👇`;
-  const head=morning?`☀️ ${dayName} morning: ${rows.length} official pick${rows.length===1?'':'s'} so far`:final?`🔒 Locked for ${dayName}: ${rows.length} official pick${rows.length===1?'':'s'} so far`:`🔒 ${dayName}’s official picks: ${rows.length} so far`;
+  const shown=rows.length+apps,head=morning?`☀️ ${dayName} morning: ${shown} pick${shown===1?'':'s'} so far`:final?`🔒 Locked for ${dayName}: ${shown} pick${shown===1?'':'s'} so far`:`🔒 ${dayName}’s official picks: ${rows.length} so far`;
   const text=xPostText({head,lines:[counts,final?`First kickoff ${kick}. More can drop until then: turn on alerts.`:'More can drop up to kickoff: turn on alerts.'],rec,...(apps?{age:'18+/21+ by app'}:{})});
   let mediaId=null;
   try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(await xSlateSvgFaces({final,kick,day:dayName,date:etDate(first,{month:'short',day:'numeric'}),picks,records:await xCardRecords(env).catch(()=>null),season:season.wins+season.losses>=5?`${season.wins}–${season.losses} · ${weeklyMoney(season.profit)}`:''})))}
   catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} slate graphic: ${error.message}`).catch(()=>{})}
   try{const sent=await xPost(env,text,mediaId);await xDone(env,key,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} slate ${key}`).catch(()=>{});const ids=[...rows,...pmRows,...pmParlays].map(r=>r.id);await xCovered(env,ids,now);
     // The day's card: results and the recap reply under it.
-    if(sent?.data?.id){await xMarkCard(env,ids,sent.data.id);const d=etDay.replace(/(\d+)\/(\d+)\/(\d+)/,'$3-$1-$2');await setAppSetting(env,`x-card-day:${d}`,new Date(now).toISOString()).catch(()=>{});await setAppSetting(env,`xid:x-card-day:${d}`,String(sent.data.id)).catch(()=>{});await xPoll(env,[...rows.filter(r=>r.kind==='prop'),...pmRows],now,d).catch(error=>console.warn('x_poll_failed',error.message))}
+    if(sent?.data?.id){await xMarkCard(env,ids,sent.data.id);const d=etDay.replace(/(\d+)\/(\d+)\/(\d+)/,'$3-$1-$2');await setAppSetting(env,`x-card-day:${d}`,new Date(now).toISOString()).catch(()=>{});await setAppSetting(env,`xid:x-card-day:${d}`,String(sent.data.id)).catch(()=>{});await xPoll(env,[...rows.filter(r=>r.kind==='prop'),...pmRows],now,d,mediaId).catch(error=>console.warn('x_poll_failed',error.message))}
     return {posted:1,final,morning,picks:rows.length+apps,graphic:Boolean(mediaId)}}
   catch(error){console.warn('x_slate_failed',error.message);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});return {posted:0,error:error.message}}
 }
@@ -4692,7 +4737,7 @@ async function postNbaCardToX(env,now=Date.now()){
   try{const sent=await xPost(env,text,mediaId);await xDone(env,key,now);if(sent?.data?.id)await setAppSetting(env,`xid:${key}`,String(sent.data.id)).catch(()=>{});
     // Picks on the card count as announced, so only later ones get an "added" reply.
     await env.DB.batch(rows.map(r=>env.DB.prepare('INSERT OR IGNORE INTO app_settings (key,value) VALUES (?,?)').bind(`x-nba-pick:${r.id}`,new Date(now).toISOString())));
-    if(sent?.data?.id){await xMarkCard(env,[...rows,...pm].map(r=>r.id),sent.data.id);await xCovered(env,pm.map(r=>r.id),now);await xPoll(env,[...rows.filter(r=>r.kind==='prop'),...pm],now,`nba-${night}`).catch(error=>console.warn('x_poll_failed',error.message))}
+    if(sent?.data?.id){await xMarkCard(env,[...rows,...pm].map(r=>r.id),sent.data.id);await xCovered(env,pm.map(r=>r.id),now);await xPoll(env,[...rows.filter(r=>r.kind==='prop'),...pm],now,`nba-${night}`,mediaId).catch(error=>console.warn('x_poll_failed',error.message))}
     await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} nba card ${night} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,picks:rows.length,graphic:Boolean(mediaId)}}
   catch(error){console.warn('x_nba_card_failed',error.message);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
 }
@@ -4764,11 +4809,11 @@ async function xMetricsDaily(env,now=Date.now(),force=false){
   if(seed.length)await env.DB.batch(seed.map(r=>env.DB.prepare('UPDATE x_posts SET key=COALESCE(key,?) WHERE id=?').bind(r.key,r.id))).catch(()=>{});
   const rows=((await env.DB.prepare('SELECT id FROM x_posts WHERE metrics_at IS NULL AND posted_at>=? AND posted_at<=? ORDER BY posted_at LIMIT 100').bind(from,to).all()).results)||[];
   if(!rows.length)return {read:0};
-  const base='https://api.twitter.com/2/tweets',params={ids:rows.map(r=>r.id).join(','),'tweet.fields':'public_metrics'};
+  const base='https://api.twitter.com/2/tweets',params={ids:rows.map(r=>r.id).join(','),'tweet.fields':'public_metrics,attachments',expansions:'attachments.poll_ids','poll.fields':'options'};
   const r=await fetch(`${base}?${new URLSearchParams(params)}`,{headers:{authorization:await xOAuthHeader(env,'GET',base,params)},signal:AbortSignal.timeout(15000)});
   if(!r.ok)throw new Error(`X metrics read failed (${r.status})`);
-  const body=await r.json().catch(()=>({})),stamp=new Date(now).toISOString(),seen=new Set();
-  const statements=(body.data||[]).map(t=>{const m=t.public_metrics||{};seen.add(String(t.id));return env.DB.prepare('UPDATE x_posts SET impressions=?,likes=?,replies=?,reposts=?,quotes=?,bookmarks=?,metrics_at=?,text=COALESCE(text,?) WHERE id=?').bind(m.impression_count??null,m.like_count??null,m.reply_count??null,m.retweet_count??null,m.quote_count??null,m.bookmark_count??null,stamp,String(t.text||'').slice(0,280)||null,String(t.id))});
+  const body=await r.json().catch(()=>({})),stamp=new Date(now).toISOString(),seen=new Set(),pollsById=new Map((body.includes?.polls||[]).map(p=>[String(p.id),p.options||[]]));
+  const statements=(body.data||[]).map(t=>{const m=t.public_metrics||{};seen.add(String(t.id));const po=pollsById.get(String(t.attachments?.poll_ids?.[0]||''));return env.DB.prepare('UPDATE x_posts SET impressions=?,likes=?,replies=?,reposts=?,quotes=?,bookmarks=?,metrics_at=?,text=COALESCE(text,?),poll_votes=? WHERE id=?').bind(m.impression_count??null,m.like_count??null,m.reply_count??null,m.retweet_count??null,m.quote_count??null,m.bookmark_count??null,stamp,String(t.text||'').slice(0,280)||null,po?JSON.stringify(po.map(o=>[o.label,o.votes])):null,String(t.id))});
   // Deleted posts come back as errors: marked measured (no numbers) so they aren't asked for again.
   for(const x of rows)if(!seen.has(x.id))statements.push(env.DB.prepare('UPDATE x_posts SET metrics_at=? WHERE id=?').bind(stamp,x.id));
   if(statements.length)await env.DB.batch(statements);
