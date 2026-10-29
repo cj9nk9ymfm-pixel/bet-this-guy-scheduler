@@ -1431,7 +1431,8 @@ async function runCron(controller,env,ctx){
         const backfill=await backfillLeans(env).catch(error=>({error:error.message}));
         const sharp=await gradeSharpShadow(env).catch(error=>({error:error.message}));
         const margins=await backfillSharpMargins(env).catch(error=>({error:error.message}));
-        return {near,leans,backfill,sharp,margins};
+        const teammates=await gradeTeammateShadow(env).catch(error=>({error:error.message}));
+        return {near,leans,backfill,sharp,margins,teammates};
       }
       return gradeLineShadow(env);
     },

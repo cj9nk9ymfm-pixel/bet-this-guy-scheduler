@@ -8,7 +8,7 @@ const context=vm.createContext({URL,URLSearchParams,Request,Response,Headers,Abo
 const template=read('worker/index.template.js');
 vm.runInContext(template.slice(template.indexOf('const API_BASE')).replace('__MOVEMENT_SERVER__',read('worker/movement.js')).replace('__LIVE_SERVER__',read('worker/live.js')).replace('__STATS_SHARED__',read('dist/stats.js')).replace('__RECORDS_SERVER__',read('worker/records.js')).replace('__ACCOUNTS_SERVER__',read('worker/accounts.js')).replace('export default {','this.worker={'),context);
 const db=new DatabaseSync(':memory:');
-for(const f of ['0000_public_record.sql','0001_record_settlement.sql','0002_historical_replays.sql','0006_push_alerts.sql','0038_sharp_shadow.sql','0039_sharp_spread.sql'])db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''));
+for(const f of ['0000_public_record.sql','0001_record_settlement.sql','0002_historical_replays.sql','0006_push_alerts.sql','0038_sharp_shadow.sql','0039_sharp_spread.sql','0040_teammate_move.sql'])db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''));
 const wrap=(sql,args=[])=>({bind(...values){return wrap(sql,values)},async first(){return db.prepare(sql).get(...args)||null},async all(){return{results:db.prepare(sql).all(...args)}},async run(){const r=db.prepare(sql).run(...args);return{success:true,meta:{changes:Number(r.changes)}}}});
 context.env={DB:{prepare:sql=>wrap(sql),async batch(list){for(const s of list)await s.run()}},THE_ODDS_API_KEY:'k'};
 const run=code=>vm.runInContext(code,context);
@@ -38,6 +38,7 @@ const run=code=>vm.runInContext(code,context);
   await run(`recordSharpShadow(env,boards,${now+3600000})`);assert.equal(calls.length,1);
   assert.equal(db.prepare('SELECT COUNT(*) n FROM sharp_shadow').get().n,1);
   assert.equal(db.prepare('SELECT close_odds FROM sharp_shadow').get().close_odds,110,'closing price tracked each run');
+  assert.equal(db.prepare('SELECT move_odds FROM sharp_shadow').get().move_odds,110,'market-moving test: the price about an hour after logging');
   // A game more than 24 hours out isn't pulled.
   context.later=[{...context.boards[0],eventID:'NFL--g2',id:'g2',commence_time:new Date(now+30*3600000).toISOString()}];
   assert.equal(JSON.parse(JSON.stringify(await run(`recordSharpShadow(env,later,${now})`))).games,0);
