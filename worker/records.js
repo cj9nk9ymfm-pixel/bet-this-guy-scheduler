@@ -4765,7 +4765,7 @@ async function postNbaPredictionToX(env,now=Date.now()){
   for(const r of done){if(!every&&!(Number(r.edge)>=TOP_PICK.pm))continue;const parent=await appSetting(env,`xid:${r.id}`);if(!parent)continue;const key=`x-nba-pm-r:${r.id}`;if(!(await xClaimable(env,key,now))||!(await xClaim(env,key,now)))continue;
     const look={won:['✅','HIT'],lost:['❌','MISS'],push:['➖','PUSH'],void:['➖','NO ACTION']}[r.result],unit=String(r.market||'').toLowerCase(),win=r.result==='won'?100*(recordDecimal(r.net_odds||r.odds)-1):r.result==='lost'?-100:0;
     const text=xShort(`${look[0]} ${look[1]}: ${r.player} ${weeklyLegText(r)} (${exchangePct(r.odds)}% on ${r.exchange})${r.result==='void'?`\n${r.player} didn’t play: no action, stake back.`:r.actual!=null?`\nFinal: ${r.actual} ${Number(r.actual)===1?unit.replace(/s$/,''):unit}.`:''}${['won','lost'].includes(r.result)?`\n${weeklyMoney(win)} on a $100 pick.`:''}`);
-    try{const mediaId=await xPredictionMedia(env,r,false,null,r.result);const sent=await xPost(env,text,mediaId,parent);await xDone(env,key,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} nba prediction result ${sent?.data?.id||''} ${r.id}`).catch(()=>{});return {posted:1,result:true}}
+    try{const mediaId=await xPredictionMedia(env,r,false,null,r.result);const sent=await xReplySafe(env,text,mediaId,[parent]);await xDone(env,key,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} nba prediction result ${sent?.data?.id||''} ${r.id}`).catch(()=>{});return {posted:1,result:true}}
     catch(error){await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}}
   return {posted:0};
 }
@@ -4940,7 +4940,7 @@ async function postPredictionResultsToX(env,now=Date.now(),limit=3){
   for(const j of jobs){
     if(posted>=limit){more=true;break}
     if(!(await appSetting(env,j.posted))||!(await xClaimable(env,`xpr:${j.id}`,now))||!(await xClaim(env,`xpr:${j.id}`,now)))continue;
-    try{const to=await xFindPost(env,j.id,j.match,now),mediaId=every&&j.pick?await xPredictionMedia(env,j.pick,false,null,j.pick.result):null,sent=await xPost(env,xShort(j.text()),mediaId,to);await xDone(env,`xpr:${j.id}`,now);posted++;if(mediaId){more=more||jobs.length>posted;break}
+    try{const to=await xFindPost(env,j.id,j.match,now),mediaId=every&&j.pick?await xPredictionMedia(env,j.pick,false,null,j.pick.result):null,sent=await xReplySafe(env,xShort(j.text()),mediaId,[to]);await xDone(env,`xpr:${j.id}`,now);posted++;if(mediaId){more=more||jobs.length>posted;break}
       await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} prediction-result ${to?'reply':'post'} ${sent?.data?.id||''} ${j.id}`).catch(()=>{})}
     catch(error){await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(`xpr:${j.id}`).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});break}
   }
@@ -4985,7 +4985,7 @@ async function postCardRecapToX(env,now=Date.now()){
   try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(await xSlateSvgFaces({final:true,kicker:'FULL CARD RESULTS',day:`${wins}–${losses}`,dayColor:total>=0?'#2ee6a8':'#f87171',dateLine:`${matchup} · ${weeklyMoney(total)}`,note:`Sportsbook ${weeklyMoney(sbMoney)} · Apps ${weeklyMoney(pmMoney)}`,note2:'$100 singles · $25 parlays',picks,cta:'Graded in public'})))}
   catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} card recap graphic: ${error.message}`).catch(()=>{})}
   try{const comboReq=String((await appSetting(env,'x-combo-request'))||day);const reply=(comboReq.slice(0,10)===day?await appSetting(env,`xid:x-combo:${day}`):null)||await appSetting(env,`xid:x-card-day:${day}`)||await xFindPost(env,`x-combo:${day}`,t=>/full card/i.test(t)&&/Wherever you are/.test(t),now);
-    const sent=await xPost(env,text,mediaId,reply);await xDone(env,key,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} card-recap ${reply?'reply':'post'} ${mediaId?'graphic':'text'} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,graphic:Boolean(mediaId),reply:Boolean(reply)}}
+    const sent=await xReplySafe(env,text,mediaId,[reply]);await xDone(env,key,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} card-recap ${reply?'reply':'post'} ${mediaId?'graphic':'text'} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,graphic:Boolean(mediaId),reply:Boolean(reply)}}
   catch(error){await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
 }
 // Day recap: a game day's graded card (record, $100-a-pick money, closing
