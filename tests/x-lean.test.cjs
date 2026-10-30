@@ -17,6 +17,7 @@ const db=new DatabaseSync(':memory:');
 for(const f of fs.readdirSync('drizzle').filter(f=>/^\d{4}_.*\.sql$/.test(f)).sort())try{db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''))}catch{}
 const wrap=(sql,args=[])=>({bind(...values){return wrap(sql,values)},async first(){return db.prepare(sql).get(...args)||null},async all(){return{results:db.prepare(sql).all(...args)}},async run(){const r=db.prepare(sql).run(...args);return{success:true,meta:{changes:Number(r.changes)}}}});
 const run=code=>vm.runInContext(code,context);
+run('X_PICK_POSTS_DEFAULT=false');
 const setting=k=>db.prepare('SELECT value FROM app_settings WHERE key=?').get(k)?.value;
 const team='Houston Texans · @ Tennessee Titans';
 const official=(id,player,odds,gameTime,kind='prop',edge=1.2)=>db.prepare("INSERT INTO public_recommendations(id,kind,player,market,side,line,odds,combined_odds,game_time,legs_json,posted_at,status,source) VALUES(?,?,?,?,?,?,?,?,?,?,?,'pending','market-verified-v2')").run(id,kind,player,'Receptions','Under',4.5,odds,kind==='parlay'?264:null,gameTime,JSON.stringify([{player,team,market:'Receptions',side:'Under',line:4.5,odds,edge,book:'FanDuel',gameTime}]),'2026-11-01T01:00:00Z');
@@ -85,5 +86,9 @@ const pm=(id,player,eventId,gameTime,edge=3)=>db.prepare("INSERT INTO prediction
   const t=Date.parse('2026-10-20T12:00:00Z'),id=((BigInt(t)-1288834974657n)<<22n).toString();assert.equal(run(`xIdTime('${id}')`),t,'post time from its id');
   // x-lean off brings back a post per pick.
   db.prepare("INSERT INTO app_settings(key,value) VALUES('x-lean','off')").run();assert.notEqual((await run(`postPicksToX(env,${cardAt})`)).lean,true);
-  console.log('PASS: lean X posting (one card per slate with prediction-app picks, late picks in one reply, top-pick/parlay results under the card), standalone poll with the card under it and a vote result reply (behind x-poll), every post logged, daily metrics read');
+  // Pick posts (Oct 30): with lean posting on, every pick still posts the moment it locks.
+  db.prepare("DELETE FROM app_settings WHERE key='x-lean'").run();run('X_PICK_POSTS_DEFAULT=true');
+  assert.notEqual((await run(`postNbaPicksToX(env,${nbaAt-3600000})`)).lean,true,'pick posts on');
+  db.prepare("INSERT INTO app_settings(key,value) VALUES('x-pick-posts','off')").run();assert.equal((await run(`postPicksToX(env,${cardAt})`)).lean,true,'x-pick-posts off: cards only');
+  console.log('PASS: lean X posting (one card per slate with prediction-app picks, late picks in one reply, top-pick/parlay results under the card), standalone poll with the card under it and a vote result reply (behind x-poll), every post logged, daily metrics read, pick posts on by default (x-pick-posts off for cards only)');
 })().catch(e=>{console.error(e);process.exit(1)});
