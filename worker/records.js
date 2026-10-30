@@ -4949,12 +4949,12 @@ async function postProofToX(env,now=Date.now()){
   try{const sent=await xPost(env,text);await xDone(env,key,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} proof ${req} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,beat:s.beat,tracked:s.tracked}}
   catch(error){console.warn('x_proof_failed',error.message);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
 }
-// Owner check: app_settings headshot-probe holds player names (comma-separated);
+// Owner check: app_settings headshot-probe holds player names (comma-separated, up to 12);
 // the next run looks each up and saves what ESPN returned to headshot-probe-result.
 async function runHeadshotProbe(env){
   const names=await appSetting(env,'headshot-probe').catch(()=>null);if(!names||typeof playerHeadshot!=='function')return null;
   await env.DB.prepare("DELETE FROM app_settings WHERE key='headshot-probe'").run();
-  const out=[];for(const name of String(names).split(',').map(n=>n.trim()).filter(Boolean).slice(0,4)){
+  const out=[];for(const name of String(names).split(',').map(n=>n.trim()).filter(Boolean).slice(0,12)){
     // url:<address> checks that one image address can be fetched from here.
     if(name.startsWith('url:')){const r=await fetch(name.slice(4),{headers:{'user-agent':'Mozilla/5.0'},signal:AbortSignal.timeout(8000)}).catch(e=>({status:String(e.message)}));out.push({url:name.slice(4),status:r.status,type:r.headers?.get?.('content-type')||null,bytes:r.arrayBuffer?(await r.arrayBuffer().catch(()=>new ArrayBuffer(0))).byteLength:0});continue}
     // view:<espn id> saves a small copy of that ESPN headshot for an owner to check by eye.
