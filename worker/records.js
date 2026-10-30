@@ -3543,11 +3543,19 @@ async function postPollResultsToX(env,now=Date.now()){
     if(!(await xClaimable(env,done,now))||!(await xClaim(env,done,now)))continue;
     const votes=await xPollVotes(env,pollId).catch(()=>null);
     try{const sent=await xPost(env,xPollResultText(r,votes),null,pollId);await xDone(env,done,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} poll result ${sent?.data?.id||''} ${day}`).catch(()=>{});return {posted:1,votes}}
-    catch(error){await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(done).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} poll result: ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
+    // A deleted poll can't take a reply: mark it done so it isn't retried every run.
+    catch(error){if(/deleted or not visible/i.test(error.message))await xDone(env,done,now);else await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(done).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} poll result: ${error.message}`).catch(()=>{});continue}
   }
   return {posted:0};
 }
 const xMarkCard=(env,ids,postId)=>postId&&ids.length?env.DB.batch(ids.map(id=>env.DB.prepare('INSERT OR IGNORE INTO app_settings (key,value) VALUES (?,?)').bind(`xcard:${id}`,String(postId)))).catch(()=>{}):null;
+// A reply whose parent was deleted (Tim deletes and reposts cards) falls back
+// to the next parent, then to a post of its own.
+async function xReplySafe(env,text,mediaId,parents){
+  const list=[...new Set(parents.filter(Boolean).map(String))];
+  for(const p of list){try{return await xPost(env,text,mediaId,p)}catch(error){if(!/deleted or not visible/i.test(error.message))throw error}}
+  return xPost(env,text,mediaId);
+}
 const xShort=text=>{const t=String(text||'');return t.length>280?t.slice(0,277)+'…':t};
 // Every pick post, sportsbook or prediction app, single or parlay, uses one
 // layout: what kind of pick, the bet and price, then the whole record
@@ -3954,7 +3962,7 @@ async function postResultsToX(env,now=Date.now(),limit=1){
     try{if(tries<=3&&!(r.kind!=='parlay'&&recordLegs(r)[0]?.voided)&&typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(xPickSvg(await xResultData(env,r,season))))}
     catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} result graphic: ${error.message}`).catch(()=>{})}
     try{
-      const sent=await xPost(env,xResultText(r,season),mediaId,parent);
+      const sent=await xReplySafe(env,xResultText(r,season),mediaId,[parent,await appSetting(env,`xcard:${r.id}`)]);
       await xDone(env,`xr:${r.id}`,now);await xSetTail(env,r.id,sent);
       posted++;await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} result ${mediaId?'graphic':'text'} ${sent?.data?.id||''} ${r.id}`).catch(()=>{});
     }catch(error){
@@ -4861,7 +4869,7 @@ async function postNbaRepliesToX(env,now=Date.now(),limit=2){
       if(!(await xClaimable(env,j.key,now))||!(await xClaim(env,j.key,now)))continue;
       // Added picks and results carry their graphic (one per run: each needs a photo, a team lookup and an upload).
       // A result answers the pick's own post (its solo post, or its "added" reply), else the card.
-      try{const mediaId=j.media?await j.media().catch(()=>null):null,parent=(j.pick&&(await appSetting(env,`xid:${j.pick}`)||await appSetting(env,`xcard:${j.pick}`)))||card;const sent=await xPost(env,xShort(await j.text()),mediaId,parent);await xDone(env,j.key,now);if(j.save&&sent?.data?.id)await setAppSetting(env,`xid:${j.save}`,String(sent.data.id)).catch(()=>{});if(j.after)await j.after(sent);posted++;out[j.kind]++;if(mediaId)limit=posted;await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} nba ${j.kind} ${sent?.data?.id||''} ${j.key}`).catch(()=>{})}
+      try{const mediaId=j.media?await j.media().catch(()=>null):null,parents=j.pick?[await appSetting(env,`xid:${j.pick}`),await appSetting(env,`xcard:${j.pick}`),card]:[card];const sent=await xReplySafe(env,xShort(await j.text()),mediaId,parents);await xDone(env,j.key,now);if(j.save&&sent?.data?.id)await setAppSetting(env,`xid:${j.save}`,String(sent.data.id)).catch(()=>{});if(j.after)await j.after(sent);posted++;out[j.kind]++;if(mediaId)limit=posted;await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} nba ${j.kind} ${sent?.data?.id||''} ${j.key}`).catch(()=>{})}
       catch(error){await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(j.key).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {posted,...out,error:error.message}}
     }
   }
