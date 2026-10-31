@@ -17,7 +17,7 @@ db.exec(read('drizzle/0019_cron_runs.sql'));
   const at=Date.parse('2026-10-06T14:00:00Z');
   await run(`runCron({scheduledTime:${at}},env,{waitUntil(){}})`);
   const row=db.prepare('SELECT * FROM cron_runs').get();
-  assert.equal(row.at,new Date(at).toISOString());assert.equal(row.jobs,'publish,form,nbaShadow');
+  assert.equal(row.at,new Date(at).toISOString());assert.equal(row.jobs,'publish,form,nbaShadow,xpicks');
   assert.ok(row.ended_at,'finished runs record when they ended');
   const results=JSON.parse(row.results_json);
   assert.ok(!results.publish.error&&results.form.error==='stats feed down','each job outcome, errors included');

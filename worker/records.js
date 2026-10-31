@@ -2480,7 +2480,12 @@ const savedMatchup=async(env,id)=>{try{return JSON.parse(await appSetting(env,`m
 // Matchups are worked out in the background (form job, two picks a run), and
 // a new pick's post waits up to 12 minutes for its matchup before going out.
 let MATCHUP_WAIT=12*60000;
-async function xMatchupReady(env,r,now=Date.now()){return !env.BALLDONTLIE_API_KEY||now-Date.parse(r.posted_at||0)>MATCHUP_WAIT||Boolean(await appSetting(env,`matchup:${r.id}`))||Boolean(await appSetting(env,`matchup-none:${r.id}`))}
+async function xMatchupReady(env,r,now=Date.now()){
+  if(!env.BALLDONTLIE_API_KEY||now-Date.parse(r.posted_at||0)>MATCHUP_WAIT||await appSetting(env,`matchup:${r.id}`)||await appSetting(env,`matchup-none:${r.id}`))return true;
+  // The stats check already fetched this pick's matchup before it locked (cand|…): no wait.
+  const f=recordLegs(r)[0]||{},k=candKey({gameId:f.gameId||r.event_id,player:f.player||r.player,market:f.market||r.market});
+  return Boolean(await appSetting(env,`matchup:${k}`)||await appSetting(env,`matchup-none:${k}`));
+}
 async function fillMatchups(env,ctx,now=Date.now(),limit=2){
   if(!env.DB||!env.BALLDONTLIE_API_KEY)return {filled:0};
   const t=new Date(now).toISOString();
@@ -5288,6 +5293,14 @@ async function runHeadshotProbe(env){
       await setAppSetting(env,`headshot-probe-image:${normalizedName(name.slice(4))}`,small||'none');out.push({name:name.slice(4),id,found:Boolean(shot),bytes:shot?.bytes?.length||0});continue}
     const shot=await playerHeadshot(name,'NFL');out.push({name,found:Boolean(shot),bytes:shot?.bytes?.length||0,steps:typeof headshotTrace!=='undefined'?headshotTrace:[]})}
   await setAppSetting(env,'headshot-probe-result',JSON.stringify({at:new Date().toISOString(),out}));return out;
+}
+// New picks go to X in the same cron run that locks them (Oct 31: they
+// waited for the in-between run, 5 to 15 minutes later). Only pick posts:
+// cards, recaps and the rest stay on the in-between run.
+async function runXPicks(env,now=Date.now()){
+  const out={};
+  for(const [k,f] of [['nfl',postPicksToX],['nflApp',postPredictionPicksToX],['nba',postNbaPicksToX],['nbaApp',postNbaPredictionToX]])out[k]=await f(env,now).then(r=>r?.posted||0).catch(error=>error.message);
+  return out;
 }
 async function runXPosts(env,now=Date.now()){
   if(typeof loadEspnIds==='function')await loadEspnIds(env,now).catch(()=>null);

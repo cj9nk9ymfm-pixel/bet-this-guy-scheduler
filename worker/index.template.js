@@ -1370,7 +1370,7 @@ async function scheduledMaintenance(request,env,ctx){
   if(!await maintenanceAuthorized(request,env))return json({success:false,error:'Unauthorized'},401);
   if(!env.DB||!env.THE_ODDS_API_KEY||!env.BALLDONTLIE_API_KEY)return json({success:false,error:'Maintenance configuration incomplete'},503);
   const job=new URL(request.url).searchParams.get('job');
-  const jobs={publish:()=>publishOfficialPicks(request,env,ctx),digest:()=>sendWeeklyDigest(env),alerts:()=>sendDueAlerts(env),xpost:()=>runXPosts(env),xresults:()=>runXResults(env,Date.now(),Number(new URL(request.url).searchParams.get('chain'))||0),tdGrade:async()=>({td:await gradeTdShadow(env),bump:await gradeBumpShadow(env).catch(error=>({error:error.message})),live:await gradeLiveShadow(env).catch(error=>({error:error.message})),games:await gradeGameShadow(env).catch(error=>({error:error.message})),books:await gradeBookShadow(env).catch(error=>({error:error.message})),exchanges:await gradeExchangeShadow(env).catch(error=>({error:error.message})),predictions:await gradePredictionPicks(env).catch(error=>({error:error.message})),predictionParlays:await gradePredictionParlays(env).catch(error=>({error:error.message})),nbaPmParlays:await gradeNbaPmParlays(env).catch(error=>({error:error.message}))}),live:()=>recordLiveShadow(env,ctx),form:()=>{const q=new URL(request.url).searchParams,size=Math.min(8,Math.max(1,Number(q.get('size'))||5)),part=Math.min(7,Math.max(0,Number(q.get('part'))||0));return fillPlayerForm(env,ctx,Date.now(),size,part*size)},lineGrade:()=>gradeLineShadow(env),nearGrade:()=>gradeNearShadow(env),statsCheck:()=>runStatsChecks(env,ctx),grade:async()=>({settle:await settlePublicRecords(env),corrections:await recheckSettledRecords(env).catch(error=>({error:error.message})),flags:await flagStuckPicks(env).catch(error=>({error:error.message}))}),closing:()=>captureClosingLines(env)};
+  const jobs={publish:()=>publishOfficialPicks(request,env,ctx),digest:()=>sendWeeklyDigest(env),alerts:()=>sendDueAlerts(env),xpost:()=>runXPosts(env),xpicks:()=>runXPicks(env),xresults:()=>runXResults(env,Date.now(),Number(new URL(request.url).searchParams.get('chain'))||0),tdGrade:async()=>({td:await gradeTdShadow(env),bump:await gradeBumpShadow(env).catch(error=>({error:error.message})),live:await gradeLiveShadow(env).catch(error=>({error:error.message})),games:await gradeGameShadow(env).catch(error=>({error:error.message})),books:await gradeBookShadow(env).catch(error=>({error:error.message})),exchanges:await gradeExchangeShadow(env).catch(error=>({error:error.message})),predictions:await gradePredictionPicks(env).catch(error=>({error:error.message})),predictionParlays:await gradePredictionParlays(env).catch(error=>({error:error.message})),nbaPmParlays:await gradeNbaPmParlays(env).catch(error=>({error:error.message}))}),live:()=>recordLiveShadow(env,ctx),form:()=>{const q=new URL(request.url).searchParams,size=Math.min(8,Math.max(1,Number(q.get('size'))||5)),part=Math.min(7,Math.max(0,Number(q.get('part'))||0));return fillPlayerForm(env,ctx,Date.now(),size,part*size)},lineGrade:()=>gradeLineShadow(env),nearGrade:()=>gradeNearShadow(env),statsCheck:()=>runStatsChecks(env,ctx),grade:async()=>({settle:await settlePublicRecords(env),corrections:await recheckSettledRecords(env).catch(error=>({error:error.message})),flags:await flagStuckPicks(env).catch(error=>({error:error.message}))}),closing:()=>captureClosingLines(env)};
   if(!Object.hasOwn(jobs,job))return json({success:false,error:'Unknown maintenance job'},400);
   // Form fills run in parts at once; each part is its own job.
   // xresults can chain itself (chain=1,2…), so each link is its own job.
@@ -1436,10 +1436,13 @@ async function runCron(controller,env,ctx){
       }
       return gradeLineShadow(env);
     },
-    closing:()=>captureClosingLines(env)};
+    closing:()=>captureClosingLines(env),
+    // Pick posts in their own request (its own request allowance), right after publishing.
+    xpicks:async()=>env.SELF?.fetch&&env.MAINTENANCE_TOKEN?env.SELF.fetch(new Request(`${SITE_URL}/api/maintenance?job=xpicks`,{method:'POST',headers:{authorization:`Bearer ${env.MAINTENANCE_TOKEN}`},signal:AbortSignal.timeout(120000)})).then(r=>({status:r.status})):runXPicks(env)};
   // NBA shadow runs after the NFL jobs and on its own: it can never hold up
   // or fail NFL publishing or grading.
-  if(due.includes('publish'))due.push('nbaShadow');
+  if(due.includes('publish'))due.push('nbaShadow','xpicks');
+  else if(due.includes('lineGrade'))due.splice(due.indexOf('lineGrade')+1,0,'xpicks');
   if(due.includes('grade'))due.push('nbaGrade');
   // Pick alerts go first on the in-between run: they're the most time-sensitive.
   if(due.includes('xpost')){due.unshift('alerts');due.push('digest')}
