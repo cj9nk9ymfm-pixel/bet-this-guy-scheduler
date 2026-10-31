@@ -25,11 +25,11 @@ pick('d','Brock Purdy',110,'2026-10-13T00:15:00.000Z');pick('e','Old Pick',150,'
   assert.ok(text.startsWith('🔒 Sunday’s official picks: 3 so far\n3 singles, every one on the card 👇')&&text.includes('More can drop up to kickoff')&&text.includes('Record: sportsbooks'),text);assert.ok(text.length<=280&&!text.includes('Carnell Tate'),'counts, not a list');
   assert.deepEqual(posts[0].media,{media_ids:['m1']});assert.ok(!/https?:\/\//.test(text),'no link in the text');
   const svg=run('globalThis.__svg');assert.ok(svg.includes('Sunday')&&svg.includes('Carnell Tate')&&svg.includes('Texans @ Titans · FanDuel'));
-  // A big day: every pick on the card, two columns, nothing cut.
+  // A big day: every pick on the card, tighter rows, nothing cut.
   const big=run(`xSlateSvg({day:'Sunday',date:'Oct 18',picks:Array.from({length:30},(_,i)=>({text:'Player '+i+' · Over 1.5 receptions',odds:'+110',sub:'Bills @ Jets · FanDuel'}))})`);
   const legs=run(`xSlateSvg({day:'Sunday',date:'Oct 18',picks:[...Array.from({length:9},(_,i)=>({text:'Player '+i+' · Over 1.5 receptions',odds:'+110',sub:'Bills @ Jets'})),{text:'2-leg parlay',odds:'+433',legLines:[{text:'Ryan Fitzgerald Under 1.5 extra points',odds:'+160'},{text:'Daniel Carlson Over 7.5 kicking points',odds:'+105'}]}]})`);
-  assert.ok(legs.includes('Ryan Fitzgerald Under 1.5 XPs')&&legs.includes('Daniel Carlson Over 7.5 kick pts')&&legs.includes('+160'),'parlay legs spelled out');
-  assert.ok(big.includes('Player 0 ·')&&big.includes('Player 29 ·')&&!big.includes('more on the site')&&/height="(\d+)"/.exec(big)[1]>675,'all 30 picks fit');
+  assert.ok(legs.includes('Ryan Fitzgerald Under 1.5 XPs')&&legs.includes('Daniel Carlson Over 7.5 kick pts')&&legs.includes('+433'),'parlay legs spelled out');
+  assert.ok(big.includes('>Player 0<')&&big.includes('>Player 29<')&&!big.includes('more on the site')&&/height="(\d+)"/.exec(big)[1]>675,'all 30 picks fit');
   assert.equal((await run(`postSlateToX(env,${Date.parse('2026-10-11T02:05:00Z')})`)).done,true,'once per game day');assert.equal(posts.length,1);
   // Morning update: 9 AM Eastern on game day, only when picks locked after the night post.
   assert.equal((await run(`postSlateToX(env,${Date.parse('2026-10-11T12:05:00Z')},false,true)`)).due,false,'not at 8 AM ET');
@@ -55,9 +55,9 @@ pick('d','Brock Purdy',110,'2026-10-13T00:15:00.000Z');pick('e','Old Pick',150,'
   const pin=await run(`postAlertsPinToX(env,${Date.parse('2026-10-11T17:40:00Z')})`);
   assert.equal(pin.posted,1);assert.equal(pin.picks,3,'Sunday ET picks, incl. games already started');assert.equal(pin.moved,2);
   const pt=posts.at(-1).text;assert.ok(pt.startsWith('🔔 We bet the number')&&pt.includes('2 of 3 of Sunday’s picks paid more')&&pt.includes('Turn on alerts')&&pt.length<=280,pt);
-  assert.ok(run('globalThis.__svg').includes('LOCKED BEFORE KICKOFF'));
+  assert.ok(run('globalThis.__svg').includes('Locked before kickoff'));
   assert.equal((await run(`postAlertsPinToX(env,${Date.parse('2026-10-11T17:50:00Z')})`)).done,true,'once per request');
-  assert.ok(run('globalThis.__svg').includes('2-leg')===false&&run('globalThis.__svg').includes('Under 4.5 rec'),'short market names');
+  assert.ok(run('globalThis.__svg').includes('2-leg')===false&&/under 4\.5 rec/i.test(run('globalThis.__svg')),'short market names');
   db.prepare("UPDATE app_settings SET value='2026-10-11#2' WHERE key='x-pin-request'").run();
   assert.equal((await run(`postAlertsPinToX(env,${Date.parse('2026-10-11T17:55:00Z')})`)).posted,1,'a suffix resends');
   // Proof post: the season's beat-the-close count, text only, once per x-proof-request.
@@ -78,9 +78,10 @@ pick('d','Brock Purdy',110,'2026-10-13T00:15:00.000Z');pick('e','Old Pick',150,'
   assert.ok(run('globalThis.__svg').includes('Brock Purdy')&&run('globalThis.__svg').includes('JUST LOCKED'));
   assert.equal((await run(`postCatchUpToX(env,${late+600000})`)).covered,true,'never twice');
   assert.equal((await run(`postCatchUpToX(env,${Date.parse('2026-10-11T16:30:00Z')})`)).covered,true,'picks already on the slate card are covered');
-  // A long date line wraps at a " + " inside the left panel (Oct 26 NBA card ran under the pick list).
+  // A long date line (Oct 26 NBA card ran under the pick list in the old layout).
   const wrapSvg=run(`xSlateSvg(${JSON.stringify({final:true,day:'Monday',dateLine:'Oct 26 · 2 picks + 1 parlay + 3 prediction-app picks',note:'First tip 7:10 PM ET',note2:'Late games can add more',season:'26–23 · +$808',picks:[{color:'#2ee6a8',text:'Miles Bridges · Under 5.5 rebounds',odds:'+115'}]})})`);
-  assert.ok(wrapSvg.includes('>Oct 26 · 2 picks + 1 parlay</text>')&&wrapSvg.includes('>+ 3 prediction-app picks</text>'),'date line wraps onto two lines');
-  assert.ok(wrapSvg.includes('y="384" font-family')&&wrapSvg.includes('y="416" font-family'),'the notes move down a line');
+  // Oct 31 layout: full width, so the whole date line fits on one line, the notes under it.
+  assert.ok(wrapSvg.includes('>Oct 26 · 2 picks + 1 parlay + 3 prediction-app picks</text>'),'date line on one line');
+  assert.ok(wrapSvg.includes('>First tip 7:10 PM ET · Late games can add more</text>')&&wrapSvg.includes('26–23 · +$808'),'notes and season');
   console.log('PASS: slate post sends the day\'s pending picks on one graphic, once, from 16 hours before kickoff, a 9 AM ET morning update when new picks locked, and a final card 75 minutes out');
 })().catch(error=>{console.error(error);process.exit(1)});

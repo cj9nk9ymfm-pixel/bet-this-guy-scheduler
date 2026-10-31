@@ -42,7 +42,11 @@ assert.equal(none.count,0);assert.ok(none.known,'known stats with no signal: hel
 assert.equal(JSON.parse(run(`JSON.stringify(pickSignals(null,'Over',5.5))`)).known,false,'no stats: allowed through');
 assert.ok(card({sport:'NBA',title:'Jalen Brunson',bet:'Over 5.5 assists',odds:'-110',pill:{label:'OFFICIAL PICK'},spot:{oddsNum:-110,book:'FanDuel',implied:'52%',market:'Assists',signals:2,matchup:{logs}}}).includes('STRONG PICK · NBA'),'2+ signals: strong pick kicker');
 assert.equal(run('xOrd(1)+xOrd(2)+xOrd(3)+xOrd(11)+xOrd(22)'),'1st2nd3rd11th22nd');
-// Parlays and cards without price data keep the wide card; X_SPOT off restores it.
-assert.match(card({parlay:true,title:'2-leg parlay',legs:[{text:'A',odds:'+100'}],odds:'+264'}),/height="675"/);
+// X_SPOT off restores the wide card.
+// Parlays (Oct 31) get the square card too: legs listed, the price and what a $25 ticket pays; results count the legs that hit.
+const par=card({sport:'NBA',parlay:true,stake:25,oddsNum:320,title:'2-leg parlay',legs:[{text:'Dillon Brooks · Over 3.5 rebounds'},{text:'Naz Reid · Under 17.5 points'}],odds:'+320',pill:{label:'SPORTSBOOK PARLAY'}});
+assert.match(par,/height="1200"/);for(const t of ['OFFICIAL PARLAY · NBA','Dillon Brooks Over 3.5 rebounds','Parlay price','+320','What it pays','+\x2480','on a \x2425 ticket','\x2425 pays \x24105'])assert.ok(par.includes(t),t);
+const parRes=card({sport:'NBA',parlay:true,stake:25,oddsNum:320,title:'2-leg parlay',legs:[{text:'Dillon Brooks · Over 3.5 rebounds',res:'lost'},{text:'Naz Reid · Under 17.5 points',res:'won'}],odds:'+320',res:'lost',money:'-\x2425'});
+for(const t of ['RESULT · NBA','>1/2<','legs hit','\x2425 ticket','-\x2425','>MISS<'])assert.ok(parRes.includes(t),t);
 run('X_SPOT=false');assert.match(card({sport:'NBA',title:'A B',bet:'Over 1.5',odds:'-110',spot:{oddsNum:-110}}),/height="675"/);
 console.log('PASS: pick spotlight graphic (price, our chance, payout; HIT/MISS result with stat and money; prediction-app wording; stat ladder (only stats that back the bet, then price and payout, never our chance); parlays and X_SPOT off keep the wide card)');
