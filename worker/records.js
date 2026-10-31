@@ -2452,8 +2452,9 @@ async function ingestNbaDefense(env,now=Date.now(),days=3){
 // in it, else last season.
 async function nbaDefenseRank(env,opponent,pos,market,now=Date.now()){
   if(!opponent||!pos||!market)return null;
-  const season=nbaSeason(new Date(now)),cur=`${season}-10-01`,last=`${season-1}-10-01`;
-  const load=async(from,to)=>((await env.DB.prepare("SELECT defense,stats_json FROM defense_games WHERE position=? AND game_date>=? AND game_date<?").bind(`NBA-${pos}`,from,to).all()).results||[]);
+  const season=nbaSeason(new Date(now)),cur=`${season}-10-01`,last=`${season-1}-10-01`,before=new Date(now).toISOString().slice(0,10);
+  // Only games before the pick's day, so a backfilled check never sees later games.
+  const load=async(from,to)=>((await env.DB.prepare("SELECT defense,stats_json FROM defense_games WHERE position=? AND game_date>=? AND game_date<? AND game_date<?").bind(`NBA-${pos}`,from,to,before).all()).results||[]);
   const per=rows=>{const by=new Map();for(const r of rows){let st={};try{st=JSON.parse(r.stats_json)}catch{}const v=BTGStats.metric({market,sport:'NBA'},st).value;if(v===null)continue;by.set(r.defense,[...(by.get(r.defense)||[]),v])}return by};
   for(const [from,to,label] of [[cur,`${season+1}-07-01`,'this season'],[last,cur,'last season']]){
     const by=per(await load(from,to)),teams=[...by].filter(([,v])=>v.length>=5);
@@ -2548,10 +2549,10 @@ async function runStatsChecks(env,ctx,now=Date.now()){
 // NBA stats check (Oct 31): the same check for NBA picks (official and
 // prediction app), from the matchup the pick graphic uses: the player's recent
 // games and what the opponent allows his position. Logged only.
-async function runNbaStatsChecks(env,ctx,now=Date.now(),limit=2){
+async function runNbaStatsChecks(env,ctx,now=Date.now(),limit=2,given=null){
   if(!env.DB||!env.BALLDONTLIE_API_KEY)return {checked:0};
   const start=new Date(now).toISOString();
-  const rows=[...((((await env.DB.prepare("SELECT id,player,market,side,line,game_time,legs_json,posted_at FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'nba|%' AND kind='prop' AND game_time>? AND id NOT IN (SELECT id FROM stats_checks) ORDER BY game_time LIMIT ?").bind(start,limit).all()).results)||[]).map(r=>({...r,kind:'nba',team:recordLegs(r)[0]?.team||''}))),
+  const rows=given||[...((((await env.DB.prepare("SELECT id,player,market,side,line,game_time,legs_json,posted_at FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'nba|%' AND kind='prop' AND game_time>? AND id NOT IN (SELECT id FROM stats_checks) ORDER BY game_time LIMIT ?").bind(start,limit).all()).results)||[]).map(r=>({...r,kind:'nba',team:recordLegs(r)[0]?.team||''}))),
     ...((((await env.DB.prepare("SELECT id,player,team,market,side,line,game_time,event_id,posted_at FROM prediction_picks WHERE event_id LIKE 'NBA--%' AND game_time>? AND id NOT IN (SELECT id FROM stats_checks) ORDER BY game_time LIMIT ?").bind(start,limit).all()).results)||[]).map(r=>({...r,kind:'nba-pm'})))].slice(0,limit);
   const statements=[],season=nbaSeason(new Date(now)),r2=v=>v==null||!Number.isFinite(v)?null:+v.toFixed(3);
   for(const pick of rows){
@@ -2562,6 +2563,19 @@ async function runNbaStatsChecks(env,ctx,now=Date.now(),limit=2){
   }
   if(statements.length)await env.DB.batch(statements);
   return {checked:statements.length};
+}
+// Backfill (Oct 31): the same check on NBA picks already graded, as of each
+// pick's tip-off (game logs, meetings and the defense from before it), a few a run.
+async function runNbaStatsBackfill(env,ctx,limit=6){
+  if(!env.DB||!env.BALLDONTLIE_API_KEY)return {checked:0};
+  const rows=[...((((await env.DB.prepare("SELECT id,player,market,side,line,game_time,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'nba|%' AND kind='prop' AND result IN ('won','lost','push') AND id NOT IN (SELECT id FROM stats_checks) ORDER BY game_time LIMIT ?").bind(limit).all()).results)||[]).map(r=>({...r,kind:'nba',team:recordLegs(r)[0]?.team||''}))),
+    ...((((await env.DB.prepare("SELECT id,player,team,market,side,line,game_time,event_id FROM prediction_picks WHERE event_id LIKE 'NBA--%' AND result IN ('won','lost','push') AND id NOT IN (SELECT id FROM stats_checks) ORDER BY game_time LIMIT ?").bind(limit).all()).results)||[]).map(r=>({...r,kind:'nba-pm'})))].slice(0,limit);
+  let checked=0;
+  for(const pick of rows){const out=await runNbaStatsChecks(env,ctx,Date.parse(pick.game_time)-3600000,1,[pick]).catch(()=>null);checked+=out?.checked||0;
+    // A provider miss is tried again on later runs; after 3 misses it's logged as unknown.
+    const tries=out?.checked?0:Number(await appSetting(env,`nba-bf-try:${pick.id}`)||0)+1;if(tries&&tries<3){await setAppSetting(env,`nba-bf-try:${pick.id}`,String(tries)).catch(()=>{});continue}
+    if(!out?.checked)await env.DB.prepare("INSERT OR IGNORE INTO stats_checks (id,kind,player,market,side,line,game_time,games,verdict,detail_json,checked_at) VALUES (?,?,?,?,?,?,?,0,'unknown','{}',?)").bind(pick.id,pick.kind,pick.player,pick.market,pick.side,pick.line,pick.game_time,new Date().toISOString()).run().catch(()=>{})}
+  return {checked,tried:rows.length};
 }
 // The test so far: picks by verdict, with results (official and near misses).
 async function statsCheckSummary(env){
