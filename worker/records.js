@@ -1754,8 +1754,9 @@ async function recordPredictionPicks(env,board,exchangeBoard,fairs,now=Date.now(
   dirs||=await pickDirections(env,now);
   // A full game still takes every top pick.
   const picks=[],stamp=new Date(now).toISOString();let n=have.length;
-  for(const p of predictionCandidates(board,exchangeBoard,fairs,now).filter(p=>!have.includes(normalizedName(p.player))&&sameDirection(dirs,p.eventId,p.player,p.side)))if(n<PREDICTION_PER_GAME||p.edge>=TOP_PICK.pm){picks.push(p);n++}
+  for(const p of await pmSignalGate(env,predictionCandidates(board,exchangeBoard,fairs,now).filter(p=>!have.includes(normalizedName(p.player))&&sameDirection(dirs,p.eventId,p.player,p.side)),now))if(n<PREDICTION_PER_GAME||p.edge>=TOP_PICK.pm){picks.push(p);n++}
   picks.forEach(p=>dirs.set(directionKey(p.eventId,p.player),p.side));
+  await pmSignalSave(env,gameId,picks);
   return picks.map(p=>env.DB.prepare('INSERT OR IGNORE INTO prediction_picks (id,exchange,event_id,player,team,market,side,line,odds,net_odds,fair_pct,edge,game_time,posted_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(`pm|${gameId}|${normalizedName(p.player)}`,p.exchange,gameId,p.player,p.team,p.market,p.side,p.line,p.odds,p.netOdds,+p.fair.toFixed(2),+p.edge.toFixed(2),p.gameTime,stamp));
 }
 // Anytime TD prediction picks: "Yes" only, 3.5 points or more over our TD
@@ -2504,7 +2505,7 @@ function pickSignals(m,side,line){
   const f=m?.def&&m.def.league?m.def.allowed/m.def.league:null;if(f!=null&&(over?f>=1.1:f<=.9))list.push('def');
   return {count:list.length,list,known:vals.length>=5||f!=null};
 }
-const candKey=p=>`cand|${p.gameId}|${normalizedName(p.player)}|${p.market}`;
+const candKey=p=>`cand|${p.gameId||p.eventId}|${normalizedName(p.player)}|${p.market}`;
 // Splits candidates into ready (signals known or unknowable), deferred (stats
 // not fetched yet; at most `budget` fetched a run) and held (no signal).
 async function signalGate(env,ctx,list,now=Date.now(),budget=5){
@@ -2513,18 +2514,25 @@ async function signalGate(env,ctx,list,now=Date.now(),budget=5){
     const key=candKey(p);let m=await savedMatchup(env,key);
     if(!m&&!(await appSetting(env,`matchup-none:${key}`))){
       if(budget<=0){deferred.push(p);continue}
-      budget--;m=await pickMatchup(env,ctx,{id:key,player:p.player,market:p.market,game_time:p.gameTime,team:p.team,event_id:p.gameId,legs_json:'[]'},now).catch(()=>null);
+      budget--;m=await pickMatchup(env,ctx,{id:key,player:p.player,market:p.market,game_time:p.gameTime,team:p.team,event_id:p.gameId||p.eventId,legs_json:'[]'},now).catch(()=>null);
       if(!m||!(m.def||m.logs?.length))await setAppSetting(env,`matchup-none:${key}`,new Date(now).toISOString()).catch(()=>{});
     }
     const sig=pickSignals(m,p.side,p.line);p.signals=sig.count;p.signalNames=sig.list;
     if(sig.known&&!sig.count)held.push(p);else ready.push(p);
   }
   if(held.length){const day=new Date(now).toISOString().slice(0,10);let saved=[];try{saved=JSON.parse(await appSetting(env,`signal-held:${day}`)||'[]')}catch{}
-    for(const p of held)if(!saved.some(x=>x.key===candKey(p)))saved.push({key:candKey(p),player:p.player,market:p.market,side:p.side,line:p.line,odds:p.odds,book:p.book,edge:+Number(p.edge).toFixed(2),gameTime:p.gameTime});
+    for(const p of held)if(!saved.some(x=>x.key===candKey(p)))saved.push({key:candKey(p),app:p.exchange||undefined,player:p.player,market:p.market,side:p.side,line:p.line,odds:p.odds,book:p.book,edge:+Number(p.edge).toFixed(2),gameTime:p.gameTime});
     await setAppSetting(env,`signal-held:${day}`,JSON.stringify(saved.slice(-200))).catch(()=>{})}
   return {ready,deferred,held};
 }
 let SIGNAL_GATE=true;
+// Prediction-app picks get the same check; which stats backed each one is
+// saved as app_settings signals:<pick id>.
+async function pmSignalGate(env,list,now,budget=3){
+  if(!SIGNAL_GATE||!list.length)return list;
+  const g=await signalGate(env,null,list,now,budget).catch(()=>null);return g?g.ready:list;
+}
+async function pmSignalSave(env,gameId,picks){for(const p of picks)if(p.signalNames)await setAppSetting(env,`signals:pm|${gameId}|${normalizedName(p.player)}`,JSON.stringify({count:p.signals,list:p.signalNames})).catch(()=>{})}
 // NFL: what one defense allows a position per game this season, ranked (3+ games each, 25+ teams).
 async function nflDefenseRank(env,opponent,pos,market,now=Date.now()){
   if(!opponent||!pos||!additiveMarket(market))return null;
@@ -3991,7 +3999,7 @@ function xSpotSvg(c){
   const words=String(c.title||'').split(/\s+/),two=!c.parlay&&words.length>1&&String(c.title).length>11;
   const lines=two?[words[0],words.slice(1).join(' ')]:[String(c.title||'')];
   const nameSize=Math.min(124,...lines.map(l=>xFit(l,c.photo?560:1040,124,.56)));
-  const nameY=lines.length>1?[270,270+nameSize*.95]:[300];
+  const nameY=lines.length>1?[270,270+nameSize*.95]:[388];
   const tagY=nameY.at(-1)+46,tag=String(c.bet||'').replace(/^(over|under)\b/i,m=>m.toUpperCase()),tagSize=Math.min(52,xFit(tag,640,52,.6)),tagW=Math.round(tag.length*tagSize*.6+56);
   const photo=c.photo?`<image href="data:${c.photo.type};base64,${c.photo.b64}" x="540" y="120" width="660" height="484" preserveAspectRatio="xMidYMax meet" mask="url(#fadeM)"/>`:'';
   const faces=c.parlay?(c.legPhotos||[]).slice(0,3):[];
@@ -4845,11 +4853,14 @@ async function recordNbaPredictionPicks(env,board,ex,fairs,now,ctx){
   const have=((await env.DB.prepare('SELECT player FROM prediction_picks WHERE event_id=?').bind(gameId).all()).results||[]).map(r=>normalizedName(r.player));
   const listed=name=>Boolean(injuryClass(ctx.injuries.get(normalizedName(name))?.status));
   const picks=[];let n=have.length;
-  for(const p of predictionCandidates(board,ex,fairs,now,{min:Math.min(min,...Object.values(NBA_PM.minBy)),max:NBA_PM.max})){
+  if(n>=NBA_PM.perGame||ctx.night[night]>=NBA_PM.perNight)return [];
+  const pool=predictionCandidates(board,ex,fairs,now,{min:Math.min(min,...Object.values(NBA_PM.minBy)),max:NBA_PM.max}).filter(p=>!(p.edge<(NBA_PM.minBy[p.exchange]??min)||!NBA_PM.markets.has(p.market)||have.includes(normalizedName(p.player))||listed(p.player)||!sameDirection(ctx.dirs,p.eventId,p.player,p.side)));
+  for(const p of await pmSignalGate(env,pool,now)){
     if(n>=NBA_PM.perGame||ctx.night[night]>=NBA_PM.perNight)break;
-    if(p.edge<(NBA_PM.minBy[p.exchange]??min)||!NBA_PM.markets.has(p.market)||have.includes(normalizedName(p.player))||listed(p.player)||!sameDirection(ctx.dirs,p.eventId,p.player,p.side))continue;
+    if(!sameDirection(ctx.dirs,p.eventId,p.player,p.side))continue;
     picks.push(p);n++;ctx.night[night]++;ctx.dirs.set(directionKey(p.eventId,p.player),p.side);
   }
+  await pmSignalSave(env,gameId,picks);
   return picks.map(p=>env.DB.prepare('INSERT OR IGNORE INTO prediction_picks (id,exchange,event_id,player,team,market,side,line,odds,net_odds,fair_pct,edge,game_time,posted_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(`pm|${gameId}|${normalizedName(p.player)}`,p.exchange,gameId,p.player,p.team,p.market,p.side,p.line,p.odds,p.netOdds,+p.fair.toFixed(2),+p.edge.toFixed(2),p.gameTime,new Date(now).toISOString()));
 }
 // NBA prediction parlays, tracked privately in nba_pm_parlays (never on the
