@@ -2525,3 +2525,12 @@ html body #heroBanner .hero-picks{order:3}
 .a2hs.email-nudge{flex-wrap:wrap;align-items:flex-start}.email-nudge .en-copy{flex:1 1 calc(100% - 40px);display:flex;flex-direction:column;gap:2px}.email-nudge .en-copy span{font-size:13px;color:#98a1ad}.email-nudge .em-inline{flex-basis:100%}
 .wd-a2hs{display:block;margin:8px auto 0;background:none;border:0;color:#2ee6a8;font:600 14px inherit;font-size:14px;text-decoration:underline;cursor:pointer}
 .wd-a2hs-steps{margin:8px 0 0;font-size:13.5px;line-height:1.45;color:#c7d0dc}body.light .wd-a2hs-steps{color:#3b4452}body.light .wd-a2hs{color:#0f9a6c}
+
+/* Sportsbook record dropdown: the same split as the prediction view (Oct 31). */
+#heroBanner .pm-hero-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:12px 0 8px}
+#heroBanner .pm-hero-stats div{padding:9px 11px;border-radius:10px;background:#1a1d23;border:1px solid #262a31}
+#heroBanner .pm-hero-stats strong{display:block;font:700 17px 'Space Grotesk',sans-serif;color:var(--text)}
+#heroBanner .pm-hero-stats strong.up{color:#22c55e}#heroBanner .pm-hero-stats strong.down{color:#f06060}
+#heroBanner .pm-hero-stats span{font-size:12px;color:var(--muted)}
+#heroBanner .pm-hero-note{margin:4px 0 8px;font-size:12px;line-height:1.45;color:var(--muted)}#heroBanner .pm-hero-note a{color:inherit;text-decoration:underline}
+body.light #heroBanner .pm-hero-stats div{background:#f6f8fb;border-color:#e6ebf2}
