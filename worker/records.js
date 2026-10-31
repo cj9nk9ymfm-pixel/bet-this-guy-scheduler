@@ -2485,7 +2485,7 @@ async function fillMatchups(env,ctx,now=Date.now(),limit=2){
   const rows=[...(((await env.DB.prepare("SELECT id,player,market,game_time,legs_json,posted_at FROM public_recommendations WHERE source='market-verified-v2' AND kind='prop' AND game_time>? AND id NOT IN (SELECT substr(key,9) FROM app_settings WHERE key LIKE 'matchup:%') AND id NOT IN (SELECT substr(key,14) FROM app_settings WHERE key LIKE 'matchup-none:%') ORDER BY posted_at DESC LIMIT ?").bind(t,limit).all()).results)||[]),
     ...(((await env.DB.prepare("SELECT id,player,team,market,event_id,game_time,posted_at FROM prediction_picks WHERE game_time>? AND id NOT IN (SELECT substr(key,9) FROM app_settings WHERE key LIKE 'matchup:%') AND id NOT IN (SELECT substr(key,14) FROM app_settings WHERE key LIKE 'matchup-none:%') ORDER BY posted_at DESC LIMIT ?").bind(t,limit).all()).results)||[])].sort((a,b)=>String(b.posted_at).localeCompare(String(a.posted_at))).slice(0,limit);
   let filled=0;
-  for(const r of rows){const m=await pickMatchup(env,ctx,r,now).catch(()=>null);if(m&&(m.def||m.h2h?.length))filled++;else await setAppSetting(env,`matchup-none:${r.id}`,new Date(now).toISOString()).catch(()=>{})}
+  for(const r of rows){const m=await pickMatchup(env,ctx,r,now).catch(()=>null);if(m&&(m.def||m.h2h?.length||m.logs?.length))filled++;else await setAppSetting(env,`matchup-none:${r.id}`,new Date(now).toISOString()).catch(()=>{})}
   return {filled,checked:rows.length};
 }
 // NFL: what one defense allows a position per game this season, ranked (3+ games each, 25+ teams).
@@ -2508,16 +2508,20 @@ async function pickMatchup(env,ctx,r,now=Date.now()){
   const pl=payload?.player||{},mine=pl.team?.full_name||'',[away,home]=String(game).split(/\s*·\s*(?:@|vs)\s*/);
   const opponent=mine&&away&&home?(normalizedName(mine)===normalizedName(away)?home:normalizedName(mine)===normalizedName(home)?away:null):null;
   if(!opponent)return null;
+  // The player's recent games (newest first): value, home or away, season.
+  const kick=Date.parse(r.game_time||f.gameTime||''),tid=pl.team?.id;
+  const logs=(Array.isArray(payload?.stats)?payload.stats:[]).map(row=>{const g=row?.game||{},d=Date.parse(g.date||g.datetime||'');return {d,v:BTGStats.metric({market,sport},row).value,h:tid!=null&&g.home_team_id!=null?(g.home_team_id===tid?1:0):null,s:Number(g.season)||null}}).filter(x=>x.v!==null&&Number.isFinite(x.d)&&(!Number.isFinite(kick)||x.d<kick-3600000)).sort((a,b)=>b.d-a.d).slice(0,20).map(({v,h,s})=>({v,h,s}));
+  const isHome=normalizedName(mine)===normalizedName(home)?1:0;
   let out=null;
   if(sport==='NBA'){
     const pos=nbaPosGroup(pl),def=await nbaDefenseRank(env,opponent,pos,market,now).catch(()=>null);
     const h2h=await nbaHeadToHead(env,pl.id,opponent,market,now).catch(()=>[]);
-    out={sport,opponent,pos:{G:'guards',F:'forwards',C:'centers'}[pos]||'',def,h2h:h2h.slice(0,3).map(g=>g.value)};
+    out={sport,opponent,pos:{G:'guards',F:'forwards',C:'centers'}[pos]||'',def,h2h:h2h.slice(0,3).map(g=>g.value),logs,home:isHome};
   }else{
     const pos=statsPos(pl),def=await nflDefenseRank(env,opponent,pos,market,now).catch(()=>null);
-    out={sport,opponent,pos:{WR:'receivers',TE:'tight ends',RB:'running backs',QB:'quarterbacks'}[pos]||'',def,h2h:[]};
+    out={sport,opponent,pos:{WR:'receivers',TE:'tight ends',RB:'running backs',QB:'quarterbacks'}[pos]||'',def,h2h:[],logs,home:isHome};
   }
-  if(out.def||out.h2h.length)await setAppSetting(env,`matchup:${r.id}`,JSON.stringify(out)).catch(()=>{});
+  if(out.def||out.h2h.length||out.logs.length)await setAppSetting(env,`matchup:${r.id}`,JSON.stringify(out)).catch(()=>{});
   return out;
 }
 // One run: add defense games, then check up to two picks that haven't
@@ -3871,20 +3875,30 @@ function xPickSvg(c){
 // them. Shown whether or not they favor the pick; a box is green when it does.
 const xOrd=n=>`${n}${[,'st','nd','rd'][n%100>>3^1&&n%10]||'th'}`;
 function xMatchupBoxes(c){
-  const m=c.matchup;if(!m||!m.def&&!(m.h2h||[]).length)return null;
-  const over=/^over/i.test(String(c.bet||'')),line=Number(String(c.bet||'').match(/[\d.]+/)?.[0]),word=xSpotWord(c.market||String(c.bet||'').replace(/^(over|under)\s+[\d.]+\s+/i,'')),nick=xNick(m.opponent);
-  let a=null,b=null,sentence='';
-  if(m.def){const d=m.def,soft=d.allowed>d.league,good=over?soft:!soft,few=d.rank&&d.rank<=d.teams/2,rk=d.rank?(few?`${xOrd(d.rank)} fewest`:`${xOrd(d.teams-d.rank+1)} most`):`league avg ${d.league}`;
-    a={label:`${nick} allow`,big:String(d.allowed),sub:`to ${m.pos} a game · ${rk}${d.span==='last season'?' · last season':''}`,good};
-    sentence=d.rank?`${nick} allow the ${rk} ${word} to ${m.pos}${d.span==='last season'?' (last season)':''}.`:`${nick} allow ${d.allowed} ${word} a game to ${m.pos}.`}
-  const h=(m.h2h||[]).filter(v=>Number.isFinite(Number(v)));
-  if(h.length){const avg=h.reduce((x,y)=>x+y,0)/h.length,good=Number.isFinite(line)?(over?avg>line:avg<line):false,last=String(c.title||'').split(/\s+/).at(-1);
-    b={label:`${last} vs ${nick}`,big:avg.toFixed(1),sub:`${word}, last ${h.length} meeting${h.length===1?'':'s'}: ${h.join(', ')}`,good};
-    if(!sentence)sentence=`${last} averages ${avg.toFixed(1)} ${word} against ${nick}.`}
-  if(!a)a={label:`${c.book||'Best'} price`,big:c.odds,sub:c.implied?`the price says ${c.implied}`:'',good:false};
-  // No meetings yet: the price box instead.
-  if(!b)b={label:c.app?`Price on ${c.book||'the app'}`:`${c.book||'Best'} price`,big:c.odds,sub:c.app?'what you pay':c.implied?`the price says ${c.implied}`:'',good:false};
-  return {a,b,line:sentence};
+  const m=c.matchup||{},over=/^over/i.test(String(c.bet||'')),line=Number(String(c.bet||'').match(/[\d.]+/)?.[0]),word=xSpotWord(c.market||String(c.bet||'').replace(/^(over|under)\s+[\d.]+\s+/i,'')),nick=m.opponent?xNick(m.opponent):'',last=String(c.title||'').split(/\s+/).at(-1);
+  const beats=v=>Number.isFinite(line)&&(over?v>line:v<line),avg=l=>l.reduce((x,y)=>x+y,0)/l.length,f1=v=>(Math.round(v*10)/10).toString(),side=over?'Over':'Under';
+  const logs=(m.logs||[]).filter(g=>Number.isFinite(Number(g.v))),vals=logs.map(g=>Number(g.v)),season=logs[0]?.s,seasonVals=logs.filter(g=>g.s===season).map(g=>Number(g.v));
+  // The stat ladder (Oct 31, Tim): each stat in order, kept only when it backs
+  // the bet; the first two fill the boxes, and the price fills any left.
+  const ladder=[];
+  if(m.def&&(over?m.def.allowed>m.def.league:m.def.allowed<m.def.league)){const d=m.def,rk=d.rank?(d.rank<=d.teams/2?`${xOrd(d.rank)} fewest`:`${xOrd(d.teams-d.rank+1)} most`):`league avg ${d.league}`;
+    ladder.push({label:`${nick} allow`,big:String(d.allowed),sub:`to ${m.pos} a game · ${rk}${d.span==='last season'?' · last season':''}`,line:d.rank?`${nick} allow the ${rk} ${word} to ${m.pos}${d.span==='last season'?' (last season)':''}.`:`${nick} allow ${d.allowed} ${word} a game to ${m.pos}.`})}
+  const h=(m.h2h||[]).filter(v=>Number.isFinite(Number(v))).map(Number);
+  if(h.length&&beats(avg(h)))ladder.push({label:`${last} vs ${nick}`,big:f1(avg(h)),sub:`${word}, last ${h.length} meeting${h.length===1?'':'s'}: ${h.join(', ')}`,line:`${last} averages ${f1(avg(h))} ${word} against ${nick}.`});
+  const l10=vals.slice(0,10),hits=l10.filter(beats).length;
+  if(l10.length>=5&&hits/l10.length>=.6)ladder.push({label:`Last ${l10.length} games`,big:`${hits}/${l10.length}`,sub:`${side.toLowerCase()} ${line} ${word}`,line:`${side} ${line} in ${hits} of his last ${l10.length}.`});
+  const l5=vals.slice(0,5);
+  if(l5.length>=4&&beats(avg(l5)))ladder.push({label:`Last ${l5.length} average`,big:f1(avg(l5)),sub:`${word} · line ${line}`,line:`Averaging ${f1(avg(l5))} ${word} over his last ${l5.length}.`});
+  if(seasonVals.length>=4&&beats(avg(seasonVals)))ladder.push({label:'Season average',big:f1(avg(seasonVals)),sub:`${word} · line ${line}`,line:`Averaging ${f1(avg(seasonVals))} ${word} this season.`});
+  const where=logs.filter(g=>g.h===m.home).map(g=>Number(g.v)).slice(0,10);
+  if(m.home!=null&&where.length>=3&&beats(avg(where)))ladder.push({label:m.home?'At home':'On the road',big:f1(avg(where)),sub:`${word} a game, last ${where.length} ${m.home?'home':'road'}`,line:`Averaging ${f1(avg(where))} ${word} ${m.home?'at home':'on the road'}.`});
+  // Fills: the price, then what it pays.
+  const o=Number(c.oddsNum),usd=v=>'\x24'+v;
+  const price={label:c.app?`Price on ${c.book||'the app'}`:`${c.book||'Best'} price`,big:c.odds,sub:c.app?'what you pay':c.implied?`the price says ${c.implied}`:'',plain:true};
+  const pay={label:'What it pays',big:Number.isFinite(o)?'+'+usd(o<0?Math.round(10000/-o):o):c.odds,sub:Number.isFinite(o)?`on a ${usd(100)} bet`:'',plain:true};
+  const picked=ladder.slice(0,2);while(picked.length<2)picked.push(picked.includes(price)?pay:price);
+  const [a,b]=picked.map(x=>({...x,good:!x.plain}));
+  return {a,b,line:ladder[0]?.line||(c.app?'Priced below our fair chance after fees.':'The best price we found across the big five books.')};
 }
 const xSpotWord=m=>({'3-pointers made':'threes','passing touchdowns':'TD passes','interceptions thrown':'INTs','receptions':'catches','passing yards':'passing yards','rushing yards':'rushing yards','receiving yards':'receiving yards'}[String(m||'').toLowerCase()]||String(m||'').toLowerCase());
 // Pick spotlight graphic (Oct 30, Tim's pick): a 1200×1200 card with the
@@ -3910,7 +3924,7 @@ function xSpotSvg(c){
 <text x="${x+36}" y="${tagY+332}" font-family="${F.sb}" font-size="${Math.min(24,xFit(sub,420,24,.56))}" fill="#a9b4c8">${xEsc(sub)}</text>`;
   const bet=v=>'\x24'+Math.round(v),o=Number(c.oddsNum);
   const pays=c.app?`Pay ${c.odds} for a ${c.chance} shot.`:Number.isFinite(o)?(o<0?`Bet ${bet(-o)} to win $100.`:`Bet $100 to win ${bet(o)}.`):'';
-  const mu=!res?xMatchupBoxes(c):null;
+  const mu=!res&&!c.noLadder?xMatchupBoxes(c):null;
   const boxes=res
     ?box(80,'Final',c.actual||'—',c.need||'',c.res==='won')+box(615,'$100 bet',c.money||'',`locked at ${c.odds}`,c.res==='won')
     :mu?box(80,mu.a.label,mu.a.big,mu.a.sub,mu.a.good)+box(615,mu.b.label,mu.b.big,mu.b.sub,mu.b.good)
