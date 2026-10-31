@@ -49,5 +49,10 @@ const run=code=>vm.runInContext(code,context);run('fetch=globalThis.fetch');
   db.prepare("INSERT INTO app_settings(key,value) VALUES('matchup:nba|n|1',?)").run(JSON.stringify({opponent:'B',pos:'guards',def:{allowed:11,league:12.6,games:6,rank:5,teams:30},h2h:[],logs:[3,4,5,2,4,6,3,4,5,4].map(v=>({v,s:2026}))}));
   assert.equal((await run(`runNbaStatsChecks(env,{},${now})`)).checked,1);
   const chk=db.prepare("SELECT kind,l10_hits,verdict FROM stats_checks WHERE id='nba|n|1'").get();assert.deepEqual([chk.kind,chk.l10_hits,chk.verdict],['nba',9,'agree']);
-  console.log('PASS: NBA matchup data (defense allowed by position from box scores, day by day; ranked among 25+ teams with 5+ games, else last season; a new pick waits up to 12 minutes for its matchup; top pick prefers strong form; NBA stats check)');
+  // Backfill: graded NBA picks get the check as of their tip-off.
+  db.prepare("INSERT INTO public_recommendations(id,kind,player,market,side,line,odds,game_time,legs_json,posted_at,status,result,source) VALUES('nba|old|1','prop','Old Guard','Rebounds','Over',4.5,-110,'2026-10-25T23:00:00.000Z',?,'2026-10-25T12:00:00Z','final','won','market-verified-v2')").run(JSON.stringify([{team:'A · @ B',edge:1.1}]));
+  db.prepare("INSERT INTO app_settings(key,value) VALUES('matchup:nba|old|1',?)").run(JSON.stringify({opponent:'B',pos:'forwards',def:null,h2h:[],logs:[5,6,3,7,6,5,2,6,5,4].map(v=>({v,s:2026}))}));
+  assert.equal((await run(`runNbaStatsBackfill(env,{})`)).checked,1);
+  assert.equal(db.prepare("SELECT l10_hits FROM stats_checks WHERE id='nba|old|1'").get().l10_hits,7);
+  console.log('PASS: NBA matchup data (defense allowed by position from box scores, day by day; ranked among 25+ teams with 5+ games, else last season; a new pick waits up to 12 minutes for its matchup; top pick prefers strong form; NBA stats check and its backfill)');
 })().catch(e=>{console.error(e);process.exit(1)});
