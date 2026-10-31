@@ -1540,8 +1540,8 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
     // Lead with the season once it has real volume; last week opens below.
     const season=heroSeason&&heroSeason.wins+heroSeason.losses>=5?heroSeason:null,weekTitle=$('#heroTitle').innerHTML;
     if(season){const net=season.profit,pn=season.parlayProfit||0,pl=(season.parlayWins||0)+(season.parlayLosses||0);
-      // Singles and parlays side by side, the same split as the X cards.
-      $('#heroTitle').innerHTML=`<span class="hero-lines"><span class="hero-line">Singles <b>${season.wins}–${season.losses}${season.pushes?`–${season.pushes}`:''}</b> <span class="hero-profit ${net>=0?'up':'down'}">${htmlEscape(money(net))}</span></span>${pl?`<span class="hero-line">Parlays <b>${season.parlayWins}–${season.parlayLosses}</b> <span class="hero-profit ${pn>=0?'up':'down'}">${htmlEscape(money(pn))}</span></span>`:''}</span>`}
+      // One record, singles and parlays together, like the prediction view; the split opens below (Oct 31).
+      const all=net+pn;$('#heroTitle').innerHTML=`${NBA?'NBA sportsbook record':'Sportsbook record'} <b>${season.wins+(season.parlayWins||0)}–${season.losses+(season.parlayLosses||0)}${season.pushes?`–${season.pushes}`:''}</b> <span class="hero-profit ${all>=0?'up':'down'}">${htmlEscape(money(all))}</span>`}
     const stats=[[money(s.profit),`betting ${stakeText()} a pick`,s.profit>=0?'up':'down']];
     if(s.tracked)stats.push([`${s.beat} of ${s.tracked}`,'beat the kickoff price','']);
     if(s.parlayWins+s.parlayLosses)stats.push([`${s.parlayWins}–${s.parlayLosses}`,`parlays · ${money(s.parlayProfit)}`,s.parlayProfit>=0?'up':'down']);
@@ -1549,13 +1549,15 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
     $('#heroNote').textContent=`Singles at ${stakeText()} a pick and parlays at $25, at the posted price. Past results don’t guarantee future ones.`;
     hero.hidden=false;document.body.classList.add('has-hero');
     // Tap the record to see every graded pick from that week, hits first.
-    if(s.picks?.length){
+    if(s.picks?.length||season){
       const label=periodOwner(s.label);
       $('#heroTitle').innerHTML=`<button type="button" class="hero-toggle" id="heroToggle" aria-expanded="false" aria-controls="heroPicks" aria-label="${htmlEscape(`Show ${label} picks`)}">${$('#heroTitle').innerHTML}<i aria-hidden="true"><svg class="ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></i></button>`;
       let panel=$('#heroPicks');if(!panel){panel=document.createElement('div');panel.id='heroPicks';panel.className='hero-picks';hero.append(panel)}
       panel.hidden=true;
       const tag={won:['g','check','Hit'],lost:['r','over','Lost'],push:['n','fair','Push']};
-      panel.innerHTML=`${season?`<p class="hp-week">${weekTitle}</p>`:''}<ul>${s.picks.map((r,i)=>{const n=pickName(r),odds=r.kind==='parlay'?r.combined_odds:r.odds,[cls,ic,txt]=voidOf(r)?['n','fair','Void']:tag[r.result]||tag.push,net=payout(r);return `<li><button type="button" data-hero-pick="${i}" aria-label="${htmlEscape(`${txt}: ${n.title}, ${n.detail}`)}"><span class="hp-tag ${cls}">${icon(ic)}${txt}</span><span class="hp-name"><strong>${htmlEscape(n.title)}</strong><small>${htmlEscape(n.detail)}</small></span><span class="hp-num"><b>${htmlEscape(formatOdds(odds))}</b><small class="${net>0?'up':net<0?'down':''}">${htmlEscape(money(net))}</small></span></button></li>`}).join('')}</ul><a class="hp-all" href="/trust#official">Every pick on Results →</a>`;
+      const sstat=(value,label,tone='')=>`<div><strong class="${tone}">${htmlEscape(value)}</strong><span>${htmlEscape(label)}</span></div>`;
+      const split=season?`<div class="pm-hero-stats">${sstat(`${season.wins}–${season.losses}${season.pushes?`–${season.pushes}`:''}`,`singles · ${money(season.profit)}`,season.profit>=0?'up':'down')}${sstat(`${season.parlayWins||0}–${season.parlayLosses||0}`,`parlays · ${money(season.parlayProfit||0)}`,(season.parlayProfit||0)>=0?'up':'down')}${season.tracked?sstat(`${season.beat} of ${season.tracked}`,`beat the ${NBA?'tip-off':'kickoff'} price`):''}</div><p class="pm-hero-note">Singles at ${htmlEscape(stakeText())} a pick, parlays at $25, at the posted price. <a href="/trust#methodology">Why beating the ${NBA?'tip-off':'kickoff'} price matters</a></p>`:'';
+      panel.innerHTML=`${split}${season&&s.picks?.length?`<p class="hp-week">${weekTitle}</p>`:''}<ul>${s.picks.map((r,i)=>{const n=pickName(r),odds=r.kind==='parlay'?r.combined_odds:r.odds,[cls,ic,txt]=voidOf(r)?['n','fair','Void']:tag[r.result]||tag.push,net=payout(r);return `<li><button type="button" data-hero-pick="${i}" aria-label="${htmlEscape(`${txt}: ${n.title}, ${n.detail}`)}"><span class="hp-tag ${cls}">${icon(ic)}${txt}</span><span class="hp-name"><strong>${htmlEscape(n.title)}</strong><small>${htmlEscape(n.detail)}</small></span><span class="hp-num"><b>${htmlEscape(formatOdds(odds))}</b><small class="${net>0?'up':net<0?'down':''}">${htmlEscape(money(net))}</small></span></button></li>`}).join('')}</ul><a class="hp-all" href="/trust#official">Every pick on Results →</a>`;
       panel.querySelectorAll('[data-hero-pick]').forEach(b=>b.onclick=()=>openHit(s.picks[+b.dataset.heroPick]));
       const toggle=$('#heroToggle');toggle.onclick=()=>{const open=panel.hidden;panel.hidden=!open;toggle.setAttribute('aria-expanded',String(open));hero.classList.toggle('open',open);if(open)window.btgCount?.('hero:picks')};
     }
@@ -1563,8 +1565,8 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
     // With 5+ tracked it leads as a big share, with why it matters and why we post early.
     {let pf=$('#heroProof');const sea=heroSeason,start=NBA?'tip-off':'kickoff';if(sea?.tracked){if(!pf){pf=document.createElement('div');pf.id='heroProof';pf.className='hero-proof'}$('#heroTitle').after(pf);
       pf.innerHTML=sea.tracked>=5?`<div class="hp-big"><strong>${Math.round(100*sea.beat/sea.tracked)}%</strong><span><b>of our picks beat the ${start} price</b><small>${sea.beat} of ${sea.tracked}: the market moved our way after we posted</small></span></div><p class="hp-why">We post the moment a price qualifies, often a day early, before the market catches up. A hot streak can be luck; beating the final price, pick after pick, is the steadiest sign of a real edge.</p>`:`Beat the ${start} price on <b>${sea.beat} of ${sea.tracked}</b> picks`}else pf?.remove()}
-    // One line under the record: how often our price beat the kickoff price.
-    {let cl=$('#heroClose');const sea=heroSeason,start=NBA?'tip-off':'kickoff';if(sea?.tracked>=5){if(!cl){cl=document.createElement('p');cl.id='heroClose';cl.className='hero-close'}hero.querySelector('.hero-actions')?.before(cl);cl.innerHTML=`Beat the ${start} price on <b>${sea.beat} of ${sea.tracked}</b> picks <a href="/trust#methodology">why it matters</a>`}else cl?.remove()}
+    // (The beat-the-kickoff line now sits in the record's dropdown, like the prediction view.)
+    $('#heroClose')?.remove();
     // Running profit, every graded pick in order, and the latest results (wins and losses).
     {let box=$('#heroCurve');const pts=heroSeason?.curve||[];if(pts.length>=3){if(!box){box=document.createElement('div');box.id='heroCurve';box.className='hero-curve'}$('#heroStats').after(box);box.innerHTML=heroCurveSvg(pts)}else box?.remove()}
     {let tk=$('#heroTicker');const list=heroSeason?.latest||[];if(list.length){if(!tk){tk=document.createElement('div');tk.id='heroTicker';tk.className='hero-ticker'}hero.after(tk);
