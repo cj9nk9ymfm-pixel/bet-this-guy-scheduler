@@ -40,7 +40,7 @@ async function call(req){context.req=req;return run('worker.fetch(req,env,{waitU
  run('postPicksToX=globalThis.postPicksToX;postWeeklyToX=globalThis.postWeeklyToX;postClosingToX=globalThis.postClosingToX;postResultsToX=globalThis.postResultsToX;gradeLineShadow=globalThis.gradeLineShadow;gradeNearShadow=globalThis.gradeNearShadow;sendWeeklyDigest=globalThis.sendWeeklyDigest;sendDueAlerts=globalThis.sendDueAlerts;runStatsChecks=globalThis.runStatsChecks');
  ran.length=0;await run(`worker.scheduled({scheduledTime:Date.parse('2026-10-04T16:45:00Z')},env,{waitUntil(){}})`);
  assert.equal(ran[0],'sendDueAlerts','pick alerts go first on the in-between run');
- assert.deepEqual(ran.sort(),['gradeLineShadow','postClosingToX','postPicksToX','postResultsToX','postWeeklyToX','publishSoon','sendDueAlerts','sendWeeklyDigest'],'the in-between run posts to X, sends the digest when due and grades line value');
+ assert.deepEqual(ran.sort(),['gradeLineShadow','postClosingToX','postPicksToX','postPicksToX','postResultsToX','postWeeklyToX','publishSoon','sendDueAlerts','sendWeeklyDigest'],'the in-between run posts to X (and again right after the fast publish), sends the digest when due and grades line value');
  // Line-value and near-miss grading take turns on those runs.
  ran.length=0;await run(`worker.scheduled({scheduledTime:Date.parse('2026-10-04T16:55:00Z')},env,{waitUntil(){}})`);
  assert.ok(ran.includes('gradeNearShadow')&&!ran.includes('gradeLineShadow'),'minute 55 grades near-miss picks');
