@@ -37,5 +37,17 @@ const run=code=>vm.runInContext(code,context);run('fetch=globalThis.fetch');
   assert.equal(await run(`xMatchupReady(env,pick,${now})`),false,'waits');
   assert.equal(await run(`xMatchupReady(env,pick,${now+12*60000})`),true,'goes after 12 minutes');
   db.prepare("INSERT INTO app_settings(key,value) VALUES('matchup:nba|x|1','{}')").run();assert.equal(await run(`xMatchupReady(env,pick,${now})`),true,'goes once the matchup is saved');
-  console.log('PASS: NBA matchup data (defense allowed by position from box scores, day by day; ranked among 25+ teams with 5+ games, else last season; a new pick waits up to 12 minutes for its matchup)');
+  // Top pick: strong recent form (7+ of 10 on our side) beats a bigger edge.
+  const gt=new Date(now+3*3600000).toISOString(),mk=(id,edge,line)=>({id,kind:'prop',player:'P '+id,side:'Under',line,game_time:gt,legs_json:JSON.stringify([{edge,side:'Under',line}])});
+  context.rows=[mk('a',3.0,5.5),mk('b',1.2,5.5)];
+  db.prepare("INSERT INTO app_settings(key,value) VALUES('matchup:b',?)").run(JSON.stringify({logs:[3,4,5,2,4,6,3,4,5,4].map(v=>({v,s:2026}))}));
+  db.prepare("INSERT INTO app_settings(key,value) VALUES('matchup:a',?)").run(JSON.stringify({logs:[7,8,4,6,7,3,8,6,7,5].map(v=>({v,s:2026}))}));
+  const strong=await run(`xStrongForm(env,rows)`);assert.deepEqual([...strong],['b'],'b went under in 9 of 10, a in 3');
+  assert.equal(run(`xPollPick(rows,${now},new Set(['b']))`).id,'b','strong form first');assert.equal(run(`xPollPick(rows,${now})`).id,'a','else the biggest edge');
+  // NBA stats check: logged from the saved matchup.
+  db.prepare("INSERT INTO public_recommendations(id,kind,player,market,side,line,odds,game_time,legs_json,posted_at,status,source) VALUES('nba|n|1','prop','Ace Guard','Assists','Under',5.5,-110,?,?,?,'pending','market-verified-v2')").run(gt,JSON.stringify([{team:'A · @ B',edge:1.2}]),new Date(now).toISOString());
+  db.prepare("INSERT INTO app_settings(key,value) VALUES('matchup:nba|n|1',?)").run(JSON.stringify({opponent:'B',pos:'guards',def:{allowed:11,league:12.6,games:6,rank:5,teams:30},h2h:[],logs:[3,4,5,2,4,6,3,4,5,4].map(v=>({v,s:2026}))}));
+  assert.equal((await run(`runNbaStatsChecks(env,{},${now})`)).checked,1);
+  const chk=db.prepare("SELECT kind,l10_hits,verdict FROM stats_checks WHERE id='nba|n|1'").get();assert.deepEqual([chk.kind,chk.l10_hits,chk.verdict],['nba',9,'agree']);
+  console.log('PASS: NBA matchup data (defense allowed by position from box scores, day by day; ranked among 25+ teams with 5+ games, else last season; a new pick waits up to 12 minutes for its matchup; top pick prefers strong form; NBA stats check)');
 })().catch(e=>{console.error(e);process.exit(1)});

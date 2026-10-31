@@ -2533,7 +2533,7 @@ async function runStatsChecks(env,ctx,now=Date.now()){
   const official=((await env.DB.prepare("SELECT id,player,market,side,line,game_time,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND kind='prop' AND game_time>? AND id NOT IN (SELECT id FROM stats_checks) ORDER BY game_time LIMIT 2").bind(start).all()).results||[]).map(r=>({...r,kind:'official',team:recordLegs(r)[0]?.team||''}));
   // Prediction picks next: logged only, never used to skip a pick (so far the
   // check's 'disagree' picks have won more often than its 'agree' ones).
-  const pm=official.length>=2?[]:((await env.DB.prepare("SELECT id,player,team,market,side,line,game_time FROM prediction_picks WHERE game_time>? AND id NOT IN (SELECT id FROM stats_checks) ORDER BY game_time LIMIT ?").bind(start,2-official.length).all()).results||[]).map(r=>({...r,kind:'pm'}));
+  const pm=official.length>=2?[]:((await env.DB.prepare("SELECT id,player,team,market,side,line,game_time FROM prediction_picks WHERE game_time>? AND event_id NOT LIKE 'NBA--%' AND id NOT IN (SELECT id FROM stats_checks) ORDER BY game_time LIMIT ?").bind(start,2-official.length).all()).results||[]).map(r=>({...r,kind:'pm'}));
   const near=official.length+pm.length>=2?[]:((await env.DB.prepare("SELECT 'near|'||id AS id,player,team,market,side,line,game_time FROM near_shadow WHERE game_time>? AND 'near|'||id NOT IN (SELECT id FROM stats_checks) ORDER BY game_time LIMIT ?").bind(start,2-official.length-pm.length).all()).results||[]).map(r=>({...r,kind:'near'}));
   const statements=[];
   for(const pick of [...official,...pm,...near]){
@@ -2544,6 +2544,24 @@ async function runStatsChecks(env,ctx,now=Date.now()){
   }
   if(statements.length)await env.DB.batch(statements);
   return {defense,checked:statements.length};
+}
+// NBA stats check (Oct 31): the same check for NBA picks (official and
+// prediction app), from the matchup the pick graphic uses: the player's recent
+// games and what the opponent allows his position. Logged only.
+async function runNbaStatsChecks(env,ctx,now=Date.now(),limit=2){
+  if(!env.DB||!env.BALLDONTLIE_API_KEY)return {checked:0};
+  const start=new Date(now).toISOString();
+  const rows=[...((((await env.DB.prepare("SELECT id,player,market,side,line,game_time,legs_json,posted_at FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'nba|%' AND kind='prop' AND game_time>? AND id NOT IN (SELECT id FROM stats_checks) ORDER BY game_time LIMIT ?").bind(start,limit).all()).results)||[]).map(r=>({...r,kind:'nba',team:recordLegs(r)[0]?.team||''}))),
+    ...((((await env.DB.prepare("SELECT id,player,team,market,side,line,game_time,event_id,posted_at FROM prediction_picks WHERE event_id LIKE 'NBA--%' AND game_time>? AND id NOT IN (SELECT id FROM stats_checks) ORDER BY game_time LIMIT ?").bind(start,limit).all()).results)||[]).map(r=>({...r,kind:'nba-pm'})))].slice(0,limit);
+  const statements=[],season=nbaSeason(new Date(now)),r2=v=>v==null||!Number.isFinite(v)?null:+v.toFixed(3);
+  for(const pick of rows){
+    const m=await pickMatchup(env,ctx,pick,now).catch(()=>null);if(!m)continue;
+    const logs=(m.logs||[]).map(g=>({value:Number(g.v),season:g.s})),def=m.def&&m.def.league?{factor:m.def.allowed/m.def.league,games:m.def.games}:null;
+    const c=statsVerdict(pick,logs,def,season);
+    statements.push(env.DB.prepare('INSERT OR REPLACE INTO stats_checks (id,kind,player,market,side,line,game_time,opponent,position,games,l5_avg,l10_avg,season_avg,l10_hits,def_factor,def_games,projection,lean,verdict,detail_json,checked_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(pick.id,pick.kind,pick.player,pick.market,pick.side,pick.line,pick.game_time,m.opponent||null,m.pos||null,c.games||0,r2(c.l5_avg),r2(c.l10_avg),r2(c.season_avg),c.l10_hits??null,r2(def?.factor),def?.games??null,r2(c.projection),r2(c.lean),c.verdict,JSON.stringify({recent:logs.slice(0,10).map(g=>g.value),def:m.def||null,h2h:m.h2h||[]}),new Date(now).toISOString()));
+  }
+  if(statements.length)await env.DB.batch(statements);
+  return {checked:statements.length};
 }
 // The test so far: picks by verdict, with results (official and near misses).
 async function statsCheckSummary(env){
@@ -3601,13 +3619,23 @@ function xPollText(r,now=Date.now()){
   const price=r.exchange?`${exchangePct(r.odds)}% on ${r.exchange}`:`${weeklyOdds(r.odds)}${f.book?` at ${f.book}`:''}`,game=xMatchup(f.team||r.team);
   return xShort(`🗳️ Are you tailing ${night?'tonight’s':'today’s'} top pick?\n\n${r.player} ${weeklyLegText(r)} (${price})${game?`\n${game}`:''}\n\nVote, then see the full card in the replies 👇👇 ${r.exchange?'18+/21+':'21+'}`);
 }
-function xPollPick(rows,now=Date.now()){
+// The slate's top pick (Oct 31): a price edge the player's recent form also
+// backs (7+ of his last 10 on our side) comes first; those picks went 21–12
+// (64% against a 48% price) in the stats check. Then the biggest edge.
+function xPollPick(rows,now=Date.now(),strong=new Set()){
   const edge=r=>Number(r.exchange?r.edge/2:(recordLegs(r)[0]?.edge??r.edge));
-  return rows.filter(r=>r.kind!=='parlay'&&r.player&&Date.parse(r.game_time)>now+10*60000).sort((a,b)=>Boolean(a.exchange)-Boolean(b.exchange)||edge(b)-edge(a))[0]||null;
+  return rows.filter(r=>r.kind!=='parlay'&&r.player&&Date.parse(r.game_time)>now+10*60000).sort((a,b)=>Boolean(a.exchange)-Boolean(b.exchange)||strong.has(b.id)-strong.has(a.id)||edge(b)-edge(a))[0]||null;
+}
+// Picks whose saved matchup shows 7+ of the last 10 games on our side.
+async function xStrongForm(env,rows){
+  const out=new Set();
+  for(const r of rows){const m=await savedMatchup(env,r.id),v=(m?.logs||[]).slice(0,10).map(g=>Number(g.v)),line=Number(r.line??recordLegs(r)[0]?.line),over=String(r.side??recordLegs(r)[0]?.side)==='Over';
+    if(v.length>=5&&Number.isFinite(line)&&v.filter(x=>over?x>line:x<line).length/v.length>=.7)out.add(r.id)}
+  return out;
 }
 async function xPoll(env,rows,now,day,mediaId=null){
   if(await appSetting(env,'x-poll')!=='on')return {posted:0,off:true};
-  const r=xPollPick(rows,now);if(!r)return {posted:0,none:true};
+  const r=xPollPick(rows,now,await xStrongForm(env,rows).catch(()=>new Set()));if(!r)return {posted:0,none:true};
   const key=`x-poll:${day}`;if(!(await xClaimable(env,key,now))||!(await xClaim(env,key,now)))return {posted:0,done:true};
   const minutes=Math.max(5,Math.min(10080,Math.floor((Date.parse(r.game_time)-now)/60000)));
   let sent=null;
