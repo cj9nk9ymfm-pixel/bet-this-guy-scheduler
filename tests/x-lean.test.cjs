@@ -17,7 +17,7 @@ const db=new DatabaseSync(':memory:');
 for(const f of fs.readdirSync('drizzle').filter(f=>/^\d{4}_.*\.sql$/.test(f)).sort())try{db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''))}catch{}
 const wrap=(sql,args=[])=>({bind(...values){return wrap(sql,values)},async first(){return db.prepare(sql).get(...args)||null},async all(){return{results:db.prepare(sql).all(...args)}},async run(){const r=db.prepare(sql).run(...args);return{success:true,meta:{changes:Number(r.changes)}}}});
 const run=code=>vm.runInContext(code,context);
-run('X_PICK_POSTS_DEFAULT=false');
+run('X_PICK_POSTS_DEFAULT=false;MATCHUP_WAIT=0');
 const setting=k=>db.prepare('SELECT value FROM app_settings WHERE key=?').get(k)?.value;
 const team='Houston Texans · @ Tennessee Titans';
 const official=(id,player,odds,gameTime,kind='prop',edge=1.2)=>db.prepare("INSERT INTO public_recommendations(id,kind,player,market,side,line,odds,combined_odds,game_time,legs_json,posted_at,status,source) VALUES(?,?,?,?,?,?,?,?,?,?,?,'pending','market-verified-v2')").run(id,kind,player,'Receptions','Under',4.5,odds,kind==='parlay'?264:null,gameTime,JSON.stringify([{player,team,market:'Receptions',side:'Under',line:4.5,odds,edge,book:'FanDuel',gameTime}]),'2026-11-01T01:00:00Z');

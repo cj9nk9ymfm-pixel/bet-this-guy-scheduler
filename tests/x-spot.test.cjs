@@ -20,7 +20,14 @@ for(const t of ['>HIT<','RESULT · NBA','4 assists','needed 5 or fewer','+$87','
 assert.ok(card({sport:'NFL',title:'Jordan Love',bet:'Under 1.5 passing touchdowns',odds:'42%',spot:{app:true,book:'Novig',odds:'42%',chance:'44%',res:'lost',actual:'2 TD passes',need:'needed 1 or fewer',money:'-$100'}}).includes('>MISS<'),'misses get the same card');
 const app=card({sport:'NFL',title:'Jordan Love',bet:'Under 1.5 passing touchdowns',odds:'42%',pill:{label:'PREDICTION PICK'},spot:{app:true,book:'Novig',odds:'42%',chance:'44%'}});
 assert.ok(app.includes('Price on Novig')&&app.includes('what you pay')&&app.includes('Pay 42% for a 44% shot.')&&app.includes('Prediction app · 18+/21+'));
+// Matchup boxes (Oct 31): opponent allowed by position with its rank, and the last meetings.
+const mu=card({sport:'NBA',title:'Donovan Mitchell',bet:'Under 5.5 assists',odds:'-115',spot:{oddsNum:-115,book:'BetMGM',implied:'53%',chance:'55%',market:'Assists',matchup:{opponent:'Atlanta Hawks',pos:'guards',def:{allowed:11.4,rank:6,teams:30,games:5,league:12.6,span:'this season'},h2h:[4,6,3]}}});
+for(const t of ['Hawks allow','11.4','to guards a game · 6th fewest','Mitchell vs Hawks','4.3','assists, last 3 meetings: 4, 6, 3','Hawks allow the 6th fewest assists to guards.','Under 5.5 assists at -115 · BetMGM'])assert.ok(mu.includes(t),t);
+assert.ok(!mu.includes('Our chance it hits'),'matchup replaces our chance');
+const soft=card({sport:'NBA',title:'Rui Hachimura',bet:'Over 4.5 rebounds',odds:'-105',spot:{oddsNum:-105,book:'BetMGM',implied:'51%',market:'Rebounds',matchup:{opponent:'Minnesota Timberwolves',pos:'forwards',def:{allowed:19.8,rank:27,teams:30,games:82,league:18.1,span:'last season'},h2h:[]}}});
+assert.ok(soft.includes('4th most · last season')&&soft.includes('BetMGM price')&&soft.includes('the price says 51%'),'no meetings: price box');
+assert.equal(run('xOrd(1)+xOrd(2)+xOrd(3)+xOrd(11)+xOrd(22)'),'1st2nd3rd11th22nd');
 // Parlays and cards without price data keep the wide card; X_SPOT off restores it.
 assert.match(card({parlay:true,title:'2-leg parlay',legs:[{text:'A',odds:'+100'}],odds:'+264'}),/height="675"/);
 run('X_SPOT=false');assert.match(card({sport:'NBA',title:'A B',bet:'Over 1.5',odds:'-110',spot:{oddsNum:-110}}),/height="675"/);
-console.log('PASS: pick spotlight graphic (price, our chance, payout; HIT/MISS result with stat and money; prediction-app wording; parlays and X_SPOT off keep the wide card)');
+console.log('PASS: pick spotlight graphic (price, our chance, payout; HIT/MISS result with stat and money; prediction-app wording; matchup boxes; parlays and X_SPOT off keep the wide card)');
