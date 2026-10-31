@@ -6,7 +6,7 @@ const context=vm.createContext({URL,URLSearchParams,Request,Response,Headers,Abo
 const template=read('worker/index.template.js');
 vm.runInContext(template.slice(template.indexOf('const API_BASE')).replace('__MOVEMENT_SERVER__',read('worker/movement.js')).replace('__LIVE_SERVER__',read('worker/live.js')).replace('__STATS_SHARED__',read('dist/stats.js')).replace('__RECORDS_SERVER__',read('worker/records.js')).replace('__ACCOUNTS_SERVER__',read('worker/accounts.js')).replace('export default {','this.worker={'),context);
 // These tests cover a post per pick (x-lean off); tests/x-lean.test.cjs covers lean posting.
-vm.runInContext('X_PICK_POSTS_DEFAULT=false;X_LEAN_DEFAULT=false',context);
+vm.runInContext('X_PICK_POSTS_DEFAULT=false;MATCHUP_WAIT=0;X_LEAN_DEFAULT=false',context);
 const fs=require('node:fs'),db=new DatabaseSync(':memory:');
 for(const f of fs.readdirSync('drizzle').filter(f=>/^000[0-2]_|^0006_|^0008_|^0013_|0025_|0026_|0027_|0031_|0032_|0036_|0037_|0033_|0028_|0030_|0018_/.test(f)).sort())db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''));
 const wrap=(sql,args=[])=>({bind(...values){return wrap(sql,values)},async first(){return db.prepare(sql).get(...args)||null},async all(){return{results:db.prepare(sql).all(...args)}},async run(){const r=db.prepare(sql).run(...args);return{success:true,meta:{changes:Number(r.changes)}}}});
