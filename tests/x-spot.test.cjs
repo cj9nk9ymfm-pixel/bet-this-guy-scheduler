@@ -21,6 +21,9 @@ for(const t of ['>HIT<','RESULT · NBA','4 assists','needed 5 or fewer','+$87','
 assert.ok(card({sport:'NFL',title:'Jordan Love',bet:'Under 1.5 passing touchdowns',odds:'42%',spot:{app:true,book:'Novig',odds:'42%',chance:'44%',res:'lost',actual:'2 TD passes',need:'needed 1 or fewer',money:'-$100'}}).includes('>MISS<'),'misses get the same card');
 const app=card({sport:'NFL',title:'Jordan Love',bet:'Under 1.5 passing touchdowns',odds:'42%',pill:{label:'PREDICTION PICK'},spot:{app:true,book:'Novig',odds:'42%',chance:'44%'}});
 assert.ok(app.includes('Price on Novig')&&app.includes('what you pay')&&app.includes('Prediction app · 18+/21+')&&!app.includes('Our chance'));
+// Prediction-app pick with no stats: the second box is what $100 pays at that price, not the price again (Nov 1, McNichols).
+const appPay=card({sport:'NFL',title:'Jeremy McNichols',bet:'Over 20.5 rushing yards',odds:'47%',pill:{label:'PREDICTION PICK'},spot:{app:true,book:'Novig',odds:'47%',chance:'50%',market:'Rushing Yards'}});
+assert.ok(appPay.includes('+\x24113')&&appPay.includes('on a \x24100 bet'),'app payout');
 // Matchup boxes (Oct 31): opponent allowed by position with its rank, and the last meetings.
 const mu=card({sport:'NBA',title:'Donovan Mitchell',bet:'Under 5.5 assists',odds:'-115',spot:{oddsNum:-115,book:'BetMGM',implied:'53%',chance:'55%',market:'Assists',matchup:{opponent:'Atlanta Hawks',pos:'guards',def:{allowed:11.4,rank:6,teams:30,games:5,league:13,span:'this season'},h2h:[4,6,3]}}});
 for(const t of ['Hawks allow','11.4','to guards a game · 6th fewest','Mitchell vs Hawks','4.3','assists, last 3 meetings: 4, 6, 3','Hawks allow the 6th fewest assists to guards.','Under 5.5 assists at -115 · BetMGM'])assert.ok(mu.includes(t),t);
