@@ -138,7 +138,8 @@ const run=c=>vm.runInContext(c,context),req='new Request("https://betthisguy.com
    for(const p of posts.slice(1)){const who=Object.keys(own).find(n=>p.text.includes(n));assert.equal(p.reply?.in_reply_to_tweet_id,who&&!/^🏀/.test(p.text)?own[who]:'1001',p.text.split('\n')[0])}}
   assert.ok(texts.some(t=>/^✅ HIT: Jayson Tatum Over 27.5 points \(\+115\)\nFinal: 31 points\.\n\+\$115 on a \$100 pick\./.test(t)),texts.join('|'));
   assert.ok(texts.some(t=>/^➖ NO ACTION: Victor Wembanyama.*didn’t play/s.test(t)));
-  assert.ok(texts.some(t=>/^🏀 NBA (tonight|last night): 1–0–1, \+\$115\.\nPrediction apps: 1–0, \+\$110\./.test(t)),'the recap counts the prediction-app picks: '+texts.join('|'));
+  // One record for the night, sportsbook and prediction apps together, the split under it (Nov 1); the season line too.
+  assert.ok(texts.some(t=>/^🏀 NBA (tonight|last night): 2–0–1, \+\$225\.\nSportsbook 1–0–1 \+\$115 · Prediction apps 1–0 \+\$110\nNBA season: 2–0, \+\$225\./.test(t)),'the recap counts the prediction-app picks: '+texts.join('|'));
   assert.equal((await run(`postNbaRepliesToX(env,${now+600000},5)`)).posted,0,'each reply once');
   // One-off email: sent once per id, from a betthisguy.com address, nothing without the setting.
   const mails=[];const realFetch=context.fetch;context.fetch=async(url,init)=>{if(String(url).includes('api.resend.com')){mails.push(JSON.parse(init.body));return Response.json({id:'e1'})}return realFetch(url,init)};run('fetch=globalThis.fetch');env.RESEND_API_KEY='r';
