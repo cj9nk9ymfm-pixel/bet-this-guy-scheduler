@@ -5092,15 +5092,20 @@ async function postNbaRepliesToX(env,now=Date.now(),limit=2){
     // them (Oct 26: it left them out). It waits for them to grade, up to a day.
     const nightStart=Date.parse(`${night}T06:00:00Z`),pmNight=(((await env.DB.prepare("SELECT result,odds,net_odds FROM prediction_picks WHERE event_id LIKE 'NBA--%' AND game_time>=? AND game_time<?").bind(new Date(nightStart).toISOString(),new Date(nightStart+86400000).toISOString()).all().catch(()=>({results:[]}))).results)||[]);
     const pmDone=pmNight.every(r=>['won','lost','push','void'].includes(r.result))||now-nightStart>48*3600000;
+    // The night's record is one number, sportsbook and prediction apps together (Nov 1, Tim); the split goes under it.
+    const pmT=pmTally;
+    const nightAll=()=>{const s=weeklySummary(rows),pm=pmT(pmNight),w=s.wins+s.parlayWins+pm.w,l=s.losses+s.parlayLosses+pm.l;
+      const parts=[`Sportsbook ${s.wins}–${s.losses}${s.pushes?`–${s.pushes}`:''} ${weeklyMoney(s.profit)}`,s.parlayWins+s.parlayLosses?`Parlays ${s.parlayWins}–${s.parlayLosses} ${weeklyMoney(s.parlayProfit)}`:'',pm.w+pm.l?`Prediction apps ${pm.w}–${pm.l} ${weeklyMoney(pm.net)}`:''].filter(Boolean);
+      return {rec:`${w}–${l}${s.pushes?`–${s.pushes}`:''}`,net:s.profit+s.parlayProfit+pm.net,parts}};
     // Lean: the recap carries the night's card again, every pick marked won or lost.
     const recapMedia=lean?async()=>{const pmRows=((await env.DB.prepare("SELECT * FROM prediction_picks WHERE event_id LIKE 'NBA--%' AND game_time>=? AND game_time<? ORDER BY game_time").bind(new Date(nightStart).toISOString(),new Date(nightStart+86400000).toISOString()).all().catch(()=>({results:[]}))).results)||[];
-      const s=weeklySummary(rows),net=s.profit+s.parlayProfit,first=Math.min(...rows.map(r=>Date.parse(r.game_time)));
+      const all=nightAll(),net=all.net,first=Math.min(...rows.map(r=>Date.parse(r.game_time)));
       const picks=[...nbaSlatePicks(rows),...pmRows.map(r=>({color:'#2ee6a8',text:`${r.player} · ${weeklyLegText(r)}`,odds:`${exchangePct(r.odds)}%`,sub:`${r.exchange} · prediction app`,res:['won','lost','push'].includes(r.result)?r.result:null}))];
-      return xUploadImage(env,await renderCardPng(await xSlateSvgFaces({final:true,kicker:'NBA · RESULTS',day:`${s.wins}–${s.losses}${s.pushes?`–${s.pushes}`:''}`,dayColor:net>=0?'#2ee6a8':'#f87171',date:etDate(first,{month:'short',day:'numeric'}),dateLine:`${etDate(first,{weekday:'long',month:'short',day:'numeric'})} · ${weeklyMoney(net)}`,note:s.parlayWins+s.parlayLosses?`Parlays ${s.parlayWins}–${s.parlayLosses}`:'$100 singles',note2:'Graded in public',picks})))}:null;
-    if(rows.length&&rows.every(r=>r.status==='final')&&pmDone)jobs.push({key:`x-nba-recap:${night}`,kind:'recap',...(recapMedia?{media:recapMedia}:{}),text:async()=>{const s=weeklySummary(rows),season=await nbaRecordSummary(env),net=s.profit+s.parlayProfit;
-      const pw=pmNight.filter(r=>r.result==='won'),pl=pmNight.filter(r=>r.result==='lost'),pnet=pw.reduce((t,r)=>t+100*(recordDecimal(r.net_odds||r.odds)-1),0)-100*pl.length;
-      const apps=pw.length+pl.length?`\nPrediction apps: ${pw.length}–${pl.length}, ${weeklyMoney(pnet)}.`:'';
-      return `🏀 NBA ${night===nbaNight(now)?'tonight':'last night'}: ${s.wins}–${s.losses}${s.pushes?`–${s.pushes}`:''}${s.parlayWins+s.parlayLosses?`, parlays ${s.parlayWins}–${s.parlayLosses}`:''}, ${weeklyMoney(net)}.${apps}\nNBA season: ${season.wins}–${season.losses}${season.pushes?`–${season.pushes}`:''}, ${weeklyMoney(season.profit+season.parlayProfit)}.\n\nEvery pick graded in public, losses included. Link in bio. 21+`}});
+      return xUploadImage(env,await renderCardPng(await xSlateSvgFaces({final:true,kicker:'NBA · RESULTS',day:all.rec,dayColor:net>=0?'#2ee6a8':'#f87171',date:etDate(first,{month:'short',day:'numeric'}),dateLine:`${etDate(first,{weekday:'long',month:'short',day:'numeric'})} · ${weeklyMoney(net)}`,note:all.parts.join(' · '),note2:'',picks})))}:null;
+    if(rows.length&&rows.every(r=>r.status==='final')&&pmDone)jobs.push({key:`x-nba-recap:${night}`,kind:'recap',...(recapMedia?{media:recapMedia}:{}),text:async()=>{const all=nightAll(),season=await nbaRecordSummary(env);
+      const pmSeason=pmT((await env.DB.prepare("SELECT result,odds,net_odds FROM prediction_picks WHERE event_id LIKE 'NBA--%' AND result IN ('won','lost')").all().catch(()=>({results:[]}))).results||[]);
+      const sw=season.wins+(season.parlayWins||0)+pmSeason.w,sl=season.losses+(season.parlayLosses||0)+pmSeason.l,snet=season.profit+(season.parlayProfit||0)+pmSeason.net;
+      return `🏀 NBA ${night===nbaNight(now)?'tonight':'last night'}: ${all.rec}, ${weeklyMoney(all.net)}.\n${all.parts.join(' · ')}\nNBA season: ${sw}–${sl}, ${weeklyMoney(snet)}.\n\nEvery pick graded in public, losses included. Link in bio. 21+`}});
     for(const j of jobs){
       if(posted>=limit){if(await xClaimable(env,j.key,now))more=true;break}
       if(!(await xClaimable(env,j.key,now))||!(await xClaim(env,j.key,now)))continue;
@@ -5225,6 +5230,8 @@ async function postCardRecapToX(env,now=Date.now()){
     const sent=await xReplySafe(env,text,mediaId,[reply]);await xDone(env,key,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} card-recap ${reply?'reply':'post'} ${mediaId?'graphic':'text'} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,graphic:Boolean(mediaId),reply:Boolean(reply)}}
   catch(error){await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
 }
+// Prediction-app picks' record and $100-a-pick money (after each app's fee).
+function pmTally(list){const w=list.filter(r=>r.result==='won'),l=list.filter(r=>r.result==='lost');return {w:w.length,l:l.length,net:w.reduce((t,r)=>t+100*(recordDecimal(r.net_odds||r.odds)-1),0)-100*l.length}}
 // Day recap: a game day's graded card (record, $100-a-pick money, closing
 // lines) on one graphic. Posts once per value of app_settings x-recap-request,
 // an Eastern date (2026-10-11, or 2026-10-11#2 to resend), once all are graded.
@@ -5236,25 +5243,30 @@ async function postDayRecapToX(env,now=Date.now()){
   const rows=all.filter(r=>etDate(Date.parse(r.game_time),{year:'numeric',month:'2-digit',day:'2-digit'})===`${day.slice(5,7)}/${day.slice(8,10)}/${day.slice(0,4)}`).sort((a,b)=>String(a.game_time).localeCompare(String(b.game_time))||String(a.posted_at).localeCompare(String(b.posted_at)));
   if(!rows.length)return {posted:0,empty:true};
   const s=weeklySummary(rows);if(s.pending)return {posted:0,waiting:s.pending};
+  // Prediction-app picks count in the day's record too (Nov 1, Tim: one record, the split under it).
+  const pmAll=((await env.DB.prepare("SELECT * FROM prediction_picks WHERE event_id NOT LIKE 'NBA--%'").all().catch(()=>({results:[]}))).results)||[];
+  const pmDay=pmAll.filter(r=>etDate(Date.parse(r.game_time),{year:'numeric',month:'2-digit',day:'2-digit'})===`${day.slice(5,7)}/${day.slice(8,10)}/${day.slice(0,4)}`);
+  if(pmDay.some(r=>r.result==null)&&now-Math.max(...pmDay.map(r=>Date.parse(r.game_time)))<12*3600000)return {posted:0,waiting:pmDay.filter(r=>r.result==null).length};
   if(!(await xClaim(env,key,now)))return {posted:0,done:true};
+  const pmD=pmTally(pmDay),pmS=pmTally(pmAll);
   const season=weeklySummary(all),dayName=etDate(Date.parse(rows[0].game_time),{weekday:'long'});
   // Average closing-line value: how much more our price paid than the close.
   const clv=rows.filter(r=>r.kind==='prop'&&r.closing_odds!=null&&(r.closing_line==null||Math.abs(Number(r.closing_line)-Number(r.line))<=.01)).map(r=>(weeklyDecimal(r.odds)/weeklyDecimal(r.closing_odds)-1)*100);
   const avg=clv.length?clv.reduce((a,b)=>a+b,0)/clv.length:null,total=s.profit+s.parlayProfit;
-  // The headline counts every play (singles and parlays); props are broken out.
-  const rec=`${s.wins+s.parlayWins}–${s.losses+s.parlayLosses}${s.pushes?`–${s.pushes}`:''}`,propRec=`${s.wins}–${s.losses}${s.pushes?`–${s.pushes}`:''}`;
+  // The headline counts every play (singles, parlays and prediction-app picks); each is broken out under it.
+  const propRec=`${s.wins}–${s.losses}${s.pushes?`–${s.pushes}`:''}`;
   const seasonRec=`${season.wins+season.parlayWins}–${season.losses+season.parlayLosses}`,seasonMoney=season.profit+season.parlayProfit;
   const picks=rows.map(r=>{const legs=recordLegs(r),f=legs[0]||{};return r.kind==='parlay'?{res:r.result,text:`${legs.length}-leg parlay`,odds:weeklyOdds(r.combined_odds),sub:legs.map(l=>l.player).join(' + ')}:{res:r.result,text:`${r.player} · ${weeklyLegText(r)}`,odds:weeklyOdds(r.odds),close:r.closing_odds!=null?(r.closing_line!=null&&Math.abs(Number(r.closing_line)-Number(r.line))>.01?`${r.side==='Over'?'o':'u'}${r.closing_line} ${weeklyOdds(r.closing_odds)}`:weeklyOdds(r.closing_odds)):null,sub:xActual(f)?xActual(f).replace(/^./,c=>c.toUpperCase()):''}});
   const np=s.parlayWins+s.parlayLosses,parlays=np?`; ${np===1?(s.parlayWins?'parlay hit':'parlay lost'):`parlays ${s.parlayWins}–${s.parlayLosses}`}`:'';
   const beatLine=s.tracked?`\n${s.beat} of ${s.tracked} props beat the closing line${avg!==null&&avg>0?`, paying ${avg.toFixed(1)}% more than the kickoff price on average`:''}.`:'';
-  const seasonLine=season.wins+season.losses>=5?`\nSeason: ${seasonRec}, ${weeklyMoney(seasonMoney)}${season.tracked?` · ${season.beat} of ${season.tracked} beat the close`:''}.`:'';
-  // Singles lead; parlays are their own line (a quarter unit from Oct 12, 2026).
-  const props=rows.filter(r=>r.kind==='prop').length,parlayLine=np?`\nParlays ${s.parlayWins}–${s.parlayLosses}, ${weeklyMoney(s.parlayProfit)}.`:'';
-  const seasonParlays=season.parlayWins+season.parlayLosses?` · parlays ${season.parlayWins}–${season.parlayLosses}, ${weeklyMoney(season.parlayProfit)}`:'';
-  const seasonSingles=season.wins+season.losses>=5?`\nSeason: ${season.wins}–${season.losses}${season.pushes?`–${season.pushes}`:''}, ${weeklyMoney(season.profit)}${seasonParlays}${season.tracked?` · ${season.beat} of ${season.tracked} beat the close`:''}.`:'';
-  const text=xShort(`📊 ${dayName}’s picks: ${propRec}, ${weeklyMoney(s.profit)} at $100 a pick.${parlayLine}${beatLine}${seasonSingles}\n\nEvery pick graded in public. Link in bio. 21+`);
+  const props=rows.filter(r=>r.kind==='prop').length;
+  const dayAll=`${s.wins+s.parlayWins+pmD.w}–${s.losses+s.parlayLosses+pmD.l}${s.pushes?`–${s.pushes}`:''}`,dayNet=total+pmD.net;
+  const split=[`Sportsbook ${propRec} ${weeklyMoney(s.profit)}`,np?`Parlays ${s.parlayWins}–${s.parlayLosses} ${weeklyMoney(s.parlayProfit)}`:'',pmD.w+pmD.l?`Prediction apps ${pmD.w}–${pmD.l} ${weeklyMoney(pmD.net)}`:''].filter(Boolean).join(' · ');
+  const seasonAll=`${season.wins+season.parlayWins+pmS.w}–${season.losses+season.parlayLosses+pmS.l}`,seasonAllMoney=seasonMoney+pmS.net;
+  const text=xShort(`📊 ${dayName}’s picks: ${dayAll}, ${weeklyMoney(dayNet)}.\n${split}${beatLine}\nSeason: ${seasonAll}, ${weeklyMoney(seasonAllMoney)}.\n\nEvery pick graded in public. Link in bio. 21+`);
+  picks.push(...pmDay.filter(r=>r.result).map(r=>({res:r.result==='void'?'push':r.result,text:`${r.player} · ${weeklyLegText(r)}`,odds:`${exchangePct(r.odds)}%`,sub:`${r.exchange} · prediction app`})));
   let mediaId=null;
-  try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(await xSlateSvgFaces({final:true,kicker:`${dayName.toUpperCase()} RESULTS`,day:propRec,dayColor:s.profit>=0?'#2ee6a8':'#f87171',dateLine:`${props} pick${props===1?'':'s'} · ${weeklyMoney(s.profit)} at $100 a pick`,note:np?`Parlays ${s.parlayWins}–${s.parlayLosses} · ${weeklyMoney(s.parlayProfit)}`:'',note2:s.tracked?`${s.beat} of ${s.tracked} beat the closing line`:'',season:season.wins+season.losses>=5?`${season.wins}–${season.losses} · ${weeklyMoney(season.profit)}`:'',picks})))}
+  try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(await xSlateSvgFaces({final:true,kicker:`${dayName.toUpperCase()} RESULTS`,day:dayAll,dayColor:dayNet>=0?'#2ee6a8':'#f87171',dateLine:`${props+pmDay.length} pick${props+pmDay.length===1?'':'s'} · ${weeklyMoney(dayNet)} at $100 a pick, $25 parlays`,note:split,note2:s.tracked?`${s.beat} of ${s.tracked} beat the closing line`:'',season:`${seasonAll} · ${weeklyMoney(seasonAllMoney)}`,picks})))}
   catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} recap graphic: ${error.message}`).catch(()=>{})}
   try{const sent=await xPost(env,text,mediaId);await xDone(env,key,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} recap ${req} ${sent?.data?.id||''}`).catch(()=>{});return {posted:1,graphic:Boolean(mediaId)}}
   catch(error){console.warn('x_recap_failed',error.message);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
