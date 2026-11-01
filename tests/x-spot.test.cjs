@@ -49,4 +49,4 @@ assert.match(par,/height="1200"/);for(const t of ['OFFICIAL PARLAY · NBA','Dill
 const parRes=card({sport:'NBA',parlay:true,stake:25,oddsNum:320,title:'2-leg parlay',legs:[{text:'Dillon Brooks · Over 3.5 rebounds',res:'lost'},{text:'Naz Reid · Under 17.5 points',res:'won'}],odds:'+320',res:'lost',money:'-\x2425'});
 for(const t of ['RESULT · NBA','>1/2<','legs hit','\x2425 ticket','-\x2425','>MISS<'])assert.ok(parRes.includes(t),t);
 run('X_SPOT=false');assert.match(card({sport:'NBA',title:'A B',bet:'Over 1.5',odds:'-110',spot:{oddsNum:-110}}),/height="675"/);
-console.log('PASS: pick spotlight graphic (price, our chance, payout; HIT/MISS result with stat and money; prediction-app wording; stat ladder (only stats that back the bet, then price and payout, never our chance); parlays and X_SPOT off keep the wide card)');
+console.log('PASS: pick spotlight graphic (price, our chance, payout; HIT/MISS result with stat and money; prediction-app wording; stat ladder (only stats that back the bet, then price and payout, never our chance); parlays on the square card with legs, price and payout; X_SPOT off keeps the wide card)');
