@@ -2508,7 +2508,11 @@ function pickSignals(m,side,line){
   if(recent.length>=6&&recent.filter(ours).length/recent.length>=.6)list.push('hit');
   if(last10.length>=5&&ours(median))list.push('median');
   const f=m?.def&&m.def.league?m.def.allowed/m.def.league:null;if(f!=null&&(over?f>=1.1:f<=.9))list.push('def');
-  return {count:list.length,list,known:vals.length>=5||f!=null};
+  // His own numbers clearly against the bet: under 35% at the line in his
+  // recent games and his typical game on the wrong side. A pick whose only
+  // signal is the defense is held then (Nov 1, Tim: McNichols, a backup RB).
+  const against=recent.length>=6&&recent.filter(ours).length/recent.length<.35&&last10.length>=5&&!ours(median);
+  return {count:list.length,list,known:vals.length>=5||f!=null,against,hold:(vals.length>=5||f!=null)&&(!list.length||(against&&list.length===1&&list[0]==='def'))};
 }
 const candKey=p=>`cand|${p.gameId||p.eventId}|${normalizedName(p.player)}|${p.market}`;
 // Splits candidates into ready (signals known or unknowable), deferred (stats
@@ -2523,10 +2527,10 @@ async function signalGate(env,ctx,list,now=Date.now(),budget=5){
       if(!m||!(m.def||m.logs?.length))await setAppSetting(env,`matchup-none:${key}`,new Date(now).toISOString()).catch(()=>{});
     }
     const sig=pickSignals(m,p.side,p.line);p.signals=sig.count;p.signalNames=sig.list;
-    if(sig.known&&!sig.count)held.push(p);else ready.push(p);
+    if(sig.hold){p.heldWhy=sig.count?'defense only, his numbers against':'no signal';held.push(p)}else ready.push(p);
   }
   if(held.length){const day=new Date(now).toISOString().slice(0,10);let saved=[];try{saved=JSON.parse(await appSetting(env,`signal-held:${day}`)||'[]')}catch{}
-    for(const p of held)if(!saved.some(x=>x.key===candKey(p)))saved.push({key:candKey(p),app:p.exchange||undefined,player:p.player,market:p.market,side:p.side,line:p.line,odds:p.odds,book:p.book,edge:+Number(p.edge).toFixed(2),gameTime:p.gameTime});
+    for(const p of held)if(!saved.some(x=>x.key===candKey(p)))saved.push({key:candKey(p),why:p.heldWhy,app:p.exchange||undefined,player:p.player,market:p.market,side:p.side,line:p.line,odds:p.odds,book:p.book,edge:+Number(p.edge).toFixed(2),gameTime:p.gameTime});
     await setAppSetting(env,`signal-held:${day}`,JSON.stringify(saved.slice(-200))).catch(()=>{})}
   return {ready,deferred,held};
 }

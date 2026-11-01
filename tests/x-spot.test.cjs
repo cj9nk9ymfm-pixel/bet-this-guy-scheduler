@@ -43,6 +43,14 @@ assert.deepEqual(sig.list,['hit','median','def']);assert.equal(sig.count,3);
 const none=JSON.parse(run(`JSON.stringify(pickSignals(${JSON.stringify({logs,def:{allowed:12.6,league:12.6}})},'Under',5.5))`));
 assert.equal(none.count,0);assert.ok(none.known,'known stats with no signal: held');
 assert.equal(JSON.parse(run(`JSON.stringify(pickSignals(null,'Over',5.5))`)).known,false,'no stats: allowed through');
+// Defense the only signal and his own numbers clearly against: held (Nov 1, McNichols). With his numbers mixed it still posts.
+const mcn=[13,3,-2,3,6,30,13,25,0,4,22,5,6,3,78,25].map(v=>({v})),def={allowed:116.7,league:91.1};
+const m1=JSON.parse(run(`JSON.stringify(pickSignals(${JSON.stringify({logs:mcn,def})},'Over',20.5))`));
+assert.deepEqual(m1.list,['def']);assert.ok(m1.against&&m1.hold,'defense only, his numbers against: held');
+const mixed=[25,10,22,15,30,8,24,12,21,9].map(v=>({v}));
+const m2=JSON.parse(run(`JSON.stringify(pickSignals(${JSON.stringify({logs:mixed,def})},'Over',20.5))`));
+assert.ok(!m2.against&&!m2.hold,'mixed numbers with the defense signal: posts');
+assert.ok(!JSON.parse(run(`JSON.stringify(pickSignals(null,'Over',5.5))`)).hold,'no stats: not held');
 assert.ok(card({sport:'NBA',title:'Jalen Brunson',bet:'Over 5.5 assists',odds:'-110',pill:{label:'OFFICIAL PICK'},spot:{oddsNum:-110,book:'FanDuel',implied:'52%',market:'Assists',signals:2,matchup:{logs}}}).includes('STRONG PICK · NBA'),'2+ signals: strong pick kicker');
 assert.equal(run('xOrd(1)+xOrd(2)+xOrd(3)+xOrd(11)+xOrd(22)'),'1st2nd3rd11th22nd');
 // X_SPOT off restores the wide card.
