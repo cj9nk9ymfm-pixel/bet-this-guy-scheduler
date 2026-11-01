@@ -1854,7 +1854,7 @@ async function xPredictionMedia(env,r,parlay,rec=null,result=null){
     const first={team:r.team},[team,shot]=await Promise.all([typeof playerTeamOf==='function'?playerTeamOf(env,sport,r.player,r.team).catch(()=>null):null,typeof playerHeadshot==='function'?playerHeadshot(r.player,sport).catch(()=>null):null]);
     const look=result?XRESULT[result]:null,won=result==='won'?100*(recordDecimal(r.net_odds||r.odds)-1):result==='lost'?-100:0;
     if(!shot)await setAppSetting(env,'x-photo-miss',`${new Date().toISOString()} ${r.player}`).catch(()=>{});
-    const spot={app:true,book:r.exchange,odds:`${exchangePct(r.odds)}%`,chance:`${Math.round(Number(r.fair_pct))}%`,market:r.market,matchup:result?null:await savedMatchup(env,r.id),...(result?xSpotResult({market:r.market,side:r.side,line:r.line,actualValue:r.actual},result==='void'?'push':result,result==='push'||result==='void'?'$0':weeklyMoney(won)):{})};
+    const spot={app:true,book:r.exchange,odds:`${exchangePct(r.odds)}%`,chance:`${Math.round(Number(r.fair_pct))}%`,market:r.market,matchup:result?null:await savedMatchup(env,r.id)||await savedMatchup(env,candKey({eventId:r.event_id,player:r.player,market:r.market})),...(result?xSpotResult({market:r.market,side:r.side,line:r.line,actualValue:r.actual},result==='void'?'push':result,result==='push'||result==='void'?'$0':weeklyMoney(won)):{})};
     return await xUploadImage(env,await renderCardPng(xPickSvg({spot,sport,team,photo:shot?{type:shot.type,b64:xBase64(shot.bytes)}:null,pill:look||pill(sport==='NBA'?'NBA PREDICTION PICK':'PREDICTION PICK'),title:r.player,bet:weeklyLegText(r).replace(/^./,ch=>ch.toUpperCase()),when:[xMatchup(first.team),weeklyDay(r.game_time)].filter(Boolean).join(' · '),odds:`${exchangePct(r.odds)}%`,oddsColor:look?look.odds:'#2ee6a8',oddsNote:look?[r.actual!=null?`Final: ${r.actual}`:'',result==='push'||result==='void'?'stake back':weeklyMoney(won)].filter(Boolean).join(' · '):`on ${r.exchange} · fair ${Math.round(r.fair_pct)}%`,season,records,footLeft:[team?.full?xNick(team.full).toUpperCase():'',shortWhen].filter(Boolean).join(' · '),cta:look?'See every pick graded':'Prediction picks, free'})))
   }catch(error){await setAppSetting(env,'x-last-error',`${new Date().toISOString()} prediction graphic: ${error.message}`).catch(()=>{});return null}
 }
@@ -3987,7 +3987,8 @@ function xMatchupBoxes(c){
   // Fills: the price, then what it pays.
   const o=Number(c.oddsNum),usd=v=>'\x24'+v;
   const price={label:c.app?`Price on ${c.book||'the app'}`:`${c.book||'Best'} price`,big:c.odds,sub:c.app?'what you pay':c.implied?`the price says ${c.implied}`:'',plain:true};
-  const pay={label:'What it pays',big:Number.isFinite(o)?'+'+usd(o<0?Math.round(10000/-o):o):c.odds,sub:Number.isFinite(o)?`on a ${usd(100)} bet`:'',plain:true};
+  const pct=c.app?parseFloat(c.odds):NaN;
+  const pay={label:'What it pays',big:Number.isFinite(o)?'+'+usd(o<0?Math.round(10000/-o):o):pct>0&&pct<100?'+'+usd(Math.round(100*(100/pct-1))):c.odds,sub:Number.isFinite(o)||pct>0?`on a ${usd(100)} bet`:'',plain:true};
   const picked=ladder.slice(0,2);while(picked.length<2)picked.push(picked.includes(price)?pay:price);
   const [a,b]=picked.map(x=>({...x,good:!x.plain}));
   return {a,b,line:ladder[0]?.line||(c.app?'Priced below our fair chance after fees.':'The best price we found across the big five books.')};
