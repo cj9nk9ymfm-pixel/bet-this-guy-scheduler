@@ -4739,9 +4739,12 @@ async function recordTeammateShadow(env,boards,injuries,now=Date.now()){
 }
 async function gradeTeammateShadow(env,now=Date.now(),limit=30){
   if(!env.DB||!env.BALLDONTLIE_API_KEY)return {graded:0};
-  const rows=(await env.DB.prepare('SELECT * FROM teammate_shadow WHERE result IS NULL AND game_time<? AND game_time>? ORDER BY game_time LIMIT ?').bind(new Date(now-4*3600000).toISOString(),new Date(now-14*86400000).toISOString(),limit).all().catch(()=>({results:[]}))).results||[];
+  // The box-score lookup needs the game ("Away · @ Home"); teammate rows don't
+  // carry it, so it comes from the sharp-book test, which logs every NBA game
+  // (Nov 2: without it nothing graded, 0 of 228 finished games).
+  const rows=(await env.DB.prepare("SELECT t.*,(SELECT s.team FROM sharp_shadow s WHERE s.event_id=t.event_id AND s.team LIKE '%·%' LIMIT 1) AS matchup FROM teammate_shadow t WHERE t.result IS NULL AND t.game_time<? AND t.game_time>? ORDER BY t.game_time LIMIT ?").bind(new Date(now-4*3600000).toISOString(),new Date(now-14*86400000).toISOString(),limit).all().catch(()=>({results:[]}))).results||[];
   const cache=new Map(),statements=[],stamp=new Date(now).toISOString();
-  for(const r of rows){const record={sport:'NBA',player:r.player,gameTime:r.game_time,market:r.market,side:r.side,line:r.line};
+  for(const r of rows){const record={sport:'NBA',player:r.player,team:r.matchup||'',gameTime:r.game_time,market:r.market,side:r.side,line:r.line};
     const stat=await recordPlayerStats(record,env,undefined,cache).catch(()=>null);
     if((stat?.scoreboardFinal&&!stat.missingPlayerStats&&!BTGStats.nbaPlayed(stat))||((!stat||stat.missingPlayerStats)&&now-Date.parse(r.game_time)>3*86400000)){statements.push(env.DB.prepare('UPDATE teammate_shadow SET result=?,graded_at=? WHERE id=?').bind('void',stamp,r.id));continue}
     if(!stat||stat.missingPlayerStats||!stat.scoreboardFinal)continue;
