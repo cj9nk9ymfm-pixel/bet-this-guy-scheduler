@@ -62,11 +62,11 @@ const run=code=>vm.runInContext(code,context);run('fetch=globalThis.fetch');
   assert.equal(run(`gameBefore({datetime:'2026-10-30T17:00:00.000Z'},${tip})`),true,'an earlier game that day (timestamp): before');
   // No sharp price, no NBA pick (Nov 2): priced posts, unpriced after a pull is held, not pulled yet waits.
   {const T='2026-11-03T00:00:00.000Z',ins=(pl,pin,at)=>db.prepare("INSERT INTO sharp_shadow (id,sport,event_id,player,market,side,line,odds,book,edge,game_time,logged_at,pin_fair) VALUES (?,'NBA','NBA--sg',?,'Points','Over',20.5,-110,'b',2,?,?,?)").run('NBA--sg|'+pl.toLowerCase().replace(/[^a-z]/g,'')+'|Points',pl,T,at,pin);
-   ins('Priced Guy',52,'2026-11-02T10:00:00.000Z');ins('Unpriced Guy',null,'2026-11-02T10:00:00.000Z');ins('Fresh Guy',null,'2026-11-02T13:00:00.000Z');
+   ins('Priced Guy',52,'2026-11-02T10:00:00.000Z');ins('Unpriced Guy',null,'2026-11-02T10:00:00.000Z');ins('Fresh Guy',null,'2026-11-02T13:00:00.000Z');ins('Same Run Guy',null,'2026-11-02T12:00:00.000Z');
    db.prepare("UPDATE sharp_shadow SET pin_at='2026-11-02T12:00:00.000Z' WHERE id='NBA--sg|pricedguy|Points'").run();
    const c=n=>({gameId:'NBA--sg',player:n,market:'Points',side:'Over',line:20.5,odds:-110,edge:2,gameTime:T});
-   const g=JSON.parse(JSON.stringify(await run(`sharpGate(env,${JSON.stringify(['Priced Guy','Unpriced Guy','Fresh Guy','New Guy'].map(c))},${Date.parse('2026-11-02T14:00:00Z')})`)));
-   assert.deepEqual(g.ready.map(p=>p.player),['Priced Guy']);assert.deepEqual(g.held.map(p=>p.player),['Unpriced Guy']);assert.deepEqual(g.deferred.map(p=>p.player),['Fresh Guy','New Guy']);
+   const g=JSON.parse(JSON.stringify(await run(`sharpGate(env,${JSON.stringify(['Priced Guy','Unpriced Guy','Same Run Guy','Fresh Guy','New Guy'].map(c))},${Date.parse('2026-11-02T14:00:00Z')})`)));
+   assert.deepEqual(g.ready.map(p=>p.player),['Priced Guy']);assert.deepEqual(g.held.map(p=>p.player),['Unpriced Guy','Same Run Guy'],'logged in the same run as the pull counts as checked');assert.deepEqual(g.deferred.map(p=>p.player),['Fresh Guy','New Guy']);
    const log=JSON.parse(db.prepare("SELECT value FROM app_settings WHERE key='signal-held:2026-11-02'").get().value);assert.ok(log.some(x=>x.player==='Unpriced Guy'&&x.why==='no sharp price'),'held and logged with the reason')}
   console.log('PASS: NBA matchup data (defense allowed by position from box scores, day by day; ranked among 25+ teams with 5+ games, else last season; a new pick waits up to 12 minutes for its matchup; top pick prefers strong form; NBA stats check and its backfill)');
 })().catch(e=>{console.error(e);process.exit(1)});

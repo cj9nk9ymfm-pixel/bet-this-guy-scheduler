@@ -2562,7 +2562,8 @@ async function sharpGate(env,list,now=Date.now()){
   const pulls=new Map(((await env.DB.prepare(`SELECT event_id,MAX(pin_at) AS at FROM sharp_shadow WHERE event_id IN (${games.map(()=>'?').join(',')}) AND pin_at IS NOT NULL GROUP BY event_id`).bind(...games).all().catch(()=>({results:[]}))).results||[]).map(r=>[r.event_id,Date.parse(r.at)]));
   for(const p of list){const r=rows.get(`${p.gameId}|${normalizedName(p.player)}|${p.market}`);
     if(r&&r.pin_fair!=null){ready.push(p);continue}
-    if(r&&(pulls.get(p.gameId)||0)>Date.parse(r.logged_at||'')){p.heldWhy='no sharp price';held.push(p)}else deferred.push(p);
+    // A pick logged in the same run as a pull was in that pull (same timestamp).
+    if(r&&(pulls.get(p.gameId)||0)>=Date.parse(r.logged_at||'')){p.heldWhy='no sharp price';held.push(p)}else deferred.push(p);
   }
   await logHeld(env,held,now);
   return {ready,deferred,held};
