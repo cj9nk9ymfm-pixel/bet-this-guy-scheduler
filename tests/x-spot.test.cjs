@@ -51,7 +51,7 @@ const mixed=[25,10,22,15,30,8,24,12,21,9].map(v=>({v}));
 const m2=JSON.parse(run(`JSON.stringify(pickSignals(${JSON.stringify({logs:mixed,def})},'Over',20.5))`));
 assert.ok(!m2.against&&!m2.hold,'mixed numbers with the defense signal: posts');
 assert.ok(!JSON.parse(run(`JSON.stringify(pickSignals(null,'Over',5.5))`)).hold,'no stats: not held');
-assert.ok(card({sport:'NBA',title:'Jalen Brunson',bet:'Over 5.5 assists',odds:'-110',pill:{label:'OFFICIAL PICK'},spot:{oddsNum:-110,book:'FanDuel',implied:'52%',market:'Assists',signals:2,matchup:{logs}}}).includes('STRONG PICK · NBA'),'2+ signals: strong pick kicker');
+assert.ok(!card({sport:'NBA',title:'Jalen Brunson',bet:'Over 5.5 assists',odds:'-110',pill:{label:'OFFICIAL PICK'},spot:{oddsNum:-110,book:'FanDuel',implied:'52%',market:'Assists',signals:2,matchup:{logs}}}).includes('STRONG PICK'),'no Strong pick label (taken down Nov 2)');
 assert.equal(run('xOrd(1)+xOrd(2)+xOrd(3)+xOrd(11)+xOrd(22)'),'1st2nd3rd11th22nd');
 // X_SPOT off restores the wide card.
 // Parlays (Oct 31) get the square card too: legs listed, the price and what a $25 ticket pays; results count the legs that hit.
