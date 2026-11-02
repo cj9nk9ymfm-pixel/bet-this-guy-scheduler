@@ -4476,10 +4476,21 @@ async function slatePicks(env,now){
   const day=etDate(Date.parse(rows[0].game_time),{year:'numeric',month:'2-digit',day:'2-digit'});
   return {rows:rows.filter(r=>etDate(Date.parse(r.game_time),{year:'numeric',month:'2-digit',day:'2-digit'})===day),first:Date.parse(rows[0].game_time)};
 }
-// final: the same card about 75 minutes before the day's first pick kicks
-// off (the run 65 to 80 minutes out, after inactives), with everything
-// locked by then. morning: an update at 9 AM Eastern on game day, when
+// final: the same card about 50 minutes before the day's first kickoff (the
+// run 40 to 55 minutes out, after inactives), with everything locked by then.
+// Since Nov 2 (Tim) it posts every NFL game day: with only prediction-app
+// picks, and with none at all as a "no picks we like" card. morning: an update at 9 AM Eastern on game day, when
 // picks have locked since the night-before post and kickoff is 90+ minutes off.
+// The next NFL kickoff from the schedule (the odds provider's events list,
+// which doesn't use request credits), cached three hours; for the game-day
+// card on days with no picks.
+async function nflNextKickoff(env,now=Date.now()){
+  let c=null;try{c=JSON.parse(await appSetting(env,'nfl-kicks')||'null')}catch{}
+  if(!c||now-c.at>3*3600000){if(!env.THE_ODDS_API_KEY)return NaN;
+    const ev=await fetchSportEvents(SPORTS[0],env.THE_ODDS_API_KEY).catch(()=>null);if(!Array.isArray(ev))return NaN;
+    c={at:now,t:ev.map(e=>Date.parse(e.commence_time)).filter(Number.isFinite).sort((a,b)=>a-b).filter(t=>t>now-6*3600000).slice(0,40)};await setAppSetting(env,'nfl-kicks',JSON.stringify(c)).catch(()=>{})}
+  return c.t.find(t=>t>now+5*60000)??NaN;
+}
 // Season records for the card graphics: sportsbook and prediction-app
 // singles and parlays, W–L and profit ($100 singles; parlays at their stake).
 async function xCardRecords(env){
@@ -4563,14 +4574,21 @@ async function postSlateRequestToX(env,now=Date.now()){
 async function postSlateToX(env,now=Date.now(),final=false,morning=false,request=''){
   if(!env.DB||!xReady(env))return {posted:0,disabled:true};
   const lean=!request&&await xLean(env);if(lean&&!final)return {posted:0,lean:true};
-  const {rows,first}=await slatePicks(env,now),date=first?new Date(first).toISOString().slice(0,10):'';
+  let {rows,first}=await slatePicks(env,now);
+  // The final card goes out every game day, timed to the day's first kickoff:
+  // the schedule's, or a prediction-app pick's when that is earlier.
+  if(final&&lean&&!request){const ymd=t=>etDate(t,{year:'numeric',month:'2-digit',day:'2-digit'});
+    const pmNext=Date.parse((await env.DB.prepare("SELECT MIN(game_time) AS t FROM prediction_picks WHERE event_id NOT LIKE 'NBA--%' AND result IS NULL AND game_time>?").bind(new Date(now+5*60000).toISOString()).first().catch(()=>null))?.t||'');
+    const t=[first,pmNext,await nflNextKickoff(env,now)].filter(Number.isFinite).sort((a,b)=>a-b)[0];
+    if(Number.isFinite(t)){rows=rows.filter(r=>ymd(Date.parse(r.game_time))===ymd(t));first=t}}
+  const date=first?new Date(first).toISOString().slice(0,10):'';
   if(request){if(!rows.length)return {posted:0,empty:true}}
   else if(morning){
     const ymd=t=>etDate(t,{year:'numeric',month:'2-digit',day:'2-digit'});
     if(rows.length<2||ymd(now)!==ymd(first)||Number(etDate(now,{hour:'numeric',hourCycle:'h23'}))!==9||first-now<90*60000||await appSetting(env,`x-final:${date}`))return {posted:0,due:false};
     const night=Date.parse(String(await appSetting(env,`x-slate:${date}`)||'').replace(/^pending /,''));
     if(Number.isFinite(night)&&!rows.some(r=>Date.parse(r.posted_at)>night))return {posted:0,nothingNew:true};
-  }else if(rows.length<(final?1:2)||(final?(first-now>80*60000||first-now<65*60000):first-now>16*3600000))return {posted:0,due:false};
+  }else if(!first||(final?(!lean&&!rows.length)||first-now>55*60000||first-now<40*60000:rows.length<2||first-now>16*3600000))return {posted:0,due:false};
   const key=request?`x-slate-req:${request}`:`x-${final?'final':morning?'morning':'slate'}:${date}`;
   if(!(await xClaim(env,key,now)))return {posted:0,done:true};
   const all=(await env.DB.prepare("SELECT kind,posted_at,line,odds,combined_odds,status,result,closing_line,closing_odds,closing_captured_at,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%'").all()).results||[];
@@ -4587,15 +4605,19 @@ async function postSlateToX(env,now=Date.now(),final=false,morning=false,request
   const dayName=etDate(first,{weekday:'long'}),kick=`${etDate(first,{hour:'numeric',minute:'2-digit'})} ET`;
   // The caption counts the picks (the card shows every one), so it never runs long.
   const singles=rows.filter(r=>r.kind!=='parlay').length,parlays=rows.length-singles,rec=await xRecords(env).catch(()=>null);
-  const counts=`${singles} single${singles===1?'':'s'}${parlays?` + ${parlays} parlay${parlays===1?'':'s'}`:''}${apps?` + ${apps} prediction-app`:''}, every one on the card 👇`;
+  const counts=singles||parlays?`${singles} single${singles===1?'':'s'}${parlays?` + ${parlays} parlay${parlays===1?'':'s'}`:''}${apps?` + ${apps} prediction-app`:''}, every one on the card 👇`:`${apps} prediction-app pick${apps===1?'':'s'}, every one on the card 👇`;
   const shown=rows.length+apps,head=morning?`☀️ ${dayName} morning: ${shown} official pick${shown===1?'':'s'} so far`:final?`🔒 Locked for ${dayName}: ${shown} official pick${shown===1?'':'s'} so far`:`🔒 ${dayName}’s official picks: ${rows.length} so far`;
-  const text=xPostText({head,lines:[counts,final?`First kickoff ${kick}. More can drop until then: turn on alerts.`:'More can drop up to kickoff: turn on alerts.'],rec,...(apps?{age:'18+/21+ by app'}:{})});
+  // No picks at all: a card that says so (Nov 2, Tim). No poll, nothing to grade.
+  const none=!shown,tonight=Number(etDate(first,{hour:'numeric',hourCycle:'h23'}))>=17?'tonight':'today';
+  const text=none?xShort(`🧊 No picks ${tonight}.\nNothing on ${dayName}'s slate beat our price bar, so we're passing. No price we like, no bet.\n\nEvery pick graded in public, losses included. Link in bio. 21+`)
+    :xPostText({head,lines:[counts,final?`First kickoff ${kick}. More can drop until then: turn on alerts.`:'More can drop up to kickoff: turn on alerts.'],rec,...(apps?{age:'18+/21+ by app'}:{})});
   let mediaId=null;
-  try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(await xSlateSvgFaces({final,kick,day:dayName,date:etDate(first,{month:'short',day:'numeric'}),picks,records:await xCardRecords(env).catch(()=>null),season:season.wins+season.losses>=5?`${season.wins}–${season.losses} · ${weeklyMoney(season.profit)}`:''})))}
+  if(none)try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(xSlateSvg({final:true,kicker:`${dayName.toUpperCase()} · NFL`,day:`No picks ${tonight}`,dateLine:`First kickoff ${kick}`,note:'Nothing beat our price bar. No price we like, no bet.',picks:[],records:await xCardRecords(env).catch(()=>null)})))}catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} no-picks graphic: ${error.message}`).catch(()=>{})}
+  else try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(await xSlateSvgFaces({final,kick,day:dayName,date:etDate(first,{month:'short',day:'numeric'}),picks,records:await xCardRecords(env).catch(()=>null),season:season.wins+season.losses>=5?`${season.wins}–${season.losses} · ${weeklyMoney(season.profit)}`:''})))}
   catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} slate graphic: ${error.message}`).catch(()=>{})}
   try{const sent=await xPost(env,text,mediaId);await xDone(env,key,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} slate ${key}`).catch(()=>{});const ids=[...rows,...pmRows,...pmParlays].map(r=>r.id);await xCovered(env,ids,now);
     // The day's card: results and the recap reply under it.
-    if(sent?.data?.id){await xMarkCard(env,ids,sent.data.id);const d=etDay.replace(/(\d+)\/(\d+)\/(\d+)/,'$3-$1-$2');await setAppSetting(env,`x-card-day:${d}`,new Date(now).toISOString()).catch(()=>{});await setAppSetting(env,`xid:x-card-day:${d}`,String(sent.data.id)).catch(()=>{});await xPoll(env,[...rows.filter(r=>r.kind==='prop'),...pmRows],now,d,mediaId).catch(error=>console.warn('x_poll_failed',error.message))}
+    if(sent?.data?.id&&!none){await xMarkCard(env,ids,sent.data.id);const d=etDay.replace(/(\d+)\/(\d+)\/(\d+)/,'$3-$1-$2');await setAppSetting(env,`x-card-day:${d}`,new Date(now).toISOString()).catch(()=>{});await setAppSetting(env,`xid:x-card-day:${d}`,String(sent.data.id)).catch(()=>{});await xPoll(env,[...rows.filter(r=>r.kind==='prop'),...pmRows],now,d,mediaId).catch(error=>console.warn('x_poll_failed',error.message))}
     return {posted:1,final,morning,picks:rows.length+apps,graphic:Boolean(mediaId)}}
   catch(error){console.warn('x_slate_failed',error.message);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});return {posted:0,error:error.message}}
 }

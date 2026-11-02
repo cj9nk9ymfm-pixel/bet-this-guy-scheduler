@@ -40,14 +40,15 @@ pick('d','Brock Purdy',110,'2026-10-13T00:15:00.000Z');pick('e','Old Pick',150,'
   assert.ok(posts.at(-1).text.startsWith('☀️ Sunday morning: 4 official picks so far')&&posts.at(-1).text.length<=280,posts.at(-1).text);
   assert.equal((await run(`postSlateToX(env,${Date.parse('2026-10-11T13:15:00Z')},false,true)`)).done,true,'morning update once a day');
   db.prepare("DELETE FROM public_recommendations WHERE player='Morning Pick'").run();
-  // Final card: the run 65 to 80 minutes before the first pick kicks off.
+  // Final card: the run 40 to 55 minutes before the first kickoff (moved from 65-80 on Nov 2).
   assert.equal((await run(`postSlateToX(env,${Date.parse('2026-10-11T15:00:00Z')},true)`)).due,false,'not two hours out');
   assert.equal((await run(`postSlateToX(env,${Date.parse('2026-10-11T16:30:00Z')},true)`)).due,false,'not 30 minutes out');
-  const fin=await run(`postSlateToX(env,${Date.parse('2026-10-11T15:45:00Z')},true)`);
+  assert.equal((await run(`postSlateToX(env,${Date.parse('2026-10-11T15:45:00Z')},true)`)).due,false,'not 75 minutes out any more');
+  const fin=await run(`postSlateToX(env,${Date.parse('2026-10-11T16:15:00Z')},true)`);
   assert.equal(fin.posted,1);assert.equal(fin.final,true);
   assert.ok(posts.at(-1).text.startsWith('🔒 Locked for Sunday: 3 official picks so far')&&posts.at(-1).text.includes('First kickoff 1:00 PM ET'),posts.at(-1).text);
   assert.ok(run('globalThis.__svg').includes('LOCKED SO FAR')&&run('globalThis.__svg').includes('More can drop until kickoff')&&run('globalThis.__svg').includes('SPORTSBOOKS')&&run('globalThis.__svg').includes('PREDICTION APPS'));
-  assert.equal((await run(`postSlateToX(env,${Date.parse('2026-10-11T15:50:00Z')},true)`)).done,true,'final card once a day');
+  assert.equal((await run(`postSlateToX(env,${Date.parse('2026-10-11T16:18:00Z')},true)`)).done,true,'final card once a day');
   // Alerts pin post: once per x-pin-request date, with the day's locked picks (even after kickoff).
   assert.equal((await run(`postAlertsPinToX(env,${Date.parse('2026-10-11T17:40:00Z')})`)).none,true,'nothing until requested');
   db.prepare("UPDATE public_recommendations SET legs_json=json_set(legs_json,'$[0].priceTrail',json('[{\"o\":-120}]')) WHERE player IN ('Carnell Tate','Brock Bowers')").run();
