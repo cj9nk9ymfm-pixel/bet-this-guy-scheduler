@@ -54,5 +54,11 @@ const run=code=>vm.runInContext(code,context);run('fetch=globalThis.fetch');
   db.prepare("INSERT INTO app_settings(key,value) VALUES('matchup:nba|old|1',?)").run(JSON.stringify({opponent:'B',pos:'forwards',def:null,h2h:[],logs:[5,6,3,7,6,5,2,6,5,4].map(v=>({v,s:2026}))}));
   assert.equal((await run(`runNbaStatsBackfill(env,{})`)).checked,1);
   assert.equal(db.prepare("SELECT l10_hits FROM stats_checks WHERE id='nba|old|1'").get().l10_hits,7);
+  // A game on the pick's own day is never "before" it (Nov 1: a bare date read as midnight, so backfills saw the graded game).
+  const tip=Date.parse('2026-10-30T23:00:00Z');
+  assert.equal(run(`gameBefore({date:'2026-10-30'},${tip})`),false,'same day, bare date: not before');
+  assert.equal(run(`gameBefore({date:'2026-10-29'},${tip})`),true,'the day before: before');
+  assert.equal(run(`gameBefore({date:'2026-10-30',datetime:'2026-10-30T23:00:00.000Z'},${tip})`),false,'the game itself (timestamp): not before');
+  assert.equal(run(`gameBefore({datetime:'2026-10-30T17:00:00.000Z'},${tip})`),true,'an earlier game that day (timestamp): before');
   console.log('PASS: NBA matchup data (defense allowed by position from box scores, day by day; ranked among 25+ teams with 5+ games, else last season; a new pick waits up to 12 minutes for its matchup; top pick prefers strong form; NBA stats check and its backfill)');
 })().catch(e=>{console.error(e);process.exit(1)});
