@@ -2395,6 +2395,11 @@ async function defenseFactor(env,opponent,pos,market,now=Date.now()){
   if(theirs.length<3||values.length<20||!league)return null;
   return {factor:statsAvg(theirs)/league,games:theirs.length,allowed:+statsAvg(theirs).toFixed(2),league:+league.toFixed(2)};
 }
+// Was this game played before the pick's game (t, ms)? A bare date ("2026-10-30")
+// reads as midnight, so a game on the pick's own day used to count as before
+// it: backfilled checks saw the graded game itself (Nov 1). Bare dates compare
+// by Eastern day instead; a full timestamp still needs to be an hour before.
+const gameBefore=(g,t)=>{const s=String(g?.datetime||g?.date||'');if(/T\d/.test(s))return Date.parse(s)<t-3600000;const day=s.slice(0,10);return /^\d{4}-\d{2}-\d{2}$/.test(day)&&day<new Date(t).toLocaleDateString('en-CA',{timeZone:'America/New_York'})};
 // Project one pick from the player's game log and the defense.
 function statsVerdict(pick,logs,def,season){
   const line=Number(pick.line),over=pick.side==='Over';
@@ -2413,7 +2418,7 @@ async function checkPickStats(env,ctx,pick,now=Date.now()){
   const url=new URL('/api/player-stats',SITE_URL);url.searchParams.set('sport','NFL');url.searchParams.set('player',pick.player);url.searchParams.set('team',pick.team||'');
   const payload=await (await playerStats(new Request(url),env,ctx||{waitUntil(){}})).json().catch(()=>({}));
   const kickoff=Date.parse(pick.game_time),season=nflSeasonOf(kickoff);
-  const logs=(payload?.success?payload.stats||[]:[]).map(row=>({date:Date.parse(row?.game?.date||row?.game?.datetime||''),season:Number(row?.game?.season),value:BTGStats.metric({market:pick.market,sport:'NFL'},row).value})).filter(g=>g.value!==null&&Number.isFinite(g.date)&&g.date<kickoff-3600000).sort((a,b)=>b.date-a.date);
+  const logs=(payload?.success?payload.stats||[]:[]).filter(row=>gameBefore(row?.game,kickoff)).map(row=>({date:Date.parse(row?.game?.datetime||row?.game?.date||''),season:Number(row?.game?.season),value:BTGStats.metric({market:pick.market,sport:'NFL'},row).value})).filter(g=>g.value!==null&&Number.isFinite(g.date)).sort((a,b)=>b.date-a.date);
   const mine=payload?.player?.team?.full_name||'',[away,home]=String(pick.team||'').split(/\s*·\s*(?:@|vs)\s*/);
   const opponent=mine&&away&&home?(normalizedName(mine)===normalizedName(away)?home:normalizedName(mine)===normalizedName(home)?away:null):null;
   const pos=statsPos(payload?.player),def=await defenseFactor(env,opponent,pos,pick.market,now).catch(()=>null);
@@ -2476,7 +2481,7 @@ async function nbaHeadToHead(env,playerId,opponentName,market,now=Date.now()){
     const payload=await nbaRequest(`/stats?${q}`,env.BALLDONTLIE_API_KEY);rows.push(...(Array.isArray(payload?.data)?payload.data:[]));cursor=payload?.meta?.next_cursor||null;if(!cursor)break}
   const teams=new Map();for(const r of rows)if(r.team?.id)teams.set(r.team.id,r.team.full_name||'');
   const oppId=[...new Set(rows.flatMap(r=>[r.game?.home_team_id,r.game?.visitor_team_id]))].find(id=>id&&id!==rows[0]?.team?.id&&normalizedName(teams.get(id)||'')===normalizedName(opponentName));
-  return rows.filter(r=>{const g=r.game||{};return Date.parse(g.date||'')<now-3600000&&BTGStats.nbaPlayed(r)&&(g.home_team_id===oppId||g.visitor_team_id===oppId||(!oppId&&false))}).map(r=>({date:r.game.date,value:BTGStats.metric({market,sport:'NBA'},r).value})).filter(g=>g.value!==null).sort((a,b)=>Date.parse(b.date)-Date.parse(a.date));
+  return rows.filter(r=>{const g=r.game||{};return gameBefore(g,now)&&BTGStats.nbaPlayed(r)&&(g.home_team_id===oppId||g.visitor_team_id===oppId||(!oppId&&false))}).map(r=>({date:r.game.date,value:BTGStats.metric({market,sport:'NBA'},r).value})).filter(g=>g.value!==null).sort((a,b)=>Date.parse(b.date)-Date.parse(a.date));
 }
 const savedMatchup=async(env,id)=>{try{return JSON.parse(await appSetting(env,`matchup:${id}`)||'null')}catch{return null}};
 // Matchups are worked out in the background (form job, two picks a run), and
@@ -2566,7 +2571,7 @@ async function pickMatchup(env,ctx,r,now=Date.now()){
   if(!opponent)return null;
   // The player's recent games (newest first): value, home or away, season.
   const kick=Date.parse(r.game_time||f.gameTime||''),tid=pl.team?.id;
-  const logs=(Array.isArray(payload?.stats)?payload.stats:[]).map(row=>{const g=row?.game||{},d=Date.parse(g.date||g.datetime||'');return {d,v:BTGStats.metric({market,sport},row).value,h:tid!=null&&g.home_team_id!=null?(g.home_team_id===tid?1:0):null,s:Number(g.season)||null,m:sport==='NBA'?(parseFloat(row.min)||null):(Number.isFinite(Number(row.receiving_targets))?Number(row.receiving_targets):null)}}).filter(x=>x.v!==null&&Number.isFinite(x.d)&&(!Number.isFinite(kick)||x.d<kick-3600000)).sort((a,b)=>b.d-a.d).slice(0,20).map(({v,h,s,m})=>m==null?{v,h,s}:{v,h,s,m});
+  const logs=(Array.isArray(payload?.stats)?payload.stats:[]).filter(row=>!Number.isFinite(kick)||gameBefore(row?.game,kick)).map(row=>{const g=row?.game||{},d=Date.parse(g.datetime||g.date||'');return {d,v:BTGStats.metric({market,sport},row).value,h:tid!=null&&g.home_team_id!=null?(g.home_team_id===tid?1:0):null,s:Number(g.season)||null,m:sport==='NBA'?(parseFloat(row.min)||null):(Number.isFinite(Number(row.receiving_targets))?Number(row.receiving_targets):null)}}).filter(x=>x.v!==null&&Number.isFinite(x.d)).sort((a,b)=>b.d-a.d).slice(0,20).map(({v,h,s,m})=>m==null?{v,h,s}:{v,h,s,m});
   const isHome=normalizedName(mine)===normalizedName(home)?1:0;
   let out=null;
   if(sport==='NBA'){
