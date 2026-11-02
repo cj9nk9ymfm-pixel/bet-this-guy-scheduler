@@ -513,7 +513,8 @@ async function publishNbaPicks(request,env,ctx,now=Date.now()){
     const existing=(await env.DB.prepare('SELECT * FROM public_recommendations WHERE id>=? AND id<?').bind(cfg.prefix,cfg.prefix+'\uffff').all()).results||[];
     const dirs=await pickDirections(env),ok=p=>sameDirection(dirs,p.gameId,p.player,p.side);
     const stats={},qualified=core(officialCandidates(tonight,Date.now(),stats,{min:NBA_MIN})).filter(nbaOfficialBar),priced=await sharpPriced(env,qualified);
-    const pool=qualified.filter(ok).filter(longshotOk(priced)),gate=SIGNAL_GATE?await signalGate(env,ctx,pool,Date.now()).catch(()=>null):null,candidates=gate?gate.ready:pool;
+    const pool0=qualified.filter(ok).filter(longshotOk(priced)),sharp=SHARP_GATE&&!RETIRED_SHADOWS.has('sharp')&&!(oddsCreditsLeft!==null&&oddsCreditsLeft<LOW_ODDS_CREDITS)?await sharpGate(env,pool0,Date.now()).catch(()=>null):null,pool=sharp?sharp.ready:pool0;
+    const gate=SIGNAL_GATE?await signalGate(env,ctx,pool,Date.now()).catch(()=>null):null,candidates=gate?gate.ready:pool;
     // Parlay legs: qualifiers not posted as singles, e.g. past the nightly 5 (held no-signal picks stay out).
     const nextTier=withTeams(gate?[...gate.ready,...gate.deferred]:candidates,await playerTeams(env));
     const plan=officialPlan(candidates,existing,night,Date.now(),nextTier,cfg);
@@ -2536,9 +2537,34 @@ async function signalGate(env,ctx,list,now=Date.now(),budget=5){
     const sig=pickSignals(m,p.side,p.line);p.signals=sig.count;p.signalNames=sig.list;
     if(sig.hold){p.heldWhy=sig.count?'defense only, his numbers against':'no signal';held.push(p)}else ready.push(p);
   }
-  if(held.length){const day=new Date(now).toISOString().slice(0,10);let saved=[];try{saved=JSON.parse(await appSetting(env,`signal-held:${day}`)||'[]')}catch{}
-    for(const p of held)if(!saved.some(x=>x.key===candKey(p)))saved.push({key:candKey(p),why:p.heldWhy,app:p.exchange||undefined,player:p.player,market:p.market,side:p.side,line:p.line,odds:p.odds,book:p.book,edge:+Number(p.edge).toFixed(2),gameTime:p.gameTime});
-    await setAppSetting(env,`signal-held:${day}`,JSON.stringify(saved.slice(-200))).catch(()=>{})}
+  await logHeld(env,held,now);
+  return {ready,deferred,held};
+}
+// Held picks, for review: app_settings signal-held:<UTC day>, with the reason.
+async function logHeld(env,held,now=Date.now()){
+  if(!held.length)return;const day=new Date(now).toISOString().slice(0,10);let saved=[];try{saved=JSON.parse(await appSetting(env,`signal-held:${day}`)||'[]')}catch{}
+  for(const p of held)if(!saved.some(x=>x.key===candKey(p)))saved.push({key:candKey(p),why:p.heldWhy,app:p.exchange||undefined,player:p.player,market:p.market,side:p.side,line:p.line,odds:p.odds,book:p.book,edge:+Number(p.edge).toFixed(2),gameTime:p.gameTime});
+  await setAppSetting(env,`signal-held:${day}`,JSON.stringify(saved.slice(-200))).catch(()=>{});
+}
+// NBA picks need a sharp-book price (Nov 2, Tim). In the sharp test, NBA picks
+// the sharp book never priced went 203-239 (-$1,788); those it priced made
+// money whether it agreed (126-119, +$1,169) or not (89-94, +$679). A pick
+// waits until its game has had a sharp pull since the pick was first logged
+// (the pull runs in the same publish run for a new pick), then posts if the
+// sharp book priced it and is held ('no sharp price') if not.
+let SHARP_GATE=true;
+async function sharpGate(env,list,now=Date.now()){
+  const ready=[],deferred=[],held=[];if(!list.length||!env.DB)return {ready:list,deferred,held};
+  const ids=list.map(p=>`${p.gameId}|${normalizedName(p.player)}|${p.market}`);
+  const rows=new Map(((await env.DB.prepare(`SELECT id,pin_fair,logged_at FROM sharp_shadow WHERE id IN (${ids.map(()=>'?').join(',')})`).bind(...ids).all().catch(()=>({results:[]}))).results||[]).map(r=>[r.id,r]));
+  // The game's latest successful sharp pull (a failed pull never counts as "not priced").
+  const games=[...new Set(list.map(p=>p.gameId))];
+  const pulls=new Map(((await env.DB.prepare(`SELECT event_id,MAX(pin_at) AS at FROM sharp_shadow WHERE event_id IN (${games.map(()=>'?').join(',')}) AND pin_at IS NOT NULL GROUP BY event_id`).bind(...games).all().catch(()=>({results:[]}))).results||[]).map(r=>[r.event_id,Date.parse(r.at)]));
+  for(const p of list){const r=rows.get(`${p.gameId}|${normalizedName(p.player)}|${p.market}`);
+    if(r&&r.pin_fair!=null){ready.push(p);continue}
+    if(r&&(pulls.get(p.gameId)||0)>Date.parse(r.logged_at||'')){p.heldWhy='no sharp price';held.push(p)}else deferred.push(p);
+  }
+  await logHeld(env,held,now);
   return {ready,deferred,held};
 }
 let SIGNAL_GATE=true;
@@ -4669,7 +4695,9 @@ async function recordSharpShadow(env,boards,now=Date.now()){
     // Every 2 hours, plus one pull in the last hour before tip-off for the
     // sharp closing price (pin_close) if the last one was earlier than that.
     const last=Number(await appSetting(env,`sharp-at:${id}`)||0),tip=Date.parse(board.commence_time),closing=tip-now<=SHARP_CLOSE;
-    if(now-last<SHARP_EVERY&&!(closing&&tip-last>SHARP_CLOSE))continue;
+    // A new NBA candidate at the official bar can't wait two hours: NBA picks need a sharp price (sharpGate).
+    const waiting=nba&&rows.some(r=>!r.pin_at&&!(Date.parse(r.logged_at||'')<=last)&&picks.some(p=>normalizedName(p.player)===normalizedName(r.player)&&p.market===r.market&&p.edge>=NBA_MIN));
+    if(now-last<SHARP_EVERY&&!(closing&&tip-last>SHARP_CLOSE)&&!waiting)continue;
     // Plus the game spread (one more market) for the blowout check.
     const markets=[...new Set(rows.map(r=>sharpKey(r.market)).filter(Boolean))];if(!markets.length)continue;markets.push('spreads');
     await setAppSetting(env,`sharp-at:${id}`,String(now));
