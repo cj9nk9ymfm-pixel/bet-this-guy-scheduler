@@ -1488,7 +1488,8 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
     // The case for the pick, the player's last 10 and Add to slip (singles).
     const sp=isParlay?null:statsProp({...first,player:r.player,market:r.market,line:r.line,side:r.side,odds:r.odds,gameTime:r.game_time||first.gameTime,sport:recSport(r)});
     let why=isParlay?null:r.pm?betWhy({done,need:r.pm.pct,fair:r.pm.fair,where:r.pm.exchange,pm:true,afterFee:r.netOdds!=null&&Number(r.netOdds)!==Number(r.odds)}):(()=>{const d0=oddsDecimal(r.odds),e=Number(first.edge);return d0&&Number.isFinite(e)?betWhy({done,need:100/d0,fair:100/d0+e,where:first.book||'The book',price:formatOdds(r.odds)}):null})();
-    const boardP=!isParlay&&!done?boardPropFor(r):null;
+    const now=!isParlay&&!done?boardPropNow(r):null,boardP=now&&(!now.moved||now.moved.ourWay)?now.p:null;
+    if(now?.moved)rows.push(['Line now',now.moved.ourWay?`${r.side} ${now.moved.line}: moved from ${now.moved.from} in your favor. Add to slip uses ${now.moved.line}.`:`${r.side} ${now.moved.line}: moved from ${now.moved.from} against this pick. We'd pass at the new number.`,now.moved.ourWay?'pos':'']);
     return {chip,live:done?null:()=>sheetLive(r),title:isParlay?`${legs.length}-leg ${legs.some(l=>l.sameGame)?'same-game ':''}parlay`:r.player,photo:isParlay?null:r.player,sport:sp?.sport,why,statsProp:sp,
       slip:boardP?{inSlip:()=>state.slip.some(x=>x.key===slipSelectionKey(boardP,r.side==='Under'?'Under':'Over')),toggle:()=>toggleLeg(boardP,r.side==='Under'?'Under':'Over',slipPmOf(r))}:isParlay&&!done&&parlayLegsFor(r)?{inSlip:()=>Boolean(parlayLegsFor(r)?.every(l=>state.slip.some(x=>x.key===slipSelectionKey(l.p,l.side)))),toggle:()=>addParlayToSlip(r)}:null,bet,game,price:r.pm?`${r.pm.pct}%`:formatOdds(odds),
       // Alerts prompt for anyone without alerts or pick emails: right after a hit, or on an open pick.
@@ -2162,6 +2163,17 @@ function boardPropFor(x){
   if(typeof props==='undefined'||!x)return null;const nm=v=>String(v||'').toLowerCase().replace(/[^a-z]/g,'');
   return props.find(q=>nm(q.player)===nm(x.player)&&String(q.market).toLowerCase()===String(x.market||'').toLowerCase()&&Number(q.line)===Number(x.line))||null;
 }
+// The pick's prop on the board now. When the posted line is gone (Nov 2:
+// Dyson Daniels Under 5.5 assists moved to 6.5, so Add to slip vanished), the
+// same player and stat at the current line, and whether the move helps the
+// pick (an Under's line up, an Over's line down). Only a move that helps can
+// go in the slip; one that hurts says we'd pass at the new number.
+function boardPropNow(x){
+  const exact=boardPropFor(x);if(exact)return {p:exact,moved:null};if(typeof props==='undefined'||!x)return null;
+  const nm=v=>String(v||'').toLowerCase().replace(/[^a-z]/g,''),q=props.find(q=>nm(q.player)===nm(x.player)&&String(q.market).toLowerCase()===String(x.market||'').toLowerCase());if(!q)return null;
+  const under=x.side==='Under',ourWay=under?Number(q.line)>Number(x.line):Number(q.line)<Number(x.line);
+  return {p:q,moved:{from:x.line,line:q.line,ourWay}};
+}
 const betWhen=iso=>{const d=new Date(iso);return Number.isFinite(d.getTime())?d.toLocaleString([],{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):''};
 function slipToast(text){
   let el=document.getElementById('slipToast');if(!el){el=document.createElement('div');el.id='slipToast';el.className='slip-toast';el.setAttribute('role','status');document.body.append(el)}
@@ -2184,7 +2196,7 @@ function addParlayToSlip(r){
   slipToast(`${icon('check')} Parlay added to your slip · <button type="button" data-open-slip>Open slip</button>`);window.btgCount?.('slip:parlay');return true;
 }
 function addBetToSlip(x){
-  const p=boardPropFor(x);if(!p)return false;const side=x.side==='Under'?'Under':'Over',key=slipSelectionKey(p,side);
+  const now=boardPropNow(x);if(!now||now.moved&&!now.moved.ourWay)return false;const p=now.p;const side=x.side==='Under'?'Under':'Over',key=slipSelectionKey(p,side);
   if(!state.slip.some(l=>l.key===key)){toggleLeg.quiet=true;try{toggleLeg(p,side,slipPmOf(x))}finally{toggleLeg.quiet=false}}slipToast(`${icon('check')} Added to your slip · <button type="button" data-open-slip>Open slip</button>`);window.btgCount?.('slip:add');return true;
 }
 // One detail sheet for everything a visitor taps: board props, this week's
