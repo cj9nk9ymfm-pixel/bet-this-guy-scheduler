@@ -8,7 +8,7 @@ const t=read('worker/index.template.js');
 vm.runInContext(t.slice(t.indexOf('const API_BASE')).replace('__MOVEMENT_SERVER__',read('worker/movement.js')).replace('__LIVE_SERVER__',read('worker/live.js')).replace('__STATS_SHARED__',read('dist/stats.js')).replace('__RECORDS_SERVER__',read('worker/records.js')).replace('__ACCOUNTS_SERVER__',read('worker/accounts.js')).replace('export default {','this.worker={'),context);
 const db=new DatabaseSync(':memory:');
 for(const f of ['0006_push_alerts.sql','0040_teammate_move.sql'].filter(f=>f!=='0040_teammate_move.sql'))db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''));
-db.exec("CREATE TABLE sharp_shadow (id text)");db.exec(read('drizzle/0040_teammate_move.sql').replaceAll('--> statement-breakpoint',''));
+db.exec("CREATE TABLE sharp_shadow (id text, event_id text, team text)");db.exec(read('drizzle/0040_teammate_move.sql').replaceAll('--> statement-breakpoint',''));
 const wrap=(sql,args=[])=>({bind(...v){return wrap(sql,v)},async first(){return db.prepare(sql).get(...args)||null},async all(){return{results:db.prepare(sql).all(...args)}},async run(){const r=db.prepare(sql).run(...args);return{success:true,meta:{changes:Number(r.changes)}}}});
 context.env={DB:{prepare:sql=>wrap(sql),async batch(l){for(const s of l)await s.run()}}};
 const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v));
@@ -26,5 +26,12 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
   assert.equal(rows[0].odds,105);assert.equal(rows[0].book,'betmgm');assert.ok(rows[0].fair>49&&rows[0].fair<50&&rows[0].edge>.5,'fair chance and edge at the best price');
   const again=J(await run(`recordTeammateShadow(env,boards,injuries,${now+600000})`));
   assert.equal(again.triggers,0,'each Out triggers once');assert.equal(db.prepare('SELECT close_odds FROM teammate_shadow WHERE market=?').get('Points').close_odds,105,'closing price tracked');
+  // Grading (Nov 2): the box-score lookup gets the game from the sharp-book test (it used to get none and graded nothing).
+  db.prepare("INSERT INTO sharp_shadow (id,event_id,team) VALUES ('s1','NBA--g1','Washington Wizards · @ Cleveland Cavaliers')").run();
+  context.env.BALLDONTLIE_API_KEY='k';const seen=[];
+  context.recordPlayerStats=async rec=>{seen.push(rec.team);return {scoreboardFinal:true,min:'30',pts:15,reb:4}};run('recordPlayerStats=globalThis.recordPlayerStats');
+  const g=J(await run(`gradeTeammateShadow(env,${Date.parse(tip)+6*3600000})`));
+  assert.equal(seen[0],'Washington Wizards · @ Cleveland Cavaliers','the game is passed to the box-score lookup');
+  assert.ok(g.graded>=1,'graded');assert.equal(db.prepare("SELECT result FROM teammate_shadow WHERE market='Points'").get().result,'won','15 points beats 12.5');
   console.log('PASS: teammate-out test logs teammates\' Overs once per fresh Out (main line, best big-5 price, fair), tracks the close, skips old injuries and opponents');
 })().catch(e=>{console.error(e);process.exit(1)});
