@@ -25,8 +25,8 @@ const pm=(id,player,eventId,gameTime,edge=3)=>db.prepare("INSERT INTO prediction
 (async()=>{
   context.env={DB:{prepare:sql=>wrap(sql),async batch(l){for(const s of l)await s.run()}},X_API_KEY:'k',X_API_SECRET:'s',X_ACCESS_TOKEN:'1-t',X_ACCESS_SECRET:'a'};
   run('renderCardPng=async svg=>{globalThis.__svg=svg;return new Uint8Array([137,80,78,71])}');
-  // NFL Sunday: kickoff 17:00 UTC; the final card goes 65–80 minutes before.
-  const kick='2026-11-01T17:00:00.000Z',cardAt=Date.parse(kick)-70*60000;
+  // NFL Sunday: kickoff 17:00 UTC; the final card goes 40–55 minutes before (Nov 2).
+  const kick='2026-11-01T17:00:00.000Z',cardAt=Date.parse(kick)-50*60000;
   official('official|2026-10-27|props|prop|a','Carnell Tate',128,kick,'prop',2.4);official('official|2026-10-27|props|prop|b','Brock Bowers',-105,kick);pm('pm|NFL--g1|nico','Nico Collins','NFL--g1',kick);
   assert.equal((await run(`postPicksToX(env,${cardAt})`)).lean,true,'no post per sportsbook pick');
   assert.equal((await run(`postPredictionPicksToX(env,${cardAt})`)).lean,true,'no post per prediction-app pick');
@@ -90,5 +90,14 @@ const pm=(id,player,eventId,gameTime,edge=3)=>db.prepare("INSERT INTO prediction
   db.prepare("DELETE FROM app_settings WHERE key='x-lean'").run();run('X_PICK_POSTS_DEFAULT=true');
   assert.notEqual((await run(`postNbaPicksToX(env,${nbaAt-3600000})`)).lean,true,'pick posts on');
   db.prepare("INSERT INTO app_settings(key,value) VALUES('x-pick-posts','off')").run();assert.equal((await run(`postPicksToX(env,${cardAt})`)).lean,true,'x-pick-posts off: cards only');
+  // Game-day card every NFL day (Nov 2): only prediction-app picks still get a card; no picks at all gets a "no picks" card, no poll.
+  {const mnf='2026-11-03T01:20:00.000Z',at=Date.parse(mnf)-50*60000;pm('pm|NFL--mnf|roschon','Roschon Johnson','NFL--mnf',mnf);
+   const n0=posts.length,c=await run(`postSlateToX(env,${at},true)`);
+   assert.equal(c.posted,1,'prediction-app picks only: the card still posts');assert.match(posts[n0].text,/1 prediction-app pick, every one on the card/);
+   db.prepare("DELETE FROM prediction_picks WHERE id='pm|NFL--mnf|roschon'").run();
+   const tnf=Date.parse('2026-11-06T01:15:00.000Z');db.prepare("INSERT OR REPLACE INTO app_settings (key,value) VALUES ('nfl-kicks',?)").run(JSON.stringify({at:tnf-3600000,t:[tnf]}));
+   const n1=posts.length,z=await run(`postSlateToX(env,${tnf-50*60000},true)`);
+   assert.equal(z.posted,1,'no picks: still a card');assert.match(posts[n1].text,/^🧊 No picks tonight\./);assert.ok(run('globalThis.__svg').includes('No picks tonight'),'no-picks graphic');
+   assert.equal(posts.length,n1+1,'no poll with no picks')}
   console.log('PASS: lean X posting (one card per slate with prediction-app picks, late picks in one reply, top-pick/parlay results under the card), standalone poll with the card under it and a vote result reply (behind x-poll), every post logged, daily metrics read, pick posts on by default (x-pick-posts off for cards only)');
 })().catch(e=>{console.error(e);process.exit(1)});
