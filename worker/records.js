@@ -2546,6 +2546,71 @@ async function logHeld(env,held,now=Date.now()){
   for(const p of held)if(!saved.some(x=>x.key===candKey(p)))saved.push({key:candKey(p),why:p.heldWhy,app:p.exchange||undefined,player:p.player,market:p.market,side:p.side,line:p.line,odds:p.odds,book:p.book,edge:+Number(p.edge).toFixed(2),gameTime:p.gameTime});
   await setAppSetting(env,`signal-held:${day}`,JSON.stringify(saved.slice(-200))).catch(()=>{});
 }
+// Parlay shadow test (Nov 3, Tim: "parlays are huge for new bettors"). Never
+// posted. About an hour before each slate's first game (an NBA night, an NFL
+// Eastern day) one parlay per strategy is fixed from the sharp-test
+// candidates (sharp_shadow: every candidate at 0.25%+, with the sharp price,
+// the market-moving price and its own grade), legs from different games, at
+// the current best price. Graded from those legs; a void or push leg drops out.
+const PARLAY_SHADOW_LEAD=60*60000;
+const PARLAY_STRATEGIES=[
+  // name, legs, which candidates, ranked by
+  ['edge2',2,c=>c.ce>=1,c=>c.ce],                                  // biggest edge: how parlays are built now
+  ['sharp2',2,c=>c.pin_edge>0&&c.ce>=1,c=>c.pin_edge],             // the sharp book agrees on both
+  ['priced2',2,c=>c.pin_fair!=null&&c.ce>=1,c=>c.ce],              // both have a sharp price
+  ['unders2',2,c=>c.side==='Under'&&c.pin_fair!=null&&c.ce>=1,c=>c.ce],
+  ['overs2',2,c=>c.side==='Over'&&c.pin_fair!=null&&c.ce>=1,c=>c.ce],
+  ['fav2',2,c=>c.p<=-105&&c.p>=-200&&c.pin_fair!=null&&c.ce>=1,c=>c.ce], // favorites: cheaper, hits more (new bettors)
+  ['plus2',2,c=>c.p>=100&&c.pin_fair!=null&&c.ce>=1,c=>c.ce],       // plus-money legs: bigger payout
+  ['moved2',2,c=>c.moved&&c.ce>=.5,c=>c.ce],                        // price moved our way since logged
+  ['nopin2',2,c=>c.pin_fair==null&&c.ce>=1,c=>c.ce],               // control: no sharp price
+  ['sharp3',3,c=>c.pin_edge>0&&c.ce>=1,c=>c.pin_edge],             // 3 legs, sharp agrees
+  ['sharp4',4,c=>c.pin_edge>0&&c.ce>=.5,c=>c.pin_edge],            // 4 legs, the long shot
+];
+const psDec=o=>Number(o)>0?1+Number(o)/100:1+100/-Number(o);
+function parlayPick(pool,n,ok,score){
+  const legs=[],games=new Set();
+  for(const c of pool.filter(ok).sort((a,b)=>score(b)-score(a))){if(games.has(c.event_id))continue;legs.push(c);games.add(c.event_id);if(legs.length===n)break}
+  return legs.length===n?legs:null;
+}
+async function recordParlayShadow(env,now=Date.now()){
+  if(!env.DB)return {logged:0};
+  const rows=((await env.DB.prepare('SELECT * FROM sharp_shadow WHERE result IS NULL AND game_time>? AND game_time<?').bind(new Date(now+5*60000).toISOString(),new Date(now+36*3600000).toISOString()).all().catch(()=>({results:[]}))).results)||[];
+  const slateOf=r=>r.sport==='NBA'?nbaNight(Date.parse(r.game_time)):etDate(Date.parse(r.game_time),{year:'numeric',month:'2-digit',day:'2-digit'}).replace(/(\d+)\/(\d+)\/(\d+)/,'$3-$1-$2');
+  const slates=new Map();for(const r of rows){const k=`${r.sport}|${slateOf(r)}`;if(!slates.has(k))slates.set(k,[]);slates.get(k).push(r)}
+  const statements=[],stamp=new Date(now).toISOString();let logged=0;
+  for(const [k,list] of slates){
+    const first=Math.min(...list.map(r=>Date.parse(r.game_time)));if(first-now>PARLAY_SHADOW_LEAD)continue;
+    const [sport,slate]=k.split('|');
+    const pool=list.map(r=>{const p=Number(r.close_odds??r.odds),ce=r.close_fair!=null?Number(r.close_fair)-100/psDec(p):Number(r.edge);
+      return {...r,p,ce,moved:r.move_odds!=null&&psDec(r.move_odds)<psDec(r.odds)-.02}});
+    // Our posted singles, two from different games: the comparison Tim asked about (Nov 2).
+    const singles=((await env.DB.prepare("SELECT player,market,odds,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND kind='prop' AND result IS NULL AND game_time>?").bind(new Date(now+5*60000).toISOString()).all().catch(()=>({results:[]}))).results||[]).map(r=>{const f=recordLegs(r)[0]||{};return {id:`${f.gameId}|${normalizedName(r.player)}|${r.market}`,odds:Number(r.odds),edge:Number(f.edge)}});
+    const byId=new Map(pool.map(c=>[c.id,c]));
+    const strategies=[...PARLAY_STRATEGIES.map(([name,n,ok,score])=>[name,parlayPick(pool,n,ok,score)]),
+      ['singles2',parlayPick(singles.filter(s=>byId.has(s.id)).map(s=>({...byId.get(s.id),p:s.odds,ce:s.edge})),2,()=>true,c=>c.ce)]];
+    for(const [name,legs] of strategies){if(!legs)continue;
+      const dec=legs.reduce((d,c)=>d*psDec(c.p),1);
+      statements.push(env.DB.prepare('INSERT OR IGNORE INTO parlay_shadow (id,sport,slate,strategy,legs_json,decimal,picked_at,game_time) VALUES (?,?,?,?,?,?,?,?)').bind(`${k}|${name}`,sport,slate,name,JSON.stringify(legs.map(c=>({id:c.id,player:c.player,market:c.market,side:c.side,line:c.line,odds:c.p,edge:+c.ce.toFixed(2),pin_edge:c.pin_edge}))),+dec.toFixed(4),stamp,new Date(Math.max(...legs.map(c=>Date.parse(c.game_time)))).toISOString()));logged++}
+  }
+  if(statements.length)await env.DB.batch(statements);
+  return {logged};
+}
+async function gradeParlayShadow(env,now=Date.now()){
+  if(!env.DB)return {graded:0};
+  const open=((await env.DB.prepare('SELECT * FROM parlay_shadow WHERE result IS NULL AND game_time<? LIMIT 60').bind(new Date(now-3*3600000).toISOString()).all().catch(()=>({results:[]}))).results)||[];
+  const statements=[],stamp=new Date(now).toISOString();
+  for(const r of open){let legs=[];try{legs=JSON.parse(r.legs_json)}catch{}
+    const res=await Promise.all(legs.map(l=>env.DB.prepare('SELECT result FROM sharp_shadow WHERE id=?').bind(l.id).first().catch(()=>null)));
+    const out=res.map(x=>x?.result||null);
+    if(out.some(x=>x==null)){if(now-Date.parse(r.game_time)>4*86400000)statements.push(env.DB.prepare("UPDATE parlay_shadow SET result='void',graded_at=? WHERE id=?").bind(stamp,r.id));continue}
+    const live=legs.filter((l,i)=>out[i]==='won'||out[i]==='lost'),result=out.includes('lost')?'lost':live.length?'won':'push';
+    const payout=result==='won'?live.reduce((d,l)=>d*psDec(l.odds),1):result==='push'?1:0;
+    statements.push(env.DB.prepare('UPDATE parlay_shadow SET result=?,payout=?,graded_at=? WHERE id=?').bind(result,+payout.toFixed(4),stamp,r.id));
+  }
+  if(statements.length)await env.DB.batch(statements);
+  return {graded:statements.length,checked:open.length};
+}
 // NBA picks need a sharp-book price (Nov 2, Tim). In the sharp test, NBA picks
 // the sharp book never priced went 203-239 (-$1,788); those it priced made
 // money whether it agreed (126-119, +$1,169) or not (89-94, +$679). A pick
