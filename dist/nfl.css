@@ -2611,3 +2611,17 @@ body.light .pc-meter,body.light .pc-form,body.light .pc-price{background:#f6f8fb
 
 .pd-wrap{grid-column:1/-1;min-width:0;width:100%}.pd-wrap .pc{margin-top:12px}
 #officialNowList>.pc{margin:0}
+
+/* Pick sheet and slip refresh (Nov 3 redesign) */
+.bsheet{color:#f4f6f9}
+.bsheet .bs-head h2{font:700 24px "Space Grotesk",sans-serif;letter-spacing:-.01em}
+.bsheet .bs-photo{width:64px;height:64px;border:2px solid #1b3d73;background:linear-gradient(160deg,#0b2a5a,#13161b)}
+.bsheet .bs-bet{font:700 17px "Space Grotesk",sans-serif}
+.bsheet .bs-why,.bsheet .bs-rows,.bsheet .pp-chart,.bsheet .bs-legs,.bsheet .bs-live{border-radius:16px}
+.bsheet .bs-slip{position:sticky;top:8px;z-index:3;height:50px;border-radius:14px!important;font:700 15.5px "DM Sans",sans-serif!important;background:linear-gradient(180deg,#3b78ff,#2459e6)!important;border-color:#3b78ff!important;color:#fff!important;box-shadow:0 12px 28px -10px rgba(0,0,0,.8),0 10px 24px -12px #2f6bff}
+html body .parlay-summary .stake-chips{display:grid!important;grid-template-columns:repeat(5,1fr)!important;gap:6px!important;margin:10px 0 2px!important;padding:0!important;border:0!important;background:none!important}
+html body .parlay-summary .stake-chips button{display:block!important;width:100%!important;min-width:0!important;height:auto!important;line-height:1.2!important;text-align:center!important;padding:9px 0!important;border-radius:10px;background:#181c22;border:1px solid #232830;color:#f4f6f9;font:700 13.5px "DM Sans",sans-serif;cursor:pointer}
+html body .parlay-summary .stake-chips button.on{border-color:#2f6bff;color:#9ec0ff;background:rgba(47,107,255,.12)}
+.slip-leg{border-radius:16px!important}
+#payout{font-family:"Space Grotesk",sans-serif;color:#2bd97c}
+body.light .stake-chips button{background:#fff;border-color:#d5dce6;color:#0f172a}body.light .bsheet{color:#0f172a}

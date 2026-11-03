@@ -3715,3 +3715,9 @@ function statsProp(l){
     if(Date.now()-start<20000)setTimeout(check,100)};
   if(!document.prerendering)check();
 })();
+
+// Quick bet amounts under the slip's wager (Nov 3 redesign).
+(()=>{if(typeof document.getElementById!=='function')return;const box=document.getElementById('stakeChips'),w=document.getElementById('wager');if(!box||!w)return;
+  const mark=()=>box.querySelectorAll('[data-stake]').forEach(b=>b.classList.toggle('on',Number(b.dataset.stake)===Number(String(w.value).replace(/[^0-9.]/g,''))));
+  box.addEventListener('click',e=>{const b=e.target.closest('[data-stake]');if(!b)return;w.value=b.dataset.stake;w.dispatchEvent(new Event('input',{bubbles:true}));w.dispatchEvent(new Event('change',{bubbles:true}));mark();window.btgCount?.('slip:stake-chip')});
+  w.addEventListener('input',mark);mark()})();
