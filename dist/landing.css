@@ -74,3 +74,6 @@ html.light .step-grid article>span{color:#cbd5e1!important}
 .founder{grid-template-columns:1fr!important}
 .founder .inside-card p{margin:0 0 12px;max-width:62ch;line-height:1.6}
 .founder-sign{font-weight:700}
+/* Nov 3 redesign: one accent across the site */
+html body h1 em{color:#2bd97c!important;-webkit-text-stroke:0!important}
+html.light body h1 em,body.light h1 em{color:#15803d!important}

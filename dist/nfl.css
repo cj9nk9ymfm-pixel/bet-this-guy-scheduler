@@ -2665,3 +2665,18 @@ body[data-mobile-page="live"] .rc-lede,body[data-mobile-page="slip"] .rc-lede{di
 .mb-fine{margin:10px 2px 0;font-size:12px;color:#677180}
 body.light .mybets-dialog{background:#fff;color:#0f172a;border-color:#d5dce6}body.light .mb-kpis div,body.light .mb-list{background:#f8fafc;border-color:#e2e6ec}
 html body .mybets-dialog input.mb-stake{display:inline-block!important;width:58px!important;height:auto!important;min-height:0!important;margin:0 2px!important;padding:2px 5px!important;font-size:12.5px!important;border-radius:6px!important;vertical-align:baseline}
+
+/* More sheet (Nov 3 redesign) */
+html body .more-sheet.ms2{background:#101318;border-color:#232830;max-height:88vh;overflow:auto}
+.ms2 .ms-sec{margin:10px 6px 6px;font:700 11px "DM Sans",sans-serif;letter-spacing:.09em;text-transform:uppercase;color:#98a1ac}
+.ms2 .ms-group{background:#12151a;border:1px solid #232830;border-radius:16px;overflow:hidden;margin-bottom:10px}
+html body .ms2 .ms-group>a,html body .ms2 .ms-group>button{display:flex!important;flex-direction:row!important;align-items:center;gap:12px;width:100%;margin:0!important;padding:13px 14px!important;border:0!important;border-top:1px solid #232830!important;border-radius:0!important;background:none!important;color:#f4f6f9!important;text-align:left;text-decoration:none;font:inherit;cursor:pointer}
+html body .ms2 .ms-group>:first-child{border-top:0!important}
+.ms2 .ms-ico{flex:none;width:34px;height:34px;padding:7px;border-radius:10px;background:#181c22;color:#9ec0ff}
+.ms2 .ms-t{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}.ms2 .ms-t strong{font-size:15px}.ms2 .ms-t span{font-size:12.5px;color:#98a1ac}
+.ms2 .ms-chev{color:#677180;font-size:20px}
+.ms2 .ms-theme{display:flex;justify-content:space-between;align-items:center;padding:6px 6px 2px}.ms2 .ms-theme>span{font-weight:700;font-size:15px}
+.ms2 .ms-seg{display:inline-flex;background:#181c22;border-radius:10px;padding:3px}.ms2 .ms-seg button{border:0;background:none;color:#98a1ac;font:700 13px "DM Sans",sans-serif;padding:7px 12px;border-radius:8px;cursor:pointer}
+.ms2 .ms-seg button[aria-pressed="true"]{background:#fff;color:#090b0e}
+html body:not(.light) .st-seg button[aria-pressed="true"]{background:#fff!important;color:#090b0e!important}
+body.light .more-sheet.ms2{background:#fff;border-color:#d5dce6}body.light .ms2 .ms-group{background:#f8fafc;border-color:#e2e6ec}body.light .ms2 .ms-group>a,body.light .ms2 .ms-group>button{color:#0f172a!important;border-color:#e2e6ec!important}body.light .ms2 .ms-ico,body.light .ms2 .ms-seg{background:#eef2f7}
