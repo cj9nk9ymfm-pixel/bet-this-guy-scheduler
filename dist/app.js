@@ -89,6 +89,11 @@ preferences.avoidSameGame=false;
 preferences.maxParlayLegs=Math.max(2,Math.min(10,Number(preferences.maxParlayLegs)||8));
 preferences.books=Array.isArray(preferences.books)?preferences.books:[];
 let trackedParlays=readStored('bet-this-guy-tracked',[]);
+// One record everywhere (Nov 3, Tim): singles and parlays together, money first.
+// s is a season object (wins, losses, pushes, profit, parlayWins, parlayLosses, parlayProfit).
+window.btgAll=s=>s?{wins:(+s.wins||0)+(+s.parlayWins||0),losses:(+s.losses||0)+(+s.parlayLosses||0),pushes:+s.pushes||0,profit:Math.round((+s.profit||0)+(+s.parlayProfit||0))}:null;
+window.btgMoney=v=>`${v<0?'−':'+'}$${Math.abs(Math.round(+v||0)).toLocaleString('en-US')}`;
+window.btgRecordText=s=>{const a=window.btgAll(s);return a?`${window.btgMoney(a.profit)} (${a.wins}–${a.losses}${a.pushes?`–${a.pushes}`:''})`:''};
 // First visit: the welcome sheet is the one ask. For the rest of that visit the
 // alerts banner and the board's alerts card stay hidden; later visits show them.
 window.btgWelcomeVisit=()=>{try{if(sessionStorage.getItem('btg-welcome-visit')==='1')return true;if(localStorage.getItem('btg-welcomed')!=='1'){sessionStorage.setItem('btg-welcome-visit','1');return true}}catch{}return false};
@@ -471,7 +476,7 @@ function setupParlayMixer(){const odds=$('#oddsSlider'),legs=$('#legsSlider'),ma
 function removeSlipLeg(index){if(!Number.isInteger(index)||index<0||index>=state.slip.length)return;state.slip.splice(index,1);render()}
 function renderSlip(){const legs=$('#slipLegs');legs.innerHTML=state.slip.map((x,index)=>`<div class="slip-leg"><div><span>${x.p.sport}</span><strong>${x.p.player} ${x.side} ${x.p.line}</strong><span>${x.p.market} · ${x.pm?`${Math.round(100/americanToDecimal(x.odds))}% on ${htmlEscape(x.pm.exchange)}`:formatOdds(x.odds)}</span></div><button type="button" data-remove-slip="${index}" aria-label="Remove ${htmlEscape(x.p.player)} ${htmlEscape(x.side)} ${htmlEscape(x.p.line)} from slip">×</button></div>`).join('');legs.querySelectorAll('[data-remove-slip]').forEach(button=>button.onclick=()=>removeSlipLeg(Number(button.dataset.removeSlip)));const has=state.slip.length>0;$('#slipEmpty').hidden=has;$('#parlaySummary').hidden=!has;($('#slipCount').textContent=state.slip.length,$('#slipCount').hidden=!state.slip.length);if(has)calcParlay()}
 function weeklyStaked(){const cutoff=Date.now()-7*86400000;return trackedParlays.filter(item=>item.createdAt>=cutoff).reduce((sum,item)=>sum+item.wager,0)}
-function calcParlay(){const dec=state.slip.reduce((a,x)=>a*americanToDecimal(x.odds),1),american=decimalToAmerican(dec);$('#combinedOdds').textContent=formatOddsPretty(american);$('#parlayProb').textContent=`${(100/dec)>=10?Math.round(100/dec):(100/dec).toFixed(1)}%`;const wager=Math.max(0,parseFloat($('#wager').value)||0),remaining=Math.max(0,preferences.weeklyBudget-weeklyStaked());{const pmSlip=state.slip.length&&state.slip.every(l=>l.pm),lab=$('#payout')?.closest('label')?.querySelector('span');if(lab)lab.textContent=pmSlip?'Pays':'To win';$('#payout').textContent=formatMoney(wager*(dec-(pmSlip?0:1)))}const warning=$('#budgetWarning');warning.hidden=preferences.noWeeklyLimit||!preferences.weeklyBudget||wager<=remaining;warning.textContent=`This exceeds your remaining seven-day entertainment budget of ${formatMoney(remaining)}.`;scheduleShareCard()}
+function calcParlay(){const dec=state.slip.reduce((a,x)=>a*americanToDecimal(x.odds),1),american=decimalToAmerican(dec);$('#combinedOdds').textContent=formatOddsPretty(american);{const l=$('#combinedOdds').previousElementSibling;if(l)l.textContent=state.slip.length>1?'Combined odds':'Odds'}$('#parlayProb').textContent=`${(100/dec)>=10?Math.round(100/dec):(100/dec).toFixed(1)}%`;const wager=Math.max(0,parseFloat($('#wager').value)||0),remaining=Math.max(0,preferences.weeklyBudget-weeklyStaked());{const pmSlip=state.slip.length&&state.slip.every(l=>l.pm),lab=$('#payout')?.closest('label')?.querySelector('span');if(lab)lab.textContent=pmSlip?'Pays':'To win';$('#payout').textContent=formatMoney(wager*(dec-(pmSlip?0:1)))}const warning=$('#budgetWarning');warning.hidden=preferences.noWeeklyLimit||!preferences.weeklyBudget||wager<=remaining;warning.textContent=`This exceeds your remaining seven-day entertainment budget of ${formatMoney(remaining)}.`;scheduleShareCard()}
 const playerStatsCache=new Map(),playerStatsPending=new Map();
 async function playerStatsFor(p){const key=`${p.sport}|${p.player}|${p.team}`;let payload=playerStatsCache.get(key);if(payload)return payload;if(playerStatsPending.has(key))return playerStatsPending.get(key);const request=(async()=>{const params=new URLSearchParams({sport:p.sport,player:p.player,team:p.team}),response=await fetch(`/api/player-stats?${params}`),result=await response.json();if(!response.ok||result.success===false)throw new Error(result.error||'Recent games unavailable');playerStatsCache.set(key,result);return result})().finally(()=>playerStatsPending.delete(key));playerStatsPending.set(key,request);return request}
 async function hydrateHitProfile(host,p){try{const payload=await playerStatsFor(p),player=payload.player||{},recent=(payload.stats||[]).map(row=>({row,date:statDate(row),metric:propMetric(p,row)})).filter(item=>item.metric.value!==null).sort((a,b)=>(b.date?.getTime()||0)-(a.date?.getTime()||0)).slice(0,10),hits=recent.filter(item=>hitAgainstLine(p,item.metric.value)===true).length;if(!host.isConnected)return;if(!recent.length){host.querySelector('strong').textContent='No graded games';host.querySelector('span').textContent='This stat is not included in the connected feed.';return}host.querySelector('strong').textContent=`${hits} of last ${recent.length}`;host.querySelector('span').textContent=`hit ${p.side.toLowerCase()} ${p.line}`;host.querySelector('i').className='';host.querySelector('i').innerHTML=recent.map(item=>`<b class="${hitAgainstLine(p,item.metric.value)?'hit':'miss'}" title="${htmlEscape(item.date?item.date.toLocaleDateString():'Game')} · ${htmlEscape(opponentLabel(item.row,player))} · ${htmlEscape(item.metric.value)}"></b>`).join('');host.querySelector('.mini-games').innerHTML=recent.map(item=>{const hit=hitAgainstLine(p,item.metric.value);return`<div class="${hit?'hit':'miss'}"><span>${item.date?item.date.toLocaleDateString([],{month:'numeric',day:'numeric'}):'Game'}</span><b>${htmlEscape(opponentLabel(item.row,player))}</b><em>${htmlEscape(item.metric.value)} · ${hit?'HIT':'MISS'}</em></div>`}).join('')}catch(error){if(host.isConnected){host.querySelector('strong').textContent='Last 10 unavailable';host.querySelector('span').textContent=error.message;host.querySelector('i').className=''}}}
@@ -1542,7 +1547,7 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
     const season=heroSeason&&heroSeason.wins+heroSeason.losses>=5?heroSeason:null,weekTitle=$('#heroTitle').innerHTML;
     if(season){const net=season.profit,pn=season.parlayProfit||0,pl=(season.parlayWins||0)+(season.parlayLosses||0);
       // One record, singles and parlays together, like the prediction view; the split opens below (Oct 31).
-      const all=net+pn;$('#heroTitle').innerHTML=`${NBA?'NBA sportsbook record':'Sportsbook record'} <b>${season.wins+(season.parlayWins||0)}–${season.losses+(season.parlayLosses||0)}${season.pushes?`–${season.pushes}`:''}</b> <span class="hero-profit ${all>=0?'up':'down'}">${htmlEscape(money(all))}</span>`}
+      const all=net+pn;$('#heroTitle').innerHTML=`${NBA?'NBA record':'NFL record'} <span class="hero-profit ${all>=0?'up':'down'}">${htmlEscape(money(all))}</span> <b>${season.wins+(season.parlayWins||0)}–${season.losses+(season.parlayLosses||0)}${season.pushes?`–${season.pushes}`:''}</b>`}
     const stats=[[money(s.profit),`betting ${stakeText()} a pick`,s.profit>=0?'up':'down']];
     if(s.tracked)stats.push([`${s.beat} of ${s.tracked}`,'beat the kickoff price','']);
     if(s.parlayWins+s.parlayLosses)stats.push([`${s.parlayWins}–${s.parlayLosses}`,`parlays · ${money(s.parlayProfit)}`,s.parlayProfit>=0?'up':'down']);
@@ -1764,6 +1769,8 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
   }
   let heroRows=null,heroSeason=null;
   async function loadHero(){
+    // The page HTML carries the NFL season; on NBA wait for the NBA one.
+    if(NBA)window.BTG_SEASON=null;
     // The home page HTML usually carries the rows already (window.BTG_HOME),
     // so the banner and hits draw with the page instead of popping in later.
     // Settings changed a default bet: redraw the record and this week's picks at the new amounts.
@@ -1772,7 +1779,7 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
     try{
       const response=await fetch(`/api/record?view=home${NBA?'&sport=NBA':''}`,{signal:AbortSignal.timeout(10000)});
       if(!response.ok)throw new Error();
-      const body=await response.json();heroRows=body.success?body.recent||[]:null;heroSeason=body.season||null;if(heroSeason&&!NBA){window.BTG_SEASON=heroSeason;dispatchEvent(new Event('btg:season'))}renderHero(heroRows?summarise(heroRows,Date.now(),viewerStake()):null);renderOfficialNow(heroRows);
+      const body=await response.json();heroRows=body.success?body.recent||[]:null;heroSeason=body.season||null;if(heroSeason){window.BTG_SEASON=heroSeason;dispatchEvent(new Event('btg:season'))}renderHero(heroRows?summarise(heroRows,Date.now(),viewerStake()):null);renderOfficialNow(heroRows);
     }catch{renderHero(null)}
   }
   $('#heroCta')&&($('#heroCta').onclick=event=>{event.preventDefault();$('#propsSection')?.scrollIntoView({behavior:'smooth',block:'start'})});
@@ -2001,7 +2008,7 @@ if(typeof fetch==='function')window.btgCountVisit?.('view:home');
     const line=document.createElement('div');line.innerHTML=winLine(r,isParlay,odds,done);const money=line.textContent||'';
     ctx.fillStyle=won?'#5ff0b5':done&&r.result==='lost'?'#ff9d9d':'#5ff0b5';ctx.font="700 34px 'DM Sans', sans-serif";ctx.textAlign='right';fit(ctx,money,W-200-ow-(book?ctx.measureText(`at ${book}`).width:0),34,'700',"'DM Sans', sans-serif");ctx.fillText(money,W-100,458);ctx.textAlign='left';
     const sea=window.BTG_SEASON,start=String(r.id||'').startsWith('nba|')?'tip-off':'kickoff';
-    const rec=sea&&sea.wins+sea.losses>=5?`Season ${sea.wins}–${sea.losses}${sea.tracked>=5?` · beat the ${start} price on ${sea.beat} of ${sea.tracked}`:''}`:'Every pick posted before the game and graded in public';
+    const rec=sea&&sea.wins+sea.losses>=5?`Season ${window.btgRecordText(sea)}${sea.tracked>=5?` · beat the ${start} price on ${sea.beat} of ${sea.tracked}`:''}`:'Every pick posted before the game and graded in public';
     ctx.fillStyle='#9fb6d6';fit(ctx,rec,W-128,30,'500',"'DM Sans', sans-serif");ctx.fillText(rec,64,568);
     ctx.fillStyle='#ffffff';ctx.font="700 34px 'Space Grotesk', sans-serif";ctx.fillText('betthisguy.com',64,628);
     ctx.fillStyle='#7f96b8';ctx.font="500 24px 'DM Sans', sans-serif";ctx.textAlign='right';ctx.fillText('21+ · Odds change. Check before you bet.',W-64,628);ctx.textAlign='left';
@@ -2042,34 +2049,9 @@ if(typeof fetch==='function')window.btgCountVisit?.('view:home');
   const buttons=`<div class="gate-actions"><button type="button" class="gate-primary" data-gate="signup">Create a free account</button><button type="button" class="gate-secondary" data-gate="login">Sign in</button></div>`;
   const plural=(n,word)=>`${n} ${word}${n===1?'':'s'}`;
   const movementPage=()=>state.view==='movement'||document.body.dataset.desktopPage==='movement';
-  // After the sixth card, one "turn on alerts" card for anyone without alerts
-  // (hidden by CSS once alerts are on). It clicks the page's alerts button,
-  // which does the permission and iPhone handling.
-  const NUDGE_AFTER=6;let nudgeCounted=false;
-  // Nov 3 (Tim): 142 shows, 0 clicks for everyone. Now returning visitors only
-  // (read before this visit is counted), and a wording test kept per device:
-  // a = phone alerts, b = an email field. Each version counts its own shows.
-  const nudgeReturning=(()=>{try{return Number(localStorage.getItem('btg-visits')||0)>=1}catch{return false}})();
-  const nudgeVersion=(()=>{let v='a';try{v=localStorage.getItem('btg-nudge-v')||(Math.random()<.5?'a':'b');localStorage.setItem('btg-nudge-v',v)}catch{}return v})();
-  const seasonLine=()=>{const s=window.BTG_SEASON;if(!s||s.wins+s.losses<5)return 'Every official pick is locked before kickoff and graded in public, wins and losses.';const m=Math.round(Number(s.profit)||0);return `This season: ${s.wins}–${s.losses}, ${m<0?'−':'+'}$${Math.abs(m).toLocaleString('en-US')} at $100 a pick. Every pick graded in public, wins and losses.`};
-  function nudgeList(list){
-    list.querySelector('.board-nudge')?.remove();
-    if(!nudgeReturning||selectedPlayer||state.view!=='board'||/\b(alerts-on|email-on)\b/.test(document.documentElement.className)||window.btgWelcomeVisit?.())return;
-    const email=nudgeVersion==='b'&&window.BTGEmailSub?.inline;
-    const cards=[...list.querySelectorAll(':scope>.prop-card')];if(cards.length<=NUDGE_AFTER)return;
-    const card=document.createElement('div');card.className='board-nudge';
-    card.innerHTML=email?`<p class="gate-eyebrow">${icon('bell')} FREE PICK EMAILS</p><h3>Get tonight’s picks by email. Free.</h3><p>${htmlEscape(seasonLine())}</p><div data-nudge-em></div><div class="gate-actions"><button type="button" class="gate-link" data-nudge-alerts>or turn on phone alerts</button></div>`:`<p class="gate-eyebrow">${icon('bell')} FREE PICK ALERTS</p><h3>Get the next pick the second it locks</h3><p>${htmlEscape(seasonLine())}</p><div class="gate-actions"><button type="button" class="gate-primary" data-nudge-alerts>Turn on alerts</button>${hasAccount()?'':'<button type="button" class="gate-link" data-gate="signup">or create a free account</button>'}</div>`;
-    cards[NUDGE_AFTER-1].after(card);
-    // Its own counter, so next week's numbers compare it with the old wall.
-    card.querySelector('[data-gate]')?.addEventListener('click',event=>{event.preventDefault();window.btgCount?.('nudge:signup');window.BTGAuth?.open?.('signup')});
-    card.querySelector('[data-nudge-alerts]').onclick=()=>{window.btgCount?.(email?'nudge:alerts-b':'nudge:alerts');(document.querySelector('[data-alerts-banner]')||document.querySelector('[data-alerts-toggle]'))?.click()};
-    if(email)window.BTGEmailSub.inline(card.querySelector('[data-nudge-em]'),'board');
-    if(!nudgeCounted){nudgeCounted=true;window.btgCount?.('nudge:shown');window.btgCount?.(email?'nudge:shown-b':'nudge:shown-a')}
-  }
   function gateList(){
     const list=$('#propList');if(!list)return;
     list.querySelector('.board-gate')?.remove();
-    nudgeList(list);
     if(hasAccount()||selectedPlayer)return;
     const moving=movementPage();if(!moving)return;
     const cards=[...list.querySelectorAll(':scope>.prop-card')];let others=0;
@@ -2677,7 +2659,8 @@ function statsProp(l){
     else{const alt=document.createElement('button');alt.type='button';alt.className='ah-alt-email';alt.textContent='Or get them by email';alt.onclick=()=>{alt.remove();window.BTGEmailSub.inline(hero,'banner')?.querySelector('input')?.focus()};hero.appendChild(alt)}
   },0);
   // Shown on a first visit too: the welcome sheet now waits, and this one doesn't cover the picks.
-  if(hero&&!emailed&&!recent('btg-alerts-hero-hidden',14)){hero.hidden=false;document.getElementById('alertsHeroClose')?.addEventListener('click',()=>{hero.hidden=true;store.set('btg-alerts-hero-hidden',String(Date.now()));window.btgCount?.('alerts:banner-hide')})}
+  // Nov 3 (Tim): one ask per visit, the email box; this banner opens only when asked for (/?alerts=1).
+  if(hero){document.getElementById('alertsHeroClose')?.addEventListener('click',()=>{hero.hidden=true;store.set('btg-alerts-hero-hidden',String(Date.now()));window.btgCount?.('alerts:banner-hide')})}
   // Add to Home Screen: iPhone needs it for phone alerts; Android can install directly.
   const standalone=window.matchMedia?.('(display-mode: standalone)').matches||navigator.standalone===true;
   if(standalone)return;
@@ -2687,13 +2670,6 @@ function statsProp(l){
     el.querySelector('.a2hs-close').onclick=()=>{el.remove();store.set('btg-a2hs-hidden',String(Date.now()))};
     if(onAction)el.querySelector('.a2hs-go').onclick=()=>{el.remove();onAction()};
     document.body.appendChild(el);window.btgCount?.('a2hs:shown')};
-  // Back for a 2nd or 3rd visit without email or alerts: one email field at the bottom (iPhone's Home Screen tip waits until visit 4).
-  const signedUp=()=>/\b(email-on|alerts-on)\b/.test(document.documentElement.className)||store.get('btg-email-sub')==='1';
-  if(visits>=2&&visits<=3&&!signedUp()&&!recent('btg-nudge-hidden',14))setTimeout(()=>{if(signedUp()||document.getElementById('a2hs')||document.getElementById('emailNudge')||!window.BTGEmailSub?.inline)return;
-    const el=document.createElement('div');el.id='emailNudge';el.className='a2hs email-nudge';el.setAttribute('role','dialog');el.setAttribute('aria-label','Get picks by email');
-    el.innerHTML='<button type="button" class="a2hs-close" aria-label="Close">×</button><div class="en-copy"><strong>Back again? Get each pick by email.</strong><span>The moment it locks, with the price and the sportsbook. Free, one-tap unsubscribe.</span></div>';
-    el.querySelector('.a2hs-close').onclick=()=>{el.remove();store.set('btg-nudge-hidden',String(Date.now()));window.btgCount?.('email:nudge-close')};
-    document.body.appendChild(el);window.BTGEmailSub.inline(el,'nudge');window.btgCount?.('email:nudge-shown')},8000);
   if(ios&&visits>=4)setTimeout(()=>toast('<strong>Get the app on your iPhone</strong><span>Tap <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="Share"><path d="M12 3v12"/><path d="m8 7 4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg> then <b>Add to Home Screen</b>. Opens like an app, and pick alerts work.</span>'),4000);
   window.addEventListener('beforeinstallprompt',event=>{event.preventDefault();if(visits<2)return;toast('<strong>Install Bet This Guy</strong><span>One tap to open picks, with alerts when they post.</span>',()=>{event.prompt();event.userChoice?.then(c=>window.btgCount?.(`a2hs:${c.outcome}`))})});
 })();
@@ -2974,7 +2950,7 @@ function statsProp(l){
       const a=dec(season.typicalOdds),c=dec(season.typicalClose),gain=a&&c?Math.round((a-c)*100):0;
       if(gain>=3)set('wdBeatSub',`Typical pick ${fmt(season.typicalOdds)}. Same bet at kickoff ${fmt(season.typicalClose)}. That’s $${gain} more on every $100 winner.`);
     }
-    if(season.wins+season.losses>=10){const p=Math.round(season.profit||0);set('wdRecordSub',`Locked before kickoff, graded from box scores, losses included. Season: ${season.wins}–${season.losses}${season.pushes?`–${season.pushes}`:''}, ${p<0?'−':'+'}$${Math.abs(p).toLocaleString('en-US')} at $100 a pick.`)}
+    if(season.wins+season.losses>=10){const p=Math.round(season.profit||0);set('wdRecordSub',`Locked before the game, graded from box scores, losses included. Season: ${window.btgRecordText(season)}, singles at $100 and parlays at $25.`)}
   }
   // Where phone alerts can't work right now (iPhone outside the Home Screen,
   // the X / Instagram / Facebook in-app browsers, no push support), the sheet
@@ -3016,9 +2992,8 @@ function statsProp(l){
   if(seen()){strip.hidden=false;return}
   // Not the moment the page opens: picks first. The sheet waits until the
   // visitor scrolls past the first screen or has been here 15 seconds.
-  let shown=false;const show=()=>{if(shown||seen())return;if(document.querySelector('dialog[open]')){setTimeout(show,4000);return}shown=true;removeEventListener('scroll',onScroll);open();window.btgCount?.('welcome:shown')};
-  const onScroll=()=>{if(scrollY>innerHeight*0.9)show()};
-  addEventListener('scroll',onScroll,{passive:true});setTimeout(show,15000);
+  // Nov 3 (Tim): no pop-up. The email box under the record is the one ask; the proof strip still opens this sheet.
+  strip.hidden=false;
 })();
 
 // Jump bar: Picks · Worth a look · Board, with the odds / predictions switch.
@@ -3410,11 +3385,13 @@ function statsProp(l){
     if(leg.pm){
       const apps=(rows||[]).filter(x=>APPS.has(x[0])&&Number(x[5])>-1900).map(x=>({name:x[1],odds:Number(x[5]),url:fillLink(x[6])||window.BTGApps?.link?.(x[1]),deep:Boolean(fillLink(x[6]))}));
       if(!apps.some(a=>nk(a.name)===nk(leg.pm.exchange)))apps.push({name:leg.pm.exchange,odds:leg.pm.odds,url:window.BTGApps?.link?.(leg.pm.exchange),deep:false});
-      return apps.filter(a=>a.url).sort((a,b)=>dec(b.odds)-dec(a.odds));
+      const seen=new Set();return apps.filter(a=>a.url).sort((a,b)=>dec(b.odds)-dec(a.odds)).filter(a=>{const k=nk(a.name);if(seen.has(k))return false;seen.add(k);return true});
     }
     const books=(rows||[]).filter(x=>!APPS.has(x[0])),home=window.BTGWhere?.noSportsbooks?.();
     const list=books.length?books.map(x=>{const deep=!home&&fillLink(x[6]);return {name:x[1],odds:Number(x[5]),url:deep||sportsbookDestination(x[1]),deep:Boolean(deep)}}):offersFor(leg).map(x=>({name:x.b,odds:Number(x.o),url:sportsbookDestination(x.b),deep:false}));
-    return list.filter(x=>x.url).map(x=>({...x,mine:mine(x.name)})).sort((a,b)=>(b.mine-a.mine)||dec(b.odds)-dec(a.odds));
+    // A book can price the same line in its main and alternate markets: list it once, at its better price (Nov 3).
+    const best=new Map();for(const x of list.filter(x=>x.url).sort((a,b)=>dec(b.odds)-dec(a.odds))){const k=nk(x.name);if(!best.has(k))best.set(k,x)}
+    return [...best.values()].map(x=>({...x,mine:mine(x.name)})).sort((a,b)=>(b.mine-a.mine)||dec(b.odds)-dec(a.odds));
   }
 
   const noBooksNote=(pm,app)=>!pm&&window.BTGWhere?.noSportsbooks?.()?`<p class="slip-nobooks">Sportsbooks don’t take bets in ${htmlEscape(window.BTGWhere.stateName()||'your state')}, so these only open the book.${app?' Use the purple button to bet it on a prediction app.':' This bet isn’t on a prediction app at this line.'}</p>`:'';
@@ -3608,10 +3585,10 @@ function statsProp(l){
     const box=picks?.querySelector(':scope>.on-empty');body.classList.toggle('picks-empty',Boolean(box));
     if(!box||box.dataset.pitch)return;box.dataset.pitch='1';
     const s=window.BTG_SEASON,NBAv=document.documentElement.dataset.league==='NBA';
-    const rec=s&&s.wins+s.losses>=5&&!NBAv?`Season ${s.wins}–${s.losses}, ${Number(s.profit)>=0?'+':'−'}$${Math.abs(Math.round(Number(s.profit)||0)).toLocaleString('en-US')}. `:'';
+    const rec=s&&s.wins+s.losses>=5?`Season ${window.btgRecordText(s)}. `:'';
     box.classList.add('on-pitch');
     const preNba=NBAv&&Date.now()<Date.parse('2026-10-20T14:00:00Z');
-    box.innerHTML=`<strong>${preNba?'NBA picks start opening night, Tue Oct 20.':NBAv?'No NBA picks yet tonight.':'No picks yet this week.'}</strong><span>${htmlEscape(rec)}${preNba?'Same rules as our football picks: posted only when a price beats the market, every pick graded in public.':NBAv?'They post as soon as a price qualifies, often the day before.':'Picks usually post Wednesday to Saturday, the moment a price qualifies.'}<em class="on-pitch-on"> Your alerts are on.</em></span><button type="button" class="on-pitch-btn">Get a ping when they post</button><button type="button" class="on-pitch-email">Or get them by email</button>`;
+    box.innerHTML=`<strong>${preNba?'NBA picks start opening night, Tue Oct 20.':NBAv?'No NBA picks yet tonight.':'No picks yet this week.'}</strong><span>${htmlEscape(rec)}${preNba?'Same rules as our football picks: posted only when a price beats the market, every pick graded in public.':NBAv?'They post as soon as a price qualifies, often the day before.':'Picks usually post Wednesday to Saturday, the moment a price qualifies.'}<em class="on-pitch-on"> Your alerts are on.</em></span>`;
     box.querySelector('.on-pitch-email')?.addEventListener('click',()=>{window.btgCount?.('email:pitch');window.BTGEmailSub?.open('pitch')});
     box.querySelector('.on-pitch-btn')?.addEventListener('click',()=>{window.btgCount?.('empty:alerts');(document.querySelector('[data-alerts-banner]')||document.querySelector('[data-alerts-toggle]'))?.click()});
   }

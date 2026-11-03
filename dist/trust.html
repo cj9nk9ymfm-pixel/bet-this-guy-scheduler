@@ -29,7 +29,7 @@
 @media(max-width:720px){.official-hero{padding:17px}.cap-grid,.readiness-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.cap-card,.readiness-card{padding:12px}.official-group-head{align-items:flex-start;flex-direction:column;gap:2px}}
 #overviewPanel .result-number{color:var(--text)!important}
 #overviewPanel .section-profit .result-positive{color:var(--green)!important}#overviewPanel .section-profit .result-negative{color:var(--red)!important}#overviewPanel .section-profit .result-neutral{color:var(--text)!important}.section-profit{border-top:1px solid var(--line);margin-top:14px;padding-top:10px}.section-profit strong{font-size:19px}.section-profit small{display:block;font-size:13px;color:var(--muted)}
-.record-snapshot{margin:10px 0 0;padding:12px 14px;border-radius:12px;background:rgba(31,216,143,.08);border:1px solid rgba(31,216,143,.3);color:#dce0e6;font-size:14px;line-height:1.5}.record-snapshot strong{color:#fff}.record-snapshot a{color:#5ff0b5;font-weight:700;white-space:nowrap}.record-snapshot .nowrap{white-space:nowrap}@media (display-mode: standalone){body{padding-top:env(safe-area-inset-top)}}.site-nav{display:flex;align-items:center;gap:18px}.site-nav a{color:#98a1ad;font:600 14px/1 "DM Sans",sans-serif;text-decoration:none;padding:10px 0}.site-nav a[aria-current=page]{color:#f2f4f7}.site-nav a:hover{color:#f2f4f7}.lede{color:#98a1ad;margin:6px 0 18px}.record-snapshot[hidden]{display:none}
+.sum-total{margin:0 0 6px;font-size:22px;font-weight:700;color:#fff;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}.sum-total span{font-size:14px;font-weight:600;color:#9aa3ad;text-transform:uppercase;letter-spacing:.06em}.sum-total .pos{color:#22c55e}.sum-total .neg{color:#f87171}html.light .sum-total{color:#0f172a}.record-snapshot{margin:10px 0 0;padding:12px 14px;border-radius:12px;background:rgba(31,216,143,.08);border:1px solid rgba(31,216,143,.3);color:#dce0e6;font-size:14px;line-height:1.5}.record-snapshot strong{color:#fff}.record-snapshot a{color:#5ff0b5;font-weight:700;white-space:nowrap}.record-snapshot .nowrap{white-space:nowrap}@media (display-mode: standalone){body{padding-top:env(safe-area-inset-top)}}.site-nav{display:flex;align-items:center;gap:18px}.site-nav a{color:#98a1ad;font:600 14px/1 "DM Sans",sans-serif;text-decoration:none;padding:10px 0}.site-nav a[aria-current=page]{color:#f2f4f7}.site-nav a:hover{color:#f2f4f7}.lede{color:#98a1ad;margin:6px 0 18px}.record-snapshot[hidden]{display:none}
 .summary{margin:0 0 30px}.summary[hidden]{display:none}
 .clv-banner{margin:0 0 12px;padding:16px 18px;border-radius:14px;background:linear-gradient(0deg,rgba(34,197,94,.07),rgba(34,197,94,.07)),#16191e;border:1px solid rgba(34,197,94,.35)}
 .clv-eyebrow{display:block;font-size:11.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#22c55e}
@@ -539,7 +539,13 @@ function renderNbaRecord(){const d=nbaData;if(!d)return;const s=d.season||{},lis
 function recordLine(stats,noParlays){
   const [rec,profitCell]=[stats[0],stats[1]],par=stats[3],amount=String(par?.[1]||'').split(' · ')[1]||'';
   const tone=v=>/^\+/.test(v)&&v!=='+$0'?'pos':/^[−-]/.test(v)?'neg':'';
-  return `<p class="sum-line"><span>Singles <b>${escape(rec[0])}</b> <b class="${profitCell[2]}">${escape(profitCell[0])}</b></span>${!noParlays&&amount?`<span>Parlays <b>${escape(par[0])}</b> <b class="${tone(amount)}">${escape(amount)}</b></span>`:''}</p>`;
+  const split=`<p class="sum-line"><span>Singles <b>${escape(rec[0])}</b> <b class="${profitCell[2]}">${escape(profitCell[0])}</b></span>${!noParlays&&amount?`<span>Parlays <b>${escape(par[0])}</b> <b class="${tone(amount)}">${escape(amount)}</b></span>`:''}</p>`;
+  if(noParlays||!amount)return split;
+  // One record first (Nov 3, Tim): singles and parlays together, money first; the split under it.
+  const n=t=>String(t||'').split('–').map(v=>Number(v)||0),cash=t=>{const v=Number(String(t||'').replace(/[^0-9.]/g,''))||0;return /^\s*[−-]/.test(t)?-v:v};
+  const a=n(rec[0]),q=n(par[0]),total=cash(profitCell[0])+cash(amount),w=a[0]+q[0],l=(a[1]||0)+(q[1]||0),pu=(a[2]||0)+(q[2]||0);
+  const money=`${total<0?'−':'+'}$${Math.abs(Math.round(total)).toLocaleString('en-US')}`;
+  return `<p class="sum-total"><span>Record</span> <b class="${total>=0?'pos':'neg'}">${money}</b> <b>${w}–${l}${pu?`–${pu}`:''}</b></p>${split}`;
 }
 // Picks grouped by week (NFL weeks run Tuesday noon UTC to Tuesday noon UTC) or
 // by night (NBA, US Eastern date). The latest two open; older ones fold to one
