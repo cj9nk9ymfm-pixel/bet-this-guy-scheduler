@@ -2306,7 +2306,14 @@ function addBetToSlip(x){
     host.innerHTML=renderSheet(m);bind(host,m,dialog);m.after?.(host);
     if(m.statsProp){const slot=host.querySelector('[data-bs-stats]'),sp=m.statsProp,full=`<button type="button" class="bs-btn wide bs-fullstats" data-bs-fullstats><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Full stats &amp; game log <span aria-hidden="true">›</span></button>`;
       const wire=()=>slot.querySelector('[data-bs-fullstats]')?.addEventListener('click',()=>{window.btgCount?.('profile:open');dialog.close?.();openPlayerProfile(sp)});
-      window.BTGPlayer?.betBlockFor?.(sp).then(html=>{if(!slot.isConnected)return;slot.innerHTML=(html||'')+full;wire();headsUp(host,slot,false)}).catch(()=>{slot.innerHTML=full;wire()})}
+      // Nov 3 redesign: check any line and either side against the same games.
+      const canStep=Number.isFinite(Number(sp.line))&&!sp.binary&&!/anytime|scorer|first|last/i.test(sp.market||'');
+      let cur={...sp,line:Number(sp.line),side:sp.side==='Under'?'Under':'Over'};
+      const stepper=()=>canStep?`<div class="bs-line"><span>Check another line</span><div class="bs-step"><button type="button" data-step="-1" aria-label="Lower line">−</button><b>${htmlEscape(String(cur.line))}</b><button type="button" data-step="1" aria-label="Higher line">＋</button></div><div class="bs-ou"><button type="button" data-ou="Over" aria-pressed="${cur.side==='Over'}">Over</button><button type="button" data-ou="Under" aria-pressed="${cur.side==='Under'}">Under</button></div>${cur.line!==Number(sp.line)||cur.side!==(sp.side==='Under'?'Under':'Over')?'<button type="button" class="bs-reset" data-reset>Back to the bet</button>':''}</div>`:'';
+      const draw=()=>window.BTGPlayer?.betBlockFor?.(cur).then(html=>{if(!slot.isConnected)return;slot.innerHTML=stepper()+(html||'')+full;wire();bindStep();headsUp(host,slot,false)}).catch(()=>{slot.innerHTML=stepper()+full;wire();bindStep()});
+      const bindStep=()=>{slot.querySelectorAll('[data-step]').forEach(b=>b.onclick=()=>{const d=Number(b.dataset.step),stepBy=cur.line>=30?5:1;cur={...cur,line:Math.max(.5,+(cur.line+d*stepBy).toFixed(1))};window.btgCount?.('sheet:line');draw()});
+        slot.querySelectorAll('[data-ou]').forEach(b=>b.onclick=()=>{cur={...cur,side:b.dataset.ou};draw()});slot.querySelector('[data-reset]')?.addEventListener('click',()=>{cur={...sp,line:Number(sp.line),side:sp.side==='Under'?'Under':'Over'};draw()})};
+      if(window.BTGPlayer?.betBlockFor)draw();else{slot.innerHTML=full;wire()}}
     if(!dialog.open){if(typeof dialog.showModal==='function')dialog.showModal();else dialog.setAttribute('open','')}
     // Don't land focus on the close button (it shows a ring); keep keyboard users inside the sheet.
     try{if(!dialog.hasAttribute('tabindex'))dialog.setAttribute('tabindex','-1');dialog.focus({preventScroll:true})}catch{}
