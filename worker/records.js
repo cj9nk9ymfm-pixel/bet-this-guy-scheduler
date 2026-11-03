@@ -2889,7 +2889,10 @@ function recordPay(r,stake=100){
 function weeklySummary(rows){
   const props=rows.filter(r=>r.kind==='prop'&&weeklyGraded(r)),parlays=rows.filter(r=>r.kind==='parlay'&&weeklyGraded(r));
   const pay=r=>recordPay(r);
-  const count=(list,res)=>list.filter(r=>r.result===res).length;
+  // Nov 3 (Tim): voided picks (player ruled out, no action) are left out of
+  // the record; only real pushes count as pushes.
+  const voided=r=>r.result==='push'&&(()=>{const l=recordLegs(r);return l.length>0&&l.every(x=>x.voided)})();
+  const count=(list,res)=>list.filter(r=>r.result===res&&!(res==='push'&&voided(r))).length;
   const closes=props.filter(r=>r.closing_captured_at&&r.closing_odds!=null&&(r.closing_line==null||Math.abs(Number(r.closing_line)-Number(r.line))<=.01)).map(r=>(weeklyDecimal(r.odds)/weeklyDecimal(r.closing_odds)-1)*100>.05);
   return {wins:count(props,'won'),losses:count(props,'lost'),pushes:count(props,'push'),profit:props.reduce((s,r)=>s+pay(r),0),parlayWins:count(parlays,'won'),parlayLosses:count(parlays,'lost'),parlayProfit:parlays.reduce((s,r)=>s+pay(r),0),beat:closes.filter(Boolean).length,tracked:closes.length,pending:rows.filter(r=>!weeklyGraded(r)).length,total:rows.length};
 }

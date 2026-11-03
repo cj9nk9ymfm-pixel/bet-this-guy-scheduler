@@ -139,7 +139,8 @@ const run=c=>vm.runInContext(c,context),req='new Request("https://betthisguy.com
   assert.ok(texts.some(t=>/^✅ HIT: Jayson Tatum Over 27.5 points \(\+115\)\nFinal: 31 points\.\n\+\$115 on a \$100 pick\./.test(t)),texts.join('|'));
   assert.ok(texts.some(t=>/^➖ NO ACTION: Victor Wembanyama.*didn’t play/s.test(t)));
   // One record for the night, sportsbook and prediction apps together, the split under it (Nov 1); the season line too.
-  assert.ok(texts.some(t=>/^🏀 NBA (tonight|last night): 2–0–1, \+\$225\.\nSportsbook 1–0–1 \+\$115 · Prediction apps 1–0 \+\$110\nNBA season: 2–0, \+\$225\./.test(t)),'the recap counts the prediction-app picks: '+texts.join('|'));
+  // Voided picks (no action) are left out of the record (Nov 3, Tim).
+  assert.ok(texts.some(t=>/^🏀 NBA (tonight|last night): 2–0, \+\$225\.\nSportsbook 1–0 \+\$115 · Prediction apps 1–0 \+\$110\nNBA season: 2–0, \+\$225\./.test(t)),'the recap counts the prediction-app picks: '+texts.join('|'));
   assert.equal((await run(`postNbaRepliesToX(env,${now+600000},5)`)).posted,0,'each reply once');
   // One-off email: sent once per id, from a betthisguy.com address, nothing without the setting.
   const mails=[];const realFetch=context.fetch;context.fetch=async(url,init)=>{if(String(url).includes('api.resend.com')){mails.push(JSON.parse(init.body));return Response.json({id:'e1'})}return realFetch(url,init)};run('fetch=globalThis.fetch');env.RESEND_API_KEY='r';
@@ -151,11 +152,11 @@ const run=c=>vm.runInContext(c,context),req='new Request("https://betthisguy.com
   // The NBA record endpoint.
   const res=await run(`worker.fetch(new Request('https://betthisguy.com/api/record?view=home&sport=NBA'),env,{waitUntil(){}})`);
   const body=await res.json();
-  assert.equal(body.sport,'NBA');assert.deepEqual([body.season.wins,body.season.losses,body.season.pushes],[1,0,1]);
+  assert.equal(body.sport,'NBA');assert.deepEqual([body.season.wins,body.season.losses,body.season.pushes],[1,0,0],'the voided pick is left out');
   assert.equal(body.recent.length,db.prepare("SELECT COUNT(*) n FROM public_recommendations WHERE id LIKE 'nba|%'").get().n);assert.equal(body.tonight,'2026-10-27');
   // NBA pages: the index with the record, each night's page, the sitemap.
   {const page=await run(`nbaPage(new Request('https://betthisguy.com/nba'),env)`);assert.equal(page.status,200);const html=await page.text();
-   assert.match(html,/NBA player prop picks tonight/);assert.match(html,/href="\/nba\/2026-10-27"/);assert.match(html,/1–0–1/);
+   assert.match(html,/NBA player prop picks tonight/);assert.match(html,/href="\/nba\/2026-10-27"/);assert.match(html,/1–0(?!–)/);
    const night=await (await run(`nbaPage(new Request('https://betthisguy.com/nba/2026-10-27'),env)`)).text();
    assert.match(night,/Jayson Tatum/);assert.match(night,/>No action</,'a player who sat shows as no action');
    assert.equal(await run(`nbaPage(new Request('https://betthisguy.com/nba/2026-10-01'),env)`),null,'a night with no picks is not a page');

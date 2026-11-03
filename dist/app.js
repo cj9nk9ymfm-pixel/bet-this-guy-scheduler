@@ -1414,7 +1414,7 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
     const closes=props.map(beatClose).filter(v=>v!==null);
     return {
       week,label:weekLabel(week,current),
-      wins:count(props,'won'),losses:count(props,'lost'),pushes:count(props,'push'),profit:props.reduce((s,r)=>s+payout(r),0),
+      wins:count(props,'won'),losses:count(props,'lost'),pushes:props.filter(r=>r.result==='push'&&!voidOf(r)).length,profit:props.reduce((s,r)=>s+payout(r),0),
       parlayWins:count(parlays,'won'),parlayLosses:count(parlays,'lost'),parlayProfit:parlays.reduce((s,r)=>s+payout(r),0),
       beat:closes.filter(Boolean).length,tracked:closes.length,
       // Singles and parlays alternate, biggest payouts first in each.
@@ -1798,7 +1798,7 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
       const cur=currentWeek(),later=NBA?items.filter(([r])=>!officialDone(r)&&weekOf(r)>cur):[];
       const done=items.filter(([r])=>officialDone(r)),live=items.filter(([r])=>!officialDone(r)&&liveLine(r)&&!later.some(([x])=>x===r)),open=items.filter(([r])=>!officialDone(r)&&!live.some(([x])=>x===r)&&!later.some(([x])=>x===r));
       const laterHtml=[...new Set(later.map(([r])=>weekOf(r)))].sort().map(n=>`<p class="on-group on-group-later">${htmlEscape(nightLabel(n))}</p>${rowsOf(later.filter(([r])=>weekOf(r)===n))}`).join('');
-      const tally=done.reduce((t,[r])=>{t[r.result]=(t[r.result]||0)+1;return t},{}),doneRec=`${tally.won||0}–${tally.lost||0}${tally.push?`–${tally.push}`:''}`;
+      const tally=done.reduce((t,[r])=>{if(!voidOf(r))t[r.result]=(t[r.result]||0)+1;return t},{}),doneRec=`${tally.won||0}–${tally.lost||0}${tally.push?`–${tally.push}`:''}`;
       box.innerHTML=items.length?(later.length&&(open.length||live.length||done.length)?'<p class="on-group">Tonight</p>':'')+(live.length?`<p class="on-group on-group-live"><i class="on-dot"></i>Live now</p>${rowsOf(live)}${open.length?'<p class="on-group">Up next</p>':''}`:'')+(sel==='#officialNowList'&&open.length?(open.length>=5?busyDay(open):open.map(([r,i])=>pickCard(r,i)).join('')):rowsOf(open.slice(0,SHOW)))+(sel!=='#officialNowList'&&open.length>SHOW?`<div class="on-more" hidden>${rowsOf(open.slice(SHOW))}</div><button type="button" class="on-toggle" data-on-toggle="more" aria-expanded="false">See all ${open.length} ${noun}s</button>`:'')+(done.length?`<button type="button" class="on-toggle on-final-toggle" data-on-toggle="final" aria-expanded="${open.length?'false':'true'}">Final · ${done.length} ${noun}${done.length===1?'':'s'} · ${doneRec}</button><div class="on-final"${open.length?' hidden':''}>${rowsOf(done)}</div>`:'')+laterHtml:empty;
       box.querySelectorAll('[data-slot]').forEach(b=>b.onclick=()=>box.querySelector(`[data-slot-sec="${b.dataset.slot}"]`)?.scrollIntoView({behavior:'smooth',block:'start'}));
       box.querySelectorAll('[data-on-toggle]').forEach(b=>b.onclick=()=>{const el=b.dataset.onToggle==='more'?b.previousElementSibling:b.nextElementSibling;const show=el.hidden;el.hidden=!show;b.setAttribute('aria-expanded',String(show));if(b.dataset.onToggle==='more')b.textContent=show?'Show fewer':`See all ${open.length} ${noun}s`});
