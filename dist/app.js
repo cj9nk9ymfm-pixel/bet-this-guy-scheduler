@@ -1573,6 +1573,26 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
       pf.innerHTML=sea.tracked>=5?`<div class="hp-big"><strong>${Math.round(100*sea.beat/sea.tracked)}%</strong><span><b>of our picks beat the ${start} price</b><small>${sea.beat} of ${sea.tracked}: the market moved our way after we posted</small></span></div><p class="hp-why">We post the moment a price qualifies, often a day early, before the market catches up. A hot streak can be luck; beating the final price, pick after pick, is the steadiest sign of a real edge.</p>`:`Beat the ${start} price on <b>${sea.beat} of ${sea.tracked}</b> picks`}else pf?.remove()}
     // (The beat-the-kickoff line now sits in the record's dropdown, like the prediction view.)
     $('#heroClose')?.remove();
+    // Record card (Nov 3 redesign): the season in dollars, its curve, the last six
+    // weeks and the proof, in one tap-through card to Results.
+    {const sea=heroSeason;let rc=$('#recCard');
+      if(sea&&sea.wins+sea.losses>=5){
+        if(!rc){rc=document.createElement('a');rc.id='recCard';rc.className='rc'}
+        rc.href=`/trust${NBA?'?sport=NBA':''}`;hero.prepend(rc);hero.classList.add('has-rc');
+        const all=window.btgAll(sea),mny=window.btgMoney,pts=(sea.curve||[]).map(p=>({v:+p.v||0,t:Date.parse(p.d)})).filter(p=>Number.isFinite(p.t));
+        // Weeks run Tuesday to Monday (NFL) — the same for NBA so the bars line up.
+        const wk=t=>{const d=new Date(t-12*3600000);d.setUTCHours(0,0,0,0);d.setUTCDate(d.getUTCDate()-(d.getUTCDay()+5)%7);return d.getTime()};
+        const weeks=new Map();let prev=0;for(const p of pts){const k=wk(p.t);weeks.set(k,(weeks.get(k)||0)+p.v-prev);prev=p.v}
+        const last=[...weeks.entries()].sort((x,y)=>x[0]-y[0]).slice(-6),top=Math.max(1,...last.map(w=>Math.abs(w[1])));
+        const vs=pts.map(p=>p.v),lo=Math.min(0,...vs),hi=Math.max(1,...vs),line=vs.length>1?vs.map((v,i)=>`${(i/(vs.length-1)*300).toFixed(1)},${(70-(v-lo)/(hi-lo||1)*66-2).toFixed(1)}`).join(' '):'';
+        const day=t=>new Date(t).toLocaleDateString([],{month:'numeric',day:'numeric',timeZone:'UTC'});
+        const proof=[sea.tracked>=5?`<span class="rc-chip hl">${icon('check')} ${sea.beat} of ${sea.tracked} beat the closing price</span>`:'',`<span class="rc-chip">On X before ${NBA?'tip-off':'kickoff'}</span>`,'<span class="rc-chip">Losses included</span>','<span class="rc-chip">Free</span>'].join('');
+        rc.innerHTML=`<p class="rc-lede">We only bet when the sportsbook <em>gets the price wrong.</em></p>
+          <div class="rc-top"><div><span class="rc-eye">${NBA?'NBA':'NFL'} season · every official pick</span><strong class="rc-big ${all.profit<0?'down':''}">${htmlEscape(mny(all.profit))}</strong><span class="rc-sub"><b>${all.wins}–${all.losses}${all.pushes?`–${all.pushes}`:''}</b> · singles at $100, parlays at $25</span></div>
+          ${line?`<svg class="rc-spark" viewBox="0 0 300 70" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="rcg" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#2bd97c" stop-opacity=".35"/><stop offset="1" stop-color="#2bd97c" stop-opacity="0"/></linearGradient></defs><polygon points="0,70 ${line} 300,70" fill="url(#rcg)"/><polyline points="${line}" fill="none" stroke="#2bd97c" stroke-width="2.5" vector-effect="non-scaling-stroke"/></svg>`:''}</div>
+          ${last.length>=2?`<div class="rc-weeks" style="grid-template-columns:repeat(${Math.max(4,last.length)},1fr)">${last.map(([k,v])=>`<div class="rc-wk"><span class="rc-bar ${v<0?'neg':''}"><i style="height:${Math.max(3,Math.round(Math.abs(v)/top*30))}px"></i></span><b class="${v<0?'n':'p'}">${htmlEscape(mny(v))}</b><small>${day(k)}</small></div>`).join('')}</div>`:''}
+          <div class="rc-proof">${proof}</div>`;
+      }else{rc?.remove();hero.classList.remove('has-rc')}}
     // Running profit, every graded pick in order, and the latest results (wins and losses).
     {let box=$('#heroCurve');const pts=heroSeason?.curve||[];if(pts.length>=3){if(!box){box=document.createElement('div');box.id='heroCurve';box.className='hero-curve'}$('#heroStats').after(box);box.innerHTML=heroCurveSvg(pts)}else box?.remove()}
     {let tk=$('#heroTicker');const list=heroSeason?.latest||[];if(list.length){if(!tk){tk=document.createElement('div');tk.id='heroTicker';tk.className='hero-ticker'}hero.after(tk);
