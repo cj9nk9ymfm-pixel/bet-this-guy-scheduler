@@ -3736,3 +3736,12 @@ function statsProp(l){
   const base=renderSlip;renderSlip=function(){const out=base.apply(this,arguments);try{paint()}catch{}return out};
   addEventListener('resize',paint);if(typeof MutationObserver==='function')new MutationObserver(paint).observe(document.body,{attributes:true,attributeFilter:['data-mobile-page']});
   setTimeout(paint,800)})();
+
+// Settings: one-tap bet amounts under Default bet and Default parlay bet (Nov 3 redesign).
+(()=>{if(typeof document.getElementById!=='function')return;
+  for(const [id,amounts] of [['typicalWager',[25,50,100,250]],['parlayWager',[10,25,50,100]]]){const input=document.getElementById(id);if(!input)continue;
+    const host=input.closest('.st-row')||input.parentElement,box=document.createElement('div');box.className='st-chips';box.setAttribute('role','group');box.setAttribute('aria-label','Quick amounts');
+    box.innerHTML=amounts.map(v=>`<button type="button" data-v="${v}">$${v}</button>`).join('');host.after(box);
+    const mark=()=>box.querySelectorAll('button').forEach(b=>b.classList.toggle('on',Number(b.dataset.v)===Number(input.value||input.placeholder)));
+    box.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;input.value=b.dataset.v;input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));mark()});
+    input.addEventListener('input',mark);document.getElementById('settingsDialog')?.addEventListener('toggle',mark);setTimeout(mark,1000)}})();
