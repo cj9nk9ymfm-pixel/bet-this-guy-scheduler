@@ -60,11 +60,12 @@ pick('official|2026-10-06|props|prop|a','Travis Kelce',105,null,new Date(now-20*
   const tue=Date.parse('2026-10-06T15:10:00Z');
   out=await run(`postWeeklyToX(env,${tue})`);assert.equal(out.posted,1);
   const weekly=posts.at(-1).body.text;
-  assert.ok(weekly.startsWith('📊 Week 4 results: 4–2 on props, +')&&weekly.includes('link in bio')&&!/https?:|\.com/.test(weekly),weekly);
+  // One record, the split under it, short enough that X never cuts it (Nov 3).
+  assert.ok(weekly.startsWith('📊 Week 4: 4–2, +')&&weekly.includes('\nSportsbook 4–2 +')&&weekly.includes('\nSeason: ')&&weekly.includes('link in bio')&&[...weekly].length<=280&&!/https?:|\.com/.test(weekly),weekly);
   assert.equal((await run(`postWeeklyToX(env,${tue+600000})`)).done,true);
   assert.equal((await run(`postWeeklyToX(env,Date.parse('2026-10-05T16:00:00Z'))`)).due,false,'not on Monday');
   assert.ok(posts.at(-1).body.media,'weekly post carries the results graphic');
-  const week=run('__svg');for(const bit of ['Week 4','4–2','WEEKLY RESULTS','Old Player 0','See every pick graded'])assert.ok(week.includes(bit),bit);
+  const week=run('__svg');for(const bit of ['WEEK 4 · RESULTS','4–2','Old Player 0','Every pick graded in public','HIT'])assert.ok(week.includes(bit),bit);
   // The pick post's id is saved so later posts can reply under it.
   const kelce='official|2026-10-06|props|prop|a';
   assert.equal(db.prepare("SELECT value FROM app_settings WHERE key=?").get(`xid:${kelce}`).value,'1');
