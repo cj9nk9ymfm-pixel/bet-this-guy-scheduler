@@ -2644,14 +2644,14 @@ function statsProp(l){
   // The NBA record has its own Results tab.
   const relink=()=>document.querySelectorAll('#heroBanner a[href="/trust#overview"], #heroBanner a[href="/trust"]').forEach(a=>a.setAttribute('href','/trust#nba'));
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',relink);else relink();
-  const words=[[/\bTop props this week\b/g,'Top props today'],[/\b(T|t)his week’s (picks|parlays)\b/g,(m,t,w)=>`${t==='T'?'T':'t'}onight’s ${w}`],[/\bNFL\b/g,'NBA'],[/\bkickoff\b/g,'tip-off'],[/\bKickoff\b/g,'Tip-off']];
+  const words=[[/\bTop props this week\b/g,'Top props today'],[/\b(T|t)his week’s (picks|parlays)\b/g,(m,t,w)=>`${t==='T'?'T':'t'}onight’s ${w}`],[/\bNFL\b(?!\s*(?:&|and|\+|·|\/)\s*NBA)(?<!NBA\s*(?:&|and|\+|·|\/)\s*NFL)/g,'NBA'],[/\bkickoff\b/g,'tip-off'],[/\bKickoff\b/g,'Tip-off']];
   const fix=node=>{
     if(node.nodeType===3){let t=node.nodeValue,n=t;for(const [a,b] of words)n=n.replace(a,b);if(n!==t)node.nodeValue=n;return}
     if(node.nodeType!==1||/^(SCRIPT|STYLE|TEXTAREA)$/.test(node.nodeName)||node.id==='leagueSwitch'||node.id==='welcomeDialog'||node.id==='alertKinds'||node.classList?.contains('sx-foot'))return;
     for(const attr of ['aria-label','placeholder','title'])if(node.hasAttribute?.(attr)){let v=node.getAttribute(attr),n=v;for(const [a,b] of words)n=n.replace(a,b);if(n!==v)node.setAttribute(attr,n)}
     node.childNodes.forEach(fix);
   };
-  const start=()=>{fix(document.body);document.title=document.title.replace(/\bNFL\b/g,'NBA');new MutationObserver(list=>list.forEach(m=>{if(m.type==='characterData')fix(m.target);else m.addedNodes.forEach(fix)})).observe(document.body,{childList:true,subtree:true,characterData:true})};
+  const start=()=>{fix(document.body);document.title=document.title.replace(/\bNFL\b(?!\s*(?:&|and)\s*NBA)/g,'NBA');new MutationObserver(list=>list.forEach(m=>{if(m.type==='characterData')fix(m.target);else m.addedNodes.forEach(fix)})).observe(document.body,{childList:true,subtree:true,characterData:true})};
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start);else start();
 })();
 
