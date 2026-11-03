@@ -2635,3 +2635,11 @@ body.light.board-shut #boardBrowse{background:#fff;border-color:#d5dce6;color:#0
 .slip-bar b{font-family:"Space Grotesk",sans-serif}.slip-bar .sb-go{color:#2bd97c;font-weight:700;white-space:nowrap}
 .slip-bar[hidden]{display:none}
 html body.board-shut #propsSection #boardBrowse[hidden]{display:none!important}
+
+/* Settings refresh (Nov 3 redesign) */
+.settings-dialog .st-card{border-radius:18px!important}
+.settings-dialog .st-head{font:700 11.5px "DM Sans",sans-serif!important;letter-spacing:.09em!important;text-transform:uppercase}
+.st-chips{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;padding:0 14px 12px}
+.st-chips button{padding:8px 0;border-radius:10px;background:#181c22;border:1px solid #232830;color:#f4f6f9;font:700 13px "DM Sans",sans-serif;cursor:pointer}
+.st-chips button.on{border-color:#2f6bff;color:#9ec0ff;background:rgba(47,107,255,.12)}
+body.light .st-chips button{background:#fff;border-color:#d5dce6;color:#0f172a}
