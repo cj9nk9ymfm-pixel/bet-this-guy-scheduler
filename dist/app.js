@@ -2046,18 +2046,25 @@ if(typeof fetch==='function')window.btgCountVisit?.('view:home');
   // (hidden by CSS once alerts are on). It clicks the page's alerts button,
   // which does the permission and iPhone handling.
   const NUDGE_AFTER=6;let nudgeCounted=false;
+  // Nov 3 (Tim): 142 shows, 0 clicks for everyone. Now returning visitors only
+  // (read before this visit is counted), and a wording test kept per device:
+  // a = phone alerts, b = an email field. Each version counts its own shows.
+  const nudgeReturning=(()=>{try{return Number(localStorage.getItem('btg-visits')||0)>=1}catch{return false}})();
+  const nudgeVersion=(()=>{let v='a';try{v=localStorage.getItem('btg-nudge-v')||(Math.random()<.5?'a':'b');localStorage.setItem('btg-nudge-v',v)}catch{}return v})();
   const seasonLine=()=>{const s=window.BTG_SEASON;if(!s||s.wins+s.losses<5)return 'Every official pick is locked before kickoff and graded in public, wins and losses.';const m=Math.round(Number(s.profit)||0);return `This season: ${s.wins}–${s.losses}, ${m<0?'−':'+'}$${Math.abs(m).toLocaleString('en-US')} at $100 a pick. Every pick graded in public, wins and losses.`};
   function nudgeList(list){
     list.querySelector('.board-nudge')?.remove();
-    if(selectedPlayer||state.view!=='board'||document.documentElement.classList.contains('alerts-on')||window.btgWelcomeVisit?.())return;
+    if(!nudgeReturning||selectedPlayer||state.view!=='board'||/\b(alerts-on|email-on)\b/.test(document.documentElement.className)||window.btgWelcomeVisit?.())return;
+    const email=nudgeVersion==='b'&&window.BTGEmailSub?.inline;
     const cards=[...list.querySelectorAll(':scope>.prop-card')];if(cards.length<=NUDGE_AFTER)return;
     const card=document.createElement('div');card.className='board-nudge';
-    card.innerHTML=`<p class="gate-eyebrow">${icon('bell')} FREE PICK ALERTS</p><h3>Get the next pick the second it locks</h3><p>${htmlEscape(seasonLine())}</p><div class="gate-actions"><button type="button" class="gate-primary" data-nudge-alerts>Turn on alerts</button>${hasAccount()?'':'<button type="button" class="gate-link" data-gate="signup">or create a free account</button>'}</div>`;
+    card.innerHTML=email?`<p class="gate-eyebrow">${icon('bell')} FREE PICK EMAILS</p><h3>Get tonight’s picks by email. Free.</h3><p>${htmlEscape(seasonLine())}</p><div data-nudge-em></div><div class="gate-actions"><button type="button" class="gate-link" data-nudge-alerts>or turn on phone alerts</button></div>`:`<p class="gate-eyebrow">${icon('bell')} FREE PICK ALERTS</p><h3>Get the next pick the second it locks</h3><p>${htmlEscape(seasonLine())}</p><div class="gate-actions"><button type="button" class="gate-primary" data-nudge-alerts>Turn on alerts</button>${hasAccount()?'':'<button type="button" class="gate-link" data-gate="signup">or create a free account</button>'}</div>`;
     cards[NUDGE_AFTER-1].after(card);
     // Its own counter, so next week's numbers compare it with the old wall.
     card.querySelector('[data-gate]')?.addEventListener('click',event=>{event.preventDefault();window.btgCount?.('nudge:signup');window.BTGAuth?.open?.('signup')});
-    card.querySelector('[data-nudge-alerts]').onclick=()=>{window.btgCount?.('nudge:alerts');(document.querySelector('[data-alerts-banner]')||document.querySelector('[data-alerts-toggle]'))?.click()};
-    if(!nudgeCounted){nudgeCounted=true;window.btgCount?.('nudge:shown')}
+    card.querySelector('[data-nudge-alerts]').onclick=()=>{window.btgCount?.(email?'nudge:alerts-b':'nudge:alerts');(document.querySelector('[data-alerts-banner]')||document.querySelector('[data-alerts-toggle]'))?.click()};
+    if(email)window.BTGEmailSub.inline(card.querySelector('[data-nudge-em]'),'board');
+    if(!nudgeCounted){nudgeCounted=true;window.btgCount?.('nudge:shown');window.btgCount?.(email?'nudge:shown-b':'nudge:shown-a')}
   }
   function gateList(){
     const list=$('#propList');if(!list)return;
