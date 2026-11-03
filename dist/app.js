@@ -1606,7 +1606,7 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
       // The record bar keeps the real alerts button (hidden); this link presses it.
       em.querySelector('.he-alerts').onclick=()=>document.querySelector('#heroBanner [data-alerts-toggle]')?.click();
       // After the picks, parlays and Just missed, before the board.
-      const board=document.getElementById('propsSection');if(board)board.before(em);else hero.after(em);
+      const board=document.getElementById('propsSection'),rail=document.querySelector('.board.has-rail>.desk-rail');if(rail)rail.appendChild(em);else if(board)board.before(em);else hero.after(em);
       let tries=0;const mount=()=>{if(window.BTGEmailSub?.inline){window.BTGEmailSub.inline(em,ev==='b'?'homeb':'home');window.btgCount?.(ev==='b'?'email:home-shown-b':'email:home-shown')}else if(tries++<40)setTimeout(mount,50)};mount()}
       // Lead with the best pick still to play, so the sign-up shows what you'd get.
       if(em){const now=Date.now(),top=(heroRows||[]).filter(r=>r.kind==='prop'&&!r.result&&Date.parse(r.game_time||'')>now).map(r=>({r,edge:Number(recordLegs(r)[0]?.edge)||0})).sort((a,b)=>b.edge-a.edge)[0]?.r;
@@ -2787,10 +2787,11 @@ function statsProp(l){
   // Desktop rail: on wide screens the record, your bets, alerts and Following
   // sit in a sticky column beside the picks; on phones they stay in the flow.
   const board=document.querySelector('.workspace .board'),rail=document.createElement('aside');rail.className='desk-rail';rail.setAttribute('aria-label','Your corner');
-  const parts=['heroBanner','pmHero','myRecord','alertsHero','howPick','leansNow','pmNow'].map(id=>document.getElementById(id)).filter(Boolean),marks=parts.map(el=>{const m=document.createComment('rail');el.before(m);return m});
+  const parts=['heroBanner','pmHero','myRecord'].map(id=>document.getElementById(id)).filter(Boolean),marks=parts.map(el=>{const m=document.createComment('rail');el.before(m);return m});
   const official=document.getElementById('officialNow');
-  // One centered column on every screen (Oct 24 simplify): the rail stays off.
-  const wide=null;
+  // Nov 3 redesign: on wide screens the record card and the email box sit in a
+  // right column beside the picks (it was one centered column from Oct 24).
+  const wide=typeof matchMedia==='function'?matchMedia('(min-width:1180px)'):null;
   function place(){if(!board)return;if(wide?.matches){board.classList.add('has-rail');board.prepend(rail);parts.forEach(el=>rail.appendChild(el));rail.appendChild(panel)}else{board.classList.remove('has-rail');parts.forEach((el,i)=>marks[i].after(el));rail.remove();(document.getElementById('alertsHero')||official?.lastElementChild)?.after?.(panel)}}
   if(official&&!document.getElementById('alertsHero'))official.appendChild(panel);
   place();wide?.addEventListener?.('change',place);drawPanel();
