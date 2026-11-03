@@ -1988,8 +1988,8 @@ if(typeof fetch==='function')window.btgCountVisit?.('view:home');
     if(!d){d=document.createElement('dialog');d.id='alertChooser';d.className='alert-chooser';d.setAttribute('aria-labelledby','acTitle');document.body.append(d)}
     const iphoneWeb=ios&&!standalone();
     d.innerHTML=`<button type="button" class="ac-x" data-ac-close aria-label="Close">×</button><p class="ac-eyebrow">FREE PICK ALERTS</p><h2 id="acTitle">How do you want your alerts?</h2>
-      <button type="button" class="ac-opt ac-main" data-ac="x"><b>𝕏 Get alerts on X</b><span>Follow <strong>@BetThisGuy</strong>, tap the 🔔 bell and pick <strong>All posts</strong>. Every pick posts there the second it locks.</span></button>
-      <button type="button" class="ac-opt" data-ac="email"><b>✉️ Email me the picks</b><span>No account or app needed. Picks that lock together come in one email.</span></button>
+      <button type="button" class="ac-opt ac-main" data-ac="email"><b>✉️ Email me the picks</b><span>No account or app needed. Picks that lock together come in one email.</span></button>
+      <button type="button" class="ac-opt" data-ac="x"><b>𝕏 Get alerts on X</b><span>Follow <strong>@BetThisGuy</strong>, tap the 🔔 bell and pick <strong>All posts</strong>. Every pick posts there the second it locks.</span></button>
       <button type="button" class="ac-opt" data-ac="site"><b>🔔 Notifications from this site</b><span>${iphoneWeb?'iPhone: add Bet This Guy to your Home Screen first (Share → Add to Home Screen).':'One tap on Android and computers.'}</span></button>`;
     const close=()=>{try{d.close()}catch{}};
     d.querySelector('[data-ac-close]').onclick=close;d.onclick=e=>{if(e.target===d)close()};
