@@ -2692,3 +2692,11 @@ body.light .more-sheet.ms2{background:#fff;border-color:#d5dce6}body.light .ms2 
 .bs-ou button[aria-pressed="true"]{background:#2bd97c;color:#052e16}
 .bs-reset{flex:1 0 100%;border:0;background:none;color:#8fb3ff;font:600 13px "DM Sans",sans-serif;text-align:left;padding:0;cursor:pointer}
 body.light .bs-line{background:#f8fafc;border-color:#e2e6ec}body.light .bs-step button,body.light .bs-ou{background:#fff;border-color:#d5dce6;color:#0f172a}
+
+/* Light theme fixes from the Nov 3 audit */
+body.light img[src^="/logo.png"]{content:url(/logo-dark.png)}
+html body.light.board-shut #propsSection #boardBrowse{background:#fff!important;color:#0f172a!important;border-color:#d5dce6!important}
+body.light .pc{box-shadow:0 14px 34px -24px rgba(15,23,42,.35)}body.light .pc-who b,body.light .pc-bet strong{color:#0f172a}
+body.light .pc-cd{background:#fff7e6;border-color:#f6d58a;color:#8a5a00}body.light .pc-tag{color:#15803d}
+body.light .slip-bar{background:#0f172a;border-color:#0f172a}
+.desk-rail #heroBanner{order:1}.desk-rail #heroEmail{order:2}.desk-rail #myRecord{order:3}
