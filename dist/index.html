@@ -262,11 +262,13 @@
     <a href="/about"><strong>How we pick</strong><span>How a prop becomes an official pick</span></a>
     <a href="/picks"><strong>Picks by week</strong><span>Every official pick, week by week</span></a>
     <button type="button" data-alerts-toggle data-alerts-sheet><strong>Pick alerts</strong><span>Get a notification when a new official pick drops</span></button>
+    <button type="button" data-more-action="mybets"><strong>My bets</strong><span>Track what you bet and how you’re doing</span></button>
     <button type="button" data-more-action="settings"><strong>Settings</strong><span>Bet amount, your sportsbooks, weekly limit</span></button>
     <div class="more-mini"><button type="button" class="more-phone-only" data-more-action="theme">Light or dark</button><button type="button" class="more-phone-only" data-more-action="feed"><span id="moreFeedStatus">Live prices</span></button></div>
   </dialog>
   <!--SITE_FOOTER-->
 
+  <dialog id="myBetsDialog" class="mybets-dialog" aria-labelledby="myBetsTitle"><div class="mb-wrap"><div class="mb-head"><h2 id="myBetsTitle">My bets</h2><button type="button" class="dialog-close mb-close" aria-label="Close">×</button></div><div id="myBetsBody"></div></div></dialog>
   <dialog id="detailDialog"><button class="dialog-close" aria-label="Close">×</button><div id="detailContent"></div></dialog>
   <dialog id="parlayDetailDialog" class="parlay-detail-dialog"><button class="dialog-close" aria-label="Close parlay details">×</button><div id="parlayDetailContent"></div></dialog>
   <dialog id="playerDialog" class="player-dialog"><button class="dialog-close" aria-label="Close player stats">×</button><div id="playerProfile"></div></dialog>

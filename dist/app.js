@@ -1664,7 +1664,7 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
       <div class="pc-who">${face(r)}<div><b>${htmlEscape(r.player||'')}</b><span>${htmlEscape([gameOf(r),kickoff(r.game_time)].filter(Boolean).join(' · '))}</span></div></div>
       <div class="pc-bet"><strong>${htmlEscape(`${r.side} ${r.line}`)}<span>${htmlEscape(String(r.market||'').toLowerCase())}</span></strong><span class="pc-price">${amOdds(r.odds)}</span></div>
       ${fair!=null&&Number.isFinite(edge)?`<div class="pc-meter"><div class="pc-mrow"><span>Fair odds <b>${amOdds(fair)}</b></span><span>${htmlEscape(book)} <b class="g">${amOdds(r.odds)}</b></span></div><div class="pc-track"><i style="left:${pos}%;width:${Math.max(4,Math.min(40,edge*6))}%"></i><em style="left:${pos}%"></em><em class="g" style="left:${pos+Math.max(4,Math.min(40,edge*6))}%"></em></div><p>${htmlEscape(book)} pays more than this bet is worth: a ${edge.toFixed(1)}% edge.</p></div>`:''}
-      <div class="pc-btns"><button type="button" class="pc-go" data-act="open">Bet at ${htmlEscape(book||'the best book')} ${icon('arrow-right')}</button><button type="button" class="pc-add" data-slip-price>＋ Slip</button></div>
+      <div class="pc-btns"><button type="button" class="pc-go" data-act="open">Bet at ${htmlEscape(book||'the best book')} ${icon('arrow-right')}</button><button type="button" class="pc-add" data-slip-price>＋ Slip</button></div><button type="button" class="pc-ibet" data-ibet>${window.BTGMyBets?.has?.(r.id)?'✓ Tracking in My bets':'I bet this · track it in My bets'}</button>
       <div class="pc-form" data-on-bars="${i}" hidden></div>
       ${apps?`<p class="pc-apps">Prediction apps: ${apps}.${better?'':` ${htmlEscape(book)} pays more.`}</p>`:''}
     </div>`;
@@ -1811,7 +1811,7 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
     fill('#officialNowList',singles,'pick',NBA?'<div class="on-empty"><strong>No NBA picks yet tonight.</strong><span>They post as soon as a price qualifies, often the day before. Only the best: 1% or more over the fair price, up to 5 a night.</span></div>':'<div class="on-empty"><strong>No picks yet this week.</strong><span>They post the moment a price qualifies, any day before kickoff.</span></div>');
     fill('#parlaysList',parlays,'parlay',NBA?'<div class="on-empty"><strong>No NBA parlays yet tonight.</strong><span>Up to 3 a night: 2 legs from different games, from qualifiers past the nightly 5 singles.</span></div>':'<div class="on-empty"><strong>No parlays yet this week.</strong><span>They post when two or more props that just missed line up.</span></div>');
     // Tap the row for the bet screen; tap a single's price to add it to the slip.
-    $$('#officialNowList [data-on], #parlaysList button[data-on]').forEach(b=>b.onclick=e=>{const r=list[+b.dataset.on];if(e.target.closest('[data-slip-price]')&&r&&!['won','lost','push'].includes(r.result)&&(r.kind==='parlay'?addParlayToSlip(r):addBetToSlip(r)))return;openPick(r)});
+    $$('#officialNowList [data-on], #parlaysList button[data-on]').forEach(b=>b.onclick=e=>{const r=list[+b.dataset.on];if(e.target.closest('[data-ibet]')&&r){window.BTGMyBets?.add?.(r);const t=e.target.closest('[data-ibet]');t.textContent='✓ Tracking in My bets';return}if(e.target.closest('[data-slip-price]')&&r&&!['won','lost','push'].includes(r.result)&&(r.kind==='parlay'?addParlayToSlip(r):addBetToSlip(r)))return;openPick(r)});
     officialLiveList=list;updateOfficialLive();window.btgOfficialForm?.(list);focusPick();
     const later=f=>typeof requestIdleCallback==='function'?requestIdleCallback(f,{timeout:3000}):setTimeout(f,1200);
     later(()=>$$('#officialNowList [data-on-player]').forEach(row=>{const player=row.dataset.onPlayer;if(!player||typeof playerStatsFor!=='function')return;const r=list[+row.dataset.on];playerStatsFor({sport:r?.sport||'NFL',player,team:row.dataset.onTeam}).then(payload=>window.BTGPaintTeam?.(row,payload?.player?.team,r?.sport||'NFL')).catch(()=>{})}));
@@ -1838,7 +1838,7 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
     try{
       const response=await fetch(`/api/record?view=home${NBA?'&sport=NBA':''}`,{signal:AbortSignal.timeout(10000)});
       if(!response.ok)throw new Error();
-      const body=await response.json();heroRows=body.success?body.recent||[]:null;heroSeason=body.season||null;if(heroSeason){window.BTG_SEASON=heroSeason;dispatchEvent(new Event('btg:season'))}renderHero(heroRows?summarise(heroRows,Date.now(),viewerStake()):null);renderOfficialNow(heroRows);
+      const body=await response.json();heroRows=body.success?body.recent||[]:null;heroSeason=body.season||null;if(heroSeason){window.BTG_SEASON=heroSeason;dispatchEvent(new Event('btg:season'))}if(Array.isArray(heroRows))window.BTG_REC_ROWS=[...(window.BTG_REC_ROWS||[]),...heroRows];renderHero(heroRows?summarise(heroRows,Date.now(),viewerStake()):null);renderOfficialNow(heroRows);
     }catch{renderHero(null)}
   }
   $('#heroCta')&&($('#heroCta').onclick=event=>{event.preventDefault();$('#propsSection')?.scrollIntoView({behavior:'smooth',block:'start'})});
@@ -3745,3 +3745,36 @@ function statsProp(l){
     const mark=()=>box.querySelectorAll('button').forEach(b=>b.classList.toggle('on',Number(b.dataset.v)===Number(input.value||input.placeholder)));
     box.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;input.value=b.dataset.v;input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));mark()});
     input.addEventListener('input',mark);document.getElementById('settingsDialog')?.addEventListener('toggle',mark);setTimeout(mark,1000)}})();
+
+// My bets (Nov 3 redesign): "I bet this" on a pick saves it on this device at
+// the default bet; results fill in from our graded record. More > My bets.
+(()=>{if(typeof document.getElementById!=='function')return;
+  const KEY='btg-mybets',load=()=>{try{const v=JSON.parse(localStorage.getItem(KEY)||'[]');return Array.isArray(v)?v:[]}catch{return []}},save=list=>{try{localStorage.setItem(KEY,JSON.stringify(list.slice(-300)))}catch{}};
+  const dec=o=>{o=Number(o);return o>0?1+o/100:o<0?1+100/-o:null},am=o=>{o=Number(o);return o>0?`+${o}`:`−${Math.abs(o)}`},mny=v=>window.btgMoney?window.btgMoney(v):`$${Math.round(v)}`;
+  const rows=()=>[...(Array.isArray(window.BTG_HOME)?window.BTG_HOME:[]),...(Array.isArray(window.BTG_REC_ROWS)?window.BTG_REC_ROWS:[])];
+  const resultOf=b=>{if(b.result)return b.result;const r=rows().find(x=>x.id===b.pickId);return r&&['won','lost','push'].includes(r.result)?r.result:null};
+  const net=b=>{const res=resultOf(b),d=dec(b.odds);return res==='won'&&d?b.stake*(d-1):res==='lost'?-b.stake:0};
+  const legsOf=r=>{try{return JSON.parse(r.legs_json||'[]')}catch{return []}};
+  function add(r){const list=load();if(list.some(b=>b.pickId===r.id))return;const parlay=r.kind==='parlay',l=legsOf(r)[0]||{};
+    const stake=parlay?Math.max(1,Number(preferences?.parlayWager)||25):Math.max(1,typeof wagerStake==='function'?wagerStake():100);
+    list.push({id:`b${Date.now()}`,pickId:r.id,parlay,player:parlay?legsOf(r).map(x=>String(x.player||'').split(' ').slice(-1)[0]).join(' + ')+' parlay':r.player,bet:parlay?`${legsOf(r).length} legs`:`${r.side} ${r.line} ${String(r.market||'').toLowerCase()}`,odds:Number(parlay?r.combined_odds:r.odds),book:l.book||'',stake,at:Date.now(),game:r.game_time||''});save(list);
+    window.btgCount?.('mybets:add');if(typeof slipToast==='function')slipToast(`${icon('check')} Tracking in My bets · $${stake} at ${am(parlay?r.combined_odds:r.odds)}`)}
+  const has=id=>load().some(b=>b.pickId===id);
+  const dlg=document.getElementById('myBetsDialog'),body=document.getElementById('myBetsBody');
+  function render(){const list=load().sort((a,b)=>b.at-a.at);
+    for(const b of list){const r=resultOf(b);if(r&&!b.result)b.result=r}save(list);
+    const done=list.filter(b=>b.result),w=done.filter(b=>b.result==='won').length,l=done.filter(b=>b.result==='lost').length,profit=done.reduce((t,b)=>t+net(b),0);
+    let compare='';if(list.length){const since=Math.min(...list.map(b=>b.at)),ours=rows().filter(x=>/^official\|/.test(x.id||'')&&['won','lost','push'].includes(x.result)&&Date.parse(x.posted_at||x.game_time||'')>=since-86400000);
+      const seen=new Set(),uniq=ours.filter(x=>!seen.has(x.id)&&seen.add(x.id));
+      if(uniq.length){const all=uniq.reduce((t,x)=>{const d=dec(x.kind==='parlay'?x.combined_odds:x.odds),s=x.kind==='parlay'?25:100;return t+(x.result==='won'&&d?s*(d-1):x.result==='lost'?-s:0)},0),followed=uniq.filter(x=>list.some(b=>b.pickId===x.id)).length;
+        compare=`<p class="mb-compare">You tracked ${followed} of our ${uniq.length} graded picks since you started. Betting all of them would have made <b class="${all>=0?'pos':'neg'}">${mny(all)}</b> (singles $100, parlays $25).</p>`}}
+    body.innerHTML=list.length?`<div class="mb-kpis"><div><b class="${profit>=0?'pos':'neg'}">${mny(profit)}</b><span>your profit · ${done.length} graded</span></div><div><b>${w}–${l}</b><span>won–lost${list.length>done.length?` · ${list.length-done.length} open`:''}</span></div></div>${compare}
+      <div class="mb-list">${list.map(b=>{const r=b.result,n=net(b);return `<div class="mb-row" data-id="${htmlEscape(b.id)}"><div class="mb-t"><b>${htmlEscape(b.player)}</b><span>${htmlEscape(b.bet)}${b.book?` · ${htmlEscape(b.book)}`:''} · $<input class="mb-stake" type="number" inputmode="decimal" min="1" value="${b.stake}" aria-label="Amount bet"> at ${am(b.odds)}</span></div><div class="mb-m ${r==='won'?'pos':r==='lost'?'neg':''}">${r?mny(n):'Open'}<small>${r==='won'?'Won':r==='lost'?'Lost':r==='push'?'Push':'Not graded yet'}</small></div><button type="button" class="mb-x" aria-label="Remove">×</button></div>`}).join('')}</div>
+      <p class="mb-fine">Saved on this device. Amounts are what you tell us; change any amount above.</p>`
+      :`<div class="mb-empty"><b>No bets tracked yet</b><span>Tap “I bet this” on any official pick and it lands here. We grade it with the pick, so you see your own record next to ours.</span></div>`;
+    body.querySelectorAll('.mb-row').forEach(row=>{const id=row.dataset.id;row.querySelector('.mb-x').onclick=()=>{save(load().filter(b=>b.id!==id));render()};
+      row.querySelector('.mb-stake').onchange=e=>{const v=Math.max(1,Number(e.target.value)||1);save(load().map(b=>b.id===id?{...b,stake:v}:b));render()}})}
+  function open(){render();if(dlg&&!dlg.open)dlg.showModal?.();window.btgCount?.('mybets:open')}
+  dlg?.querySelector('.mb-close')?.addEventListener('click',()=>dlg.close());dlg?.addEventListener('click',e=>{if(e.target===dlg)dlg.close()});
+  document.querySelector('[data-more-action="mybets"]')?.addEventListener('click',()=>{document.getElementById('moreSheet')?.close?.();open()});
+  window.BTGMyBets={add,has,open,render}})();

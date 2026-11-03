@@ -2643,3 +2643,25 @@ html body.board-shut #propsSection #boardBrowse[hidden]{display:none!important}
 .st-chips button{padding:8px 0;border-radius:10px;background:#181c22;border:1px solid #232830;color:#f4f6f9;font:700 13px "DM Sans",sans-serif;cursor:pointer}
 .st-chips button.on{border-color:#2f6bff;color:#9ec0ff;background:rgba(47,107,255,.12)}
 body.light .st-chips button{background:#fff;border-color:#d5dce6;color:#0f172a}
+body[data-mobile-page="live"] .rc-lede,body[data-mobile-page="slip"] .rc-lede{display:none!important}
+
+/* My bets (Nov 3 redesign) */
+.pc-ibet{display:block;width:100%;margin-top:8px;padding:9px;border-radius:12px;border:1px dashed #2a3340;background:none;color:#98a1ac;font:600 13px "DM Sans",sans-serif;cursor:pointer}
+.mybets-dialog{width:min(560px,100vw);max-height:92vh;padding:0;border:1px solid #232830;border-radius:22px;background:#101318;color:#f4f6f9}
+.mybets-dialog::backdrop{background:rgba(0,0,0,.6)}
+.mb-wrap{padding:18px 18px 22px}.mb-head{display:flex;justify-content:space-between;align-items:center}.mb-head h2{margin:0;font:700 26px "Space Grotesk",sans-serif}
+.mb-close{position:static!important;width:34px;height:34px;border-radius:50%;background:#181c22;border:1px solid #232830;color:#98a1ac;font-size:20px}
+.mb-kpis{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}.mb-kpis div{background:#12151a;border:1px solid #232830;border-radius:16px;padding:12px}
+.mb-kpis b{display:block;font:700 24px "Space Grotesk",sans-serif}.mb-kpis span{font-size:12px;color:#98a1ac}
+.pos{color:#2bd97c}.neg{color:#f26b6b}
+.mb-compare{margin:12px 0 0;padding:12px 14px;border-radius:14px;background:linear-gradient(160deg,#10231a,#101318 70%);border:1px solid #1f5a40;font-size:14px}
+.mb-list{margin-top:12px;background:#12151a;border:1px solid #232830;border-radius:16px;overflow:hidden}
+.mb-row{display:flex;align-items:center;gap:10px;padding:12px 14px;border-top:1px solid #232830}.mb-row:first-child{border-top:0}
+.mb-t{flex:1;min-width:0}.mb-t b{display:block;font-size:14.5px}.mb-t span{font-size:12.5px;color:#98a1ac}
+.mb-stake{width:56px;padding:2px 4px;border-radius:6px;border:1px solid #2a303a;background:#0b0e12;color:#f4f6f9;font:600 12.5px "DM Sans",sans-serif}
+.mb-m{text-align:right;font:700 15px "Space Grotesk",sans-serif;white-space:nowrap}.mb-m small{display:block;font:600 11px "DM Sans",sans-serif;color:#98a1ac}
+.mb-x{width:28px;height:28px;border-radius:8px;border:1px solid #232830;background:none;color:#677180;cursor:pointer}
+.mb-empty{margin-top:16px;padding:18px;border-radius:16px;border:1px dashed #2a3340;display:grid;gap:6px}.mb-empty span{color:#98a1ac;font-size:14px}
+.mb-fine{margin:10px 2px 0;font-size:12px;color:#677180}
+body.light .mybets-dialog{background:#fff;color:#0f172a;border-color:#d5dce6}body.light .mb-kpis div,body.light .mb-list{background:#f8fafc;border-color:#e2e6ec}
+html body .mybets-dialog input.mb-stake{display:inline-block!important;width:58px!important;height:auto!important;min-height:0!important;margin:0 2px!important;padding:2px 5px!important;font-size:12.5px!important;border-radius:6px!important;vertical-align:baseline}
