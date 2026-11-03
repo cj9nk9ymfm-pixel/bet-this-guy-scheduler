@@ -1,4 +1,4 @@
-const ICON_PATHS={"external": "<path d=\"M14 4h6v6\"/><path d=\"M20 4l-9 9\"/><path d=\"M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5\"/>", "check": "<circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"m8.5 12.5 2.5 2.5 4.5-5\"/>", "fair": "<circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M8 12h8\"/>", "over": "<circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"m9 9 6 6M15 9l-6 6\"/>", "bell": "<path d=\"M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9\"/><path d=\"M10.3 21a1.94 1.94 0 0 0 3.4 0\"/>", "lock": "<rect x=\"4\" y=\"11\" width=\"16\" height=\"10\" rx=\"2\"/><path d=\"M8 11V7a4 4 0 0 1 8 0v4\"/>", "star": "<path d=\"m12 3 2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9z\"/>", "sliders": "<path d=\"M20 6h-8M8 6H4M20 12h-4M12 12H4M20 18h-6M10 18H4M10 4v4M16 10v4M12 16v4\"/>", "sun": "<circle cx=\"12\" cy=\"12\" r=\"4\"/><path d=\"M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4\"/>", "search": "<circle cx=\"11\" cy=\"11\" r=\"7\"/><path d=\"m20 20-4-4\"/>", "share": "<path d=\"M4 13v6a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6\"/><path d=\"m16 7-4-4-4 4M12 3v13\"/>", "layers": "<path d=\"m12 3 9 5-9 5-9-5z\"/><path d=\"m3 13 9 5 9-5\"/>"};
+const ICON_PATHS={"clock": "<circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M12 7v5l3 2\"/>", "arrow-right": "<path d=\"M5 12h14M13 6l6 6-6 6\"/>", "external": "<path d=\"M14 4h6v6\"/><path d=\"M20 4l-9 9\"/><path d=\"M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5\"/>", "check": "<circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"m8.5 12.5 2.5 2.5 4.5-5\"/>", "fair": "<circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M8 12h8\"/>", "over": "<circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"m9 9 6 6M15 9l-6 6\"/>", "bell": "<path d=\"M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9\"/><path d=\"M10.3 21a1.94 1.94 0 0 0 3.4 0\"/>", "lock": "<rect x=\"4\" y=\"11\" width=\"16\" height=\"10\" rx=\"2\"/><path d=\"M8 11V7a4 4 0 0 1 8 0v4\"/>", "star": "<path d=\"m12 3 2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9z\"/>", "sliders": "<path d=\"M20 6h-8M8 6H4M20 12h-4M12 12H4M20 18h-6M10 18H4M10 4v4M16 10v4M12 16v4\"/>", "sun": "<circle cx=\"12\" cy=\"12\" r=\"4\"/><path d=\"M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4\"/>", "search": "<circle cx=\"11\" cy=\"11\" r=\"7\"/><path d=\"m20 20-4-4\"/>", "share": "<path d=\"M4 13v6a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6\"/><path d=\"m16 7-4-4-4 4M12 3v13\"/>", "layers": "<path d=\"m12 3 9 5-9 5-9-5z\"/><path d=\"m3 13 9 5 9-5\"/>"};
 const icon=(name,cls='ico')=>`<svg class="${cls}" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON_PATHS[name]||''}</svg>`;
 function readStored(key,fallback){try{const value=JSON.parse(localStorage.getItem(key)||'null');return value&&typeof value==='object'&&Array.isArray(value)===Array.isArray(fallback)?value:fallback}catch{return fallback}}
 const demoProps=[
@@ -1645,6 +1645,44 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
     const txt=done?(r.result==='won'?`Won +${money(Math.round(payout(r)))}`:r.result==='lost'?`Lost −${money(stake)}`:'Push · $0'):r.pm?`${money(stake)} ${pmPays(stake,d)}`:`${money(stake)} wins ${money(Math.round(stake*(d-1)))} · ${extra>=1?`${money(extra)} more than it should`:`pays ${money(Math.round(stake*d))}`}`;
     return `<i class="on-win ${done?r.result:'open'}">${htmlEscape(txt)}</i>`;
   }
+  // Redesign (Nov 3): a big card per pick on light days; on a busy day (5+ to
+  // play) the top pick gets the card and the rest list by kickoff time and game.
+  const amOdds=v=>{v=Number(v);return v>0?`+${v}`:`−${Math.abs(v)}`};
+  const fairAm=pc=>{pc=Number(pc)/100;if(!(pc>0&&pc<1))return null;return pc<=.5?Math.round(100*(1-pc)/pc):-Math.round(100*pc/(1-pc))};
+  const countdown=iso=>{const t=Date.parse(iso)-Date.now();if(!(t>0))return 'Starting';if(t>36*3600000)return kickoff(iso);const h=Math.floor(t/3600000),m=Math.floor(t%3600000/60000);return `Kicks off in ${h?`${h}h `:''}${m}m`};
+  const photoUrl=r=>`/api/player-photo?name=${encodeURIComponent(r.player||'')}${(r.sport||r.sport_label)==='NBA'||String(r.id||'').startsWith('nba|')||LEAGUE==='NBA'?'&sport=NBA':''}`;
+  const face=(r,cls='pc-ph')=>{const ini=String(r.player||'').split(' ').map(x=>x[0]||'').join('').slice(0,2);return `<span class="${cls}"><span>${htmlEscape(ini)}</span><img loading="lazy" decoding="async" src="${photoUrl(r)}" alt="" onerror="this.remove()"></span>`};
+  const gameOf=r=>{const t=String(recordLegs(r)[0]?.team||'');const g=t.replace(' · @ ',' @ ').replace(' · vs ',' vs ');return typeof compactGameName==='function'?compactGameName(g):g};
+  const strength=e=>`<span class="pc-str s${e>=2?3:e>=1?2:1}" title="${htmlEscape(`${(+e||0).toFixed(1)}% better than fair`)}"><i></i><i></i><i></i></span>`;
+  function pickCard(r,i,top=false){
+    const l=recordLegs(r)[0]||{},edge=Number(l.edge),fair=fairAm(l.fairPower??l.fairShin),book=l.book||'';
+    const apps=(l.exchanges||[]).filter(x=>Number.isFinite(+x.odds)).map(x=>`<b>${htmlEscape(x.exchange)} ${amOdds(x.odds)}</b>`).join(' · ');
+    const dec=o=>o>0?1+o/100:1+100/-o,better=(l.exchanges||[]).some(x=>dec(+x.odds)>dec(+r.odds));
+    const pos=fair!=null?Math.max(8,Math.min(70,50-(edge||0)*6)):null;
+    return `<div class="pc${top?' pc-top':''}" data-on="${i}" data-pick-id="${htmlEscape(r.id||'')}" data-on-player="${htmlEscape(r.player||'')}" data-on-team="${htmlEscape(l.team||'')}">
+      <div class="pc-head"><span class="pc-tag">${top?'Top pick · biggest edge':'Official pick'}</span><span class="pc-cd">${icon('clock')} ${htmlEscape(countdown(r.game_time))}</span></div>
+      <div class="pc-who">${face(r)}<div><b>${htmlEscape(r.player||'')}</b><span>${htmlEscape([gameOf(r),kickoff(r.game_time)].filter(Boolean).join(' · '))}</span></div></div>
+      <div class="pc-bet"><strong>${htmlEscape(`${r.side} ${r.line}`)}<span>${htmlEscape(String(r.market||'').toLowerCase())}</span></strong><span class="pc-price">${amOdds(r.odds)}</span></div>
+      ${fair!=null&&Number.isFinite(edge)?`<div class="pc-meter"><div class="pc-mrow"><span>Fair odds <b>${amOdds(fair)}</b></span><span>${htmlEscape(book)} <b class="g">${amOdds(r.odds)}</b></span></div><div class="pc-track"><i style="left:${pos}%;width:${Math.max(4,Math.min(40,edge*6))}%"></i><em style="left:${pos}%"></em><em class="g" style="left:${pos+Math.max(4,Math.min(40,edge*6))}%"></em></div><p>${htmlEscape(book)} pays more than this bet is worth: a ${edge.toFixed(1)}% edge.</p></div>`:''}
+      <div class="pc-btns"><button type="button" class="pc-go" data-act="open">Bet at ${htmlEscape(book||'the best book')} ${icon('arrow-right')}</button><button type="button" class="pc-add" data-slip-price>＋ Slip</button></div>
+      <div class="pc-form" data-on-bars="${i}" hidden></div>
+      ${apps?`<p class="pc-apps">Prediction apps: ${apps}.${better?'':` ${htmlEscape(book)} pays more.`}</p>`:''}
+    </div>`;
+  }
+  function pickRowLite(r,i){
+    const l=recordLegs(r)[0]||{};
+    return `<button type="button" class="pr2" data-on="${i}" data-pick-id="${htmlEscape(r.id||'')}">${face(r,'pr2-ph')}<span class="pr2-t"><b>${htmlEscape(r.player||'')}</b><span>${htmlEscape(`${r.side} ${r.line} ${typeof unitOf==='function'?unitOf(r.market):String(r.market||'').toLowerCase()}`)}</span></span><span class="pr2-q"><b>${amOdds(r.odds)}</b><small>${htmlEscape(l.book||'')} ${strength(Number(l.edge))}</small></span><span class="pr2-add" data-slip-price aria-label="Add to slip">＋</span></button>`;
+  }
+  function busyDay(items){
+    const ranked=[...items].sort((a,b)=>(Number(recordLegs(b[0])[0]?.edge)||0)-(Number(recordLegs(a[0])[0]?.edge)||0)),top=ranked[0];
+    const slots=new Map();for(const it of items){const k=it[0].game_time;(slots.get(k)||slots.set(k,[]).get(k)).push(it)}
+    const keys=[...slots.keys()].sort(),t=k=>new Date(k).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
+    const chips=keys.length>1?`<div class="pd-chips">${keys.map((k,n)=>`<button type="button" data-slot="${n}">${htmlEscape(t(k))} <em>${slots.get(k).length}</em></button>`).join('')}</div>`:'';
+    return `<div class="pd-wrap"><div class="pd-sum"><div><b>${items.length}</b><span>picks to play</span></div><div><b>${keys.length}</b><span>kickoff time${keys.length===1?'':'s'}</span></div><div><b>${new Set(items.map(([r])=>gameOf(r))).size}</b><span>games</span></div></div>${pickCard(top[0],top[1],true)}${chips}
+      ${keys.map((k,n)=>{const games=new Map();for(const it of slots.get(k)){const g=gameOf(it[0]);(games.get(g)||games.set(g,[]).get(g)).push(it)}
+        return `<section class="pd-slot" data-slot-sec="${n}"><h4>${htmlEscape(t(k))}<em>${slots.get(k).length} pick${slots.get(k).length===1?'':'s'}</em><span>${htmlEscape(countdown(k))}</span></h4><div class="pd-grid">${[...games.entries()].map(([g,list])=>`<div class="pd-game"><div class="pd-gh"><span>${htmlEscape(g)}</span><span>${list.length}</span></div>${list.map(([r,i])=>pickRowLite(r,i)).join('')}</div>`).join('')}</div></section>`}).join('')}
+      <p class="pd-legend">${strength(2.5)} edge: how much the price beats fair odds</p></div>`;
+  }
   function officialRow(r,i){
     const legs=recordLegs(r),isParlay=r.kind==='parlay',odds=isParlay?r.combined_odds:r.odds;
     const done=graded(r);
@@ -1761,7 +1799,8 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
       const done=items.filter(([r])=>officialDone(r)),live=items.filter(([r])=>!officialDone(r)&&liveLine(r)&&!later.some(([x])=>x===r)),open=items.filter(([r])=>!officialDone(r)&&!live.some(([x])=>x===r)&&!later.some(([x])=>x===r));
       const laterHtml=[...new Set(later.map(([r])=>weekOf(r)))].sort().map(n=>`<p class="on-group on-group-later">${htmlEscape(nightLabel(n))}</p>${rowsOf(later.filter(([r])=>weekOf(r)===n))}`).join('');
       const tally=done.reduce((t,[r])=>{t[r.result]=(t[r.result]||0)+1;return t},{}),doneRec=`${tally.won||0}–${tally.lost||0}${tally.push?`–${tally.push}`:''}`;
-      box.innerHTML=items.length?(later.length&&(open.length||live.length||done.length)?'<p class="on-group">Tonight</p>':'')+(live.length?`<p class="on-group on-group-live"><i class="on-dot"></i>Live now</p>${rowsOf(live)}${open.length?'<p class="on-group">Up next</p>':''}`:'')+rowsOf(open.slice(0,SHOW))+(open.length>SHOW?`<div class="on-more" hidden>${rowsOf(open.slice(SHOW))}</div><button type="button" class="on-toggle" data-on-toggle="more" aria-expanded="false">See all ${open.length} ${noun}s</button>`:'')+(done.length?`<button type="button" class="on-toggle on-final-toggle" data-on-toggle="final" aria-expanded="${open.length?'false':'true'}">Final · ${done.length} ${noun}${done.length===1?'':'s'} · ${doneRec}</button><div class="on-final"${open.length?' hidden':''}>${rowsOf(done)}</div>`:'')+laterHtml:empty;
+      box.innerHTML=items.length?(later.length&&(open.length||live.length||done.length)?'<p class="on-group">Tonight</p>':'')+(live.length?`<p class="on-group on-group-live"><i class="on-dot"></i>Live now</p>${rowsOf(live)}${open.length?'<p class="on-group">Up next</p>':''}`:'')+(sel==='#officialNowList'&&open.length?(open.length>=5?busyDay(open):open.map(([r,i])=>pickCard(r,i)).join('')):rowsOf(open.slice(0,SHOW)))+(sel!=='#officialNowList'&&open.length>SHOW?`<div class="on-more" hidden>${rowsOf(open.slice(SHOW))}</div><button type="button" class="on-toggle" data-on-toggle="more" aria-expanded="false">See all ${open.length} ${noun}s</button>`:'')+(done.length?`<button type="button" class="on-toggle on-final-toggle" data-on-toggle="final" aria-expanded="${open.length?'false':'true'}">Final · ${done.length} ${noun}${done.length===1?'':'s'} · ${doneRec}</button><div class="on-final"${open.length?' hidden':''}>${rowsOf(done)}</div>`:'')+laterHtml:empty;
+      box.querySelectorAll('[data-slot]').forEach(b=>b.onclick=()=>box.querySelector(`[data-slot-sec="${b.dataset.slot}"]`)?.scrollIntoView({behavior:'smooth',block:'start'}));
       box.querySelectorAll('[data-on-toggle]').forEach(b=>b.onclick=()=>{const el=b.dataset.onToggle==='more'?b.previousElementSibling:b.nextElementSibling;const show=el.hidden;el.hidden=!show;b.setAttribute('aria-expanded',String(show));if(b.dataset.onToggle==='more')b.textContent=show?'Show fewer':`See all ${open.length} ${noun}s`});
     }
     const singles=indexed.filter(([r])=>r.kind!=='parlay'),parlays=indexed.filter(([r])=>r.kind==='parlay');
@@ -1772,7 +1811,7 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
     fill('#officialNowList',singles,'pick',NBA?'<div class="on-empty"><strong>No NBA picks yet tonight.</strong><span>They post as soon as a price qualifies, often the day before. Only the best: 1% or more over the fair price, up to 5 a night.</span></div>':'<div class="on-empty"><strong>No picks yet this week.</strong><span>They post the moment a price qualifies, any day before kickoff.</span></div>');
     fill('#parlaysList',parlays,'parlay',NBA?'<div class="on-empty"><strong>No NBA parlays yet tonight.</strong><span>Up to 3 a night: 2 legs from different games, from qualifiers past the nightly 5 singles.</span></div>':'<div class="on-empty"><strong>No parlays yet this week.</strong><span>They post when two or more props that just missed line up.</span></div>');
     // Tap the row for the bet screen; tap a single's price to add it to the slip.
-    $$('#officialNowList button[data-on], #parlaysList button[data-on]').forEach(b=>b.onclick=e=>{const r=list[+b.dataset.on];if(e.target.closest('[data-slip-price]')&&r&&!['won','lost','push'].includes(r.result)&&(r.kind==='parlay'?addParlayToSlip(r):addBetToSlip(r)))return;openPick(r)});
+    $$('#officialNowList [data-on], #parlaysList button[data-on]').forEach(b=>b.onclick=e=>{const r=list[+b.dataset.on];if(e.target.closest('[data-slip-price]')&&r&&!['won','lost','push'].includes(r.result)&&(r.kind==='parlay'?addParlayToSlip(r):addBetToSlip(r)))return;openPick(r)});
     officialLiveList=list;updateOfficialLive();window.btgOfficialForm?.(list);focusPick();
     const later=f=>typeof requestIdleCallback==='function'?requestIdleCallback(f,{timeout:3000}):setTimeout(f,1200);
     later(()=>$$('#officialNowList [data-on-player]').forEach(row=>{const player=row.dataset.onPlayer;if(!player||typeof playerStatsFor!=='function')return;const r=list[+row.dataset.on];playerStatsFor({sport:r?.sport||'NFL',player,team:row.dataset.onTeam}).then(payload=>window.BTGPaintTeam?.(row,payload?.player?.team,r?.sport||'NFL')).catch(()=>{})}));
@@ -2784,6 +2823,9 @@ function statsProp(l){
     document.querySelectorAll('#officialNowList [data-on-form]').forEach(el=>{const r=officialList[+el.dataset.onForm];if(!r||r.kind!=='prop')return;
       const p={player:r.player,market:r.market,side:r.side,line:Number(r.line),binary:/anytime|first|last/i.test(r.market||'')},f=formFor(p);
       el.hidden=!f;if(f)el.textContent=formText(p,f)});
+    document.querySelectorAll('#officialNowList [data-on-bars]').forEach(el=>{const r=officialList[+el.dataset.onBars];if(!r||r.kind!=='prop')return;
+      const p={player:r.player,market:r.market,side:r.side,line:Number(r.line),binary:/anytime|first|last/i.test(r.market||'')},f=formFor(p);
+      el.hidden=!f;if(f)el.innerHTML=`<div class="pc-mrow"><span>Last ${f.n} games · line ${htmlEscape(String(r.line))}</span><span><b class="g">${f.hits} of ${f.n}</b> ${htmlEscape(r.side.toLowerCase())}</span></div>${bars(p,f,true)}`});
   }
   window.btgOfficialForm=officialForm;
   const fmt=v=>Number.isInteger(v)?String(v):v.toFixed(1);
