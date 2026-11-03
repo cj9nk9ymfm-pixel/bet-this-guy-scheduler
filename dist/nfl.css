@@ -2535,3 +2535,31 @@ html body #heroBanner .hero-picks{order:3}
 #heroBanner .pm-hero-stats span{font-size:12px;color:var(--muted)}
 #heroBanner .pm-hero-note{margin:4px 0 8px;font-size:12px;line-height:1.45;color:var(--muted)}#heroBanner .pm-hero-note a{color:inherit;text-decoration:underline}
 body.light #heroBanner .pm-hero-stats div{background:#f6f8fb;border-color:#e6ebf2}
+
+/* Record card (Nov 3 redesign) */
+html body:not(.zz) #heroBanner.hero.has-rc,html body.light #heroBanner.hero.has-rc{background:none!important;border:0!important;padding:0!important;box-shadow:none!important;outline:0!important;display:block!important}html body #heroBanner.has-rc::before,html body #heroBanner.has-rc::after{display:none!important}
+.rc{width:100%;box-sizing:border-box}
+#heroBanner.has-rc>:not(.rc):not(.hero-actions){display:none!important}
+#heroBanner.has-rc>.hero-actions{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.rc{display:block;text-decoration:none;color:#f4f6f9;background:linear-gradient(160deg,#131a24,#101318 60%);border:1px solid #232830;border-radius:18px;padding:16px;margin:4px 0 6px}
+.rc-lede{display:none;margin:0 0 14px;font:700 24px/1.15 "Space Grotesk",sans-serif;letter-spacing:-.01em;color:#f4f6f9}.rc-lede em{font-style:normal;color:#2bd97c}
+body.picks-empty .rc-lede{display:block}
+.rc-top{display:flex;justify-content:space-between;align-items:flex-end;gap:12px}
+.rc-eye{display:block;font:700 11px "DM Sans",sans-serif;letter-spacing:.09em;text-transform:uppercase;color:#98a1ac}
+.rc-big{display:block;font:700 38px/1 "Space Grotesk",sans-serif;color:#2bd97c;margin-top:6px;letter-spacing:-.02em}.rc-big.down{color:#f26b6b}
+.rc-sub{display:block;color:#98a1ac;font-size:13px;margin-top:6px}.rc-sub b{color:#f4f6f9;font-family:"Space Grotesk",sans-serif}
+.rc-spark{width:130px;height:52px;flex:none}
+.rc-weeks{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-top:14px}
+.rc-wk{display:grid;gap:3px;text-align:center}.rc-wk small{font-size:10.5px;color:#677180}
+.rc-bar{height:32px;display:flex;align-items:flex-end;justify-content:center;border-bottom:1px solid #232830}
+.rc-bar.neg{align-items:flex-start;border-bottom:0;border-top:1px solid #232830}
+.rc-bar i{width:70%;border-radius:4px 4px 0 0;background:#2bd97c}.rc-bar.neg i{background:#f26b6b;border-radius:0 0 4px 4px}
+.rc-wk b{font:700 11px "Space Grotesk",sans-serif}.rc-wk b.p{color:#2bd97c}.rc-wk b.n{color:#f26b6b}
+.rc-proof{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px}
+.rc-chip{display:inline-flex;align-items:center;gap:5px;padding:5px 9px;border-radius:999px;background:rgba(255,255,255,.04);border:1px solid #232830;font-size:12px;color:#c9d0d8}
+.rc-chip.hl{background:rgba(43,217,124,.1);border-color:rgba(43,217,124,.35);color:#9ef3c3;font-weight:600}.rc-chip .ico{width:13px;height:13px}
+@media(max-width:420px){.rc-big{font-size:34px}.rc-spark{width:110px;height:46px}}
+body.light .rc,html.light .rc{background:linear-gradient(160deg,#ffffff,#f3f6fb);border-color:#d5dce6;color:#0f172a}
+body.light .rc-lede,body.light .rc-sub b,html.light .rc-lede,html.light .rc-sub b{color:#0f172a}
+body.light .rc-big,html.light .rc-big{color:#15803d}body.light .rc-chip,html.light .rc-chip{background:#f1f5f9;border-color:#d5dce6;color:#334155}
+body.light .rc-chip.hl,html.light .rc-chip.hl{background:#dcfce7;border-color:#86efac;color:#166534}
