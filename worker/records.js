@@ -3751,7 +3751,7 @@ async function xPost(env,text,mediaId=null,replyTo=null,quote=null,extra={}){
   const url='https://api.twitter.com/2/tweets',body={text};
   if(quote)body.quote_tweet_id=String(quote);
   if(extra.poll)body.poll=extra.poll;
-  if(mediaId)body.media={media_ids:[mediaId]};
+  if(mediaId)body.media={media_ids:(Array.isArray(mediaId)?mediaId:[mediaId]).filter(Boolean).map(String)};
   if(replyTo)body.reply={in_reply_to_tweet_id:String(replyTo)};
   const response=await fetch(url,{method:'POST',headers:{authorization:await xOAuthHeader(env,'POST',url),'content-type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(15000)});
   if(!response.ok){const data=await response.json().catch(()=>({}));const why=String(data?.detail||data?.title||data?.errors?.[0]?.message||'').slice(0,200);throw new Error(`X post failed (${response.status})${why?`: ${why}`:''}`)}
@@ -4240,13 +4240,29 @@ async function postWeeklyToX(env,now=Date.now()){
   const rows=await weeklyRows(env,week);if(!rows.length)return {posted:0,empty:true};
   const s=weeklySummary(rows),info=nflWeekOf(week),name=info?`Week ${info.week}`:'Last week';
   const all=(await env.DB.prepare("SELECT kind,posted_at,line,odds,combined_odds,status,result,closing_line,closing_odds,closing_captured_at,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND id<?").bind(`official|${week}|￿`).all()).results||[];
-  const season=weeklySummary(all),hits=rows.filter(r=>r.kind==='prop'&&r.result==='won').slice(0,3).map(r=>`✅ ${r.player} ${weeklyLegText(r)} (${weeklyOdds(r.odds)})`);
-  // One honest line (Oct 26): the week's toughest loss, the one we liked most (biggest edge).
-  const miss=rows.filter(r=>r.kind==='prop'&&r.result==='lost').sort((a,b)=>Number(recordLegs(b)[0]?.edge||0)-Number(recordLegs(a)[0]?.edge||0))[0],had=miss&&recordLegs(miss)[0]?.actualValue;
-  if(miss)hits.splice(2,hits.length,`❌ Toughest miss: ${miss.player} ${weeklyLegText(miss)}${had!=null?` (had ${had})`:''}`);
-  const text=xShort(`📊 ${name} results: ${s.wins}–${s.losses}${s.pushes?`–${s.pushes}`:''} on props, ${weeklyMoney(s.profit)} at $100 a pick.${s.parlayWins+s.parlayLosses?` Parlays ${s.parlayWins}–${s.parlayLosses}.`:''}\n${hits.join('\n')}${hits.length?'\n':''}Season: ${season.wins}–${season.losses}, ${weeklyMoney(season.profit)}.${season.tracked>=10?` ${Math.round(100*season.beat/season.tracked)}% beat the kickoff price.`:''}\n\nEvery pick, wins and losses: link in bio.`);
+  // One record for the week (Nov 3, Tim): sportsbook singles, parlays and the
+  // week's NFL prediction-app picks together, the split under it; the season
+  // the same way. The card is the list design, every play with its result.
+  // The caption stays short so X never cuts it off.
+  const from=Date.parse(`${week}T12:00:00Z`),to=from+7*86400000;
+  const pmAll=((await env.DB.prepare("SELECT * FROM prediction_picks WHERE event_id NOT LIKE 'NBA--%' AND game_time<? ORDER BY game_time").bind(new Date(to).toISOString()).all().catch(()=>({results:[]}))).results)||[];
+  const pmWeek=pmAll.filter(r=>Date.parse(r.game_time)>=from&&['won','lost','push','void'].includes(r.result));
+  const season=weeklySummary(all),pmW=pmTally(pmWeek),pmS=pmTally(pmAll);
+  const rec=`${s.wins+s.parlayWins+pmW.w}–${s.losses+s.parlayLosses+pmW.l}${s.pushes?`–${s.pushes}`:''}`,total=s.profit+s.parlayProfit+pmW.net;
+  const split=[`Sportsbook ${s.wins}–${s.losses}${s.pushes?`–${s.pushes}`:''} ${weeklyMoney(s.profit)}`,s.parlayWins+s.parlayLosses?`Parlays ${s.parlayWins}–${s.parlayLosses} ${weeklyMoney(s.parlayProfit)}`:'',pmW.w+pmW.l?`Prediction apps ${pmW.w}–${pmW.l} ${weeklyMoney(pmW.net)}`:''].filter(Boolean).join(' · ');
+  const seasonRec=`${season.wins+season.parlayWins+pmS.w}–${season.losses+season.parlayLosses+pmS.l}`,seasonMoney=season.profit+season.parlayProfit+pmS.net;
+  const beat=season.tracked>=10?`${Math.round(100*season.beat/season.tracked)}% beat the kickoff price.`:'';
+  const text=xShort(`📊 ${name}: ${rec}, ${weeklyMoney(total)}.\n${split}\nSeason: ${seasonRec}, ${weeklyMoney(seasonMoney)}.${beat?` ${beat}`:''}\n\nEvery pick graded in public, losses included, link in bio. 21+`);
+  const res=r=>r.result==='void'?'push':['won','lost','push'].includes(r.result)?r.result:null;
+  const sbPicks=[...rows.map(r=>{const legs=recordLegs(r),f=legs[0]||{};return r.kind==='parlay'?{res:res(r),text:`${legs.length}-leg parlay`,odds:weeklyOdds(r.combined_odds),sub:'$25',legLines:legs.map(l=>({text:`${l.player} ${weeklyLegText(l)}`,res:l.result}))}:{res:res(r),text:`${r.player} · ${weeklyLegText(r)}`,odds:weeklyOdds(r.odds),sub:[xMatchup(f.team),f.book].filter(Boolean).join(' · ')}}),
+    ],pmPicks=pmWeek.map(r=>({res:res(r),text:`${r.player} · ${weeklyLegText(r)}`,odds:`${exchangePct(r.odds)}%`,sub:`${r.exchange} · prediction app`}));
+  // Two images in one post (one 27-row card was 3,500px tall and X crops it):
+  // the week's record with the sportsbook picks and parlays, then the prediction-app picks.
   let mediaId=null;
-  try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(xWeekSvg(xWeekData(rows,s,season,name,weeklyRange(week)))))}
+  try{if(typeof renderCardPng==='function'){const ids=[];
+    ids.push(await xUploadImage(env,await renderCardPng(await xSlateSvgFaces({final:true,kicker:`${name.toUpperCase()} · RESULTS`,day:rec,dayColor:total>=0?'#2ee6a8':'#f87171',dateLine:`${weeklyRange(week)} · ${weeklyMoney(total)}`,note:split,note2:beat,season:`${seasonRec} · ${weeklyMoney(seasonMoney)}`,foot:'LOCKED BEFORE KICKOFF · 21+',picks:sbPicks.length?sbPicks:pmPicks}))));
+    if(sbPicks.length&&pmPicks.length)ids.push(await xUploadImage(env,await renderCardPng(await xSlateSvgFaces({final:true,kicker:`${name.toUpperCase()} · PREDICTION APPS`,day:`${pmW.w}–${pmW.l}`,dayColor:pmW.net>=0?'#2ee6a8':'#f87171',dateLine:`${weeklyRange(week)} · ${weeklyMoney(pmW.net)} after fees`,note:'$100 a pick at the app price',note2:'',foot:'18+/21+ BY APP',picks:pmPicks}))));
+    mediaId=ids.filter(Boolean);if(!mediaId.length)mediaId=null}}
   catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} weekly graphic: ${error.message}`).catch(()=>{})}
   try{await xPost(env,text,mediaId);await xDone(env,`x-week:${week}`,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} weekly ${week}`).catch(()=>{});return {posted:1,week,graphic:Boolean(mediaId)}}
   catch(error){console.warn('x_weekly_failed',error.message);await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(`x-week:${week}`).run().catch(()=>{});return {posted:0,error:error.message}}
