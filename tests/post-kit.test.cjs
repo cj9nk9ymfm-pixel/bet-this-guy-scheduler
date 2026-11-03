@@ -44,9 +44,10 @@ add(week,'s',{player:'Started Guy',market:'Receptions',side:'Over',line:3.5,odds
   {const id=db.prepare("SELECT id FROM public_recommendations ORDER BY posted_at DESC LIMIT 1").get().id;db.prepare("INSERT INTO app_settings (key,value) VALUES (?,?)").run('xid:'+id,'1845000000000000001');run('homeRowsCache={at:0,rows:null}');
    const rows=await run('homeRecentRows(env)');assert.equal(rows.find(r=>r.id===id).x_id,'1845000000000000001');assert.ok(rows.filter(r=>r.id!==id).every(r=>r.x_id==null))}
   const last=texts.previous;
-  assert.equal(last.record,'2–1');assert.equal(Math.round(last.profit),Math.round(110+100/1.1-100));
-  assert.ok(last.x.startsWith('📊 Week')&&last.x.includes('2–1 on player props, +$101 betting $100 a pick'),last.x.split('\n')[0]);
-  assert.ok(last.x.includes('Parlays: 1–0 (+$66)'),last.x);
+  // One record (Nov 3): the singles and the parlay together.
+  assert.equal(last.record,'3–1');assert.equal(Math.round(last.profit),Math.round(110+100/1.1-100)+66);
+  assert.ok(last.x.startsWith('📊 Week')&&last.x.includes(': 3–1, +$167'),last.x.split('\n')[0]);
+  assert.ok(last.x.includes('Sportsbook 2–1 +$101 · Parlays 1–0 +$66'),last.x);
   assert.ok(last.x.includes('✅ Josh Allen o271.5 pass yds (+110) — had 312'),last.x);
   assert.ok(!last.x.includes('Bijan'),'the X post lists wins');assert.ok(last.reddit.includes('❌ Bijan Robinson Over 74.5 rushing yards (-115) — had 40'),'the Reddit post lists every graded pick, losses too');
   assert.ok(last.x.includes(`betthisguy.com${kit.previous.path}`));
@@ -57,8 +58,12 @@ add(week,'s',{player:'Started Guy',market:'Receptions',side:'Over',line:3.5,odds
   assert.ok(trimmed.length<=280&&/\+\d+ more on the site/.test(trimmed),trimmed);
   // /trust carries a server-written record summary, and robots.txt lets search engines load the record.
   const trust=await run('trustSnapshot(env)');
-  assert.ok(trust.includes('<p class="record-snapshot"><strong>Official record: 2–1 on player props, +\u0024101 betting \u0024100 a pick.</strong> Parlays: 1–0 <span class="nowrap">(+\u002466)</span>.'),trust.match(/<p class="record-snapshot">[\s\S]*?<\/p>/)?.[0]);
+  assert.ok(trust.includes('<p class="record-snapshot"><strong>Official record: 3–1, +\u0024167.</strong> NFL sportsbook 3–1 <span class="nowrap">(+\u0024167)</span>.'),trust.match(/<p class="record-snapshot">[\s\S]*?<\/p>/)?.[0]);
   const robots=await (await run("routeRequest(new Request('https://betthisguy.com/robots.txt'),env,{waitUntil(){}})")).text();
+  // CSP (Nov 3): report-only header on pages; reports counted by directive and host.
+  {const res=await run("worker.fetch(new Request('https://betthisguy.com/robots.txt'),env,{waitUntil(){}})");assert.match(res.headers.get('content-security-policy-report-only')||'',/frame-ancestors 'none'.*report-uri \/api\/csp-report/);
+   const waits=[];await run(`routeRequest(new Request('https://betthisguy.com/api/csp-report',{method:'POST',body:JSON.stringify({'csp-report':{'violated-directive':'img-src','blocked-uri':'https://evil.example/x.png'}})}),env,{waitUntil(p){globalThis.__w=p}})`);await run('globalThis.__w');
+   assert.equal(JSON.parse(db.prepare("SELECT value FROM app_settings WHERE key='csp-reports'").get().value)['img-src evil.example'],1)}
   assert.ok(robots.includes('Allow: /api/record\nDisallow: /api/'));
   // The home page knows last week's banner will have stats and hits, and reserves their space.
   const layout=JSON.parse(JSON.stringify(await run(`homeRecentRows(env).then(rows=>homeLayout(rows,${now}))`)));
