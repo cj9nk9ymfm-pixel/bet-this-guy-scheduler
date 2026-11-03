@@ -2680,3 +2680,5 @@ html body .ms2 .ms-group>:first-child{border-top:0!important}
 .ms2 .ms-seg button[aria-pressed="true"]{background:#fff;color:#090b0e}
 html body:not(.light) .st-seg button[aria-pressed="true"]{background:#fff!important;color:#090b0e!important}
 body.light .more-sheet.ms2{background:#fff;border-color:#d5dce6}body.light .ms2 .ms-group{background:#f8fafc;border-color:#e2e6ec}body.light .ms2 .ms-group>a,body.light .ms2 .ms-group>button{color:#0f172a!important;border-color:#e2e6ec!important}body.light .ms2 .ms-ico,body.light .ms2 .ms-seg{background:#eef2f7}
+/* Two columns on wide screens (Nov 3 redesign) */
+@media(min-width:1180px){html body:not([data-desktop-page]) .workspace .board.has-rail,html body[data-desktop-page="props"] .workspace .board.has-rail{max-width:1180px!important;width:100%!important;grid-template-columns:minmax(0,1fr) 380px!important;column-gap:32px!important}html body:not([data-desktop-page]) .board.has-rail>.desk-rail,html body[data-desktop-page="props"] .board.has-rail>.desk-rail{display:flex!important;gap:14px!important}.desk-rail .rc{margin:0}.desk-rail #heroEmail{margin:0!important}}
