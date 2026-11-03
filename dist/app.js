@@ -3623,19 +3623,21 @@ function statsProp(l){
 // of a blank box; the engine line sits under the record.
 (()=>{
   if(typeof document.getElementById!=='function'||!document.getElementById('propList'))return;
-  const body=document.body,list=document.getElementById('propList'),SHOW=6;
+  // Nov 3 redesign: no preview cards; the board opens from one button (a player
+  // search or filter shows its results straight away).
+  const body=document.body,list=document.getElementById('propList'),filtered=()=>{const c=document.getElementById('playerFilterClear');return Boolean(c&&!c.hidden)||Boolean(typeof selectedPlayer!=='undefined'&&selectedPlayer)};
   body.classList.add('board-collapsed');
   // "See all" sits in the board's heading row, beside the title.
   const btn=document.createElement('button');btn.type='button';btn.className='board-browse';btn.id='boardBrowse';
   (document.getElementById('propsSection')||list).append(btn);
   function paint(){
     const cards=[...list.querySelectorAll(':scope>.prop-card')];
-    cards.forEach((c,i)=>c.classList.toggle('board-extra',i>=SHOW));
+    const SHOW=filtered()?99:0;cards.forEach((c,i)=>c.classList.toggle('board-extra',i>=SHOW));body.classList.toggle('board-shut',body.classList.contains('board-collapsed')&&!SHOW);
     const total=Math.max(cards.length,Number(typeof visiblePropTotal!=='undefined'?visiblePropTotal:0)||0);
     btn.hidden=!body.classList.contains('board-collapsed')||total<=SHOW;
-    btn.textContent=`See all ${total}`;btn.setAttribute('aria-label',`Browse every prop (${total})`);
+    btn.innerHTML=`Browse all ${total} props <span aria-hidden="true">›</span>`;btn.setAttribute('aria-label',`Browse every prop (${total})`);
   }
-  btn.onclick=()=>{body.classList.remove('board-collapsed');btn.hidden=true;window.btgCount?.('board:browse')};
+  btn.onclick=()=>{body.classList.remove('board-collapsed','board-shut');btn.hidden=true;window.btgCount?.('board:browse')};
   if(typeof MutationObserver==='function')new MutationObserver(paint).observe(list,{childList:true});
   paint();
   // Engine line under the record.
@@ -3721,3 +3723,16 @@ function statsProp(l){
   const mark=()=>box.querySelectorAll('[data-stake]').forEach(b=>b.classList.toggle('on',Number(b.dataset.stake)===Number(String(w.value).replace(/[^0-9.]/g,''))));
   box.addEventListener('click',e=>{const b=e.target.closest('[data-stake]');if(!b)return;w.value=b.dataset.stake;w.dispatchEvent(new Event('input',{bubbles:true}));w.dispatchEvent(new Event('change',{bubbles:true}));mark();window.btgCount?.('slip:stake-chip')});
   w.addEventListener('input',mark);mark()})();
+
+// Phone slip bar (Nov 3 redesign): with picks in the slip, a bar above the
+// bottom menu shows the count and opens the slip.
+(()=>{if(typeof document.getElementById!=='function'||typeof renderSlip!=='function')return;
+  const bar=document.createElement('button');bar.type='button';bar.id='slipBar';bar.className='slip-bar';bar.hidden=true;document.body.appendChild(bar);
+  bar.onclick=()=>{window.btgCount?.('slip:bar');document.querySelector('.mobile-nav [data-page-link="slip"]')?.click()};
+  const paint=()=>{const n=Array.isArray(state?.slip)?state.slip.length:0,page=document.body.dataset.mobilePage||'props';
+    bar.hidden=!n||page==='slip'||innerWidth>720;if(bar.hidden)return;
+    const names=state.slip.slice(0,2).map(x=>String(x.player||'').split(' ').slice(-1)[0]).filter(Boolean).join(', ');
+    bar.innerHTML=`<span><b>Slip · ${n} pick${n===1?'':'s'}</b>${names?` · ${htmlEscape(names)}${n>2?'…':''}`:''}</span><span class="sb-go">${n>1?'Bet them':'Bet it'} ›</span>`};
+  const base=renderSlip;renderSlip=function(){const out=base.apply(this,arguments);try{paint()}catch{}return out};
+  addEventListener('resize',paint);if(typeof MutationObserver==='function')new MutationObserver(paint).observe(document.body,{attributes:true,attributeFilter:['data-mobile-page']});
+  setTimeout(paint,800)})();
