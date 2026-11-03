@@ -2682,3 +2682,13 @@ html body:not(.light) .st-seg button[aria-pressed="true"]{background:#fff!import
 body.light .more-sheet.ms2{background:#fff;border-color:#d5dce6}body.light .ms2 .ms-group{background:#f8fafc;border-color:#e2e6ec}body.light .ms2 .ms-group>a,body.light .ms2 .ms-group>button{color:#0f172a!important;border-color:#e2e6ec!important}body.light .ms2 .ms-ico,body.light .ms2 .ms-seg{background:#eef2f7}
 /* Two columns on wide screens (Nov 3 redesign) */
 @media(min-width:1180px){html body:not([data-desktop-page]) .workspace .board.has-rail,html body[data-desktop-page="props"] .workspace .board.has-rail{max-width:1180px!important;width:100%!important;grid-template-columns:minmax(0,1fr) 380px!important;column-gap:32px!important}html body:not([data-desktop-page]) .board.has-rail>.desk-rail,html body[data-desktop-page="props"] .board.has-rail>.desk-rail{display:flex!important;gap:14px!important}.desk-rail .rc{margin:0}.desk-rail #heroEmail{margin:0!important}}
+
+/* Line checker on the pick sheet (Nov 3 redesign) */
+.bs-line{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 10px;margin:0 0 10px;padding:10px 12px;border-radius:14px;background:#12151a;border:1px solid #232830}
+.bs-line>span{flex:1 0 100%;font:700 11px "DM Sans",sans-serif;letter-spacing:.08em;text-transform:uppercase;color:#98a1ac}
+.bs-step{display:flex;align-items:center;gap:10px}.bs-step b{min-width:40px;text-align:center;font:700 20px "Space Grotesk",sans-serif}
+.bs-step button{width:36px;height:36px;border-radius:10px;border:1px solid #232830;background:#181c22;color:#f4f6f9;font:700 18px "DM Sans",sans-serif;cursor:pointer}
+.bs-ou{display:inline-flex;background:#181c22;border-radius:10px;padding:3px}.bs-ou button{border:0;background:none;color:#98a1ac;font:700 13px "DM Sans",sans-serif;padding:7px 12px;border-radius:8px;cursor:pointer}
+.bs-ou button[aria-pressed="true"]{background:#2bd97c;color:#052e16}
+.bs-reset{flex:1 0 100%;border:0;background:none;color:#8fb3ff;font:600 13px "DM Sans",sans-serif;text-align:left;padding:0;cursor:pointer}
+body.light .bs-line{background:#f8fafc;border-color:#e2e6ec}body.light .bs-step button,body.light .bs-ou{background:#fff;border-color:#d5dce6;color:#0f172a}
