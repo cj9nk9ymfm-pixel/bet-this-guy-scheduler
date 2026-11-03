@@ -68,5 +68,11 @@ const run=code=>vm.runInContext(code,context);run('fetch=globalThis.fetch');
    const g=JSON.parse(JSON.stringify(await run(`sharpGate(env,${JSON.stringify(['Priced Guy','Unpriced Guy','Same Run Guy','Fresh Guy','New Guy'].map(c))},${Date.parse('2026-11-02T14:00:00Z')})`)));
    assert.deepEqual(g.ready.map(p=>p.player),['Priced Guy']);assert.deepEqual(g.held.map(p=>p.player),['Unpriced Guy','Same Run Guy'],'logged in the same run as the pull counts as checked');assert.deepEqual(g.deferred.map(p=>p.player),['Fresh Guy','New Guy']);
    const log=JSON.parse(db.prepare("SELECT value FROM app_settings WHERE key='signal-held:2026-11-02'").get().value);assert.ok(log.some(x=>x.player==='Unpriced Guy'&&x.why==='no sharp price'),'held and logged with the reason')}
+  // NFL blank stat = 0 (Nov 3, J.K. Dobbins: carries and a TD, receiving left blank).
+  assert.equal(run(`nflZeroStat('Receiving Yards',{rushing_attempts:9,receptions:null,receiving_yards:null})`),true,'no catches, ran the ball: 0 receiving yards');
+  assert.equal(run(`nflZeroStat('Receiving Yards',{rushing_attempts:9,receptions:2})`),false,'had catches: never assumed 0');
+  assert.equal(run(`nflZeroStat('Rushing Yards',{receptions:4,rushing_attempts:null})`),true,'no carries, caught the ball: 0 rushing yards');
+  assert.equal(run(`nflZeroStat('Receiving Yards',{})`),true,'a whole blank row, as before');
+  assert.equal(run(`nflZeroStat('Field Goals Made',{})`),false,'never kickers');assert.equal(run(`nflZeroStat('Receiving Yards',{missingPlayerStats:true})`),false,'no row: only from a full box score');
   console.log('PASS: NBA matchup data (defense allowed by position from box scores, day by day; ranked among 25+ teams with 5+ games, else last season; a new pick waits up to 12 minutes for its matchup; top pick prefers strong form; NBA stats check and its backfill)');
 })().catch(e=>{console.error(e);process.exit(1)});

@@ -797,6 +797,19 @@ async function recordGameBoxscore(record,env,signal,cache){
   return {...found[0],scoreboardFinal:stateOf(game)==='final',scoreboardState:stateOf(game)};
 }
 
+// NFL: when a played-in game's stat is blank, it's 0 (books grade any snap
+// as action). A whole blank row, no row in a full final box score, or (Nov 3)
+// the stat's own group blank while he recorded something else: J.K. Dobbins
+// had carries and a TD but no catches, and his receiving yards came back
+// blank, so an Over 4.5 sat ungraded. Catch, rush and pass stats only.
+function nflZeroStat(market,row){
+  const m=String(market||'').trim().toLowerCase(),all=['receptions','receiving_targets','rushing_attempts','passing_attempts','passing_completions'];
+  if(!/^(receptions|receiving yards|rushing yards|rush attempts|rush \+ receiving yards|passing yards|pass completions|pass attempts)$/.test(m)||!row)return false;
+  if(row.missingPlayerStats)return row.boxMatches===0&&Number(row.boxRowCount)>=20;
+  if(!all.some(k=>Number(row[k])>0))return true;
+  const group=/^(receptions|receiving yards)$/.test(m)?['receptions','receiving_targets']:/^(rushing yards|rush attempts)$/.test(m)?['rushing_attempts']:/^(passing yards|pass completions|pass attempts)$/.test(m)?['passing_attempts','passing_completions']:null;
+  return Boolean(group)&&group.every(k=>!(Number(row[k])>0))&&all.filter(k=>!group.includes(k)).some(k=>Number(row[k])>0);
+}
 async function recordPlayerStats(record, env, signal, cache=new Map()) {
   const gameRow=await recordGameBoxscore(record,env,signal,cache);
   if(gameRow!==undefined&&!gameRow?.missingPlayerStats)return gameRow;
@@ -979,8 +992,7 @@ async function gradePublicRecord(record, env, statsCache, signal) {
     // stats only (never kickers or touchdowns). Wait 4 hours after kickoff
     // so late box-score fixes land.
     let noStats=false;
-    const blankRow=row&&!row.missingPlayerStats&&!['receptions','receiving_targets','rushing_attempts','passing_attempts','passing_completions'].some(k=>Number(row[k])>0),noRow=row?.missingPlayerStats&&row.boxMatches===0&&Number(row.boxRowCount)>=20;
-    if(!nba&&finished&&observedValue===null&&(blankRow||noRow)&&/^(receptions|receiving yards|rushing yards|rush attempts|rush \+ receiving yards|passing yards|pass completions|pass attempts)$/i.test(String(leg.market||'').trim())&&BTGStats.supports(leg)&&Date.now()-Date.parse(leg.gameTime)>4*3600000){observedValue=0;noStats=true}
+    if(!nba&&finished&&observedValue===null&&nflZeroStat(leg.market,row)&&BTGStats.supports(leg)&&Date.now()-Date.parse(leg.gameTime)>4*3600000){observedValue=0;noStats=true}
     // Stats that only go up (not yards: a loss of yards can lower them): once
     // the live box score passes the line, the bet is decided, so it settles
     // now (Under lost, Over won) instead of waiting for the final.
@@ -1475,6 +1487,10 @@ const SECURITY_HEADERS = {
   "referrer-policy": "strict-origin-when-cross-origin",
   "strict-transport-security": "max-age=31536000",
   "permissions-policy": "camera=(), microphone=(), geolocation=()",
+  // Content security policy (Nov 3 audit), report-only for now: browsers
+  // report what it would block to /api/csp-report and block nothing. Once the
+  // reports are clean it becomes content-security-policy.
+  "content-security-policy-report-only": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; report-uri /api/csp-report",
 };
 
 const NOT_FOUND_HTML = `<!doctype html>
@@ -1543,6 +1559,7 @@ async function routeRequest(request, env, ctx) {
     if (url.pathname === "/api/x-status") return json(await xStatus(env), 200, { "cache-control": "no-store" });
     if (url.pathname === "/api/x-card.png") return xCardPreview(request, env);
     if (url.pathname === "/api/hit") return usageHit(request, env, ctx);
+    if (url.pathname === "/api/csp-report") return cspReport(request, env, ctx);
     if (url.pathname === "/go") return goPage(request);
     if (url.pathname === "/api/affiliate") return affiliateApi(request, env);
     if (url.pathname.startsWith("/api/alerts/")) return alertsApi(request, env);
