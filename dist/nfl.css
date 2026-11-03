@@ -1369,7 +1369,7 @@ html body .prop-card.compact-card>.card-why{grid-area:why;margin:-2px 2px 0}
 .on-engine-dot{flex:none;width:8px;height:8px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 0 #22c55e88;animation:onPulse 2s infinite}
 @keyframes onPulse{0%{box-shadow:0 0 0 0 #22c55e88}70%{box-shadow:0 0 0 7px #22c55e00}100%{box-shadow:0 0 0 0 #22c55e00}}
 @media (prefers-reduced-motion:reduce){.on-engine-dot{animation:none}}
-#heroTitle b,#heroTitle .hero-profit{white-space:nowrap}
+#heroTitle b,#heroTitle .hero-profit{white-space:nowrap}#heroTitle .hero-profit{margin:0 2px 0 6px}
 /* Alerts banner */
 .alerts-hero{position:relative;display:flex;align-items:center;gap:12px;margin-top:12px;padding:14px 40px 14px 14px;border-radius:16px;border:1px solid #3b82f655;background:linear-gradient(135deg,#1d4ed833,#0ea5e91a 60%,transparent),var(--panel)}
 .alerts-hero[hidden],.alerts-on .alerts-hero{display:none!important}
