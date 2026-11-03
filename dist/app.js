@@ -1982,6 +1982,7 @@ if(typeof fetch==='function')window.btgCountVisit?.('view:home');
   // How to get alerts: X first (every pick posts there the second it locks,
   // and its bell works on any phone), then email, then this site's own
   // notifications (one tap on Android and computers; iPhone needs the Home Screen).
+   window.BTGChooseAlerts=()=>chooseAlerts();
   function chooseAlerts(){
     let d=document.getElementById('alertChooser');
     if(!d){d=document.createElement('dialog');d.id='alertChooser';d.className='alert-chooser';d.setAttribute('aria-labelledby','acTitle');document.body.append(d)}
@@ -3778,3 +3779,10 @@ function statsProp(l){
   dlg?.querySelector('.mb-close')?.addEventListener('click',()=>dlg.close());dlg?.addEventListener('click',e=>{if(e.target===dlg)dlg.close()});
   document.querySelector('[data-more-action="mybets"]')?.addEventListener('click',()=>{document.getElementById('moreSheet')?.close?.();open()});
   window.BTGMyBets={add,has,open,render}})();
+
+// More sheet (Nov 3 redesign): alerts open the chooser; theme is a segmented control.
+(()=>{if(typeof document.getElementById!=='function')return;const sheet=document.getElementById('moreSheet');if(!sheet)return;
+  sheet.querySelector('[data-more-action="alerts"]')?.addEventListener('click',()=>{sheet.close();if(window.BTGChooseAlerts)window.BTGChooseAlerts();else document.querySelector('[data-alerts-toggle]')?.click()});
+  const seg=sheet.querySelector('.ms-seg'),paint=()=>{const t=typeof themeMode==='function'?themeMode():'dark';seg?.querySelectorAll('[data-ms-theme]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.msTheme===t)))};
+  seg?.addEventListener('click',e=>{const b=e.target.closest('[data-ms-theme]');if(!b||typeof setTheme!=='function')return;setTheme(b.dataset.msTheme);paint();try{paintSegments()}catch{}});
+  sheet.addEventListener('toggle',paint);document.getElementById('mobileMoreBtn')?.addEventListener('click',()=>setTimeout(paint,50));paint()})();
