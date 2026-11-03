@@ -2700,3 +2700,8 @@ body.light .pc{box-shadow:0 14px 34px -24px rgba(15,23,42,.35)}body.light .pc-wh
 body.light .pc-cd{background:#fff7e6;border-color:#f6d58a;color:#8a5a00}body.light .pc-tag{color:#15803d}
 body.light .slip-bar{background:#0f172a;border-color:#0f172a}
 .desk-rail #heroBanner{order:1}.desk-rail #heroEmail{order:2}.desk-rail #myRecord{order:3}
+
+/* Prediction view: its own record card; the sportsbook card hides (Nov 3 audit) */
+html body[data-price-view="predictions"]:not(.zz) #heroBanner.hero.has-rc{display:none!important}
+html body:not(.zz) #pmHero.has-rc{background:none!important;border:0!important;padding:0!important;box-shadow:none!important;display:block!important}
+#pmHero.has-rc #pmHeroTitle{margin:8px 2px 0;font-size:14px}#pmHero.has-rc .hero-actions{display:none!important}

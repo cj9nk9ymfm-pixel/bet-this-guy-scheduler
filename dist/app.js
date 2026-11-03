@@ -1578,7 +1578,7 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
     {const sea=heroSeason;let rc=$('#recCard');
       if(sea&&sea.wins+sea.losses>=5){
         if(!rc){rc=document.createElement('a');rc.id='recCard';rc.className='rc'}
-        rc.href=`/trust${NBA?'?sport=NBA':''}`;hero.prepend(rc);hero.classList.add('has-rc');
+        rc.href=NBA?'/trust#nba':'/trust';hero.prepend(rc);hero.classList.add('has-rc');
         const all=window.btgAll(sea),mny=window.btgMoney,pts=(sea.curve||[]).map(p=>({v:+p.v||0,t:Date.parse(p.d)})).filter(p=>Number.isFinite(p.t));
         // Weeks run Tuesday to Monday (NFL) — the same for NBA so the bars line up.
         const wk=t=>{const d=new Date(t-12*3600000);d.setUTCHours(0,0,0,0);d.setUTCDate(d.getUTCDate()-(d.getUTCDay()+5)%7);return d.getTime()};
@@ -3213,8 +3213,11 @@ function statsProp(l){
     const title=document.getElementById('pmHeroTitle'),panel=document.getElementById('pmHeroPicks');
     if(!w&&!l){title.innerHTML=`${nbaRec?'NBA prediction record':'Prediction record'} <b>First picks grading now</b>`;panel.hidden=true;hero.classList.remove('open');return}
     // The prediction view shows the prediction record only; the sportsbook record lives on the Sportsbook view.
+    // Nov 3 redesign: the same record card as the sportsbook view, for the apps.
+    {let rc=document.getElementById('pmRecCard');if(!rc){rc=document.createElement('a');rc.id='pmRecCard';rc.className='rc pm-rc';hero.prepend(rc)}rc.href='/trust#predictions';hero.classList.add('has-rc');
+      rc.innerHTML=`<div class="rc-top"><div><span class="rc-eye">${nbaRec?'NBA ':''}Prediction apps · every official pick</span><strong class="rc-big ${net<0?'down':''}">${htmlEscape(money(net))}</strong><span class="rc-sub"><b>${w}–${l}${pu?`–${pu}`:''}</b> · ${nbaRec?'singles at $100':'singles at $100, parlays at $25'}, after each app’s fee</span></div></div><div class="rc-proof">${rec.tracked?`<span class="rc-chip hl">${typeof icon==='function'?icon('check'):''} ${rec.beat} of ${rec.tracked} beat the closing price</span>`:''}<span class="rc-chip">Novig · ProphetX</span><span class="rc-chip">Losses included</span></div>`}
     const lead='';
-    title.innerHTML=`${lead}<button type="button" class="hero-toggle${lead?' pm-second':''}" id="pmHeroToggle" aria-expanded="${!panel.hidden}" aria-controls="pmHeroPicks">${lead?'Prediction-app picks':nbaRec?'NBA prediction record':'Prediction record'} <b>${w}–${l}${pu?`–${pu}`:''}</b> <span class="hero-profit ${net>=0?'up':'down'}">${htmlEscape(money(net))}</span>${lead&&w+l<20?'<em class="pm-new">new</em>':''}<i aria-hidden="true"><svg class="ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></i></button>`;
+    title.innerHTML=`${lead}<button type="button" class="hero-toggle${lead?' pm-second':''}" id="pmHeroToggle" aria-expanded="${!panel.hidden}" aria-controls="pmHeroPicks">Every graded pick${lead&&w+l<20?'<em class="pm-new">new</em>':''}<i aria-hidden="true"><svg class="ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></i></button>`;
     const stat=(value,label,tone='')=>`<div><strong class="${tone}">${htmlEscape(value)}</strong><span>${htmlEscape(label)}</span></div>`;
     const graded=[...(data.pmPicks||[]),...(data.pmParlays||[])].filter(r=>['won','lost','push'].includes(r.result)).sort((a,b)=>String(b.gameTime).localeCompare(String(a.gameTime)));
     const tag={won:['g','check','Hit'],lost:['r','over','Lost'],push:['n','fair','Push']};
