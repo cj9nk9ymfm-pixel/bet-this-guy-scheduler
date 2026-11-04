@@ -1838,9 +1838,11 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
     window.BTGRefreshStakes=()=>{if(!heroRows)return;renderHero(summarise(heroRows,Date.now(),viewerStake()));renderOfficialNow(heroRows)};
     if(!NBA&&Array.isArray(window.BTG_HOME)){heroRows=window.BTG_HOME;heroSeason=window.BTG_SEASON||null;renderHero(summarise(heroRows,Date.now(),viewerStake()));renderOfficialNow(heroRows);return}
     try{
-      const response=await fetch(`/api/record?view=home${NBA?'&sport=NBA':''}`,{signal:AbortSignal.timeout(10000)});
-      if(!response.ok)throw new Error();
-      const body=await response.json();heroRows=body.success?body.recent||[]:null;heroSeason=body.season||null;if(heroSeason){window.BTG_SEASON=heroSeason;dispatchEvent(new Event('btg:season'))}if(Array.isArray(heroRows))window.BTG_REC_ROWS=[...(window.BTG_REC_ROWS||[]),...heroRows];renderHero(heroRows?summarise(heroRows,Date.now(),viewerStake()):null);renderOfficialNow(heroRows);
+      // NBA nights (Nov 4): the page HTML carries the NBA rows too, so the cards don't wait on a second request.
+      const inline=NBA&&window.BTG_HOME_NBA?.success?window.BTG_HOME_NBA:null;
+      const response=inline?null:await fetch(`/api/record?view=home${NBA?'&sport=NBA':''}`,{signal:AbortSignal.timeout(10000)});
+      if(response&&!response.ok)throw new Error();
+      const body=inline||await response.json();heroRows=body.success?body.recent||[]:null;heroSeason=body.season||null;if(heroSeason){window.BTG_SEASON=heroSeason;dispatchEvent(new Event('btg:season'))}if(Array.isArray(heroRows))window.BTG_REC_ROWS=[...(window.BTG_REC_ROWS||[]),...heroRows];renderHero(heroRows?summarise(heroRows,Date.now(),viewerStake()):null);renderOfficialNow(heroRows);
     }catch{renderHero(null)}
   }
   $('#heroCta')&&($('#heroCta').onclick=event=>{event.preventDefault();$('#propsSection')?.scrollIntoView({behavior:'smooth',block:'start'})});
