@@ -3205,6 +3205,18 @@ function statsProp(l){
       <p class="pc-edge">${htmlEscape(pmWin(r.netOdds??r.odds,wagerStake(),null))}${Number.isFinite(fair)?` · hit chance <b>${Math.round(fair)}%</b>`:''}${Number.isFinite(edge)?` · ${edge.toFixed(1)} pts under fair`:''}${r.open===false?` · not offered in ${htmlEscape(data?.stateName||'your state')}`:''}</p>
     </div>`;
   }
+  // Busy prediction night (4+ to play): the top pick's card, then one row each by kickoff.
+  function pmRowLite(r){
+    const ini=String(r.player||'').split(' ').map(x=>x[0]||'').join('').slice(0,2),idx=pmRows.push(pmRecord(r))-1,w=r.why?.boxes?.[0];
+    const bet=`${r.side} ${r.line} ${typeof unitOf==='function'?unitOf(r.market):String(r.market||'').toLowerCase()}`,when=new Date(r.gameTime).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
+    return `<div class="pr2 pm-row2" role="button" tabindex="0" data-pm-i="${idx}" data-pick-id="${htmlEscape(r.id||'')}"><span class="pr2-ph"><span>${htmlEscape(ini)}</span><img loading="lazy" decoding="async" src="/api/player-photo?name=${encodeURIComponent(r.player||'')}${LEAGUE==='NBA'?'&sport=NBA':''}" alt="" onerror="this.remove()"></span><span class="pr2-t"><b>${htmlEscape(r.player||'')}</b><span>${htmlEscape(bet)} · ${htmlEscape(when)}</span>${w?`<em class="pr2-why">✓ ${htmlEscape(w.big)} ${htmlEscape(String(w.label).toLowerCase())}</em>`:''}</span><span class="pr2-q pm-q" data-slip-price><b>${htmlEscape(pct(r.odds))}</b><small>${htmlEscape(r.exchange||'')}</small></span></div>`;
+  }
+  function pmBusy(list){
+    const open=list.filter(r=>!r.result&&!r.voidReason&&Date.parse(r.gameTime)>Date.now()),rest=list.filter(r=>!open.includes(r));
+    if(open.length<4)return null;
+    const top=[...open].sort((a,b)=>(Number(b.edge)||0)-(Number(a.edge)||0))[0],others=open.filter(r=>r!==top).sort((a,b)=>String(a.gameTime).localeCompare(String(b.gameTime)));
+    return `<div class="pd-wrap"><div class="pd-sum"><div><b>${open.length}</b><span>picks to play</span></div><div><b>${new Set(open.map(r=>r.exchange)).size}</b><span>app${new Set(open.map(r=>r.exchange)).size===1?'':'s'}</span></div><div><b>${new Set(open.map(r=>r.eventId)).size}</b><span>games</span></div></div>${pmCard(top)}<div class="pd-game">${others.map(pmRowLite).join('')}</div></div>${rest.map(pickRow).join('')}`;
+  }
   function pickRow(r){
     if(!r.result&&!r.voidReason&&Date.parse(r.gameTime)>Date.now())return pmCard(r);
     const initials=String(r.player||'').split(' ').map(x=>x[0]||'').join('').slice(0,3),bet=/touchdown/i.test(r.market||'')&&Number(r.line)===.5?`${r.side==='Under'?'No ':''}${r.market}`:`${r.side} ${r.line} ${String(r.market||'').toLowerCase()}`;
@@ -3273,7 +3285,7 @@ function statsProp(l){
     const tonight=night(Date.now()),laterOf=r=>LEAGUE==='NBA'&&!r.result&&night(Date.parse(r.gameTime))>tonight,now_=list.filter(r=>!laterOf(r)),later=list.filter(laterOf);
     const dayHead=n=>{const d=new Date(`${n}T12:00:00Z`),next=new Date(Date.parse(`${tonight}T12:00:00Z`)+86400000).toISOString().slice(0,10);return `<p class="on-group on-group-later">${d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',timeZone:'UTC'})}${n===next?' · tomorrow':''}</p>`};
     const laterHtml=[...new Set(later.map(r=>night(Date.parse(r.gameTime))))].sort().map(n=>dayHead(n)+later.filter(r=>night(Date.parse(r.gameTime))===n).map(pickRow).join('')).join('');
-    document.getElementById('pmPicksList').innerHTML=list.length?(later.length&&now_.length?'<p class="on-group">Tonight</p>':'')+now_.map(pickRow).join('')+laterHtml:'<div class="on-empty"><strong>'+(LEAGUE==='NBA'?'No NBA picks yet tonight.':'No picks yet this week.')+'</strong><span>They post when an app’s price beats the sportsbooks’ fair chance by 2+ points after its fee.</span></div>';
+    document.getElementById('pmPicksList').innerHTML=list.length?(later.length&&now_.length?'<p class="on-group">Tonight</p>':'')+(pmBusy(now_)??now_.map(pickRow).join(''))+laterHtml:'<div class="on-empty"><strong>'+(LEAGUE==='NBA'?'No NBA picks yet tonight.':'No picks yet this week.')+'</strong><span>They post when an app’s price beats the sportsbooks’ fair chance by 2+ points after its fee.</span></div>';
     bindPmRows();focusPick();window.BTGTagInjuries?.();
   }
   // Board: every prop's best prediction-market chance in the visitor's state.
@@ -3788,11 +3800,16 @@ function statsProp(l){
   const legsOf=r=>{try{return JSON.parse(r.legs_json||'[]')}catch{return []}};
   function add(r){const list=load();if(list.some(b=>b.pickId===r.id))return;const parlay=r.kind==='parlay',l=legsOf(r)[0]||{};
     const stake=parlay?Math.max(1,Number(preferences?.parlayWager)||25):Math.max(1,typeof wagerStake==='function'?wagerStake():100);
-    list.push({id:`b${Date.now()}`,pickId:r.id,parlay,player:parlay?legsOf(r).map(x=>String(x.player||'').split(' ').slice(-1)[0]).join(' + ')+' parlay':r.player,bet:parlay?`${legsOf(r).length} legs`:`${r.side} ${r.line} ${String(r.market||'').toLowerCase()}`,odds:Number(parlay?r.combined_odds:r.odds),book:l.book||'',stake,at:Date.now(),game:r.game_time||''});save(list);
+    const entry={id:`b${Date.now()}`,pickId:r.id,parlay,player:parlay?legsOf(r).map(x=>String(x.player||'').split(' ').slice(-1)[0]).join(' + ')+' parlay':r.player,bet:parlay?`${legsOf(r).length} legs`:`${r.side} ${r.line} ${String(r.market||'').toLowerCase()}`,odds:Number(parlay?r.combined_odds:r.odds),book:l.book||'',stake,at:Date.now(),game:r.game_time||''};list.push(entry);save(list);
+    // Signed in: the account's tracker keeps it (and grades it) on every device.
+    if(window.BTGAuth?.isSignedIn?.()&&!parlay)window.BTGAuth.trackParlay?.({wager:stake,source:'board',legs:[{player:r.player,market:r.market,side:r.side,line:Number(r.line),odds:Number(r.odds),eventId:l.gameId||r.event_id||'',team:l.team||'',gameStart:r.game_time||''}]}).then(res=>{const id=res?.bet?.id;if(id){save(load().map(b=>b.id===entry.id?{...b,serverId:id}:b))}}).catch(()=>{});
+    window.BTGEmailAsk?.('mybets');
     window.btgCount?.('mybets:add');if(typeof slipToast==='function')slipToast(`${icon('check')} Tracking in My bets · $${stake} at ${am(parlay?r.combined_odds:r.odds)}`)}
   const has=id=>load().some(b=>b.pickId===id);
   const dlg=document.getElementById('myBetsDialog'),body=document.getElementById('myBetsBody');
-  function render(){const list=load().sort((a,b)=>b.at-a.at);
+  let server=[];
+  const fromServer=b=>({id:'s'+b.id,serverId:b.id,player:b.title||'Tracked bet',bet:'',odds:Number(b.american_odds),book:b.sportsbook||'',stake:Math.round(Number(b.stake_cents)/100),at:Date.parse(b.created_at)||0,result:['won','lost','push'].includes(b.result)?b.result:null,server:true});
+  function render(){const local=load(),ids=new Set(local.map(b=>b.serverId).filter(Boolean)),list=[...local,...server.filter(b=>!ids.has(b.id)).map(fromServer)].sort((a,b)=>b.at-a.at);
     for(const b of list){const r=resultOf(b);if(r&&!b.result)b.result=r}save(list);
     const done=list.filter(b=>b.result),w=done.filter(b=>b.result==='won').length,l=done.filter(b=>b.result==='lost').length,profit=done.reduce((t,b)=>t+net(b),0);
     let compare='';if(list.length){const since=Math.min(...list.map(b=>b.at)),ours=rows().filter(x=>/^official\|/.test(x.id||'')&&['won','lost','push'].includes(x.result)&&Date.parse(x.posted_at||x.game_time||'')>=since-86400000);
@@ -3801,11 +3818,12 @@ function statsProp(l){
         compare=`<p class="mb-compare">You tracked ${followed} of our ${uniq.length} graded picks since you started. Betting all of them would have made <b class="${all>=0?'pos':'neg'}">${mny(all)}</b> (singles $100, parlays $25).</p>`}}
     body.innerHTML=list.length?`<div class="mb-kpis"><div><b class="${profit>=0?'pos':'neg'}">${mny(profit)}</b><span>your profit · ${done.length} graded</span></div><div><b>${w}–${l}</b><span>won–lost${list.length>done.length?` · ${list.length-done.length} open`:''}</span></div></div>${compare}
       <div class="mb-list">${list.map(b=>{const r=b.result,n=net(b);return `<div class="mb-row" data-id="${htmlEscape(b.id)}"><div class="mb-t"><b>${htmlEscape(b.player)}</b><span>${htmlEscape(b.bet)}${b.book?` · ${htmlEscape(b.book)}`:''} · $<input class="mb-stake" type="number" inputmode="decimal" min="1" value="${b.stake}" aria-label="Amount bet"> at ${am(b.odds)}</span></div><div class="mb-m ${r==='won'?'pos':r==='lost'?'neg':''}">${r?mny(n):'Open'}<small>${r==='won'?'Won':r==='lost'?'Lost':r==='push'?'Push':'Not graded yet'}</small></div><button type="button" class="mb-x" aria-label="Remove">×</button></div>`}).join('')}</div>
-      <p class="mb-fine">Saved on this device. Amounts are what you tell us; change any amount above.</p>`
+      <p class="mb-fine">${window.BTGAuth?.isSignedIn?.()?'Saved to your account, on every device.':'Saved on this device. <button type="button" class="mb-signin">Sign in</button> to keep them on every device.'} Amounts are what you tell us; change any amount above.</p>`
       :`<div class="mb-empty"><b>No bets tracked yet</b><span>Tap “I bet this” on any official pick and it lands here. We grade it with the pick, so you see your own record next to ours.</span></div>`;
+    body.querySelector('.mb-signin')?.addEventListener('click',()=>{dlg.close();window.BTGAuth?.open?.('signup')});
     body.querySelectorAll('.mb-row').forEach(row=>{const id=row.dataset.id;row.querySelector('.mb-x').onclick=()=>{save(load().filter(b=>b.id!==id));render()};
       row.querySelector('.mb-stake').onchange=e=>{const v=Math.max(1,Number(e.target.value)||1);save(load().map(b=>b.id===id?{...b,stake:v}:b));render()}})}
-  function open(){render();if(dlg&&!dlg.open)dlg.showModal?.();window.btgCount?.('mybets:open')}
+  function open(){render();if(dlg&&!dlg.open)dlg.showModal?.();window.btgCount?.('mybets:open');if(window.BTGAuth?.isSignedIn?.())window.BTGAuth.serverBets?.().then(list=>{server=Array.isArray(list)?list:[];if(dlg?.open)render()}).catch(()=>{})}
   dlg?.querySelector('.mb-close')?.addEventListener('click',()=>dlg.close());dlg?.addEventListener('click',e=>{if(e.target===dlg)dlg.close()});
   document.querySelector('[data-more-action="mybets"]')?.addEventListener('click',()=>{document.getElementById('moreSheet')?.close?.();open()});
   window.BTGMyBets={add,has,open,render}})();
@@ -3816,3 +3834,16 @@ function statsProp(l){
   const seg=sheet.querySelector('.ms-seg'),paint=()=>{const t=typeof themeMode==='function'?themeMode():'dark';seg?.querySelectorAll('[data-ms-theme]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.msTheme===t)))};
   seg?.addEventListener('click',e=>{const b=e.target.closest('[data-ms-theme]');if(!b||typeof setTheme!=='function')return;setTheme(b.dataset.msTheme);paint();try{paintSegments()}catch{}});
   sheet.addEventListener('toggle',paint);document.getElementById('mobileMoreBtn')?.addEventListener('click',()=>setTimeout(paint,50));paint()})();
+
+// Email ask after an action (Nov 4, Tim): right after "+ Slip" or "I bet this",
+// one short line with an email field. Once a session, and never once signed up.
+(()=>{if(typeof document.getElementById!=='function')return;
+  const done=()=>/\b(email-on|alerts-on)\b/.test(document.documentElement.className)||(()=>{try{return localStorage.getItem('btg-email-sub')==='1'}catch{return false}})();
+  let asked=false;try{asked=sessionStorage.getItem('btg-ask-after')==='1'}catch{}
+  window.BTGEmailAsk=src=>{if(asked||done()||!window.BTGEmailSub?.inline)return;asked=true;try{sessionStorage.setItem('btg-ask-after','1')}catch{}
+    setTimeout(()=>{const el=document.createElement('div');el.className='ask-after';el.setAttribute('role','dialog');el.setAttribute('aria-label','Get the next pick by email');
+      el.innerHTML='<button type="button" class="aa-x" aria-label="Close">×</button><b>Want the next pick the second it locks?</b><span>Free, by email. One-tap unsubscribe.</span>';
+      document.body.appendChild(el);window.BTGEmailSub.inline(el,'after');el.querySelector('.aa-x').onclick=()=>{el.remove();window.btgCount?.('email:after-close')};
+      window.btgCount?.('email:after-shown');setTimeout(()=>el.isConnected&&!el.contains(document.activeElement)&&el.remove(),20000)},1400)};
+  const base=typeof addBetToSlip==='function'?addBetToSlip:null;
+  if(base){addBetToSlip=function(){const out=base.apply(this,arguments);if(out)window.BTGEmailAsk('slip');return out}}})();
