@@ -686,6 +686,8 @@ async function playerTeamsApi(request, env) {
 async function playerPhoto(request, env) {
   const params = new URL(request.url).searchParams;
   const name = params.get("name")?.trim() || "";
+  // Emails can't hide a missing image, so ?fallback=1 sends the site icon instead of a 404.
+  if (params.get("fallback") === "1") { const u = new URL(request.url); u.searchParams.delete("fallback"); const r = await playerPhoto(new Request(u.toString(), request), env); return r.ok ? r : Response.redirect(`${u.origin}/icon-192.png`, 302); }
   const sport = params.get("sport") === "NBA" ? "NBA" : "NFL";
   if (!/^[A-Za-z .'-]{2,80}$/.test(name)) return new Response("", { status: 404 });
   // Same lookup as the X cards (saved ESPN ids, then ESPN search with the
