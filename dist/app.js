@@ -3852,3 +3852,16 @@ function statsProp(l){
       window.btgCount?.('email:after-shown');setTimeout(()=>el.isConnected&&!el.contains(document.activeElement)&&el.remove(),20000)},1400)};
   const base=typeof addBetToSlip==='function'?addBetToSlip:null;
   if(base){addBetToSlip=function(){const out=base.apply(this,arguments);if(out)window.BTGEmailAsk('slip');return out}}})();
+
+// Click tracking, pick to book (Nov 4, Tim): every tap that leaves for a
+// sportsbook or app counts as book:<name>; adds and opens count as funnel:<step>.
+(()=>{if(typeof document.addEventListener!=='function')return;
+  const HOSTS=[['draftkings','draftkings'],['fanduel','fanduel'],['betmgm','betmgm'],['caesars','caesars'],['fanatics','fanatics'],['betrivers','betrivers'],['espnbet','espnbet'],['hardrock','hardrock'],['bet365','bet365'],['novig','novig'],['prophetx','prophetx'],['kalshi','kalshi'],['polymarket','polymarket'],['onyx','onyx'],['betopenly','betopenly']];
+  const bookOf=href=>{try{const h=new URL(href,location.href).hostname.toLowerCase();if(h.endsWith('betthisguy.com'))return null;return (HOSTS.find(([k])=>h.includes(k))||[])[1]||null}catch{return null}};
+  document.addEventListener('click',e=>{const a=e.target.closest?.('a[href]');if(!a)return;const b=bookOf(a.getAttribute('href'));if(b)window.btgCount?.(`book:${b}`)},true);
+  if(typeof addBetToSlip==='function'){const base=addBetToSlip;addBetToSlip=function(){const out=base.apply(this,arguments);if(out)window.btgCount?.('funnel:slip-add');return out}}
+  if(window.BTGSheet?.open){const base=window.BTGSheet.open;window.BTGSheet.open=function(){window.btgCount?.('funnel:sheet-open');return base.apply(this,arguments)}}
+  if(window.BTGMyBets?.add){const base=window.BTGMyBets.add;window.BTGMyBets.add=function(){window.btgCount?.('funnel:i-bet');return base.apply(this,arguments)}}
+  // window.open to a book (deep links from the slip and sheet)
+  const wo=window.open;window.open=function(url){const b=url&&bookOf(url);if(b)window.btgCount?.(`book:${b}`);return wo.apply(this,arguments)};
+})();
