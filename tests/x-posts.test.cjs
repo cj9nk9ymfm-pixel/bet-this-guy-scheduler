@@ -113,6 +113,9 @@ pick('official|2026-10-06|props|prop|a','Travis Kelce',105,null,new Date(now-20*
   const pin=pins[0].body;assert.ok(pin.media,'with the season graphic');assert.ok(pin.text.length<=280&&!/https?:|\.com/.test(pin.text)&&pin.text.includes('losses included'),pin.text);
   run(`__svg=xSummarySvg(xSummaryData([{kind:'prop',odds:110,result:'won',status:'final',posted_at:'2026-09-24T05:00:00Z'}],[{result:'lost',odds:-110}],[]))`);
   for(const bit of ['OUR OFFICIAL RECORD','NFL sportsbook','1–0','+$110','Prediction apps','0–1','-$100','+$10','1–1','Turn on notifications','Follow + tap'])assert.ok(run('__svg').includes(bit),bit);
+  // The NBA night's results card: the night's money and one record on top, a tile per part, every pick with its badge.
+  run(`__svg=xNightSvg({kicker:'NBA · RESULTS',dateLine:'Sunday, Nov 2',net:202,rec:'4–2',parts:[{label:'Sportsbook',rec:'3–2',money:122},{label:'Prediction apps',rec:'1–0',money:80}],picks:[{text:'Jayson Tatum · Over 6.5 assists',odds:'+115',res:'won'},{text:'2-leg parlay',odds:'+264',res:'lost'},{leg:true,text:'A B · Over 1.5 threes'},{leg:true,text:'C D · Under 4.5 rebounds'},{text:'Aaron Nesmith · Under 3.5 rebounds',odds:'-118',res:'push'}],season:{text:'65–74, +$939',net:939}})`);
+  for(const bit of ['NBA · RESULTS','+$202','4–2','Sportsbook','3–2','+$122','Prediction apps','Jayson Tatum','HIT','MISS','NO ACTION','2×','NBA season','65–74, +$939'])assert.ok(run('__svg').includes(bit),bit);
   assert.equal((await run(`postSummaryToX(env,${kick+8*3600000})`)).posted,0,'once');
   db.prepare("INSERT INTO app_settings(key,value) VALUES('x-summary-request','v2')").run();
   assert.equal((await run(`postSummaryToX(env,${kick+9*3600000})`)).posted,1,'a new version posts again');
