@@ -540,10 +540,10 @@ async function publishNbaPicks(request,env,ctx,now=Date.now()){
 let nbaHomeCache={at:0,data:null,all:null};
 async function nbaHomeData(env,now=Date.now(),wantAll=false){
   if(nbaHomeCache.data&&now-nbaHomeCache.at<60000)return wantAll?{...nbaHomeCache.data,recent:nbaHomeCache.all}:nbaHomeCache.data;
-  const all=(await env.DB.prepare("SELECT id,kind,player,market,side,line,odds,combined_odds,game_id,game_time,posted_at,status,result,closing_line,closing_odds,closing_captured_at,legs_json,(SELECT value FROM app_settings s WHERE s.key='xid:x-nba-card:'||substr(r.id,5,10)) AS x_id FROM public_recommendations r WHERE source='market-verified-v2' AND id LIKE 'nba|%' AND kind IN ('prop','parlay') ORDER BY game_time DESC,posted_at DESC").all()).results||[];
+  const all=(await env.DB.prepare("SELECT id,kind,player,market,side,line,odds,combined_odds,game_id,game_time,posted_at,status,result,closing_line,closing_odds,closing_captured_at,legs_json,(SELECT value FROM app_settings m WHERE m.key='matchup:'||r.id AND r.result IS NULL) AS matchup_json,(SELECT value FROM app_settings s WHERE s.key='xid:x-nba-card:'||substr(r.id,5,10)) AS x_id FROM public_recommendations r WHERE source='market-verified-v2' AND id LIKE 'nba|%' AND kind IN ('prop','parlay') ORDER BY game_time DESC,posted_at DESC").all()).results||[];
   const s=weeklySummary(all),since=new Date(now-21*86400000).toISOString();
   const season={wins:s.wins,losses:s.losses,pushes:s.pushes,profit:Math.round(s.profit),parlayWins:s.parlayWins,parlayLosses:s.parlayLosses,parlayProfit:Math.round(s.parlayProfit),beat:s.beat,tracked:s.tracked,picks:all.length,curve:recordCurve(all),latest:recordLatest(all)};
-  const data={season,tonight:nbaNight(now),recent:all.filter(r=>r.game_time>=since).slice(0,300)};
+  const data={season,tonight:nbaNight(now),recent:withWhy(all.filter(r=>r.game_time>=since).slice(0,300))};
   nbaHomeCache={at:now,data,all};return wantAll?{...data,recent:all}:data;
 }
 // NBA preseason (a plumbing test before the season): the preseason feed is
@@ -4136,6 +4136,16 @@ function xMatchupBoxes(c){
   const [a,b]=picked.map(x=>({...x,good:!x.plain}));
   return {a,b,line:ladder[0]?.line||(c.app?'Priced below our fair chance after fees.':'The best price we found across the big five books.')};
 }
+// The stat that backs an open pick on the site (Nov 4, Tim): the X spotlight's
+// stat ladder, from the pick's saved matchup. Only stats that back the bet.
+function pickWhy(r){
+  if(!r||r.kind!=='prop'||['won','lost','push'].includes(r.result)||!r.matchup_json)return null;
+  let m;try{m=JSON.parse(r.matchup_json)}catch{return null}if(!m)return null;
+  const b=xMatchupBoxes({matchup:m,bet:`${r.side} ${r.line} ${String(r.market||'').toLowerCase()}`,market:r.market,title:r.player,oddsNum:Number(r.odds),odds:weeklyOdds(r.odds)});
+  const boxes=[b.a,b.b].filter(x=>x&&x.good).map(x=>({label:x.label,big:x.big,sub:x.sub}));
+  return boxes.length?{line:b.line,boxes}:null;
+}
+const withWhy=rows=>(rows||[]).map(r=>{if(!('matchup_json' in r))return r;const {matchup_json,...rest}=r;const why=pickWhy(r);return why?{...rest,why}:rest});
 const xSpotWord=m=>({'3-pointers made':'threes','passing touchdowns':'TD passes','interceptions thrown':'INTs','receptions':'catches','passing yards':'passing yards','rushing yards':'rushing yards','receiving yards':'receiving yards'}[String(m||'').toLowerCase()]||String(m||'').toLowerCase());
 // Pick spotlight graphic (Oct 30, Tim's pick): a 1200×1200 card with the
 // player's photo, the pick on a gold tag, two big boxes (the price and our

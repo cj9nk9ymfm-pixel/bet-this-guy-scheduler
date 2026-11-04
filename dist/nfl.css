@@ -2705,3 +2705,33 @@ body.light .slip-bar{background:#0f172a;border-color:#0f172a}
 html body[data-price-view="predictions"]:not(.zz) #heroBanner.hero.has-rc{display:none!important}
 html body:not(.zz) #pmHero.has-rc{background:none!important;border:0!important;padding:0!important;box-shadow:none!important;display:block!important}
 #pmHero.has-rc #pmHeroTitle{margin:8px 2px 0;font-size:14px}#pmHero.has-rc .hero-actions{display:none!important}
+
+/* Compact pick card (Nov 4) */
+.pc2{padding:14px 14px 12px}
+.pc2 .pc-main{display:flex;align-items:center;gap:12px;margin-top:10px}
+.pc2 .pc-ph{width:52px;height:52px}
+.pc2 .pc-mid{flex:1;min-width:0;display:flex;flex-direction:column}
+.pc2 .pc-name{font:700 18px "Space Grotesk",sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pc2 .pc-bet{font:700 16px "Space Grotesk",sans-serif;color:#f4f6f9;margin-top:1px}
+.pc2 .pc-game{font-size:12.5px;color:#98a1ac;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pc2 .pc-price{flex:none;display:flex;flex-direction:column;align-items:center;gap:1px;min-width:78px;padding:8px 10px;border-radius:14px;background:#0b0e12;border:1px solid #2f6bff;color:#f4f6f9;cursor:pointer}
+.pc2 .pc-price b{font:700 22px "Space Grotesk",sans-serif}.pc2 .pc-price small{font:700 11px "DM Sans",sans-serif;color:#8fb3ff}
+.pc-why{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px}
+.pc-wb{display:flex;align-items:baseline;gap:6px;padding:8px 10px;border-radius:12px;background:rgba(43,217,124,.08);border:1px solid rgba(43,217,124,.3);min-width:0}
+.pc-wb b{font:700 17px "Space Grotesk",sans-serif;color:#2bd97c;white-space:nowrap}.pc-wb small{font-size:11.5px;color:#c9d0d8;line-height:1.25}
+.pc-why:has(.pc-wb:only-child){grid-template-columns:1fr}
+.pc2 .pc-edge{margin:8px 0 0;font-size:12.5px;color:#98a1ac}.pc2 .pc-edge b{color:#2bd97c}.pc2 .pc-apps{color:#a78bfa}
+.pc2 .pc-btns{margin-top:10px;grid-template-columns:1fr auto}
+.pc2 .pc-go{height:44px;font-size:15px}
+.pc2 .pc-ibet{display:flex;align-items:center;justify-content:center;width:auto;margin:0;height:44px;padding:0 14px;border-radius:14px;border:1px solid #232830;background:#181c22;color:#c9d0d8;font:600 13px "DM Sans",sans-serif}
+.pr2-why{display:block;font-style:normal;font-size:11.5px;color:#2bd97c;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pr2-q{cursor:pointer;padding:4px 8px;border-radius:10px;border:1px solid #2f6bff}
+body.light .pc2 .pc-price{background:#fff;color:#0f172a}body.light .pc2 .pc-bet{color:#0f172a}body.light .pc-wb{background:#ecfdf5;border-color:#a7f3d0}body.light .pc-wb small{color:#334155}body.light .pc-wb b{color:#15803d}
+
+.pm-card .pm-tag{color:#c4b5fd}.pm-card .pm-tag:before{background:#a78bfa}
+.pm-card .pm-price{border-color:#7c3aed}.pm-card .pm-price small{color:#c4b5fd}
+.pm-card .pm-go{background:linear-gradient(180deg,#8b5cf6,#6d28d9);border-color:#8b5cf6;box-shadow:0 10px 24px -12px #7c3aed}
+.pm-card .pc-btns{grid-template-columns:1fr}
+#pmPicksList>.pm-card{margin:0 0 10px}
+html body:not(.zz) #pmHero.has-rc[hidden]{display:none!important}
+.pm-card:after{background:linear-gradient(90deg,#7c3aed,#a78bfa)}
