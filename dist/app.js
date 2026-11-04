@@ -3201,6 +3201,7 @@ function statsProp(l){
       <div class="pc-head"><span class="pc-tag pm-tag">Prediction pick · ${app}</span><span class="pc-cd">${typeof icon==='function'?icon('clock'):''} ${htmlEscape(cd)}</span></div>
       <div class="pc-main"><span class="pc-ph"><span>${htmlEscape(ini)}</span><img loading="lazy" decoding="async" src="/api/player-photo?name=${encodeURIComponent(r.player||'')}${LEAGUE==='NBA'?'&sport=NBA':''}" alt="" onerror="this.remove()"></span><div class="pc-mid"><b class="pc-name">${htmlEscape(r.player||'')}</b><span class="pc-bet">${htmlEscape(bet)}</span><span class="pc-game">${htmlEscape([matchup,when].filter(Boolean).join(' · '))}</span></div>
         <button type="button" class="pc-price pm-price" data-slip-price aria-label="Add to slip at ${price}"><b>${price}</b><small>＋ Slip</small></button></div>
+      ${(r.why?.boxes||[]).length?`<div class="pc-why">${r.why.boxes.map(x=>`<span class="pc-wb"><b>${htmlEscape(x.big)}</b><small>${htmlEscape(x.label)}${x.sub?` · ${htmlEscape(x.sub)}`:''}</small></span>`).join('')}</div>`:''}
       <p class="pc-edge">${htmlEscape(pmWin(r.netOdds??r.odds,wagerStake(),null))}${Number.isFinite(fair)?` · hit chance <b>${Math.round(fair)}%</b>`:''}${Number.isFinite(edge)?` · ${edge.toFixed(1)} pts under fair`:''}${r.open===false?` · not offered in ${htmlEscape(data?.stateName||'your state')}`:''}</p>
     </div>`;
   }
