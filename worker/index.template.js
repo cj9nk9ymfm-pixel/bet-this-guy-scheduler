@@ -652,7 +652,8 @@ async function xCardPreview(request, env) {
     // An NBA pick's graphic carries the NBA record, not the NFL one.
     const nbaRows = id.startsWith("nba|") ? (await env.DB.prepare("SELECT kind,posted_at,line,odds,combined_odds,status,result,closing_line,closing_odds,closing_captured_at,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'nba|%'").all()).results || [] : null;
     const season = weeklySummary(nbaRows || seasonRows), graded = XRESULT[row.result] && params.get("result") === "1";
-    svg = xCardSvg(graded ? await xResultData(env, row, season) : await xCardData(env, row, season));
+    // The same graphic X gets (Nov 4): the new square design.
+    svg = xPickSvg(graded ? await xResultData(env, row, season) : await xCardData(env, row, season));
   }
   const png = await renderCardPng(svg);
   return new Response(png, { headers: { "content-type": "image/png", "cache-control": "public, max-age=600" } });
@@ -1574,6 +1575,7 @@ async function routeRequest(request, env, ctx) {
     if (url.pathname === "/post") { ctx.waitUntil(countUsage(env, ["view:post"], request).catch(() => {})); return postKitPage(request, env); }
     if (url.pathname === "/where" || url.pathname === "/where/") return new Response(wherePage(), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=3600" } });
     if (url.pathname === "/nba" || url.pathname.startsWith("/nba/")) { const page = await nbaPage(request, env).catch(() => null); if (page) { ctx.waitUntil(countUsage(env, ["view:nba"], request).catch(() => {})); return page; } }
+    if (url.pathname.startsWith("/player/")) { const page = await playerPage(request, env).catch(() => null); if (page) { ctx.waitUntil(countUsage(env, ["view:player"], request).catch(() => {})); return page; } }
     if (url.pathname === "/picks" || url.pathname.startsWith("/picks/")) { const page = await weeklyPage(request, env).catch(() => null); if (page) { ctx.waitUntil(countUsage(env, [url.pathname.replace(/\/$/, "") === "/picks" ? "view:picks" : "view:week"], request).catch(() => {})); return page; } }
     if (url.pathname === "/bet-this-guy-logo-v3.png") {
       const bytes = Uint8Array.from(atob(LOGO), char => char.charCodeAt(0));

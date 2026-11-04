@@ -317,7 +317,7 @@ function renderSummary(rows=[]){
   {const box=resultNode('#summaryChart')?.closest('.sum-card');if(box){let w=document.getElementById('whatWorks');if(!w){w=document.createElement('div');w.id='whatWorks';w.className='sum-card ww';box.after(w)}
     const by=new Map();for(const r of singles){if(r.result==='push')continue;const k=String(r.market||'Other');const t=by.get(k)||{w:0,l:0,p:0};t[r.result==='won'?'w':'l']++;t.p+=profit(r);by.set(k,t)}
     const list=[...by.entries()].filter(([,t])=>t.w+t.l>=2).sort((a,b)=>b[1].p-a[1].p),top=Math.max(1,...list.map(([,t])=>Math.abs(t.p))),big=[...by.entries()].sort((a,b)=>(b[1].w+b[1].l)-(a[1].w+a[1].l))[0];
-    w.hidden=list.length<3;
+    w.hidden=list.length<3;if(location.hash==='#whatWorks'&&!w.dataset.scrolled){w.dataset.scrolled='1';setTimeout(()=>w.scrollIntoView({block:'start'}),300)}
     w.innerHTML=`<div class="sum-head"><h2>What’s working</h2><span>Singles by bet type, at ${escape(stakeLabel())} a pick</span></div>${big?`<p class="ww-note">Small samples (like 2–0) say little yet. ${escape(big[0])} has the most picks (${big[1].w+big[1].l}), so it’s the one to watch.</p>`:''}<div class="ww-list">${list.map(([k,t])=>`<div class="ww-row"><span class="ww-n">${escape(k)} <em>${t.w}–${t.l}</em></span><span class="ww-tr"><i class="${t.p>=0?'pos':'neg'}" style="${t.p>=0?'left:50%':'right:50%'};width:${(Math.abs(t.p)/top*50).toFixed(1)}%"></i></span><b class="${t.p>=0?'pos':'neg'}">${escape(dollars(t.p))}</b></div>`).join('')}</div>`}}
   host.hidden=!summaryRows.length;
   const snap=document.querySelector?.('.record-snapshot');if(snap&&summaryRows.length)snap.hidden=true;
