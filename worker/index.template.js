@@ -1276,8 +1276,8 @@ async function homeRecentRows(env, now = Date.now()) {
   if (homeRowsCache.rows && now - homeRowsCache.at < 60000) return homeRowsCache.rows;
   const since = new Date(now - 21 * 86400000).toISOString();
   // x_id: the pick's X post, shown in the pick sheet as timestamp proof.
-  const rows = await env.DB.prepare("SELECT id, kind, player, market, side, line, odds, combined_odds, game_time, posted_at, status, result, closing_line, closing_odds, closing_captured_at, legs_json, (SELECT value FROM app_settings s WHERE s.key = 'xid:' || r.id) AS x_id FROM public_recommendations r WHERE source = 'market-verified-v2' AND kind IN ('prop','parlay') AND id LIKE 'official|%' AND posted_at >= ? ORDER BY posted_at DESC LIMIT 400").bind(since).all();
-  homeRowsCache = { at: now, rows: rows.results || [] };
+  const rows = await env.DB.prepare("SELECT id, kind, player, market, side, line, odds, combined_odds, game_time, posted_at, status, result, closing_line, closing_odds, closing_captured_at, legs_json, (SELECT value FROM app_settings s WHERE s.key = 'xid:' || r.id) AS x_id, (SELECT value FROM app_settings m WHERE m.key = 'matchup:' || r.id AND r.result IS NULL) AS matchup_json FROM public_recommendations r WHERE source = 'market-verified-v2' AND kind IN ('prop','parlay') AND id LIKE 'official|%' AND posted_at >= ? ORDER BY posted_at DESC LIMIT 400").bind(since).all();
+  homeRowsCache = { at: now, rows: withWhy(rows.results || []) };
   return homeRowsCache.rows;
 }
 

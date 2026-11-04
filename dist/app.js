@@ -1654,24 +1654,26 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
   const face=(r,cls='pc-ph')=>{const ini=String(r.player||'').split(' ').map(x=>x[0]||'').join('').slice(0,2);return `<span class="${cls}"><span>${htmlEscape(ini)}</span><img loading="lazy" decoding="async" src="${photoUrl(r)}" alt="" onerror="this.remove()"></span>`};
   const gameOf=r=>{const t=String(recordLegs(r)[0]?.team||'');const g=t.replace(' · @ ',' @ ').replace(' · vs ',' vs ');return typeof compactGameName==='function'?compactGameName(g):g};
   const strength=e=>`<span class="pc-str s${e>=2?3:e>=1?2:1}" title="${htmlEscape(`${(+e||0).toFixed(1)}% better than fair`)}"><i></i><i></i><i></i></span>`;
+  // Compact card (Nov 4, Tim): about half a phone screen. The price is the
+  // add-to-slip button; the stat that backs the bet (the X post's stat) sits
+  // under the bet; the edge is one line.
+  const whyHtml=r=>{const w=r.why;if(!w)return '';const b=w.boxes||[];return `<div class="pc-why">${b.map(x=>`<span class="pc-wb"><b>${htmlEscape(x.big)}</b><small>${htmlEscape(x.label)}${x.sub?` · ${htmlEscape(x.sub)}`:''}</small></span>`).join('')}</div>`};
   function pickCard(r,i,top=false){
     const l=recordLegs(r)[0]||{},edge=Number(l.edge),fair=fairAm(l.fairPower??l.fairShin),book=l.book||'';
-    const apps=(l.exchanges||[]).filter(x=>Number.isFinite(+x.odds)).map(x=>`<b>${htmlEscape(x.exchange)} ${amOdds(x.odds)}</b>`).join(' · ');
-    const dec=o=>o>0?1+o/100:1+100/-o,better=(l.exchanges||[]).some(x=>dec(+x.odds)>dec(+r.odds));
-    const pos=fair!=null?Math.max(8,Math.min(70,50-(edge||0)*6)):null;
-    return `<div class="pc${top?' pc-top':''}" data-on="${i}" data-pick-id="${htmlEscape(r.id||'')}" data-on-player="${htmlEscape(r.player||'')}" data-on-team="${htmlEscape(l.team||'')}">
-      <div class="pc-head"><span class="pc-tag">${top?'Top pick · biggest edge':'Official pick'}</span><span class="pc-cd">${icon('clock')} ${htmlEscape(countdown(r.game_time))}</span></div>
-      <div class="pc-who">${face(r)}<div><b>${htmlEscape(r.player||'')}</b><span>${htmlEscape([gameOf(r),kickoff(r.game_time)].filter(Boolean).join(' · '))}</span></div></div>
-      <div class="pc-bet"><strong>${htmlEscape(`${r.side} ${r.line}`)}<span>${htmlEscape(String(r.market||'').toLowerCase())}</span></strong><span class="pc-price">${amOdds(r.odds)}</span></div>
-      ${fair!=null&&Number.isFinite(edge)?`<div class="pc-meter"><div class="pc-mrow"><span>Fair odds <b>${amOdds(fair)}</b></span><span>${htmlEscape(book)} <b class="g">${amOdds(r.odds)}</b></span></div><div class="pc-track"><i style="left:${pos}%;width:${Math.max(4,Math.min(40,edge*6))}%"></i><em style="left:${pos}%"></em><em class="g" style="left:${pos+Math.max(4,Math.min(40,edge*6))}%"></em></div><p>${htmlEscape(book)} pays more than this bet is worth: a ${edge.toFixed(1)}% edge.</p></div>`:''}
-      <div class="pc-btns"><button type="button" class="pc-go" data-act="open">Bet at ${htmlEscape(book||'the best book')} ${icon('arrow-right')}</button><button type="button" class="pc-add" data-slip-price>＋ Slip</button></div><button type="button" class="pc-ibet" data-ibet>${window.BTGMyBets?.has?.(r.id)?'✓ Tracking in My bets':'I bet this · track it in My bets'}</button>
-      <div class="pc-form" data-on-bars="${i}" hidden></div>
-      ${apps?`<p class="pc-apps">Prediction apps: ${apps}.${better?'':` ${htmlEscape(book)} pays more.`}</p>`:''}
+    const apps=(l.exchanges||[]).filter(x=>Number.isFinite(+x.odds)).map(x=>`${htmlEscape(x.exchange)} ${amOdds(x.odds)}`).join(' · ');
+    const stake=typeof viewerStake==='function'?viewerStake():100,dec=o=>o>0?1+o/100:1+100/-o,win=Math.round(stake*(dec(+r.odds)-1));
+    return `<div class="pc pc2${top?' pc-top':''}" data-on="${i}" data-pick-id="${htmlEscape(r.id||'')}" data-on-player="${htmlEscape(r.player||'')}" data-on-team="${htmlEscape(l.team||'')}">
+      <div class="pc-head"><span class="pc-tag">${top?'Top pick':'Official pick'}</span><span class="pc-cd">${icon('clock')} ${htmlEscape(countdown(r.game_time))}</span></div>
+      <div class="pc-main">${face(r)}<div class="pc-mid"><b class="pc-name">${htmlEscape(r.player||'')}</b><span class="pc-bet">${htmlEscape(`${r.side} ${r.line} ${String(r.market||'').toLowerCase()}`)}</span><span class="pc-game">${htmlEscape([gameOf(r),kickoff(r.game_time)].filter(Boolean).join(' · '))}</span></div>
+        <button type="button" class="pc-price" data-slip-price aria-label="Add to slip at ${amOdds(r.odds)}"><b>${amOdds(r.odds)}</b><small>＋ Slip</small></button></div>
+      ${whyHtml(r)}
+      <p class="pc-edge">${htmlEscape(book)} ${amOdds(r.odds)}${fair!=null?` · fair ${amOdds(fair)}`:''}${Number.isFinite(edge)?` · <b>${edge.toFixed(1)}% edge</b>`:''} · $${stake} wins $${win}${apps?`<br><span class="pc-apps">Apps: ${apps}</span>`:''}</p>
+      <div class="pc-btns"><button type="button" class="pc-go" data-act="open">Bet at ${htmlEscape(book||'the best book')} ${icon('arrow-right')}</button><button type="button" class="pc-ibet" data-ibet>${window.BTGMyBets?.has?.(r.id)?'✓ Tracking':'I bet this'}</button></div>
     </div>`;
   }
   function pickRowLite(r,i){
     const l=recordLegs(r)[0]||{};
-    return `<button type="button" class="pr2" data-on="${i}" data-pick-id="${htmlEscape(r.id||'')}">${face(r,'pr2-ph')}<span class="pr2-t"><b>${htmlEscape(r.player||'')}</b><span>${htmlEscape(`${r.side} ${r.line} ${typeof unitOf==='function'?unitOf(r.market):String(r.market||'').toLowerCase()}`)}</span></span><span class="pr2-q"><b>${amOdds(r.odds)}</b><small>${htmlEscape(l.book||'')} ${strength(Number(l.edge))}</small></span><span class="pr2-add" data-slip-price aria-label="Add to slip">＋</span></button>`;
+    return `<button type="button" class="pr2" data-on="${i}" data-pick-id="${htmlEscape(r.id||'')}">${face(r,'pr2-ph')}<span class="pr2-t"><b>${htmlEscape(r.player||'')}</b><span>${htmlEscape(`${r.side} ${r.line} ${typeof unitOf==='function'?unitOf(r.market):String(r.market||'').toLowerCase()}`)}</span>${r.why?.boxes?.[0]?`<em class="pr2-why">✓ ${htmlEscape(r.why.boxes[0].big)} ${htmlEscape(r.why.boxes[0].label.toLowerCase())}</em>`:''}</span><span class="pr2-q" data-slip-price><b>${amOdds(r.odds)}</b><small>${htmlEscape(l.book||'')} ${strength(Number(l.edge))}</small></span></button>`;
   }
   function busyDay(items){
     const ranked=[...items].sort((a,b)=>(Number(recordLegs(b[0])[0]?.edge)||0)-(Number(recordLegs(a[0])[0]?.edge)||0)),top=ranked[0];
@@ -1799,7 +1801,7 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
       const done=items.filter(([r])=>officialDone(r)),live=items.filter(([r])=>!officialDone(r)&&liveLine(r)&&!later.some(([x])=>x===r)),open=items.filter(([r])=>!officialDone(r)&&!live.some(([x])=>x===r)&&!later.some(([x])=>x===r));
       const laterHtml=[...new Set(later.map(([r])=>weekOf(r)))].sort().map(n=>`<p class="on-group on-group-later">${htmlEscape(nightLabel(n))}</p>${rowsOf(later.filter(([r])=>weekOf(r)===n))}`).join('');
       const tally=done.reduce((t,[r])=>{if(!voidOf(r))t[r.result]=(t[r.result]||0)+1;return t},{}),doneRec=`${tally.won||0}–${tally.lost||0}${tally.push?`–${tally.push}`:''}`;
-      box.innerHTML=items.length?(later.length&&(open.length||live.length||done.length)?'<p class="on-group">Tonight</p>':'')+(live.length?`<p class="on-group on-group-live"><i class="on-dot"></i>Live now</p>${rowsOf(live)}${open.length?'<p class="on-group">Up next</p>':''}`:'')+(sel==='#officialNowList'&&open.length?(open.length>=5?busyDay(open):open.map(([r,i])=>pickCard(r,i)).join('')):rowsOf(open.slice(0,SHOW)))+(sel!=='#officialNowList'&&open.length>SHOW?`<div class="on-more" hidden>${rowsOf(open.slice(SHOW))}</div><button type="button" class="on-toggle" data-on-toggle="more" aria-expanded="false">See all ${open.length} ${noun}s</button>`:'')+(done.length?`<button type="button" class="on-toggle on-final-toggle" data-on-toggle="final" aria-expanded="${open.length?'false':'true'}">Final · ${done.length} ${noun}${done.length===1?'':'s'} · ${doneRec}</button><div class="on-final"${open.length?' hidden':''}>${rowsOf(done)}</div>`:'')+laterHtml:empty;
+      box.innerHTML=items.length?(later.length&&(open.length||live.length||done.length)?'<p class="on-group">Tonight</p>':'')+(live.length?`<p class="on-group on-group-live"><i class="on-dot"></i>Live now</p>${rowsOf(live)}${open.length?'<p class="on-group">Up next</p>':''}`:'')+(sel==='#officialNowList'&&open.length?(open.length>=4?busyDay(open):open.map(([r,i])=>pickCard(r,i)).join('')):rowsOf(open.slice(0,SHOW)))+(sel!=='#officialNowList'&&open.length>SHOW?`<div class="on-more" hidden>${rowsOf(open.slice(SHOW))}</div><button type="button" class="on-toggle" data-on-toggle="more" aria-expanded="false">See all ${open.length} ${noun}s</button>`:'')+(done.length?`<button type="button" class="on-toggle on-final-toggle" data-on-toggle="final" aria-expanded="${open.length?'false':'true'}">Final · ${done.length} ${noun}${done.length===1?'':'s'} · ${doneRec}</button><div class="on-final"${open.length?' hidden':''}>${rowsOf(done)}</div>`:'')+laterHtml:empty;
       box.querySelectorAll('[data-slot]').forEach(b=>b.onclick=()=>box.querySelector(`[data-slot-sec="${b.dataset.slot}"]`)?.scrollIntoView({behavior:'smooth',block:'start'}));
       box.querySelectorAll('[data-on-toggle]').forEach(b=>b.onclick=()=>{const el=b.dataset.onToggle==='more'?b.previousElementSibling:b.nextElementSibling;const show=el.hidden;el.hidden=!show;b.setAttribute('aria-expanded',String(show));if(b.dataset.onToggle==='more')b.textContent=show?'Show fewer':`See all ${open.length} ${noun}s`});
     }
@@ -3187,7 +3189,24 @@ function statsProp(l){
   // What the stake wins at the posted (after-fee) price; once graded, what it did.
   function pmWin(odds,stake,result,money){const o=Number(odds),d=o>=100?1+o/100:o<=-100?1+100/-o:null;if(!d)return '';const win=Math.round(stake*(d-1));
     if(result==='won')return `Won +$${Number.isFinite(Number(money))?Math.round(Number(money)):win}`;if(result==='lost')return `Lost −$${stake}`;if(result==='push'||result==='void')return 'Push · $0';return `$${stake} pays $${Math.round(stake*d)}`}
+  // Nov 4 (Tim): open prediction picks use the same compact card as the sportsbook.
+  function pmCard(r){
+    const ini=String(r.player||'').split(' ').map(x=>x[0]||'').join('').slice(0,2),idx=pmRows.push(pmRecord(r))-1;
+    const game=String(r.team||'').replace(' · @ ',' @ ').replace(' · vs ',' vs '),matchup=game&&typeof compactGameName==='function'?compactGameName(game):game;
+    const t=Date.parse(r.gameTime)-Date.now(),cd=t>36*3600000?new Date(r.gameTime).toLocaleString([],{weekday:'short',hour:'numeric',minute:'2-digit'}):t>0?`Starts in ${Math.floor(t/3600000)?`${Math.floor(t/3600000)}h `:''}${Math.floor(t%3600000/60000)}m`:'Starting';
+    const when=new Date(r.gameTime).toLocaleString([],{weekday:'short',hour:'numeric',minute:'2-digit'}),price=htmlEscape(pct(r.odds)),app=htmlEscape(r.exchange||'the app');
+    const bet=/touchdown/i.test(r.market||'')&&Number(r.line)===.5?`${r.side==='Under'?'No ':''}${r.market}`:`${r.side} ${r.line} ${String(r.market||'').toLowerCase()}`;
+    const edge=Number(r.edge),fair=Number(r.fair);
+    return `<div class="pc pc2 pm-card" role="button" tabindex="0" data-pm-i="${idx}" data-pick-id="${htmlEscape(r.id||'')}" data-inj-player="${htmlEscape(r.player||'')}" aria-label="${htmlEscape(`Details for ${r.player}`)}">
+      <div class="pc-head"><span class="pc-tag pm-tag">Prediction pick · ${app}</span><span class="pc-cd">${typeof icon==='function'?icon('clock'):''} ${htmlEscape(cd)}</span></div>
+      <div class="pc-main"><span class="pc-ph"><span>${htmlEscape(ini)}</span><img loading="lazy" decoding="async" src="/api/player-photo?name=${encodeURIComponent(r.player||'')}${LEAGUE==='NBA'?'&sport=NBA':''}" alt="" onerror="this.remove()"></span><div class="pc-mid"><b class="pc-name">${htmlEscape(r.player||'')}</b><span class="pc-bet">${htmlEscape(bet)}</span><span class="pc-game">${htmlEscape([matchup,when].filter(Boolean).join(' · '))}</span></div>
+        <button type="button" class="pc-price pm-price" data-slip-price aria-label="Add to slip at ${price}"><b>${price}</b><small>＋ Slip</small></button></div>
+      <p class="pc-edge">${htmlEscape(pmWin(r.netOdds??r.odds,wagerStake(),null))}${Number.isFinite(fair)?` · hit chance <b>${Math.round(fair)}%</b>`:''}${Number.isFinite(edge)?` · ${edge.toFixed(1)} pts under fair`:''}${r.open===false?` · not offered in ${htmlEscape(data?.stateName||'your state')}`:''}</p>
+      <div class="pc-btns"><button type="button" class="pc-go pm-go" data-act="open">Bet on ${app} ${typeof icon==='function'?icon('arrow-right'):''}</button></div>
+    </div>`;
+  }
   function pickRow(r){
+    if(!r.result&&!r.voidReason&&Date.parse(r.gameTime)>Date.now())return pmCard(r);
     const initials=String(r.player||'').split(' ').map(x=>x[0]||'').join('').slice(0,3),bet=/touchdown/i.test(r.market||'')&&Number(r.line)===.5?`${r.side==='Under'?'No ':''}${r.market}`:`${r.side} ${r.line} ${String(r.market||'').toLowerCase()}`;
     const game=String(r.team||'').replace(' · @ ',' @ ').replace(' · vs ',' vs '),matchup=game&&typeof compactGameName==='function'?compactGameName(game):game,st=pmStatus(r);
     const note=r.voidReason?`${r.voidReason} · bet voided · stake back`:[pmWin(r.netOdds??r.odds,r.result?100:wagerStake(),r.result),`Hit chance ${Math.round(r.fair)}%`,r.open===false?`not offered in ${data?.stateName||'your state'}`:''].filter(Boolean).join(' · ');
@@ -3249,7 +3268,7 @@ function statsProp(l){
     if(pcount)pcount.textContent=parlays.length?String(parlays.length):'';
     const pc=document.getElementById('pmPicksCount');if(pc)pc.textContent=list.length?String(list.length):'';
     // The record lives in the bar at the top; this line explains the prices.
-    document.getElementById('pmPicksRecord').textContent='Priced as each app’s chance after its fee: 60% means you pay 60¢ to win $1, so lower is better. Singles $100, parlays $25.';
+    document.getElementById('pmPicksRecord').textContent='Tap a price to add it to your slip. Prices are each app’s chance after its fee: 50% pays about double.';
     // NBA: picks for a later night under their own day heading, after tonight's.
     const tonight=night(Date.now()),laterOf=r=>LEAGUE==='NBA'&&!r.result&&night(Date.parse(r.gameTime))>tonight,now_=list.filter(r=>!laterOf(r)),later=list.filter(laterOf);
     const dayHead=n=>{const d=new Date(`${n}T12:00:00Z`),next=new Date(Date.parse(`${tonight}T12:00:00Z`)+86400000).toISOString().slice(0,10);return `<p class="on-group on-group-later">${d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',timeZone:'UTC'})}${n===next?' · tomorrow':''}</p>`};
