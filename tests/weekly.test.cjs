@@ -76,5 +76,12 @@ context.env={DB};
   assert.deepEqual(offers({country:'US',regionCode:'TX'},'not json'),[]);
   const api=await run(`affiliateApi(${JSON.stringify({cf:{country:'US',regionCode:'TX'}})},{})`);
   assert.equal(api.headers.get('cache-control'),'private, no-store','offers are never cached for other visitors');
+  // Player pages: indexed and in the sitemap only from 3 graded picks; thinner ones stay up with noindex.
+  const player=async()=>{const r=await run(`playerPage(new Request('https://betthisguy.com/player/jonnu-smith'),env)`);return r?await r.text():null};
+  const thin=await player();assert.ok(thin.includes('Jonnu Smith prop picks')&&thin.includes('<meta name="robots" content="noindex,follow">'),'one graded pick: noindex');
+  assert.ok(!(await run('weeklySitemap(env)')).includes('/player/jonnu-smith<'),'not in the sitemap yet');
+  for(const k of ['x1','x2'])insert.run(`official|2026-09-08|props|prop|${k}`,'prop','Jonnu Smith','Receptions','Over',1.5,150,null,'2026-09-12T00:15:00.000Z',JSON.stringify([leg('Jonnu Smith','Receptions','Over',1.5,150,{actualValue:3})]),'2026-09-10T05:00:00.000Z','final','won',null,null,null);
+  assert.ok(!(await player()).includes('noindex'),'three graded picks: indexed');
+  assert.ok((await run('weeklySitemap(env)')).includes('/player/jonnu-smith</loc>'),'and in the sitemap');
   console.log('PASS: weekly pick pages: NFL week numbering from Labor Day, record and every pick with price, result and closing price, index newest first, 404 for empty weeks, escaped text and sitemap entries, plus anonymous usage totals that ignore bots and unknown metrics, and partner links that stay off unless approved for the visitor state (real SQLite)');
 })().catch(e=>{console.error(e);process.exitCode=1});
