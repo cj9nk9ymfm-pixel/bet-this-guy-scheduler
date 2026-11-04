@@ -2052,7 +2052,12 @@ if(typeof fetch==='function')window.btgCountVisit?.('view:home');
   }
   // Official picks: 1200×675 (X's image size): the pick, its price and book,
   // what it wins against a fair price (or the result), and the record.
-  function drawOfficialCard(r){
+  // Nov 4: share the same new-design graphic the X post uses (server-rendered),
+  // falling back to the canvas drawing below.
+  async function serverCard(r){if(!/^(official|nba)\|/.test(String(r?.id||'')))return null;
+    try{const done=['won','lost','push'].includes(r.result),res=await fetch(`/api/x-card.png?id=${encodeURIComponent(r.id)}${done?'&result=1':''}`,{signal:AbortSignal.timeout(8000)});if(!res.ok)return null;const blob=await res.blob();return blob.size>1000?new File([blob],'bet-this-guy-pick.png',{type:'image/png'}):null}catch{return null}}
+  function drawOfficialCard(r){return serverCard(r).then(f=>f||drawOfficialCanvas(r))}
+  function drawOfficialCanvas(r){
     const {recordLegs,graded,legText,winLine}=window.BTGOfficialBits||{};if(!winLine)return Promise.resolve(null);
     const legs=recordLegs(r),isParlay=r.kind==='parlay',done=graded(r),won=done&&r.result==='won',W=1200,H=675,canvas=document.createElement('canvas');canvas.width=W;canvas.height=H;const ctx=canvas.getContext('2d');
     const bg=ctx.createLinearGradient(0,0,W,H);bg.addColorStop(0,'#0b1d3f');bg.addColorStop(1,'#050b1d');ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
