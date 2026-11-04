@@ -34,5 +34,5 @@ const c=client();assert.ifError(c.error);c.ctx.fixture=event([book('draftkings',
 equal(c.eval('movementValueSignal(props[0]).book'),'DraftKings','raw observation hook survives normalizer');
 const card=c.eval('movementCard(props[0])'),chart=c.eval('movementChart(props[0])');equal(card.includes('First observed'),true);equal(card.includes('Opened at'),false);equal(card.includes('Potential price value'),false);equal(card.includes('DraftKings'),true);equal(chart.includes('Price-implied probability'),true);equal(chart.includes('not the sportsbook’s opening price'),true);equal(chart.includes('<svg'),true);
 equal(c.eval('movementChart({...props[0],market:"Alternate Rushing Yards"}).includes("<svg")'),false,'unknown history never gets synthetic graph');
-const html=read('dist/index.html');equal(html.indexOf('/movement.js')<html.indexOf('/app.js'),true,'engine loads before app');
+const html=read('dist/index.html');equal(html.indexOf('<script src="/movement.js')>0&&html.indexOf('<script src="/movement.js')<html.indexOf('<script src="/app.js'),true,'engine runs before app (a preload hint only downloads)');
 console.log(`PASS: ${checks} prop-movement regression assertions (provider fixtures; no production traffic)`);
