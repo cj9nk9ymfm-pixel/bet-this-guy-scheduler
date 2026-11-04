@@ -3405,7 +3405,7 @@ function usageGeo(request){
 async function countUsage(env,metrics,request){
   // The owner's own devices (opted out with /?me=1) are never counted.
   if(!env.DB||USAGE_BOTS.test(request.headers.get('user-agent')||'')||/(?:^|;\s*)btg_owner=1(?:;|$)/.test(request.headers.get('cookie')||''))return;
-  const day=new Date().toISOString().slice(0,10),list=[...new Set(metrics)].filter(m=>USAGE_METRICS.has(m)||/^ref:[a-z0-9.-]{3,40}$/.test(m)).slice(0,4);
+  const day=new Date().toISOString().slice(0,10),list=[...new Set(metrics)].filter(m=>USAGE_METRICS.has(m)||/^ref:[a-z0-9.-]{3,40}$/.test(m)||/^(book|funnel):[a-z0-9-]{2,24}$/.test(m)).slice(0,4);
   // Visits by place: a daily count per US state (geo:US-TX) or country (geo:GB)
   // from Cloudflare's lookup of the request. Only the total is kept.
   if(list.some(m=>m.startsWith('visit:'))){const geo=usageGeo(request);if(geo)list.push(geo)}
