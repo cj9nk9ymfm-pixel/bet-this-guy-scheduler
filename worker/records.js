@@ -4462,26 +4462,34 @@ function xWeekData(rows,s,season,name,range){
 // posts a fresh one with the latest numbers.
 const XBELL='<path d="M50 6c-3.6 0-6.5 2.9-6.5 6.5v3.4C30.8 18.9 22 30.4 22 44v19L12 75v5h76v-5L78 63V44c0-13.6-8.8-25.1-21.5-28.1v-3.4C56.5 8.9 53.6 6 50 6zM38 85a12 12 0 0 0 24 0z"/>';
 function xSummarySvg(d){
-  const M='#2ee6a8',L='#2ee6a8',F={g:'BTG Grotesk',xb:'BTG Inter XB',sb:'BTG Inter SB'},X=526,R=1200-56;
-  const row=(y,label,money,v)=>`<text x="${X}" y="${y}" font-family="${F.sb}" font-size="30" fill="#dbe4f0">${xEsc(label)}</text><text x="${R}" y="${y}" text-anchor="end" font-family="${F.xb}" font-size="30" fill="${v<0?'#f87171':M}">${xEsc(money)}</text>`;
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675" viewBox="0 0 1200 675">
-<defs><linearGradient id="tm" x1="0" y1="0" x2="0.45" y2="1"><stop offset="0" stop-color="#1d4ed8"/><stop offset="1" stop-color="#0b1530"/></linearGradient></defs>
-<rect width="1200" height="675" fill="#0b1530"/><rect width="470" height="675" fill="url(#tm)"/>
-<text x="56" y="100" font-family="${F.xb}" font-size="20" letter-spacing="4" fill="#ffffff" fill-opacity=".85">PICK ALERTS</text>
-<g transform="translate(52 128) scale(1.05)" fill="#fbbf24">${XBELL}</g>
-<text x="56" y="300" font-family="${F.g}" font-size="50" fill="#ffffff">Turn on</text>
-<text x="56" y="352" font-family="${F.g}" font-size="50" fill="#ffffff">notifications.</text>
-${['Every pick posts here the second','it locks, so you get our price','before it moves.'].map((t,k)=>`<text x="56" y="${402+k*31}" font-family="${F.sb}" font-size="24" fill="#ffffff" fill-opacity=".8">${t}</text>`).join('')}
-${xLogo(56,563,56)}<text x="128" y="601" font-family="${F.g}" font-size="30" fill="#ffffff">Bet This Guy</text>
-<text x="${X}" y="92" font-family="${F.xb}" font-size="15" letter-spacing="2.5" fill="${M}">OFFICIAL RECORD · NFL + NBA</text>
-<text x="${X}" y="168" font-family="${F.g}" font-size="76" fill="${d.total.profit<0?'#f87171':M}">${xEsc(d.m(d.total.profit))}</text>
-<text x="${X}" y="208" font-family="${F.sb}" font-size="24" fill="#dbe4f0">${xEsc(d.rec(d.total))} · every pick, losses included</text>
-${row(268,`NFL sportsbook ${d.rec(d.nfl)}`,d.m(d.nfl.profit),d.nfl.profit)}${row(312,`NBA sportsbook ${d.rec(d.nba)}`,d.m(d.nba.profit),d.nba.profit)}${row(356,`Prediction apps ${d.rec(d.apps)}`,d.m(d.apps.profit),d.apps.profit)}
-${d.tracked?`<text x="${X}" y="410" font-family="${F.sb}" font-size="24" fill="#dbe4f0"><tspan font-family="${F.xb}" fill="${M}">${d.beat} of ${d.tracked}</tspan> sportsbook picks beat the kickoff price</text>`:''}
-<text x="${X}" y="450" font-family="${F.sb}" font-size="18" fill="#dbe4f0" fill-opacity=".75">$100 singles · $25 parlays · apps after fees · 21+</text>
-<rect x="470" y="589" width="730" height="86" fill="${M}"/>
-<text x="${X}" y="643" font-family="${F.g}" font-size="27" fill="#06231a">Follow + tap</text><g transform="translate(${X+168} 615) scale(.3)" fill="#06231a">${XBELL}</g>
-<text x="${R-38}" y="644" text-anchor="end" font-family="${F.g}" font-size="31" fill="#06231a">betthisguy.com</text><path d="M1118 633h24m-9-9 9 9-9 9" fill="none" stroke="#06231a" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
+  // Nov 4 (Tim): the pinned card in the new design (square, like the record
+  // graphics): money first, the one record, a tile per part, the proof box.
+  const M='#2ee6a8',G='#fdbb30',RED='#f87171',F={g:'BTG Grotesk',xb:'BTG Inter XB',sb:'BTG Inter SB'};
+  const tile=(x,label,p)=>{const big=d.rec(p);return `<rect x="${x}" y="470" width="340" height="230" rx="26" fill="#ffffff" fill-opacity=".06" stroke="#ffffff" stroke-opacity=".14" stroke-width="2"/>
+<text x="${x+30}" y="522" font-family="${F.sb}" font-size="26" fill="#d7dde9">${xEsc(label)}</text>
+<text x="${x+26}" y="608" font-family="${F.g}" font-size="${big.length>7?60:big.length>5?70:76}" fill="#ffffff">${xEsc(big)}</text>
+<text x="${x+30}" y="662" font-family="${F.xb}" font-size="34" fill="${p.profit<0?RED:M}">${xEsc(d.m(p.profit))}</text>`};
+  const t=d.total,money=d.m(t.profit);
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1200" viewBox="0 0 1200 1200">
+<defs><linearGradient id="bg" x1="0" y1="0" x2="0.4" y2="1"><stop offset="0" stop-color="#1d4ed8"/><stop offset=".45" stop-color="#0b1530"/><stop offset="1" stop-color="#070e1d"/></linearGradient></defs>
+<rect width="1200" height="1200" fill="url(#bg)"/>
+<text x="64" y="100" font-family="${F.xb}" font-size="26" letter-spacing="4.5" fill="${G}">OUR OFFICIAL RECORD</text>
+<text x="1136" y="100" text-anchor="end" font-family="${F.sb}" font-size="26" fill="#c9d4e8">NFL + NBA · 2026</text>
+<text x="56" y="296" font-family="${F.g}" font-size="${money.length>7?170:190}" fill="${t.profit<0?RED:M}">${xEsc(money)}</text>
+<text x="64" y="376" font-family="${F.g}" font-size="64" fill="#ffffff">${xEsc(d.rec(t))}</text>
+<text x="${64+d.rec(t).length*38+30}" y="368" font-family="${F.sb}" font-size="30" fill="#c9d4e8">every pick we posted, all graded</text>
+${tile(64,'NFL sportsbook',d.nfl)}${tile(430,'NBA sportsbook',d.nba)}${tile(796,'Prediction apps',d.apps)}
+${d.tracked?`<rect x="64" y="742" width="1072" height="120" rx="26" fill="${M}" fill-opacity=".12" stroke="${M}" stroke-width="2.5"/>
+<text x="100" y="816" font-family="${F.g}" font-size="56" fill="${M}">${d.beat} of ${d.tracked}</text>
+<text x="${100+String(`${d.beat} of ${d.tracked}`).length*31+30}" y="800" font-family="${F.xb}" font-size="30" fill="#ffffff">picks beat the kickoff price</text>
+<text x="${100+String(`${d.beat} of ${d.tracked}`).length*31+30}" y="838" font-family="${F.sb}" font-size="24" fill="#c9d4e8">We lock early. The price moved our way after we posted.</text>`:''}
+<g transform="translate(64 905) scale(.34)" fill="${G}">${XBELL}</g>
+<text x="124" y="940" font-family="${F.xb}" font-size="34" fill="#ffffff">Turn on notifications: every pick, the second it locks.</text>
+<text x="64" y="996" font-family="${F.sb}" font-size="24" fill="#a9b4c8">$100 singles, $25 parlays, prediction apps after each app’s fee.</text>
+<text x="64" y="1034" font-family="${F.sb}" font-size="24" fill="#a9b4c8">Losses included. Past results don’t guarantee future ones · 21+</text>
+<rect y="1090" width="1200" height="110" fill="${M}"/>${xLogo(64,1116,58)}
+<text x="140" y="1158" font-family="${F.g}" font-size="36" fill="#0b1530">Bet This Guy</text>
+<text x="1136" y="1158" text-anchor="end" font-family="${F.xb}" font-size="34" fill="#0b1530">Follow + tap the bell</text>
 </svg>`;
 }
 function xSummaryData(rows,pmRows=[],ppRows=[],nbaRows=[],nbaPmRows=[]){
