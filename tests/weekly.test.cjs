@@ -29,6 +29,13 @@ context.env={DB};
   assert.ok(index.html.indexOf('week-4')<index.html.indexOf('week-3'),'newest week first');
   assert.ok(index.html.includes('1 pick posted')&&index.html.includes('1 pending'),'an unplayed week shows it is pending');
   assert.equal(await page('/picks/2026/week-9'),null,'a week with no picks is a 404');
+  // /nfl: this week's picks at a fixed address, last week's until this week's first one posts.
+  const nfl=async t=>{const r=await run(`nflThisWeekPage(new Request('https://betthisguy.com/nfl'),env,Date.parse('${t}'))`);return r?await r.text():null};
+  const now4=await nfl('2026-10-01T18:00:00Z');
+  for(const text of ['NFL Player Prop Picks This Week (Week 4)','rel="canonical" href="https://betthisguy.com/nfl"','<h1>NFL player prop picks this week</h1>','href="/picks/2026/week-4"','How these picks work'])assert.ok(now4.includes(text),text);
+  assert.ok(!now4.includes('hasn’t posted yet'),'the current week');
+  const next=await nfl('2026-10-08T18:00:00Z');assert.ok(next.includes('Week 5’s first pick hasn’t posted yet')&&next.includes('(Week 4)'),'falls back to last week');
+  assert.ok((await run('weeklySitemap(env)')).includes('/nfl</loc>'),'in the sitemap');
   assert.equal(await page('/picks/2026/week-99'),null);assert.equal(await page('/picks/abc'),null);
   const sitemap=await run('weeklySitemap(env)');
   for(const path of ['/picks</loc>','/picks/2026/week-3</loc>','/picks/2026/week-4</loc>','/trust</loc>'])assert.ok(sitemap.includes(path),`sitemap has ${path}`);

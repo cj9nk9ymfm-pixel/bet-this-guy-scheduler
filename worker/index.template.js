@@ -1576,6 +1576,7 @@ async function routeRequest(request, env, ctx) {
     if (url.pathname === "/post/card.png") return postKitCard(request, env).catch(error => new Response(error.message, { status: 500 }));
     if (url.pathname === "/post") { ctx.waitUntil(countUsage(env, ["view:post"], request).catch(() => {})); return postKitPage(request, env); }
     if (url.pathname === "/where" || url.pathname === "/where/") return new Response(wherePage(), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=3600" } });
+    if (url.pathname === "/nfl" || url.pathname === "/nfl/") { const page = await nflThisWeekPage(request, env).catch(() => null); if (page) { ctx.waitUntil(countUsage(env, ["view:nfl"], request).catch(() => {})); return page; } }
     if (url.pathname === "/nba" || url.pathname.startsWith("/nba/")) { const page = await nbaPage(request, env).catch(() => null); if (page) { ctx.waitUntil(countUsage(env, ["view:nba"], request).catch(() => {})); return page; } }
     if (url.pathname.startsWith("/player/")) { const page = await playerPage(request, env).catch(() => null); if (page) { ctx.waitUntil(countUsage(env, ["view:player"], request).catch(() => {})); return page; } }
     if (url.pathname === "/picks" || url.pathname.startsWith("/picks/")) { const page = await weeklyPage(request, env).catch(() => null); if (page) { ctx.waitUntil(countUsage(env, [url.pathname.replace(/\/$/, "") === "/picks" ? "view:picks" : "view:week"], request).catch(() => {})); return page; } }
