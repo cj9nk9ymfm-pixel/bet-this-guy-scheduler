@@ -2735,3 +2735,7 @@ body.light .pc2 .pc-price{background:#fff;color:#0f172a}body.light .pc2 .pc-bet{
 #pmPicksList>.pm-card{margin:0 0 10px}
 html body:not(.zz) #pmHero.has-rc[hidden]{display:none!important}
 .pm-card:after{background:linear-gradient(90deg,#7c3aed,#a78bfa)}
+
+/* No "Bet at" button on cards (Nov 4, Tim) */
+.pc2 .pc-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px;font-size:11.5px;color:#677180}
+.pc2 .pc-foot .pc-ibet{height:30px;padding:0 10px;border-radius:10px;font-size:12px}
