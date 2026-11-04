@@ -4473,32 +4473,37 @@ function xSummarySvg(d){
 <text x="56" y="352" font-family="${F.g}" font-size="50" fill="#ffffff">notifications.</text>
 ${['Every pick posts here the second','it locks, so you get our price','before it moves.'].map((t,k)=>`<text x="56" y="${402+k*31}" font-family="${F.sb}" font-size="24" fill="#ffffff" fill-opacity=".8">${t}</text>`).join('')}
 ${xLogo(56,563,56)}<text x="128" y="601" font-family="${F.g}" font-size="30" fill="#ffffff">Bet This Guy</text>
-<text x="${X}" y="96" font-family="${F.xb}" font-size="15" letter-spacing="2.5" fill="${M}">SPORTSBOOKS</text>
-${row(140,`Singles ${d.sb.wins}–${d.sb.losses}`,d.m(d.sb.profit),d.sb.profit)}${row(184,`Parlays ${d.sb.parlayWins}–${d.sb.parlayLosses}`,d.m(d.sb.parlayProfit),d.sb.parlayProfit)}
-<text x="${X}" y="246" font-family="${F.xb}" font-size="15" letter-spacing="2.5" fill="${L}">PREDICTION APPS</text><rect x="${X+178}" y="230" width="56" height="22" rx="11" fill="#2a3355"/><text x="${X+206}" y="246" text-anchor="middle" font-family="${F.xb}" font-size="12" letter-spacing="1" fill="${L}">NEW</text>
-${row(290,`Singles ${d.pm.wins}–${d.pm.losses}`,d.m(d.pm.profit),d.pm.profit)}${row(334,`Parlays ${d.pp.wins}–${d.pp.losses}`,d.m(d.pp.profit),d.pp.profit)}
-${d.sb.tracked?`<text x="${X}" y="404" font-family="${F.sb}" font-size="24" fill="#dbe4f0"><tspan font-family="${F.xb}" fill="${M}">${d.sb.beat} of ${d.sb.tracked}</tspan> sportsbook picks beat the kickoff price</text>`:''}
-<text x="${X}" y="446" font-family="${F.sb}" font-size="18" fill="#dbe4f0" fill-opacity=".75">$100 singles · $25 parlays · every loss included · 21+</text>
+<text x="${X}" y="92" font-family="${F.xb}" font-size="15" letter-spacing="2.5" fill="${M}">OFFICIAL RECORD · NFL + NBA</text>
+<text x="${X}" y="168" font-family="${F.g}" font-size="76" fill="${d.total.profit<0?'#f87171':M}">${xEsc(d.m(d.total.profit))}</text>
+<text x="${X}" y="208" font-family="${F.sb}" font-size="24" fill="#dbe4f0">${xEsc(d.rec(d.total))} · every pick, losses included</text>
+${row(268,`NFL sportsbook ${d.rec(d.nfl)}`,d.m(d.nfl.profit),d.nfl.profit)}${row(312,`NBA sportsbook ${d.rec(d.nba)}`,d.m(d.nba.profit),d.nba.profit)}${row(356,`Prediction apps ${d.rec(d.apps)}`,d.m(d.apps.profit),d.apps.profit)}
+${d.tracked?`<text x="${X}" y="410" font-family="${F.sb}" font-size="24" fill="#dbe4f0"><tspan font-family="${F.xb}" fill="${M}">${d.beat} of ${d.tracked}</tspan> sportsbook picks beat the kickoff price</text>`:''}
+<text x="${X}" y="450" font-family="${F.sb}" font-size="18" fill="#dbe4f0" fill-opacity=".75">$100 singles · $25 parlays · apps after fees · 21+</text>
 <rect x="470" y="589" width="730" height="86" fill="${M}"/>
 <text x="${X}" y="643" font-family="${F.g}" font-size="27" fill="#06231a">Follow + tap</text><g transform="translate(${X+168} 615) scale(.3)" fill="#06231a">${XBELL}</g>
 <text x="${R-38}" y="644" text-anchor="end" font-family="${F.g}" font-size="31" fill="#06231a">betthisguy.com</text><path d="M1118 633h24m-9-9 9 9-9 9" fill="none" stroke="#06231a" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>`;
 }
-function xSummaryData(rows,pmRows=[],ppRows=[]){
-  const sb=weeklySummary(rows),pm=predictionRecord(pmRows),pp=predictionParlayRecord(ppRows);
-  return {sb,pm,pp,m:v=>Math.round(v)===0?'$0':weeklyMoney(v)};
+function xSummaryData(rows,pmRows=[],ppRows=[],nbaRows=[],nbaPmRows=[]){
+  const sb=weeklySummary(rows),pm=predictionRecord(pmRows),pp=predictionParlayRecord(ppRows),nb=weeklySummary(nbaRows),npm=predictionRecord(nbaPmRows);
+  // One record (Nov 3): each part is singles + parlays; the total is everything.
+  const part=(w,l,p,m)=>({wins:w,losses:l,pushes:p,profit:m});
+  const nfl=part(sb.wins+sb.parlayWins,sb.losses+sb.parlayLosses,sb.pushes,sb.profit+sb.parlayProfit),nba=part(nb.wins+nb.parlayWins,nb.losses+nb.parlayLosses,nb.pushes,nb.profit+nb.parlayProfit);
+  const apps=part(pm.wins+pp.wins+npm.wins,pm.losses+pp.losses+npm.losses,(pm.pushes||0)+(pp.pushes||0)+(npm.pushes||0),pm.profit+pp.profit+npm.profit);
+  const total=part(nfl.wins+nba.wins+apps.wins,nfl.losses+nba.losses+apps.losses,nfl.pushes+nba.pushes+apps.pushes,nfl.profit+nba.profit+apps.profit);
+  return {sb,pm,pp,nb,nfl,nba,apps,total,beat:sb.beat+nb.beat,tracked:sb.tracked+nb.tracked,m:v=>Math.round(v)===0?'$0':weeklyMoney(v),rec:x=>`${x.wins}–${x.losses}${x.pushes?`–${x.pushes}`:''}`};
 }
 async function xSummaryLoad(env){
   const rows=(await env.DB.prepare("SELECT kind,posted_at,line,odds,combined_odds,status,result,closing_line,closing_odds,closing_captured_at,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%'").all()).results||[];
   const pm=(await env.DB.prepare('SELECT result,odds,net_odds,close_odds FROM prediction_picks WHERE event_id NOT LIKE \'NBA--%\'').all().catch(()=>({results:[]}))).results||[];
   const pp=(await env.DB.prepare('SELECT result,odds,legs_json,posted_at FROM prediction_parlays').all().catch(()=>({results:[]}))).results||[];
-  return xSummaryData(rows,pm,pp);
+  const nba=(await env.DB.prepare("SELECT kind,posted_at,line,odds,combined_odds,status,result,closing_line,closing_odds,closing_captured_at,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'nba|%'").all().catch(()=>({results:[]}))).results||[];
+  const npm=(await env.DB.prepare('SELECT result,odds,net_odds,close_odds FROM prediction_picks WHERE event_id LIKE \'NBA--%\'').all().catch(()=>({results:[]}))).results||[];
+  return xSummaryData(rows,pm,pp,nba,npm);
 }
 function xSummaryText(d,now=Date.now()){
-  const {sb,pm,pp,m}=d,pw=pm.wins+pp.wins,pl=pm.losses+pp.losses;
-  // NBA picks start Tue Oct 20; the line drops off once they have.
-  const nba=now<Date.parse('2026-10-20T23:00:00Z')?' NBA starts Tuesday.':'';
-  return xShort(`🔔 Turn on notifications to get every pick the second it locks.\n\nSportsbook singles: ${sb.wins}–${sb.losses} (${m(sb.profit)})${pw+pl?`\nPrediction-app picks (new): ${pw}–${pl} (${m(pm.profit+pp.profit)})`:''}${sb.tracked?`\n${sb.beat} of ${sb.tracked} beat the kickoff price`:''}\n\nEvery pick posted before the game, losses included.${nba}\n\nLink in bio · 21+`);
+  const {m,rec}=d;
+  return xShort(`🔔 Turn on notifications: every pick, the second it locks.\n\nOfficial record: ${m(d.total.profit)} (${rec(d.total)})\nNFL sportsbook ${rec(d.nfl)}, ${m(d.nfl.profit)}\nNBA sportsbook ${rec(d.nba)}, ${m(d.nba.profit)}\nPrediction apps ${rec(d.apps)}, ${m(d.apps.profit)}${d.tracked?`\n${d.beat} of ${d.tracked} beat the kickoff price`:''}\n\nPosted before the game, losses included. Link in bio · 21+`);
 }
 async function postSummaryToX(env,now=Date.now()){
   if(!env.DB||!xReady(env))return {posted:0,disabled:true};
