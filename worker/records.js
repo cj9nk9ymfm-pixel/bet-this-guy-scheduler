@@ -4593,13 +4593,57 @@ async function announceNow(env){
 // HIT / MISS / PUSH badge on each row. Past 9 rows the rows get tighter, and
 // the card grows taller to fit them all (up to 40).
 // The player is the name before " · " in the row; parlays and legs have none.
-async function xSlateSvgFaces(d){
+async function xSlateSvgFaces(d,draw=xSlateSvg){
   const singles=(d.picks||[]).filter(p=>!p.leg&&!p.legLines);
-  if(typeof playerHeadshot!=='function')return xSlateSvg(d);
+  if(typeof playerHeadshot!=='function')return draw(d);
   const sport=/\bNBA\b/.test(String(d.kicker||''))?'NBA':'NFL',nameOf=p=>p.player||(!/parlay/i.test(p.text||'')&&String(p.text||'').includes(' · ')?String(p.text).split(' · ')[0]:'');
   const faces=new Map();
   await Promise.all([...new Set(singles.filter(p=>!p.photo).map(nameOf).filter(Boolean))].slice(0,20).map(async name=>{const shot=await playerHeadshot(name,sport,true).catch(()=>null);if(shot?.bytes)faces.set(name,{type:shot.type||'image/png',b64:xBase64(shot.bytes)})}));
-  return xSlateSvg({...d,picks:d.picks.map(p=>!p.leg&&!p.photo&&faces.has(nameOf(p))?{...p,photo:faces.get(nameOf(p))}:p)});
+  return draw({...d,picks:d.picks.map(p=>!p.leg&&!p.photo&&faces.has(nameOf(p))?{...p,photo:faces.get(nameOf(p))}:p)});
+}
+// The NBA night's results card (Nov 4, Tim): the pinned card's design. The
+// night's money big, its one record under it, a tile per part, then every pick
+// with its headshot and a HIT / MISS badge, the NBA season along the bottom.
+// d: {kicker,dateLine,net,rec,parts:[{label,rec,money}],picks (nbaSlatePicks form),season}
+function xNightSvg(d){
+  const M='#2ee6a8',G='#fdbb30',RED='#f87171',F={g:'BTG Grotesk',xb:'BTG Inter XB',sb:'BTG Inter SB'},L=64,R=1136,W=R-L;
+  const money=Math.round(d.net)===0?'$0':weeklyMoney(d.net),tone=v=>v<0?RED:v>0?M:'#ffffff';
+  const items=[];for(const p of d.picks||[]){if(p.leg&&items.length){(items.at(-1).legs||=[]).push(p);continue}if(!p.leg)items.push({...p})}
+  const list=items.slice(0,24),dense=list.length>8,RH=dense?92:112,GAP=dense?10:14,FR=dense?30:38;
+  const parts=(d.parts||[]).slice(0,3),TW=parts.length?(W-(parts.length-1)*24)/parts.length:0,TY=430,TH=170;
+  const top=parts.length?TY+TH+40:TY,rowsEnd=top+list.length*(RH+GAP)+(items.length>list.length?44:0),H=Math.max(1200,rowsEnd+40+(d.season?70:0)+110);
+  const fit=(t,max,size)=>Math.max(18,Math.min(size,Math.floor(max/Math.max(1,String(t).length*.56))));
+  const badge=res=>res==='won'?['HIT',M,'#06231a']:res==='lost'?['MISS',RED,'#2a0909']:res==='push'?['NO ACTION','#cbd5e1','#1f2937']:null;
+  const tiles=parts.map((t,i)=>{const x=L+i*(TW+24);return `<rect x="${x}" y="${TY}" width="${TW}" height="${TH}" rx="24" fill="#ffffff" fill-opacity=".06" stroke="#ffffff" stroke-opacity=".14" stroke-width="2"/>
+<text x="${x+26}" y="${TY+44}" font-family="${F.sb}" font-size="24" fill="#d7dde9">${xEsc(t.label)}</text>
+<text x="${x+24}" y="${TY+108}" font-family="${F.g}" font-size="58" fill="#ffffff">${xEsc(t.rec)}</text>
+<text x="${x+26}" y="${TY+148}" font-family="${F.xb}" font-size="30" fill="${tone(t.money)}">${xEsc(Math.round(t.money)===0?'$0':weeklyMoney(t.money))}</text>`}).join('');
+  const rows=list.map((p,i)=>{const y=top+i*(RH+GAP),cy=y+RH/2,b=badge(p.res),cx=L+28+FR;
+    const name=p.legs?p.text:String(p.text||'').split(' · ')[0],bet=p.legs?p.legs.map(l=>xShortLeg(String(l.text||'').replace(' · ',' '))).join(' + '):String(p.text||'').split(' · ').slice(1).join(' · ');
+    const ini=String(name).split(/\s+/).filter(Boolean).map(w=>w[0]).join('').slice(0,2).toUpperCase();
+    const face=p.photo?`<circle cx="${cx}" cy="${cy}" r="${FR+3}" fill="${G}"/><circle cx="${cx}" cy="${cy}" r="${FR}" fill="#1b2a4a"/><clipPath id="nf${i}"><circle cx="${cx}" cy="${cy}" r="${FR}"/></clipPath><image href="data:${p.photo.type};base64,${p.photo.b64}" x="${cx-FR*1.4}" y="${cy-FR}" width="${FR*2.8}" height="${FR*2.05}" preserveAspectRatio="xMidYMax meet" clip-path="url(#nf${i})"/>`
+      :`<circle cx="${cx}" cy="${cy}" r="${FR+3}" fill="${p.legs?G:'#2f6bff'}"/><circle cx="${cx}" cy="${cy}" r="${FR}" fill="#1b2a4a"/><text x="${cx}" y="${cy+FR*.34}" text-anchor="middle" font-family="${F.xb}" font-size="${Math.round(FR*.85)}" fill="#ffffff">${xEsc(p.legs?`${p.legs.length}×`:ini)}</text>`;
+    const bw=b?(b[0].length>4?170:112):0,bh=dense?40:46,bx=R-24-bw,ps=dense?36:44,px=b?bx-18:R-24,oddsW=String(p.odds||'').length*ps*.6,tx=cx+FR+24,tmax=px-oddsW-24-tx;
+    return `<rect x="${L}" y="${y}" width="${W}" height="${RH}" rx="22" fill="#ffffff" fill-opacity=".05" stroke="#ffffff" stroke-opacity=".12" stroke-width="2"/>${face}
+<text x="${tx}" y="${cy-6}" font-family="${F.xb}" font-size="${fit(name,tmax,dense?28:32)}" fill="#ffffff">${xEsc(name)}</text>
+<text x="${tx}" y="${cy+(dense?26:30)}" font-family="${F.sb}" font-size="${fit(bet,tmax,dense?22:25)}" fill="${G}">${xEsc(bet)}</text>
+<text x="${px}" y="${cy+ps*.36}" text-anchor="end" font-family="${F.g}" font-size="${ps}" fill="${p.res==='lost'?RED:'#ffffff'}">${xEsc(p.odds||'')}</text>
+${b?`<rect x="${bx}" y="${cy-bh/2}" width="${bw}" height="${bh}" rx="${bh/2}" fill="${b[1]}"/><text x="${bx+bw/2}" y="${cy+bh*.2}" text-anchor="middle" font-family="${F.xb}" font-size="${dense?19:22}" letter-spacing="1.5" fill="${b[2]}">${b[0]}</text>`:''}`}).join('');
+  const more=items.length>list.length?`<text x="${L}" y="${rowsEnd-10}" font-family="${F.sb}" font-size="24" fill="#c9d4e8">+ ${items.length-list.length} more at betthisguy.com</text>`:'';
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="${H}" viewBox="0 0 1200 ${H}">
+<defs><linearGradient id="bg" x1="0" y1="0" x2="0.4" y2="1"><stop offset="0" stop-color="#1d4ed8"/><stop offset=".3" stop-color="#0b1530"/><stop offset="1" stop-color="#070e1d"/></linearGradient></defs>
+<rect width="1200" height="${H}" fill="url(#bg)"/>
+<text x="${L}" y="100" font-family="${F.xb}" font-size="26" letter-spacing="4.5" fill="${G}">${xEsc(d.kicker||'NBA · LAST NIGHT')}</text>
+<text x="${R}" y="100" text-anchor="end" font-family="${F.sb}" font-size="26" fill="#c9d4e8">${xEsc(d.dateLine||'')}</text>
+<text x="56" y="290" font-family="${F.g}" font-size="${money.length>7?160:180}" fill="${tone(d.net)}">${xEsc(money)}</text>
+<text x="${L}" y="372" font-family="${F.g}" font-size="64" fill="#ffffff">${xEsc(d.rec)}</text>
+<text x="${L+String(d.rec).length*38+30}" y="364" font-family="${F.sb}" font-size="30" fill="#c9d4e8">every pick graded from the box score</text>
+${tiles}${rows}${more}
+${d.season?`<text x="${L}" y="${H-150}" font-family="${F.xb}" font-size="30" fill="#ffffff">NBA season: <tspan fill="${tone(d.season.net)}">${xEsc(d.season.text)}</tspan></text>`:''}
+<rect y="${H-110}" width="1200" height="110" fill="${M}"/>${xLogo(L,H-84,58)}
+<text x="140" y="${H-42}" font-family="${F.g}" font-size="36" fill="#0b1530">Bet This Guy</text>
+<text x="${R}" y="${H-42}" text-anchor="end" font-family="${F.xb}" font-size="30" fill="#0b1530">Losses included · 21+</text>
+</svg>`;
 }
 function xSlateSvg(d){
   const M='#2ee6a8',GOLD='#fdbb30',RED='#f87171',F={g:'BTG Grotesk',xb:'BTG Inter XB',sb:'BTG Inter SB'},L=64,R=1136,W=R-L;
@@ -5352,7 +5396,11 @@ async function postNbaRepliesToX(env,now=Date.now(),limit=2){
     const recapMedia=lean?async()=>{const pmRows=((await env.DB.prepare("SELECT * FROM prediction_picks WHERE event_id LIKE 'NBA--%' AND game_time>=? AND game_time<? ORDER BY game_time").bind(new Date(nightStart).toISOString(),new Date(nightStart+86400000).toISOString()).all().catch(()=>({results:[]}))).results)||[];
       const all=nightAll(),net=all.net,first=Math.min(...rows.map(r=>Date.parse(r.game_time)));
       const picks=[...nbaSlatePicks(rows),...pmRows.map(r=>({color:'#2ee6a8',text:`${r.player} · ${weeklyLegText(r)}`,odds:`${exchangePct(r.odds)}%`,sub:`${r.exchange} · prediction app`,res:['won','lost','push'].includes(r.result)?r.result:null}))];
-      return xUploadImage(env,await renderCardPng(await xSlateSvgFaces({final:true,kicker:'NBA · RESULTS',day:all.rec,dayColor:net>=0?'#2ee6a8':'#f87171',date:etDate(first,{month:'short',day:'numeric'}),dateLine:`${etDate(first,{weekday:'long',month:'short',day:'numeric'})} · ${weeklyMoney(net)}`,note:all.parts.join(' · '),note2:'',picks})))}:null;
+      const s=weeklySummary(rows),pm=pmT(pmNight),season=await nbaRecordSummary(env).catch(()=>null);
+      const pmS=pmT((await env.DB.prepare("SELECT result,odds,net_odds FROM prediction_picks WHERE event_id LIKE 'NBA--%' AND result IN ('won','lost')").all().catch(()=>({results:[]}))).results||[]);
+      const parts=[s.wins+s.losses+s.pushes?{label:'Sportsbook',rec:`${s.wins}–${s.losses}${s.pushes?`–${s.pushes}`:''}`,money:s.profit}:null,s.parlayWins+s.parlayLosses?{label:'Parlays',rec:`${s.parlayWins}–${s.parlayLosses}`,money:s.parlayProfit}:null,pm.w+pm.l?{label:'Prediction apps',rec:`${pm.w}–${pm.l}`,money:pm.net}:null].filter(Boolean);
+      const seasonLine=season?{text:`${season.wins+(season.parlayWins||0)+pmS.w}–${season.losses+(season.parlayLosses||0)+pmS.l}, ${weeklyMoney(season.profit+(season.parlayProfit||0)+pmS.net)}`,net:season.profit+(season.parlayProfit||0)+pmS.net}:null;
+      return xUploadImage(env,await renderCardPng(await xSlateSvgFaces({kicker:'NBA · RESULTS',dateLine:etDate(first,{weekday:'long',month:'short',day:'numeric'}),net,rec:all.rec,parts:parts.length>1?parts:[],picks,season:seasonLine},xNightSvg)))}:null;
     if(rows.length&&rows.every(r=>r.status==='final')&&pmDone)jobs.push({key:`x-nba-recap:${night}`,kind:'recap',...(recapMedia?{media:recapMedia}:{}),text:async()=>{const all=nightAll(),season=await nbaRecordSummary(env);
       const pmSeason=pmT((await env.DB.prepare("SELECT result,odds,net_odds FROM prediction_picks WHERE event_id LIKE 'NBA--%' AND result IN ('won','lost')").all().catch(()=>({results:[]}))).results||[]);
       const sw=season.wins+(season.parlayWins||0)+pmSeason.w,sl=season.losses+(season.parlayLosses||0)+pmSeason.l,snet=season.profit+(season.parlayProfit||0)+pmSeason.net;
