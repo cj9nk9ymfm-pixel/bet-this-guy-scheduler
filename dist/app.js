@@ -1649,7 +1649,7 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
   // play) the top pick gets the card and the rest list by kickoff time and game.
   const amOdds=v=>{v=Number(v);return v>0?`+${v}`:`−${Math.abs(v)}`};
   const fairAm=pc=>{pc=Number(pc)/100;if(!(pc>0&&pc<1))return null;return pc<=.5?Math.round(100*(1-pc)/pc):-Math.round(100*pc/(1-pc))};
-  const countdown=iso=>{const t=Date.parse(iso)-Date.now();if(!(t>0))return 'Starting';if(t>36*3600000)return kickoff(iso);const h=Math.floor(t/3600000),m=Math.floor(t%3600000/60000);return `Kicks off in ${h?`${h}h `:''}${m}m`};
+  const countdown=iso=>{const t=Date.parse(iso)-Date.now();if(!(t>0))return 'Starting';if(t>24*3600000)return kickoff(iso);const h=Math.floor(t/3600000),m=Math.floor(t%3600000/60000);return `${LEAGUE==='NBA'?'Tips off':'Kicks off'} in ${h?`${h}h `:''}${m}m`};
   const photoUrl=r=>`/api/player-photo?name=${encodeURIComponent(r.player||'')}${(r.sport||r.sport_label)==='NBA'||String(r.id||'').startsWith('nba|')||LEAGUE==='NBA'?'&sport=NBA':''}`;
   const face=(r,cls='pc-ph')=>{const ini=String(r.player||'').split(' ').map(x=>x[0]||'').join('').slice(0,2);return `<span class="${cls}"><span>${htmlEscape(ini)}</span><img loading="lazy" decoding="async" src="${photoUrl(r)}" alt="" onerror="this.remove()"></span>`};
   const gameOf=r=>{const t=String(recordLegs(r)[0]?.team||'');const g=t.replace(' · @ ',' @ ').replace(' · vs ',' vs ');return typeof compactGameName==='function'?compactGameName(g):g};
@@ -3193,7 +3193,7 @@ function statsProp(l){
   function pmCard(r){
     const ini=String(r.player||'').split(' ').map(x=>x[0]||'').join('').slice(0,2),idx=pmRows.push(pmRecord(r))-1;
     const game=String(r.team||'').replace(' · @ ',' @ ').replace(' · vs ',' vs '),matchup=game&&typeof compactGameName==='function'?compactGameName(game):game;
-    const t=Date.parse(r.gameTime)-Date.now(),cd=t>36*3600000?new Date(r.gameTime).toLocaleString([],{weekday:'short',hour:'numeric',minute:'2-digit'}):t>0?`Starts in ${Math.floor(t/3600000)?`${Math.floor(t/3600000)}h `:''}${Math.floor(t%3600000/60000)}m`:'Starting';
+    const t=Date.parse(r.gameTime)-Date.now(),cd=t>24*3600000?new Date(r.gameTime).toLocaleString([],{weekday:'short',hour:'numeric',minute:'2-digit'}):t>0?`Starts in ${Math.floor(t/3600000)?`${Math.floor(t/3600000)}h `:''}${Math.floor(t%3600000/60000)}m`:'Starting';
     const when=new Date(r.gameTime).toLocaleString([],{weekday:'short',hour:'numeric',minute:'2-digit'}),price=htmlEscape(pct(r.odds)),app=htmlEscape(r.exchange||'the app');
     const bet=/touchdown/i.test(r.market||'')&&Number(r.line)===.5?`${r.side==='Under'?'No ':''}${r.market}`:`${r.side} ${r.line} ${String(r.market||'').toLowerCase()}`;
     const edge=Number(r.edge),fair=Number(r.fair);
