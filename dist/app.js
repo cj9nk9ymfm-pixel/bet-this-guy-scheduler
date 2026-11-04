@@ -1668,7 +1668,7 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
         <button type="button" class="pc-price" data-slip-price aria-label="Add to slip at ${amOdds(r.odds)}"><b>${amOdds(r.odds)}</b><small>＋ Slip</small></button></div>
       ${whyHtml(r)}
       <p class="pc-edge">${htmlEscape(book)} ${amOdds(r.odds)}${fair!=null?` · fair ${amOdds(fair)}`:''}${Number.isFinite(edge)?` · <b>${edge.toFixed(1)}% edge</b>`:''} · $${stake} wins $${win}${apps?`<br><span class="pc-apps">Apps: ${apps}</span>`:''}</p>
-      <div class="pc-btns"><button type="button" class="pc-go" data-act="open">Bet at ${htmlEscape(book||'the best book')} ${icon('arrow-right')}</button><button type="button" class="pc-ibet" data-ibet>${window.BTGMyBets?.has?.(r.id)?'✓ Tracking':'I bet this'}</button></div>
+      <div class="pc-foot"><span>Tap the price to add it · tap the card for stats</span><button type="button" class="pc-ibet" data-ibet>${window.BTGMyBets?.has?.(r.id)?'✓ Tracking':'I bet this'}</button></div>
     </div>`;
   }
   function pickRowLite(r,i){
@@ -3202,7 +3202,6 @@ function statsProp(l){
       <div class="pc-main"><span class="pc-ph"><span>${htmlEscape(ini)}</span><img loading="lazy" decoding="async" src="/api/player-photo?name=${encodeURIComponent(r.player||'')}${LEAGUE==='NBA'?'&sport=NBA':''}" alt="" onerror="this.remove()"></span><div class="pc-mid"><b class="pc-name">${htmlEscape(r.player||'')}</b><span class="pc-bet">${htmlEscape(bet)}</span><span class="pc-game">${htmlEscape([matchup,when].filter(Boolean).join(' · '))}</span></div>
         <button type="button" class="pc-price pm-price" data-slip-price aria-label="Add to slip at ${price}"><b>${price}</b><small>＋ Slip</small></button></div>
       <p class="pc-edge">${htmlEscape(pmWin(r.netOdds??r.odds,wagerStake(),null))}${Number.isFinite(fair)?` · hit chance <b>${Math.round(fair)}%</b>`:''}${Number.isFinite(edge)?` · ${edge.toFixed(1)} pts under fair`:''}${r.open===false?` · not offered in ${htmlEscape(data?.stateName||'your state')}`:''}</p>
-      <div class="pc-btns"><button type="button" class="pc-go pm-go" data-act="open">Bet on ${app} ${typeof icon==='function'?icon('arrow-right'):''}</button></div>
     </div>`;
   }
   function pickRow(r){
