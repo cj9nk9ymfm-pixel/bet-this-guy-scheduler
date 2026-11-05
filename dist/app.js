@@ -838,6 +838,12 @@ renderSlip=function(){
   if(!state.slip.length)for(const id of ['#shareParlay','#trackParlay']){const button=$(id);if(button)button.disabled=false}
   $$('.slip-leg').forEach(el=>{
     const index=Number(el.querySelector('[data-remove-slip]')?.dataset.removeSlip),leg=Number.isInteger(index)?state.slip[index]:null;
+    // In-game legs (Nov 4, Tim): the stat against the line and bars, like every other live pick.
+    const live=leg?(()=>{try{return window.BTGLive?.legStatus?.({...leg.p,side:leg.side})}catch{return null}})():null;
+    if(live){const p={...leg.p,side:leg.side},need=window.BTGLive.need?.(p,live)||{big:'',small:''},key=live.key==='hit'?'hit':live.key==='miss'?'miss':'live';
+      const box=document.createElement('div');box.className=`slip-live ${key}`;
+      box.innerHTML=`<div><strong>${live.value==null?'–':htmlEscape(String(live.value))}<span>/ ${htmlEscape(String(leg.p.line))}</span></strong><em>${htmlEscape(need.big)}${need.small?` · ${htmlEscape(need.small)}`:''}</em><small>${htmlEscape(live.final?'Final':String(live.clock||'').replace(' · ',' '))}</small></div>${window.BTGLive.pips?window.BTGLive.pips(p,live,true):''}`;
+      el.append(box);el.classList.add('slip-leg-live');return}
     if(!leg||(!leg.changed&&!leg.unavailable))return;
     const notice=document.createElement('div');notice.className='slip-price-change';
     if(leg.unavailable)notice.textContent='Market unavailable or suspended — remove this leg or wait for fresh odds.';
@@ -850,7 +856,7 @@ const calcParlayBase=calcParlay;
 calcParlay=function(){
   const blocked=state.slip.some(leg=>leg.changed||leg.unavailable);
   for(const id of ['#shareParlay','#trackParlay']){const button=$(id);if(button)button.disabled=blocked}
-  if(blocked){$('#combinedOdds').textContent='—';$('#payout').textContent=state.slip.some(leg=>leg.unavailable)?'Market unavailable':'Accept price changes';return}
+  if(blocked){$('#combinedOdds').textContent='—';$('#payout').textContent=state.slip.some(leg=>leg.unavailable)?(state.slip.some(leg=>{try{return window.BTGLive?.legStatus?.({...leg.p,side:leg.side})}catch{return false}})?'Game started':'Market unavailable'):'Accept price changes';return}
   return calcParlayBase();
 };
 const openDetailBase=openDetail;
@@ -3881,7 +3887,7 @@ function statsProp(l){
       if(uniq.length){const all=uniq.reduce((t,x)=>{const d=dec(x.kind==='parlay'?x.combined_odds:x.odds),s=x.kind==='parlay'?25:100;return t+(x.result==='won'&&d?s*(d-1):x.result==='lost'?-s:0)},0),followed=uniq.filter(x=>list.some(b=>b.pickId===x.id)).length;
         compare=`<p class="mb-compare">You tracked ${followed} of our ${uniq.length} graded picks since you started. Betting all of them would have made <b class="${all>=0?'pos':'neg'}">${mny(all)}</b> (singles $100, parlays $25).</p>`}}
     body.innerHTML=list.length?`<div class="mb-kpis"><div><b class="${profit>=0?'pos':'neg'}">${mny(profit)}</b><span>your profit · ${done.length} graded</span></div><div><b>${w}–${l}</b><span>won–lost${list.length>done.length?` · ${list.length-done.length} open`:''}</span></div></div>${compare}
-      <div class="mb-list">${list.map(b=>{const r=b.result,n=net(b);return `<div class="mb-row" data-id="${htmlEscape(b.id)}"><div class="mb-t"><b>${htmlEscape(b.player)}</b><span>${htmlEscape(b.bet)}${b.book?` · ${htmlEscape(b.book)}`:''} · $<input class="mb-stake" type="number" inputmode="decimal" min="1" value="${b.stake}" aria-label="Amount bet"> at ${am(b.odds)}</span></div><div class="mb-m ${r==='won'?'pos':r==='lost'?'neg':''}">${r?mny(n):'Open'}<small>${r==='won'?'Won':r==='lost'?'Lost':r==='push'?'Push':'Not graded yet'}</small></div><button type="button" class="mb-x" aria-label="Remove">×</button></div>`}).join('')}</div>
+      <div class="mb-list">${list.map(b=>{const r=b.result,n=net(b),rec=!r&&b.pickId?[...rows(),...(window.BTGOfficialRows?.()||[])].find(x=>x.id===b.pickId):null,lv=rec?window.BTGLiveBlock?.(rec):null;return `<div class="mb-row${lv?' mb-live-row':''}" data-id="${htmlEscape(b.id)}"><div class="mb-t"><b>${htmlEscape(b.player)}</b><span>${htmlEscape(b.bet)}${b.book?` · ${htmlEscape(b.book)}`:''} · $<input class="mb-stake" type="number" inputmode="decimal" min="1" value="${b.stake}" aria-label="Amount bet"> at ${am(b.odds)}</span></div><div class="mb-m ${r==='won'?'pos':r==='lost'?'neg':''}">${r?mny(n):'Open'}<small>${r==='won'?'Won':r==='lost'?'Lost':r==='push'?'Push':'Not graded yet'}</small></div><button type="button" class="mb-x" aria-label="Remove">×</button>${lv?`<div class="mb-live">${lv.badge}${lv.html}</div>`:''}</div>`}).join('')}</div>
       <p class="mb-fine">${window.BTGAuth?.isSignedIn?.()?'Saved to your account, on every device.':'Saved on this device. <button type="button" class="mb-signin">Sign in</button> to keep them on every device.'} Amounts are what you tell us; change any amount above.</p>`
       :`<div class="mb-empty"><b>No bets tracked yet</b><span>Tap “I bet this” on any official pick and it lands here. We grade it with the pick, so you see your own record next to ours.</span></div>`;
     body.querySelector('.mb-signin')?.addEventListener('click',()=>{dlg.close();window.BTGAuth?.open?.('signup')});
@@ -3890,6 +3896,8 @@ function statsProp(l){
   function open(){render();if(dlg&&!dlg.open)dlg.showModal?.();window.btgCount?.('mybets:open');if(window.BTGAuth?.isSignedIn?.())window.BTGAuth.serverBets?.().then(list=>{server=Array.isArray(list)?list:[];if(dlg?.open)render()}).catch(()=>{})}
   dlg?.querySelector('.mb-close')?.addEventListener('click',()=>dlg.close());dlg?.addEventListener('click',e=>{if(e.target===dlg)dlg.close()});
   document.querySelector('[data-more-action="mybets"]')?.addEventListener('click',()=>{document.getElementById('moreSheet')?.close?.();open()});
+  // Live ticks redraw My bets while it's open (not while an amount is being typed).
+  (window.btgLiveHooks||=[]).push(()=>{if(dlg?.open&&!document.activeElement?.classList?.contains('mb-stake')&&dlg.querySelector('.mb-live-row'))render()});
   window.BTGMyBets={add,has,open,render}})();
 
 // More sheet (Nov 3 redesign): alerts open the chooser; theme is a segmented control.
@@ -3924,3 +3932,6 @@ function statsProp(l){
   // window.open to a book (deep links from the slip and sheet)
   const wo=window.open;window.open=function(url){const b=url&&bookOf(url);if(b)window.btgCount?.(`book:${b}`);return wo.apply(this,arguments)};
 })();
+
+// Slip legs in a game update with the live board (Nov 4).
+(window.btgLiveHooks||=[]).push(()=>{try{if(typeof renderSlip==='function'&&(state.slip||[]).some(leg=>window.BTGLive?.legStatus?.({...leg.p,side:leg.side}))&&!document.querySelector('#slipLegs')?.contains(document.activeElement))renderSlip()}catch{}});
