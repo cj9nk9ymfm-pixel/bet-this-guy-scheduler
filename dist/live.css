@@ -72,3 +72,11 @@ body.light .live-prop-card,body.light .live-game-switcher button{background:#f4f
 body.light .lp2-game,body.light .lp2-t{background:#fff;border-color:#e3ebf5}body.light .lp2-who b,body.light .lp2-num strong,body.light .lp2-tm strong,body.light .lp2-t b{color:#0f172a}
 body.light .lp2-sb{background:linear-gradient(90deg,#e8f0ff,#f7faff)}body.light .lp2-num em,body.light .lp2-leg,body.light .lp2-tm b{color:#334155}
 .lp2 .lv-pips.mini{display:flex;gap:4px;padding:0;margin:2px 0 2px 50px;width:calc(100% - 50px)}.lp2 .lv-pips.mini i{height:8px;border-radius:3px}.lp2 .lv-bar.mini{margin:2px 0 2px 50px}
+
+/* Live cards on the pick lists (Nov 4) */
+.lp2.lv2{margin:0 0 10px;border:1px solid rgba(255,255,255,.08);border-radius:18px;background:#12161c}
+.lp2.lv2.hit{border-color:rgba(46,230,168,.45);background:linear-gradient(180deg,rgba(46,230,168,.08),#12161c 60%)}
+.lp2.lv2.miss{border-color:rgba(248,113,113,.35)}
+.lv2-g{display:flex;justify-content:space-between;gap:8px;margin:8px 0 0 50px;padding-top:8px;border-top:1px solid rgba(255,255,255,.06);font-size:12.5px;color:#98a1ac}
+.lv2-g b{color:#e8edf5}.lv2-g i{display:inline-block;width:6px;height:6px;margin-right:5px;border-radius:50%;background:#f87171;vertical-align:middle;animation:lp2p 1.4s infinite}
+body.light .lp2.lv2{background:#fff;border-color:#e3ebf5}body.light .lv2-g b{color:#0f172a}

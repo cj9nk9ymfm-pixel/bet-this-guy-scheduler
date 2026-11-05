@@ -1746,7 +1746,8 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
     $$('#officialNowList [data-on-live], #parlaysList [data-on-live]').forEach(el=>{const r=officialLiveList[+el.dataset.onLive]||{},line=liveLine(r);el.hidden=!line;if(el.previousElementSibling)el.previousElementSibling.hidden=!!line;el.className=`on-live${line?.cls?' '+line.cls:''}`;el.innerHTML=line?line.html:'';
       const row=el.closest('.on-row'),tag=row?.querySelector('.on-tag');
       if(row&&tag&&!graded(r)){row.classList.toggle('on-live-now',!!line);row.classList.toggle('on-live-hit',line?.state==='hit');row.classList.toggle('on-live-miss',line?.state==='miss');if(line){tag.className=`on-tag on-tag-${line.state}${line.count?' on-tag-count':''}`;tag.innerHTML=liveTag(line);tag.removeAttribute('title')}}
-      if(line)ids.push(String(r.id))});
+      });
+    for(const r of officialLiveList)if(r&&!graded(r)&&liveLine(r))ids.push(String(r.id));
     const sig=ids.sort().join(',');
     if(sig!==liveSig&&!liveRedraw){liveSig=sig;if(heroRows){liveRedraw=true;try{renderOfficialNow(heroRows)}finally{liveRedraw=false}}}
     paintLiveStrip();
@@ -1759,7 +1760,7 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
     if(!games.length){if(bar)bar.hidden=true;document.body.classList.remove('games-live');return}
     document.body.classList.add('games-live');
     if(!bar){bar=document.createElement('button');bar.type='button';bar.id='liveStrip';bar.className='live-strip-bar';bar.onclick=()=>{window.btgCount?.('live:strip');openLiveTracker()};host.before(bar)}
-    bar.hidden=false;bar.innerHTML=`<i class="on-dot"></i><b>Live</b><span>${games.length} game${games.length===1?'':'s'}${picks?` · ${picks} of our pick${picks===1?'':'s'}`:''}</span><em>Live tracker ›</em>`;
+    bar.hidden=false;bar.innerHTML=`<i class="on-dot"></i><b>Live</b><span>${games.length} game${games.length===1?'':'s'}${(()=>{const n=window.btgLiveOursLive?.()??picks;return n?` · ${n} of our picks live`:''})()}</span><em>Live tracker ›</em>`;
   }
   function openLiveTracker(){if(innerWidth<=720&&typeof showMobilePage==='function')showMobilePage('live',true);else if(typeof showDesktopPage==='function')showDesktopPage('live')}
   window.BTGOpenLive=openLiveTracker;
@@ -1794,6 +1795,8 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
     // next 4 show, "See all" opens the rest, and finished ones sit behind "Final"
     // (open when nothing is left to play).
     const rowsOf=items=>items.map(([r,i])=>officialRow(r,i)).join(''),SHOW=4;
+    // Started picks (Nov 4, Tim): the Live tab's card, number against the line, bars and the score.
+    const liveRowsOf=items=>items.map(([r,i])=>window.BTGLiveCard?.(r,`data-on="${i}" data-pick-id="${htmlEscape(r.id||'')}" data-lv-kind="on" data-lv-i="${i}"`)||officialRow(r,i)).join('');
     function fill(sel,items,noun,empty){
       const box=$(sel);if(!box)return;
       // NBA: picks for a later night sit under their own day heading, after tonight's.
@@ -1801,7 +1804,7 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
       const done=items.filter(([r])=>officialDone(r)),live=items.filter(([r])=>!officialDone(r)&&liveLine(r)&&!later.some(([x])=>x===r)),open=items.filter(([r])=>!officialDone(r)&&!live.some(([x])=>x===r)&&!later.some(([x])=>x===r));
       const laterHtml=[...new Set(later.map(([r])=>weekOf(r)))].sort().map(n=>`<p class="on-group on-group-later">${htmlEscape(nightLabel(n))}</p>${rowsOf(later.filter(([r])=>weekOf(r)===n))}`).join('');
       const tally=done.reduce((t,[r])=>{if(!voidOf(r))t[r.result]=(t[r.result]||0)+1;return t},{}),doneRec=`${tally.won||0}–${tally.lost||0}${tally.push?`–${tally.push}`:''}`;
-      box.innerHTML=items.length?(later.length&&(open.length||live.length||done.length)?'<p class="on-group">Tonight</p>':'')+(live.length?`<p class="on-group on-group-live"><i class="on-dot"></i>Live now</p>${rowsOf(live)}${open.length?'<p class="on-group">Up next</p>':''}`:'')+(sel==='#officialNowList'&&open.length?(open.length>=4?busyDay(open):open.map(([r,i])=>pickCard(r,i)).join('')):rowsOf(open.slice(0,SHOW)))+(sel!=='#officialNowList'&&open.length>SHOW?`<div class="on-more" hidden>${rowsOf(open.slice(SHOW))}</div><button type="button" class="on-toggle" data-on-toggle="more" aria-expanded="false">See all ${open.length} ${noun}s</button>`:'')+(done.length?`<button type="button" class="on-toggle on-final-toggle" data-on-toggle="final" aria-expanded="${open.length?'false':'true'}">Final · ${done.length} ${noun}${done.length===1?'':'s'} · ${doneRec}</button><div class="on-final"${open.length?' hidden':''}>${rowsOf(done)}</div>`:'')+laterHtml:empty;
+      box.innerHTML=items.length?(later.length&&(open.length||live.length||done.length)?'<p class="on-group">Tonight</p>':'')+(live.length?`<p class="on-group on-group-live"><i class="on-dot"></i>Live now</p>${liveRowsOf(live)}${open.length?'<p class="on-group">Up next</p>':''}`:'')+(sel==='#officialNowList'&&open.length?(open.length>=4?busyDay(open):open.map(([r,i])=>pickCard(r,i)).join('')):rowsOf(open.slice(0,SHOW)))+(sel!=='#officialNowList'&&open.length>SHOW?`<div class="on-more" hidden>${rowsOf(open.slice(SHOW))}</div><button type="button" class="on-toggle" data-on-toggle="more" aria-expanded="false">See all ${open.length} ${noun}s</button>`:'')+(done.length?`<button type="button" class="on-toggle on-final-toggle" data-on-toggle="final" aria-expanded="${open.length?'false':'true'}">Final · ${done.length} ${noun}${done.length===1?'':'s'} · ${doneRec}</button><div class="on-final"${open.length?' hidden':''}>${rowsOf(done)}</div>`:'')+laterHtml:empty;
       box.querySelectorAll('[data-slot]').forEach(b=>b.onclick=()=>box.querySelector(`[data-slot-sec="${b.dataset.slot}"]`)?.scrollIntoView({behavior:'smooth',block:'start'}));
       box.querySelectorAll('[data-on-toggle]').forEach(b=>b.onclick=()=>{const el=b.dataset.onToggle==='more'?b.previousElementSibling:b.nextElementSibling;const show=el.hidden;el.hidden=!show;b.setAttribute('aria-expanded',String(show));if(b.dataset.onToggle==='more')b.textContent=show?'Show fewer':`See all ${open.length} ${noun}s`});
     }
@@ -3195,6 +3198,29 @@ function statsProp(l){
     return under?`${v} so far · loses at ${need}`:`${v} so far · needs ${Math.max(0,need-v)} more`;
   }
   const lvBadge=k=>k==='hit'?'<b class="lp2-b hit">✓ Hit</b>':k==='miss'?'<b class="lp2-b miss">✗ Lost</b>':k==='final'?'<b class="lp2-b">Push</b>':k==='next'?'<b class="lp2-b next">Up next</b>':'<b class="lp2-b live"><i></i>Live</b>';
+  // One pick's live state (single or parlay), null before its game starts: the
+  // same number / line / bars as the Live tab, plus a one-line scoreboard.
+  function lvFace(r){if(r.kind==='parlay')return `<span class="lp2-ph lp2-par">${lvLegs(r).length}×</span>`;const ini=String(r.player||'').split(' ').map(x=>x[0]||'').join('').slice(0,2),nba=String(r.sport||'').toUpperCase()==='NBA'||String(r.id||'').startsWith('nba|')||/NBA--/.test(String(r.id||''))||(typeof LEAGUE==='string'&&LEAGUE==='NBA');return `<span class="lp2-ph"><span>${htmlEscape(ini)}</span><img loading="lazy" decoding="async" src="/api/player-photo?name=${encodeURIComponent(r.player||'')}${nba?'&sport=NBA':''}" alt="" onerror="this.remove()"></span>`}
+  function lvBlock(r){
+    if(!r||!window.BTGLive?.legStatus)return null;const legs=lvLegs(r);if(!legs.length)return null;
+    const st=legs.map(l=>({l,prop:lvProp(r,l),s:lvState(r,l),g:lvGame(r,l)}));if(!st.some(x=>x.s))return null;
+    const parlay=r.kind==='parlay';let key;
+    if(parlay){const hit=st.filter(x=>x.s?.key==='hit').length;key=st.some(x=>x.s?.key==='miss')?'miss':hit===st.length?'hit':'live'}
+    else{const s=st[0].s;key=s?.key==='hit'?'hit':s?.key==='miss'?'miss':s?.final?'final':'live'}
+    const g=st.find(x=>x.s)?.g,stale=!!window.BTGLive?.stale?.();
+    const sb=g&&!parlay?`<div class="lv2-g"><span>${htmlEscape(lvAbbr(g.away))} <b>${htmlEscape(String(g.awayScore??'–'))}</b> – <b>${htmlEscape(String(g.homeScore??'–'))}</b> ${htmlEscape(lvAbbr(g.home))}</span><span>${g.state==='in_progress'&&!g.halftime?'<i></i>':''}${htmlEscape(lvClock(g))}${stale?' · update delayed':''}</span></div>`:'';
+    const body=parlay?st.map(({l,prop,s})=>`<div class="lp2-leg ${s?.key||''}"><span>${htmlEscape(l.player)} · ${htmlEscape(`${l.side} ${l.line} ${lvUnit(l.market)}`)}</span><em>${htmlEscape(s?lvLine(prop,s):'Not started')}</em></div>`).join('')
+      :(()=>{const {prop,s}=st[0];return `<div class="lp2-num"><strong>${s?.value==null?'–':htmlEscape(String(s.value))}<span>/ ${htmlEscape(String(r.line))}</span></strong><em>${htmlEscape(lvLine(prop,s))}</em></div>${window.BTGLive.pips?window.BTGLive.pips(prop,s||{},true):''}`})();
+    return {key,badge:lvBadge(key),html:body+sb};
+  }
+  window.BTGLiveBlock=lvBlock;
+  window.btgLiveOursLive=()=>{try{return lvPicks().filter(r=>lvBlock(r)?.key==='live').length}catch{return 0}};
+  window.BTGLiveCard=(r,attr='')=>{const b=lvBlock(r);if(!b)return '';const parlay=r.kind==='parlay',legs=lvLegs(r);
+    const where=r.pm?chip(r.pm.exchange):htmlEscape([...new Set(legs.map(l=>l.book).filter(Boolean))].join(', ')||'Sportsbook'),price=r.pm?`${r.pm.pct}%`:htmlEscape(typeof formatOdds==='function'?formatOdds(parlay?r.combined_odds:r.odds):'');
+    return `<div class="lp2 lv2 ${b.key}" role="button" tabindex="0" ${attr}><div class="lp2-top">${lvFace(r)}<span class="lp2-who"><b>${htmlEscape(parlay?`${legs.length}-leg parlay`:r.player)}</b><small>${parlay?'':`${htmlEscape(`${r.side} ${r.line} ${lvUnit(r.market)}`)} · `}${where} ${price}</small></span><span class="lv2-badge">${b.badge}</span></div><div class="lv2-body">${b.html}</div></div>`};
+  // Every 5s with the live board: redraw each live card in place.
+  (window.btgLiveHooks||=[]).push(()=>document.querySelectorAll('.lv2[data-lv-kind]').forEach(el=>{const i=+el.dataset.lvI,r=el.dataset.lvKind==='pm'?pmRows[i]:(window.BTGOfficialRows?.()||[])[i],b=lvBlock(r);if(!b)return;
+    el.className=`lp2 lv2 ${b.key}`;const bd=el.querySelector('.lv2-badge'),body=el.querySelector('.lv2-body');if(bd&&bd.innerHTML!==b.badge)bd.innerHTML=b.badge;if(body&&body.innerHTML!==b.html)body.innerHTML=b.html}));
   window.btgRenderLivePicks=()=>{
     const panel=document.getElementById('livePicksPanel'),host=document.getElementById('livePicksList');if(!panel||!host||!window.BTGLive?.gameOf)return;
     const list=lvPicks(),sport=typeof LEAGUE==='string'?LEAGUE:'NBA',groups=new Map(),next=[],cnt={hit:0,live:0,miss:0,next:0},items=[];
@@ -3256,6 +3282,7 @@ function statsProp(l){
   }
   function pickRow(r){
     if(!r.result&&!r.voidReason&&Date.parse(r.gameTime)>Date.now())return pmCard(r);
+    if(!r.result&&!r.voidReason&&window.BTGLiveCard){const rec=pmRecord(r),idx=pmRows.length,html=window.BTGLiveBlock?.(rec)?window.BTGLiveCard(rec,`data-pm-i="${idx}" data-pick-id="${htmlEscape(r.id||'')}" data-lv-kind="pm" data-lv-i="${idx}"`):'';if(html){pmRows.push(rec);return html}}
     const initials=String(r.player||'').split(' ').map(x=>x[0]||'').join('').slice(0,3),bet=/touchdown/i.test(r.market||'')&&Number(r.line)===.5?`${r.side==='Under'?'No ':''}${r.market}`:`${r.side} ${r.line} ${String(r.market||'').toLowerCase()}`;
     const game=String(r.team||'').replace(' · @ ',' @ ').replace(' · vs ',' vs '),matchup=game&&typeof compactGameName==='function'?compactGameName(game):game,st=pmStatus(r);
     const note=r.voidReason?`${r.voidReason} · bet voided · stake back`:[pmWin(r.netOdds??r.odds,r.result?100:wagerStake(),r.result),`Hit chance ${Math.round(r.fair)}%`,r.open===false?`not offered in ${data?.stateName||'your state'}`:''].filter(Boolean).join(' · ');
