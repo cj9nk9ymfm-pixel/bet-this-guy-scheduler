@@ -19,6 +19,10 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
   context.boards=[{id:'g1',eventID:'NBA--g1',sport_label:'NBA',commence_time:tip,home_team:'Cleveland Cavaliers',away_team:'Washington Wizards',bookmakers:books}];
   context.playerTeamOf=async(env,sport,name)=>({full:name==='Rival Star'?'Washington Wizards':'Cleveland Cavaliers'});
   context.injuries=new Map([['hurtstar',{player:'Hurt Star',team:'Cleveland Cavaliers',status:'Out',reported_at:new Date(now-3600000).toISOString()}],['oldout',{player:'Old Out',team:'Cleveland Cavaliers',status:'Out',reported_at:new Date(now-5*86400000).toISOString()}]]);
+  // Retired Nov 4: nothing new is logged.
+  assert.equal(J(await run(`recordTeammateShadow(env,boards,injuries,${now})`)).retired,true,'retired');
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM teammate_shadow').get().n,0);
+  run("RETIRED_SHADOWS.delete('teammate')"); // the rest exercises the logger and grading
   const out=J(await run(`recordTeammateShadow(env,boards,injuries,${now})`));
   assert.deepEqual([out.triggers,out.logged],[1,2],'one fresh Out; the long-term Out is not news');
   const rows=db.prepare('SELECT * FROM teammate_shadow ORDER BY market').all();

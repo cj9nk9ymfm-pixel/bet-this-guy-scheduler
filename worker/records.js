@@ -232,7 +232,8 @@ const PARLAYS_PER_GAME=3;
 // new; rows already logged still grade. Tests re-enable them with .clear().
 // Retired Oct 23: game leans 18–25, sportsbook TD test 37–145, prediction
 // model variant 2 77–105 and touchdowns on the apps 25–59.
-const RETIRED_SHADOWS=new Set(['line','bump','book','live','game','nba','leans','sbtd','prop2','td1']);
+// teammate: retired Nov 4 (236–274, −$4,531 at $100 in its first week); its open rows still grade.
+const RETIRED_SHADOWS=new Set(['line','bump','book','live','game','nba','leans','sbtd','prop2','td1','teammate']);
 // A player rides in at most PARLAYS_PER_PLAYER parlays a week (a night for
 // NBA), so one miss can't sink several parlays at once.
 const PARLAYS_PER_PLAYER=1;
@@ -5026,7 +5027,8 @@ function teammateOvers(board,players){
     return top?{player:g.player,market:g.market,line:g.line,odds:top.odds,book:top.book,fair:+(100*fair).toFixed(2),edge:+(100*(fair-1/recordDecimal(top.odds))).toFixed(2)}:null}).filter(Boolean);
 }
 async function recordTeammateShadow(env,boards,injuries,now=Date.now()){
-  if(!env.DB||RETIRED_SHADOWS.has('teammate')||!injuries?.size)return {skipped:true};
+  if(RETIRED_SHADOWS.has('teammate'))return {retired:true};
+  if(!env.DB||!injuries?.size)return {skipped:true};
   const stamp=new Date(now).toISOString(),statements=[];let triggers=0,logged=0;
   let seen={};try{seen=JSON.parse(await appSetting(env,'teammate-out-seen')||'{}')}catch{}
   for(const [k,v] of Object.entries(seen))if(now-Date.parse(v)>3*86400000)delete seen[k];
