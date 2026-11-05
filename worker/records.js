@@ -2626,16 +2626,26 @@ async function gradeParlayShadow(env,now=Date.now()){
 // waits until its game has had a sharp pull since the pick was first logged
 // (the pull runs in the same publish run for a new pick), then posts if the
 // sharp book priced it and is held ('no sharp price') if not.
-let SHARP_GATE=true;
+// Nov 5 (Tim): the sharp book must also agree. Since Nov 2 the candidates it
+// disagreed with went 19-36 (-$1,469); overall agrees 168-156 (+$1,881),
+// disagrees 107-130 (-$895). Its fair chance for the pick's own side (the log
+// keeps one side per player and market; the other side is 100 minus it) must
+// be at least what the pick's price implies, at the same line.
+let SHARP_GATE=true,SHARP_AGREE=true;
 async function sharpGate(env,list,now=Date.now()){
   const ready=[],deferred=[],held=[];if(!list.length||!env.DB)return {ready:list,deferred,held};
   const ids=list.map(p=>`${p.gameId}|${normalizedName(p.player)}|${p.market}`);
-  const rows=new Map(((await env.DB.prepare(`SELECT id,pin_fair,logged_at FROM sharp_shadow WHERE id IN (${ids.map(()=>'?').join(',')})`).bind(...ids).all().catch(()=>({results:[]}))).results||[]).map(r=>[r.id,r]));
+  const rows=new Map(((await env.DB.prepare(`SELECT id,side,line,pin_fair,logged_at FROM sharp_shadow WHERE id IN (${ids.map(()=>'?').join(',')})`).bind(...ids).all().catch(()=>({results:[]}))).results||[]).map(r=>[r.id,r]));
   // The game's latest successful sharp pull (a failed pull never counts as "not priced").
   const games=[...new Set(list.map(p=>p.gameId))];
   const pulls=new Map(((await env.DB.prepare(`SELECT event_id,MAX(pin_at) AS at FROM sharp_shadow WHERE event_id IN (${games.map(()=>'?').join(',')}) AND pin_at IS NOT NULL GROUP BY event_id`).bind(...games).all().catch(()=>({results:[]}))).results||[]).map(r=>[r.event_id,Date.parse(r.at)]));
   for(const p of list){const r=rows.get(`${p.gameId}|${normalizedName(p.player)}|${p.market}`);
-    if(r&&r.pin_fair!=null){ready.push(p);continue}
+    if(r&&r.pin_fair!=null){
+      if(!SHARP_AGREE){ready.push(p);continue}
+      const own=r.side===p.side?Number(r.pin_fair):100-Number(r.pin_fair),price=Number(p.odds),implied=Number.isFinite(price)&&price!==0?100/recordDecimal(price):null;
+      if(Number(r.line)!==Number(p.line)){p.heldWhy='no sharp price at this line';held.push(p);continue}
+      if(implied===null||own<implied){p.heldWhy='sharp book disagrees';p.sharpEdge=implied===null?null:+(own-implied).toFixed(2);held.push(p);continue}
+      p.sharpEdge=+(own-implied).toFixed(2);ready.push(p);continue}
     // A pick logged in the same run as a pull was in that pull (same timestamp).
     if(r&&(pulls.get(p.gameId)||0)>=Date.parse(r.logged_at||'')){p.heldWhy='no sharp price';held.push(p)}else deferred.push(p);
   }
