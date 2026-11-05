@@ -19,6 +19,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # The live-cards test runs the real page in Chromium.
+      - run: npx playwright install --with-deps chromium
       - run: npm test
       - name: Build the site Worker
         run: npm run build
