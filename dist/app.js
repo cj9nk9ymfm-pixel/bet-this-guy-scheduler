@@ -3257,6 +3257,8 @@ function statsProp(l){
     return {key,badge:lvBadge(key),html:body+sb};
   }
   window.BTGLiveBlock=lvBlock;
+  // Live cards act as buttons: Enter or Space opens them, as a tap does (Nov 5 accessibility audit).
+  if(typeof document.addEventListener==='function')document.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target?.matches?.('.lv2[role="button"]')){e.preventDefault();e.target.click()}});
   window.btgLiveOursLive=()=>{try{return lvPicks().filter(r=>lvBlock(r)?.key==='live').length}catch{return 0}};
   window.BTGLiveCard=(r,attr='')=>{const b=lvBlock(r);if(!b)return '';const parlay=r.kind==='parlay',legs=lvLegs(r);
     const where=r.pm?chip(r.pm.exchange):htmlEscape([...new Set(legs.map(l=>l.book).filter(Boolean))].join(', ')||'Sportsbook'),price=r.pm?`${r.pm.pct}%`:htmlEscape(typeof formatOdds==='function'?formatOdds(parlay?r.combined_odds:r.odds):'');
