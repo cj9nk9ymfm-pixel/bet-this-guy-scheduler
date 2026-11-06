@@ -65,6 +65,11 @@ async function refreshLiveGames() {
     liveBoard.games = Array.isArray(payload.games) ? payload.games : [];
     liveBoard.updatedAt = payload.updatedAt; liveBoard.stale = !!payload.stale; liveBoard.error = '';
   } catch (error) { liveBoard.error = error.message; }
+  // The other league's live games (Nov 5, Tim): NBA | NFL tabs on the Live page only when both are on. At most every 30s.
+  if (Date.now() - (liveBoard.otherAt || 0) > 30000) { liveBoard.otherAt = Date.now();
+    const other = (typeof LEAGUE === 'string' && LEAGUE === 'NBA') ? 'NFL' : 'NBA';
+    try { const o = await fetchLiveJSON(`/api/live-games${other === 'NBA' ? '?sport=NBA' : ''}`); liveBoard.other = { league: other, games: (Array.isArray(o.games) ? o.games : []).filter(g => g.state === 'in_progress' || g.state === 'delayed') }; } catch {}
+  }
   updateLiveLabels();
   renderCurrentGame();
   renderLiveCenter();
@@ -246,12 +251,28 @@ function renderLiveParlay(game){
   const rows=legs.map(leg=>{const status=liveLegState({...leg.p,side:leg.side},game,livePlayerRow(game.id,leg.p.player));return`<div class="live-parlay-leg ${status.key}"><i></i><span><strong>${htmlEscape(leg.p.player)} · ${htmlEscape(leg.side)} ${htmlEscape(String(leg.p.line))}</strong><small>${status.value===null?'Waiting for stats':`${status.value} ${htmlEscape(status.label)}`} · ${htmlEscape(status.detail)}</small></span><b>${htmlEscape(status.title)}</b></div>`}).join(''),hit=legs.filter(leg=>liveLegState({...leg.p,side:leg.side},game,livePlayerRow(game.id,leg.p.player)).key==='hit').length;
   panel.innerHTML=`<header><div><p class="eyebrow">${trackedLegs.length?'TRACKED PARLAY':'YOUR LIVE SLIP'}</p><h2>${legs.length}-leg game tracker</h2></div><strong>${hit}/${legs.length} hit</strong></header><div>${rows}</div>`;
 }
+// NBA | NFL tabs when both leagues have games on; with nothing on here but the other league live, a button to it.
+function liveLeagueGo(league){try{const u=new URL(location.href);u.searchParams.set('page','live');history.replaceState(history.state,'',u)}catch{}if(typeof switchLeague==='function')switchLeague(league)}
+function renderLiveLeagueTabs(center,games){
+  const here=typeof LEAGUE==='string'?LEAGUE:'NFL',other=liveBoard.other,on=g=>g.state==='in_progress'||g.state==='delayed',mine=games.filter(on).length,theirs=other?.games?.length||0;
+  let tabs=$('#liveLeagueTabs');
+  if(!tabs){tabs=document.createElement('div');tabs.id='liveLeagueTabs';tabs.className='live-league-tabs';tabs.setAttribute('role','tablist');tabs.setAttribute('aria-label','League');center.querySelector('.live-center-head')?.after(tabs)}
+  tabs.hidden=!(mine&&theirs);
+  if(mine&&theirs){const t=(l,n,cur)=>`<button type="button" role="tab" aria-selected="${cur}" data-live-league="${l}"><b>${l}</b><span><i></i>${n} live</span></button>`;
+    tabs.innerHTML=['NBA','NFL'].map(l=>t(l,l===here?mine:theirs,l===here)).join('');
+    tabs.querySelectorAll('[data-live-league]').forEach(b=>b.onclick=()=>{if(b.dataset.liveLeague!==here){window.btgCount?.('live:league-tab');liveLeagueGo(b.dataset.liveLeague)}})}
+  const empty=$('#liveCenterEmpty');let jump=$('#liveOtherJump');
+  if(!mine&&theirs){if(!jump){jump=document.createElement('button');jump.type='button';jump.id='liveOtherJump';jump.className='live-other-jump';empty?.append(jump)}
+    const g=other.games[0];jump.hidden=false;jump.innerHTML=`<b>${other.league} is live</b> ${htmlEscape(`${String(g.away?.abbreviation||'')} @ ${String(g.home?.abbreviation||'')}`)}${theirs>1?` + ${theirs-1} more`:''} ›`;jump.onclick=()=>liveLeagueGo(other.league)}
+  else if(jump)jump.hidden=true;
+}
 function renderLiveCenter(){
   updateBoardProgress();
   const center=$('#liveCenter');if(!center)return;
   const active=document.body.dataset.mobilePage==='live'||(innerWidth>720&&document.body.dataset.desktopPage==='live');center.hidden=!active;if(!active)return;
   const games=liveBoard.games.filter(game=>['in_progress','delayed','suspended'].includes(game.state)||game.state==='final'&&Date.now()-Date.parse(game.startsAt)<8*3600000);
   const ours=game=>{try{return window.btgLivePickCount?.(game)||0}catch{return 0}};
+  try{renderLiveLeagueTabs(center,games)}catch{}
   if(!games.some(game=>String(game.id)===String(liveBoard.selectedGameID)))liveBoard.selectedGameID=(games.find(game=>ours(game)&&game.state!=='final')||games.find(ours)||games[0])?.id||null;
   const switcher=$('#liveGameSwitcher');switcher.innerHTML=games.map(game=>`<button type="button" role="tab" aria-selected="${String(game.id)===String(liveBoard.selectedGameID)}" class="${String(game.id)===String(liveBoard.selectedGameID)?'active':''}" data-live-game="${game.id}" data-ours="${ours(game)}">${[[game.away,game.awayScore],[game.home,game.homeScore]].map(([tm,sc])=>{const sp=typeof LEAGUE==='string'?LEAGUE:'NFL',u=liveLogo(tm,sp);return `<span class="lg-tm">${u?`<img src="${u}" alt="" loading="lazy" onerror="this.remove()">`:''}<b>${htmlEscape(String(tm?.abbreviation||liveTeamKey(tm)).toUpperCase())}</b><strong>${htmlEscape(String(sc??'–'))}</strong></span>`}).join('')}<small>${htmlEscape(liveStatusLabel(game))}${ours(game)?` · <em>${ours(game)} ours</em>`:''}</small></button>`).join('');
   switcher.querySelectorAll('[data-live-game]').forEach(button=>button.onclick=()=>{liveBoard.selectedGameID=button.dataset.liveGame;renderLiveCenter()});

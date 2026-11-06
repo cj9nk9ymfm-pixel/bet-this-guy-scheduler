@@ -30,6 +30,8 @@ const types = { js: 'application/javascript', css: 'text/css', html: 'text/html;
       if (p === '/') return route.fulfill({ body: fs.readFileSync(dist('index.html'), 'utf8'), contentType: types.html });
       const file = p.match(/^\/([a-z-]+\.(js|css))$/);
       if (file) return fs.existsSync(dist(file[1])) ? route.fulfill({ body: fs.readFileSync(dist(file[1]), 'utf8'), contentType: types[file[2]] }) : route.fulfill({ status: 404, body: '' });
+      // NFL has one game on too (a Thursday night): the Live page gets NBA | NFL tabs.
+      if (p === '/api/live-games' && url.searchParams.get('sport') !== 'NBA') return route.fulfill({ json: { success: true, games: [{ id: 9001, startsAt: fx.at, away: { abbreviation: 'JAX', full_name: 'Jacksonville Jaguars' }, home: { abbreviation: 'BAL', full_name: 'Baltimore Ravens' }, awayScore: 17, homeScore: 3, state: 'in_progress', period: 2, clock: '0:46' }], updatedAt: new Date(fx.at).toISOString() } });
       if (p === '/api/live-games') return route.fulfill({ json: { ...fx.games, updatedAt: new Date(fx.at).toISOString() } });
       if (p === '/api/live-game-stats') return route.fulfill({ json: stats[url.searchParams.get('game_id')] || { success: true, stats: [] } });
       if (p === '/api/record' && url.searchParams.get('view') === 'home') return route.fulfill({ json: fx.record });
@@ -61,6 +63,10 @@ const types = { js: 'application/javascript', css: 'text/css', html: 'text/html;
     const lt = await text('#livePicksList');
     assert.ok(lt.includes('Payton Pritchard') && lt.includes('Joel Embiid'), `Live tab lists both sides: ${lt}`);
     assert.match(lt, /2\s*Live/, 'two picks counted live');
+    // Both leagues on: NBA | NFL tabs, names as written (the NBA wording swap leaves them alone).
+    await need('the Live page should show NBA | NFL tabs when both leagues have games on', () => page.waitForSelector('#liveLeagueTabs:not([hidden])', { timeout: 10000 }));
+    const tabs = await text('#liveLeagueTabs');
+    assert.match(tabs, /NBA[\s\S]*2 live[\s\S]*NFL[\s\S]*1 live/, `tabs: ${tabs}`);
     await page.evaluate(() => showMobilePage('picks', true));
 
     // Slip: a leg in a game in progress shows its stat, not "Market unavailable".

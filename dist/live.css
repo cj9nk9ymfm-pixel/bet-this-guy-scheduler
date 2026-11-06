@@ -91,3 +91,14 @@ body.light .lp2.lv2{background:#fff;border-color:#e3ebf5}body.light .lv2-g b{col
 .mb-live .lp2-num,.mb-live .lv-pips.mini,.mb-live .lv2-g,.mb-live .lp2-leg{margin-left:0!important;width:auto}
 .mb-live .lp2-b{float:right}.mb-live .lv-pips.mini{display:flex;gap:4px;padding:0}.mb-live .lv-pips.mini i{height:6px;border-radius:3px}
 body.light .slip-live,body.light .mb-live{background:#f3f7fc}body.light .slip-live strong{color:#0f172a}
+
+/* NBA | NFL on the Live page when both leagues are on (Nov 5) */
+.live-league-tabs{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:4px 0 14px;padding:4px;border-radius:14px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08)}
+.live-league-tabs[hidden]{display:none}
+.live-league-tabs button{display:flex;align-items:center;justify-content:center;gap:8px;padding:10px;border:0;border-radius:10px;background:none;color:#98a1ac;font:inherit;cursor:pointer}
+.live-league-tabs button b{font:700 16px "Space Grotesk",sans-serif;color:inherit}.live-league-tabs button span{display:inline-flex;align-items:center;gap:5px;font-size:12px}
+.live-league-tabs button i{width:6px;height:6px;border-radius:50%;background:#f87171;animation:lp2p 1.4s infinite}
+.live-league-tabs button[aria-selected="true"]{background:#1d4ed8;color:#fff}
+.live-other-jump{display:block;margin:12px auto 0;padding:10px 16px;border:1px solid rgba(248,113,113,.4);border-radius:999px;background:rgba(248,113,113,.1);color:#fecaca;font:600 14px "DM Sans",sans-serif;cursor:pointer}
+.live-other-jump[hidden]{display:none}.live-other-jump b{color:#fff;margin-right:4px}
+body.light .live-league-tabs{background:#eef3f9;border-color:#e3ebf5}body.light .live-league-tabs button{color:#475569}body.light .live-league-tabs button[aria-selected="true"]{color:#fff}
