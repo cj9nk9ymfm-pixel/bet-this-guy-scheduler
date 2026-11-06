@@ -781,7 +781,15 @@ bindCards=function(){bindExpandedBase();$$('.prop-card').forEach(card=>{const pr
 const openParlayLegExpandedBase=openParlayLegPlayer;
 openParlayLegPlayer=function(p,r){if(!p.teamMarket)return openParlayLegExpandedBase(p,r);$('#parlayDetailDialog').close();openDetail(p)};
 let parlayWarmupScheduled=false;
-function scheduleParlayWarmup(){if(parlayWarmupScheduled||parlayUniverseReady)return;parlayWarmupScheduled=true;const start=()=>ensureParlayUniverse().catch(()=>{});if('requestIdleCallback'in window)requestIdleCallback(start,{timeout:1600});else setTimeout(start,500)}
+// Nov 5 (Tim): every game's full prop list (about 180KB) loads only once someone
+// opens the board, searches, filters or builds a parlay, not on every visit.
+let parlayWarmupWanted=false;
+function wantParlayWarmup(){if(parlayWarmupWanted)return;parlayWarmupWanted=true;scheduleParlayWarmup()}
+if(typeof document.addEventListener==='function'){
+  const needAll=e=>{if(!parlayWarmupWanted&&e.target?.closest?.('#boardBrowse,#propsSection,#playerSearch,#searchBtn,#searchPanel,[data-board-game],[data-page-link="generator"],[data-page-link="slip"],[data-slip-price],#slipBar,#officialNow,#pmPicksNow,#parlaysList,#heroBanner'))wantParlayWarmup()};
+  document.addEventListener('click',needAll,true);document.addEventListener('focusin',needAll,true);
+}
+function scheduleParlayWarmup(){if(!parlayWarmupWanted&&document.body?.classList?.contains('board-collapsed'))return;if(parlayWarmupScheduled||parlayUniverseReady)return;parlayWarmupScheduled=true;const start=()=>ensureParlayUniverse().catch(()=>{});if('requestIdleCallback'in window)requestIdleCallback(start,{timeout:1600});else setTimeout(start,500)}
 ensureParlayUniverse=async function(){if(parlayUniverseReady)return;if(parlayUniversePromise)return parlayUniversePromise;parlayUniversePromise=(async()=>{if(livePropsPromise)await livePropsPromise;if(!scheduleGames.length)await loadFutureSchedule();const now=Date.now(),horizon=now+7*86400000,loadedEvents=new Set([...baseLiveProps,...futurePropBoards.values()].flat().map(prop=>prop.eventID)),games=[...scheduleGames].filter(game=>{const starts=new Date(game.status?.startsAt).getTime();return game.leagueID===LEAGUE&&Number.isFinite(starts)&&starts>=now-14400000&&starts<=horizon&&!loadedEvents.has(game.eventID)&&!futurePropBoards.has(game.eventID)}).sort((a,b)=>new Date(a.status?.startsAt)-new Date(b.status?.startsAt));if(games.length){$('#feedMessage').textContent=`Warming ${games.length} remaining NFL game boards in the background…`;for(let index=0;index<games.length;index+=2){await Promise.all(games.slice(index,index+2).map(game=>loadBoardGame(game,false)));await new Promise(resolve=>setTimeout(resolve,0));rebuildPropBoard();$('#feedMessage').textContent=`NFL pool ${Math.min(index+2,games.length)} of ${games.length} background boards checked…`}}rebuildPropBoard();mixerCandidateCache.clear();parlayFeeds.forEach(feed=>feed.length=0);parlaySignatures.forEach(set=>set.clear());refreshFilterCatalog();parlayUniverseReady=true;const covered=new Set(props.map(prop=>prop.eventID)).size,scheduled=scheduleGames.filter(game=>{const starts=new Date(game.status?.startsAt).getTime();return game.leagueID===LEAGUE&&Number.isFinite(starts)&&starts>=now-14400000&&starts<=horizon}).length;$('#feedMessage').textContent=`${LEAGUE} board: ${props.length} props across ${covered} games${scheduled?` · ${Math.max(0,scheduled-covered)} scheduled games do not have odds posted yet`:''}.`;scheduleUiTask(()=>{filtersChanged();saveParlayUiCache()})})().finally(()=>{parlayUniversePromise=null});return parlayUniversePromise};
 localStorage.removeItem('propedge-api');
 $('#parlayMixer').before($('#advancedFilters'));
@@ -2258,12 +2266,14 @@ function parlayLegsFor(r){
     if(!app)return {p,side,pm:null};const hit=window.BTGPmBoard?.hit?.({...p,side}),o=Number(l.netOdds??l.odds)||(hit&&hit.exchange===app?hit.odds:null);return {p,side,pm:o?{exchange:app,odds:o}:null}});
   return out.length>=2&&out.every(Boolean)?out:null;
 }
+// A pick tapped before its game's props have loaded waits for them, then adds (Nov 5).
+function slipAfterLoad(fn,x){if(x?.__afterLoad||typeof parlayUniverseReady==='undefined'||parlayUniverseReady)return false;wantParlayWarmup();slipToast('Getting the latest price…');ensureParlayUniverse().then(()=>fn({...x,__afterLoad:true})).catch(()=>{});return 'loading'}
 function addParlayToSlip(r){
-  const legs=parlayLegsFor(r);if(!legs)return false;state.slip=[];toggleLeg.quiet=true;try{for(const l of legs)toggleLeg(l.p,l.side,l.pm)}finally{toggleLeg.quiet=false}state.slipMode='parlay';renderSlip();
+  const legs=parlayLegsFor(r);if(!legs)return slipAfterLoad(v=>addParlayToSlip(v),r);state.slip=[];toggleLeg.quiet=true;try{for(const l of legs)toggleLeg(l.p,l.side,l.pm)}finally{toggleLeg.quiet=false}state.slipMode='parlay';renderSlip();
   slipToast(`${icon('check')} Parlay added to your slip · <button type="button" data-open-slip>Open slip</button>`);window.btgCount?.('slip:parlay');return true;
 }
 function addBetToSlip(x){
-  const now=boardPropNow(x);if(!now||now.moved&&!now.moved.ourWay)return false;const p=now.p;const side=x.side==='Under'?'Under':'Over',key=slipSelectionKey(p,side);
+  const now=boardPropNow(x);if(!now)return slipAfterLoad(v=>addBetToSlip(v),x);if(now.moved&&!now.moved.ourWay)return false;const p=now.p;const side=x.side==='Under'?'Under':'Over',key=slipSelectionKey(p,side);
   if(!state.slip.some(l=>l.key===key)){toggleLeg.quiet=true;try{toggleLeg(p,side,slipPmOf(x))}finally{toggleLeg.quiet=false}}slipToast(`${icon('check')} Added to your slip · <button type="button" data-open-slip>Open slip</button>`);window.btgCount?.('slip:add');return true;
 }
 // One detail sheet for everything a visitor taps: board props, this week's
@@ -3749,8 +3759,10 @@ function statsProp(l){
     const cards=[...list.querySelectorAll(':scope>.prop-card')];
     const SHOW=filtered()?99:0;cards.forEach((c,i)=>c.classList.toggle('board-extra',i>=SHOW));body.classList.toggle('board-shut',body.classList.contains('board-collapsed')&&!SHOW);
     const total=Math.max(cards.length,Number(typeof visiblePropTotal!=='undefined'?visiblePropTotal:0)||0);
-    btn.hidden=!body.classList.contains('board-collapsed')||total<=SHOW;
-    btn.innerHTML=`Browse all ${total} props <span aria-hidden="true">›</span>`;btn.setAttribute('aria-label',`Browse every prop (${total})`);
+    // Until someone opens the board only tonight's props are loaded (Nov 5): no count, never hidden for it.
+    const all=typeof parlayUniverseReady==='undefined'||parlayUniverseReady;
+    btn.hidden=!body.classList.contains('board-collapsed')||(all&&total<=SHOW);
+    btn.innerHTML=`Browse all ${all&&total?`${total} `:''}props <span aria-hidden="true">›</span>`;btn.setAttribute('aria-label',all&&total?`Browse every prop (${total})`:'Browse every prop');
   }
   btn.onclick=()=>{body.classList.remove('board-collapsed','board-shut');btn.hidden=true;window.btgCount?.('board:browse')};
   if(typeof MutationObserver==='function')new MutationObserver(paint).observe(list,{childList:true});
@@ -3928,7 +3940,7 @@ function statsProp(l){
   const HOSTS=[['draftkings','draftkings'],['fanduel','fanduel'],['betmgm','betmgm'],['caesars','caesars'],['fanatics','fanatics'],['betrivers','betrivers'],['espnbet','espnbet'],['hardrock','hardrock'],['bet365','bet365'],['novig','novig'],['prophetx','prophetx'],['kalshi','kalshi'],['polymarket','polymarket'],['onyx','onyx'],['betopenly','betopenly']];
   const bookOf=href=>{try{const h=new URL(href,location.href).hostname.toLowerCase();if(h.endsWith('betthisguy.com'))return null;return (HOSTS.find(([k])=>h.includes(k))||[])[1]||null}catch{return null}};
   document.addEventListener('click',e=>{const a=e.target.closest?.('a[href]');if(!a)return;const b=bookOf(a.getAttribute('href'));if(b)window.btgCount?.(`book:${b}`)},true);
-  if(typeof addBetToSlip==='function'){const base=addBetToSlip;addBetToSlip=function(){const out=base.apply(this,arguments);if(out)window.btgCount?.('funnel:slip-add');return out}}
+  if(typeof addBetToSlip==='function'){const base=addBetToSlip;addBetToSlip=function(){const out=base.apply(this,arguments);if(out===true)window.btgCount?.('funnel:slip-add');return out}}
   if(window.BTGSheet?.open){const base=window.BTGSheet.open;window.BTGSheet.open=function(){window.btgCount?.('funnel:sheet-open');return base.apply(this,arguments)}}
   if(window.BTGMyBets?.add){const base=window.BTGMyBets.add;window.BTGMyBets.add=function(){window.btgCount?.('funnel:i-bet');return base.apply(this,arguments)}}
   // window.open to a book (deep links from the slip and sheet)
