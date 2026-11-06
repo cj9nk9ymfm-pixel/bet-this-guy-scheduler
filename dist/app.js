@@ -2012,6 +2012,8 @@ if(typeof fetch==='function')window.btgCountVisit?.('view:home');
   // and its bell works on any phone), then email, then this site's own
   // notifications (one tap on Android and computers; iPhone needs the Home Screen).
    window.BTGChooseAlerts=()=>chooseAlerts();
+   // For the follow ask (Nov 5): this phone's subscription, whether push works here, and turning it on.
+   window.BTGPush={current,possible:()=>{try{return supported()&&!(ios&&!standalone())&&Notification.permission!=='denied'}catch{return false}},on:async()=>{await turnOn();return current()}};
   function chooseAlerts(){
     let d=document.getElementById('alertChooser');
     if(!d){d=document.createElement('dialog');d.id='alertChooser';d.className='alert-chooser';d.setAttribute('aria-labelledby','acTitle');document.body.append(d)}
@@ -3915,8 +3917,7 @@ function statsProp(l){
     const entry={id:`b${Date.now()}`,pickId:r.id,parlay,player:parlay?legsOf(r).map(x=>String(x.player||'').split(' ').slice(-1)[0]).join(' + ')+' parlay':r.player,bet:parlay?`${legsOf(r).length} legs`:`${r.side} ${r.line} ${String(r.market||'').toLowerCase()}`,odds:Number(parlay?r.combined_odds:r.odds),book:l.book||'',stake,at:Date.now(),game:r.game_time||''};list.push(entry);save(list);
     // Signed in: the account's tracker keeps it (and grades it) on every device.
     if(window.BTGAuth?.isSignedIn?.()&&!parlay)window.BTGAuth.trackParlay?.({wager:stake,source:'board',legs:[{player:r.player,market:r.market,side:r.side,line:Number(r.line),odds:Number(r.odds),eventId:l.gameId||r.event_id||'',team:l.team||'',gameStart:r.game_time||''}]}).then(res=>{const id=res?.bet?.id;if(id){save(load().map(b=>b.id===entry.id?{...b,serverId:id}:b))}}).catch(()=>{});
-    window.BTGEmailAsk?.('mybets');
-    followRemote(r.id,true);
+    followAsk(r);
     window.btgCount?.('mybets:add');if(typeof slipToast==='function')slipToast(`${icon('check')} Tracking in My bets · $${stake} at ${am(parlay?r.combined_odds:r.odds)}`)}
   const has=id=>load().some(b=>b.pickId===id);
   const dlg=document.getElementById('myBetsDialog'),body=document.getElementById('myBetsBody');
@@ -3941,6 +3942,23 @@ function statsProp(l){
   document.querySelector('[data-more-action="mybets"]')?.addEventListener('click',()=>{document.getElementById('moreSheet')?.close?.();open()});
   // Live ticks redraw My bets while it's open (not while an amount is being typed).
   (window.btgLiveHooks||=[]).push(()=>{if(dlg?.open&&!document.activeElement?.classList?.contains('mb-stake')&&dlg.querySelector('.mb-live-row'))render()});
+  // After "I bet this" (Nov 5, Tim): notifications on, follow the pick; push possible here,
+  // offer it once a session ("a ping when this one settles"); otherwise the email ask.
+  async function followAsk(r){
+    let sub=null;try{sub=await window.BTGPush?.current?.()}catch{}
+    if(sub){followRemote(r.id,true);return}
+    let asked=false;try{asked=sessionStorage.getItem('btg-follow-ask')==='1'}catch{}
+    if(asked||!/^(official|nba)\|/.test(String(r.id||''))||!window.BTGPush?.possible?.()){window.BTGEmailAsk?.('mybets');return}
+    try{sessionStorage.setItem('btg-follow-ask','1')}catch{}
+    const el=document.createElement('div');el.className='ask-after follow-ask';el.setAttribute('role','dialog');el.setAttribute('aria-label','Get a notification when this bet settles');
+    el.innerHTML='<button type="button" class="aa-x" aria-label="Close">×</button><b>Get a ping when this one settles?</b><span>One notification with the result. Turn off anytime in More.</span><button type="button" class="aa-on">Turn on notifications</button>';
+    document.body.appendChild(el);window.btgCount?.('follow:ask-shown');
+    el.querySelector('.aa-x').onclick=()=>{el.remove();window.btgCount?.('follow:ask-close')};
+    el.querySelector('.aa-on').onclick=async()=>{const b=el.querySelector('.aa-on');b.disabled=true;b.textContent='Turning on…';
+      try{const on=await window.BTGPush.on();if(on){followRemote(r.id,true);window.btgCount?.('follow:ask-on');el.innerHTML='<b>You’re set.</b><span>We’ll ping you when it settles.</span>';setTimeout(()=>el.remove(),3500);return}}catch{}
+      el.remove()};
+    setTimeout(()=>el.isConnected&&!el.contains(document.activeElement)&&el.remove(),25000);
+  }
   // A phone with notifications on follows the pick: one push when it's graded (Nov 5, Tim).
   function followRemote(pickId,on){try{if(!pickId||!/^(official|nba)\|/.test(pickId)||!navigator.serviceWorker?.ready)return;navigator.serviceWorker.ready.then(reg=>reg.pushManager?.getSubscription?.()).then(sub=>{if(!sub)return;window.btgCount?.(on?'follow:on':'follow:off');return fetch('/api/alerts/follow',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({endpoint:sub.endpoint,pickId,on})})}).catch(()=>{})}catch{}}
   window.BTGMyBets={add,has,open,render}})();
