@@ -34,6 +34,7 @@ context.env={DB};
   const now4=await nfl('2026-10-01T18:00:00Z');
   for(const text of ['NFL Player Prop Picks This Week (Week 4)','rel="canonical" href="https://betthisguy.com/nfl"','<h1>NFL player prop picks this week</h1>','href="/picks/2026/week-4"','How these picks work'])assert.ok(now4.includes(text),text);
   assert.ok(!now4.includes('hasn’t posted yet'),'the current week');
+  {const ld=JSON.parse(now4.match(/<script type="application\/ld\+json">(.*?)<\/script>/)[1]);assert.equal(ld['@type'],'FAQPage');assert.equal(ld.mainEntity.length,3);assert.ok(ld.mainEntity[2].acceptedAnswer.text.includes('picks by week')&&!/</.test(JSON.stringify(ld)),'FAQ structured data: the visible text, no markup');}
   const next=await nfl('2026-10-08T18:00:00Z');assert.ok(next.includes('Week 5’s first pick hasn’t posted yet')&&next.includes('(Week 4)'),'falls back to last week');
   assert.ok((await run('weeklySitemap(env)')).includes('/nfl</loc>'),'in the sitemap');
   assert.equal(await page('/picks/2026/week-99'),null);assert.equal(await page('/picks/abc'),null);
