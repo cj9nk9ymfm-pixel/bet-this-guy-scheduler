@@ -1708,7 +1708,8 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
   }
   function busyDay(items){
     const ranked=[...items].sort((a,b)=>(Number(recordLegs(b[0])[0]?.edge)||0)-(Number(recordLegs(a[0])[0]?.edge)||0)),top=ranked[0];
-    const slots=new Map();for(const it of items){const k=it[0].game_time;(slots.get(k)||slots.set(k,[]).get(k)).push(it)}
+    // The top pick is the card; the rows are the others (Nov 5: it showed twice).
+    const slots=new Map();for(const it of items){if(it===top)continue;const k=it[0].game_time;(slots.get(k)||slots.set(k,[]).get(k)).push(it)}
     const keys=[...slots.keys()].sort(),t=k=>new Date(k).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
     const chips=keys.length>1?`<div class="pd-chips">${keys.map((k,n)=>`<button type="button" data-slot="${n}">${htmlEscape(t(k))} <em>${slots.get(k).length}</em></button>`).join('')}</div>`:'';
     return `<div class="pd-wrap"><div class="pd-sum"><div><b>${items.length}</b><span>picks to play</span></div><div><b>${keys.length}</b><span>kickoff time${keys.length===1?'':'s'}</span></div><div><b>${new Set(items.map(([r])=>gameOf(r))).size}</b><span>games</span></div></div>${pickCard(top[0],top[1],true)}${chips}
