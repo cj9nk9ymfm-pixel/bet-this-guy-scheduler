@@ -518,7 +518,7 @@ async function publishNbaPicks(request,env,ctx,now=Date.now()){
     const gate=SIGNAL_GATE?await signalGate(env,ctx,pool,Date.now()).catch(()=>null):null,candidates=gate?gate.ready:pool;
     // Parlay legs: qualifiers not posted as singles, e.g. past the nightly 5 (held no-signal picks stay out).
     const nextTier=withTeams(gate?[...gate.ready,...gate.deferred]:candidates,await playerTeams(env));
-    const plan=officialPlan(candidates,existing,night,Date.now(),nextTier,cfg);
+    const plan=officialPlan(await capSingles(env,candidates,Date.now()),existing,night,Date.now(),nextTier,cfg);
     posted+=Number(await writeOfficialPlan(plan,night,env,cfg))||0;
     await logNbaSkips(env,night,cfg,qualified.filter(longshotOk(priced)),ok,Date.now()).catch(error=>console.warn('nba_skips_failed',error.message));
     const trail=officialTrailStatements(tonight,existing,env,Date.now());if(trail.length)await env.DB.batch(trail);
@@ -2546,7 +2546,13 @@ async function signalGate(env,ctx,list,now=Date.now(),budget=5){
       if(!m||!(m.def||m.logs?.length))await setAppSetting(env,`matchup-none:${key}`,new Date(now).toISOString()).catch(()=>{});
     }
     const sig=pickSignals(m,p.side,p.line);p.signals=sig.count;p.signalNames=sig.list;
-    if(sig.hold){p.heldWhy=sig.count?'defense only, his numbers against':'no signal';held.push(p)}else ready.push(p);
+    if(sig.hold){p.heldWhy=sig.count?'defense only, his numbers against':'no signal';held.push(p);continue}
+    if(NBA_STATS_SKIP&&!p.exchange&&String(p.gameId||p.eventId||'').startsWith('NBA--')&&m?.logs?.length){
+      const logs=m.logs.map(g=>({value:Number(g.v),season:g.s})),def=m.def&&m.def.league?{factor:m.def.allowed/m.def.league,games:m.def.games}:null;
+      const v=statsVerdict(p,logs,def,nbaSeason(new Date(now)));p.statsVerdict=v.verdict;
+      if(v.verdict==='disagree'){p.heldWhy='his stats disagree';held.push(p);continue}
+    }
+    ready.push(p);
   }
   await logHeld(env,held,now);
   return {ready,deferred,held};
@@ -2655,6 +2661,21 @@ async function sharpGate(env,list,now=Date.now()){
   return {ready,deferred,held};
 }
 let SIGNAL_GATE=true;
+// Nov 5 (Tim): pick to win bets. Official singles at +125 or shorter: posted
+// singles at +111 and longer went 48-67 (-$367), the 1%+ shadow 51-78
+// (-$1,275), while -149 to +110 went 40-27 (+$1,200). Longer prices stay
+// parlay legs. Held ones are logged as "price over +125".
+const SINGLE_MAX_ODDS=125;
+async function capSingles(env,list,now=Date.now()){
+  const ok=[],over=[];for(const p of list||[])(Number(p.odds)<=SINGLE_MAX_ODDS?ok:over).push(p);
+  for(const p of over)p.heldWhy=`price over +${SINGLE_MAX_ODDS}`;
+  if(over.length)await logHeld(env,over,now).catch(()=>{});
+  return ok;
+}
+// Nov 5 (Tim): an NBA sportsbook pick whose player's own numbers disagree
+// (the stats check's verdict) is held: those went 9-20 (-$944) against 20-13
+// (+$954) when they agreed. NFL showed no difference, so NBA only.
+let NBA_STATS_SKIP=true;
 // Prediction-app picks get the same check; which stats backed each one is
 // saved as app_settings signals:<pick id>.
 async function pmSignalGate(env,list,now,budget=3){
@@ -2831,7 +2852,7 @@ async function publishOfficialPicks(request,env,ctx,opts={}){
     const pool=qualified.filter(longshotOk(await sharpPriced(env,qualified))),gate=SIGNAL_GATE?await signalGate(env,ctx,pool,Date.now(),opts.soonOnly?2:5).catch(()=>null):null,candidates=gate?gate.ready:pool,heldKeys=new Set((gate?.held||[]).map(candKey));
     // Parlay legs: 0.25% up, from players not already posted as singles (held no-signal picks stay out).
     const nextTier=withTeams(officialCandidates(boards,Date.now(),{},{min:.25}).filter(ok).filter(p=>!pausedPick(p,'NFL')&&!heldKeys.has(candKey(p))),await playerTeams(env));
-    const plan=officialPlan(candidates,existing.results||[],week,Date.now(),nextTier);
+    const plan=officialPlan(await capSingles(env,candidates,Date.now()),existing.results||[],week,Date.now(),nextTier);
     const posted=await writeOfficialPlan(plan,week,env);
     await stampExchangePrices(env,Date.now()).catch(error=>console.warn('exchange_stamp_failed',error.message));
     if(!opts.soonOnly&&stats.markets)await setAppSetting(env,'market-coverage',JSON.stringify({at:new Date(now).toISOString(),markets:stats.markets})).catch(()=>{});
