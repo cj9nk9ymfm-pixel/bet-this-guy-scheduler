@@ -3430,7 +3430,7 @@ async function cspReport(request,env,ctx){
 }
 // Anonymous usage counts: daily totals per metric. No cookies, IP addresses or
 // per-person identifiers are stored; unknown metric names are ignored.
-const USAGE_METRICS=new Set([...['picks','switch'].flatMap(k=>['<1s','1-2s','2-4s','4s+'].map(b=>`perf:${k}:${b}`)),'card:stats','slip:copy','slip:topm','alerts:x','alerts:chooser','alerts:choose-email','alerts:choose-site','go:safari','go:novig','a2hs:shown','alerts:banner-hide','alerts:fromweek','alerts:lapsed','alerts:denied','alerts:unsupported','board:browse','board:value','empty:alerts','email:pitch','hero:picks','official:bet','prop:bet','slip:addpicks','view:nba','sheet:alerts','sheet:email','sheet:xproof','email:subscribe','email:open','reply:copy','reply:image','partner:novig:copy','app:novig','app:prophetx','app:kalshi','app:polymarket','app:betopenly','welcome:shown','welcome:alerts','welcome:account','welcome:skip','welcome:close','welcome:reopen','view:home','view:trust','view:picks','view:player','view:nfl','live:league-tab','sheet:player-page','view:week','visit:new','visit:return','card:open','slip:add','parlay:add','share','hit:open','profile:open','affiliate:click','alerts:on','alerts:off','gate:shown','gate:signup','gate:login','nudge:shown','nudge:alerts','nudge:signup','nudge:shown-a','nudge:shown-b','nudge:alerts-b','email:inline-board','mybets:add','mybets:open','sheet:line','email:after-shown','email:after-close','email:inline-after','slip:bar','slip:stake-chip','board:browse','alerts:email','view:post','post:copy','post:open','post:image','src:reddit','src:x','src:google','src:social','src:other','src:direct','src:xbio','src:search','src:email','email:home-shown-b','email:inline-homeb','welcome:email','email:inline-welcome','email:inline-banner','email:inline-sheet','email:inline-home','email:home-shown','email:inline-nudge','email:nudge-shown','email:nudge-close','welcome:a2hs','live:strip','slip:parlay']);
+const USAGE_METRICS=new Set([...['picks','switch'].flatMap(k=>['<1s','1-2s','2-4s','4s+'].map(b=>`perf:${k}:${b}`)),'card:stats','slip:copy','slip:topm','alerts:x','alerts:chooser','alerts:choose-email','alerts:choose-site','go:safari','go:novig','a2hs:shown','alerts:banner-hide','alerts:fromweek','alerts:lapsed','alerts:denied','alerts:unsupported','board:browse','board:value','empty:alerts','email:pitch','hero:picks','official:bet','prop:bet','slip:addpicks','view:nba','sheet:alerts','sheet:email','sheet:xproof','email:subscribe','email:open','reply:copy','reply:image','partner:novig:copy','app:novig','app:prophetx','app:kalshi','app:polymarket','app:betopenly','welcome:shown','welcome:alerts','welcome:account','welcome:skip','welcome:close','welcome:reopen','view:home','view:trust','view:picks','view:player','view:nfl','live:league-tab','sheet:player-page','follow:on','follow:off','view:week','visit:new','visit:return','card:open','slip:add','parlay:add','share','hit:open','profile:open','affiliate:click','alerts:on','alerts:off','gate:shown','gate:signup','gate:login','nudge:shown','nudge:alerts','nudge:signup','nudge:shown-a','nudge:shown-b','nudge:alerts-b','email:inline-board','mybets:add','mybets:open','sheet:line','email:after-shown','email:after-close','email:inline-after','slip:bar','slip:stake-chip','board:browse','alerts:email','view:post','post:copy','post:open','post:image','src:reddit','src:x','src:google','src:social','src:other','src:direct','src:xbio','src:search','src:email','email:home-shown-b','email:inline-homeb','welcome:email','email:inline-welcome','email:inline-banner','email:inline-sheet','email:inline-home','email:home-shown','email:inline-nudge','email:nudge-shown','email:nudge-close','welcome:a2hs','live:strip','slip:parlay']);
 const USAGE_BOTS=/bot|crawl|spider|slurp|preview|facebookexternalhit|curl|wget|python|headless|lighthouse/i;
 function usageGeo(request){
   const cf=request.cf||{},country=String(cf.country||'').toUpperCase(),region=String(cf.regionCode||'').toUpperCase();
@@ -3643,15 +3643,54 @@ async function sendNbaEmails(env,now=Date.now()){
   }
   return {sent,total:people.length,picks:picks.length};
 }
+// Followed bets (Nov 5, Tim): "I bet this" on a phone with notifications on
+// follows the pick (app_settings follow:<pick id> = its endpoints). Once the
+// pick is graded each of those phones gets one push with the result (stored
+// for it in book_alerts, which /api/alerts/latest reads), then the follow is
+// cleared. Sends only while app_settings follow-alerts = 'on'.
+const FOLLOW_ID=/^(official|nba)\|[^\s]{4,300}$/;
+function followMessage(r){
+  const legs=recordLegs(r),f=legs[0]||{},what=r.kind==='parlay'?`${legs.length}-leg parlay (${legs.map(l=>String(l.player||'').split(' ').slice(-1)[0]).join(' + ')})`:`${r.player} ${weeklyLegText(r)}`;
+  const had=r.kind!=='parlay'&&f.actualValue!=null?`: finished with ${f.actualValue}`:'';
+  const voided=r.result==='push'&&legs.every(l=>l.voided);
+  if(r.result==='won')return {title:'✅ Your bet hit',body:`${what}${had}. Cashed at ${weeklyOdds(r.kind==='parlay'?r.combined_odds:r.odds)}.`,url:pickUrl(r.id)};
+  if(r.result==='lost')return {title:'❌ Your bet missed',body:`${what}${had}. On to the next one.`,url:pickUrl(r.id)};
+  return {title:'➖ No action',body:`${what}${voided?' was voided (didn’t play)':' pushed'}: stake back.`,url:pickUrl(r.id)};
+}
+async function followPick(env,endpoint,pickId,on=true){
+  if(!FOLLOW_ID.test(pickId)||!validPushEndpoint(endpoint))return {success:false};
+  const key=`follow:${pickId}`;let list=[];try{list=JSON.parse(await appSetting(env,key)||'[]')}catch{}
+  list=list.filter(e=>e!==endpoint);if(on)list.push(endpoint);list=list.slice(-1000);
+  if(list.length)await setAppSetting(env,key,JSON.stringify(list));else await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run();
+  return {success:true,following:on};
+}
+async function sendFollowAlerts(env,now=Date.now()){
+  if(!env.DB)return {sent:0};
+  if(await appSetting(env,'follow-alerts')!=='on')return {sent:0,off:true};
+  const rows=(await env.DB.prepare("SELECT key,value FROM app_settings WHERE key LIKE 'follow:%' LIMIT 200").all()).results||[];
+  let sent=0,settled=0;const stamp=new Date(now).toISOString();
+  for(const row of rows){
+    const id=row.key.slice(7),r=await env.DB.prepare("SELECT id,kind,player,market,side,line,odds,combined_odds,legs_json,result,game_time FROM public_recommendations WHERE id=? AND source='market-verified-v2'").bind(id).first().catch(()=>null);
+    if(!r||(!['won','lost','push'].includes(r.result)&&now-Date.parse(r.game_time)>4*86400000)){await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(row.key).run();continue}
+    if(!['won','lost','push'].includes(r.result))continue;
+    let eps=[];try{eps=JSON.parse(row.value)}catch{}
+    const msg=JSON.stringify(followMessage(r)),fresh=[];
+    for(const e of eps){if(!validPushEndpoint(e))continue;const out=await env.DB.prepare('INSERT OR IGNORE INTO book_alerts (recipient,prop_key,sent_at,message_json) VALUES (?,?,?,?)').bind(`push:${e}`,`follow:${id}`,stamp,msg).run();if(out.meta?.changes)fresh.push(e)}
+    await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(row.key).run();settled++;
+    if(fresh.length)sent+=(await sendPickAlerts(env,now,fresh)).sent||0;
+  }
+  return {sent,settled};
+}
 async function sendDueAlerts(env,now=Date.now()){
   if(!env.DB)return {sent:0};
+  const follows=await sendFollowAlerts(env,now).catch(error=>({error:error.message}));
   const custom=await sendCustomEmail(env,now).catch(error=>({error:error.message}));
   const nba=await sendNbaAlerts(env,now).catch(error=>({error:error.message}));
   const nbaEmails=await sendNbaEmails(env,now).catch(error=>({error:error.message}));
   const predictions=await sendPredictionAlerts(env,now).catch(error=>({error:error.message}));
   const predictionEmails=await sendPredictionEmails(env,now).catch(error=>({error:error.message}));
   const reminders=await remindPendingSubscribers(env,now).catch(error=>({error:error.message}));
-  return {...await sendOfficialAlerts(env,now),nba,nbaEmails,predictions,predictionEmails,...(reminders.sent?{reminders}:{}),...(custom.none?{}:{custom})};
+  return {...await sendOfficialAlerts(env,now),...(follows.sent||follows.settled||follows.error?{follows}:{}),nba,nbaEmails,predictions,predictionEmails,...(reminders.sent?{reminders}:{}),...(custom.none?{}:{custom})};
 }
 async function sendOfficialAlerts(env,now=Date.now()){
   if(!env.DB)return {sent:0};
@@ -3678,6 +3717,7 @@ async function alertsApi(request,env){
   let body={};try{body=JSON.parse((await request.text()).slice(0,4000))}catch{}
   const endpoint=String(body?.endpoint||'');
   if(!validPushEndpoint(endpoint))return reply({success:false,error:'Unsupported push service.'},400);
+  if(url.pathname==='/api/alerts/follow')return reply(await followPick(env,endpoint,String(body?.pickId||''),body?.on!==false));
   if(url.pathname==='/api/alerts/unsubscribe'){await env.DB.prepare('DELETE FROM push_subscriptions WHERE endpoint=?').bind(endpoint).run();return reply({success:true})}
   // A returning phone asks whether we still hold its subscription (an expired one is deleted on send).
   if(url.pathname==='/api/alerts/check'){const rows=(await env.DB.prepare('SELECT 1 AS ok FROM push_subscriptions WHERE endpoint=? LIMIT 1').bind(endpoint).all()).results||[];return reply({success:true,active:rows.length>0})}

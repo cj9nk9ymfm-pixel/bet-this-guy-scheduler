@@ -3903,6 +3903,7 @@ function statsProp(l){
     // Signed in: the account's tracker keeps it (and grades it) on every device.
     if(window.BTGAuth?.isSignedIn?.()&&!parlay)window.BTGAuth.trackParlay?.({wager:stake,source:'board',legs:[{player:r.player,market:r.market,side:r.side,line:Number(r.line),odds:Number(r.odds),eventId:l.gameId||r.event_id||'',team:l.team||'',gameStart:r.game_time||''}]}).then(res=>{const id=res?.bet?.id;if(id){save(load().map(b=>b.id===entry.id?{...b,serverId:id}:b))}}).catch(()=>{});
     window.BTGEmailAsk?.('mybets');
+    followRemote(r.id,true);
     window.btgCount?.('mybets:add');if(typeof slipToast==='function')slipToast(`${icon('check')} Tracking in My bets · $${stake} at ${am(parlay?r.combined_odds:r.odds)}`)}
   const has=id=>load().some(b=>b.pickId===id);
   const dlg=document.getElementById('myBetsDialog'),body=document.getElementById('myBetsBody');
@@ -3920,13 +3921,15 @@ function statsProp(l){
       <p class="mb-fine">${window.BTGAuth?.isSignedIn?.()?'Saved to your account, on every device.':'Saved on this device. <button type="button" class="mb-signin">Sign in</button> to keep them on every device.'} Amounts are what you tell us; change any amount above.</p>`
       :`<div class="mb-empty"><b>No bets tracked yet</b><span>Tap “I bet this” on any official pick and it lands here. We grade it with the pick, so you see your own record next to ours.</span></div>`;
     body.querySelector('.mb-signin')?.addEventListener('click',()=>{dlg.close();window.BTGAuth?.open?.('signup')});
-    body.querySelectorAll('.mb-row').forEach(row=>{const id=row.dataset.id;row.querySelector('.mb-x').onclick=()=>{save(load().filter(b=>b.id!==id));render()};
+    body.querySelectorAll('.mb-row').forEach(row=>{const id=row.dataset.id;row.querySelector('.mb-x').onclick=()=>{const gone=load().find(b=>b.id===id);save(load().filter(b=>b.id!==id));if(gone?.pickId&&!load().some(b=>b.pickId===gone.pickId))followRemote(gone.pickId,false);render()};
       row.querySelector('.mb-stake').onchange=e=>{const v=Math.max(1,Number(e.target.value)||1);save(load().map(b=>b.id===id?{...b,stake:v}:b));render()}})}
   function open(){render();if(dlg&&!dlg.open)dlg.showModal?.();window.btgCount?.('mybets:open');if(window.BTGAuth?.isSignedIn?.())window.BTGAuth.serverBets?.().then(list=>{server=Array.isArray(list)?list:[];if(dlg?.open)render()}).catch(()=>{})}
   dlg?.querySelector('.mb-close')?.addEventListener('click',()=>dlg.close());dlg?.addEventListener('click',e=>{if(e.target===dlg)dlg.close()});
   document.querySelector('[data-more-action="mybets"]')?.addEventListener('click',()=>{document.getElementById('moreSheet')?.close?.();open()});
   // Live ticks redraw My bets while it's open (not while an amount is being typed).
   (window.btgLiveHooks||=[]).push(()=>{if(dlg?.open&&!document.activeElement?.classList?.contains('mb-stake')&&dlg.querySelector('.mb-live-row'))render()});
+  // A phone with notifications on follows the pick: one push when it's graded (Nov 5, Tim).
+  function followRemote(pickId,on){try{if(!pickId||!/^(official|nba)\|/.test(pickId)||!navigator.serviceWorker?.ready)return;navigator.serviceWorker.ready.then(reg=>reg.pushManager?.getSubscription?.()).then(sub=>{if(!sub)return;window.btgCount?.(on?'follow:on':'follow:off');return fetch('/api/alerts/follow',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({endpoint:sub.endpoint,pickId,on})})}).catch(()=>{})}catch{}}
   window.BTGMyBets={add,has,open,render}})();
 
 // More sheet (Nov 3 redesign): alerts open the chooser; theme is a segmented control.
