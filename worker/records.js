@@ -3666,11 +3666,21 @@ function followMessage(r){
   return {title:'➖ No action',body:`${what}${voided?' was voided (didn’t play)':' pushed'}: stake back.`,url:pickUrl(r.id)};
 }
 async function followPick(env,endpoint,pickId,on=true){
-  if(!FOLLOW_ID.test(pickId)||!validPushEndpoint(endpoint))return {success:false};
+  if(!FOLLOW_ID.test(pickId)||!(validPushEndpoint(endpoint)||/^email:[A-Za-z0-9-]{8,64}$/.test(endpoint)))return {success:false};
   const key=`follow:${pickId}`;let list=[];try{list=JSON.parse(await appSetting(env,key)||'[]')}catch{}
   list=list.filter(e=>e!==endpoint);if(on)list.push(endpoint);list=list.slice(-1000);
   if(list.length)await setAppSetting(env,key,JSON.stringify(list));else await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run();
   return {success:true,following:on};
+}
+async function followEmail(env,uid,r,note){
+  if(!env.RESEND_API_KEY)return false;
+  const row=(await env.DB.prepare('SELECT a.token,p.email FROM email_alerts a JOIN user_profiles p ON p.auth_user_id=a.auth_user_id WHERE a.auth_user_id=? AND a.enabled=1').bind(uid).all()).results?.[0];
+  if(!row?.email)return false;
+  const unsubscribe=`${SITE_URL}/api/email-alerts/unsubscribe?token=${row.token}`,postal=String(env.EMAIL_POSTAL_ADDRESS||'').trim();
+  const html=emailAlertHtml([r],unsubscribe,postal,{subject:note.title,heading:weeklyEscape(note.title),eyebrow:'YOUR BET',lede:note.body,rowsHtml:emailPickRow({...r,result:null}),ctaLabel:'See the pick',ctaUrl:`${SITE_URL}${note.url}`,note:'You tapped “I bet this” while signed in, so we sent the result. Every graded pick is on our results page.'});
+  const text=`${note.title}\n${note.body}\n\nSee the pick: ${SITE_URL}${note.url}\n\nUnsubscribe: ${unsubscribe}\n21+ where legal. Gambling problem? Call 1-800-GAMBLER.${postal?`\n${postal}`:''}\n`;
+  const res=await fetch('https://api.resend.com/emails',{method:'POST',headers:{authorization:`Bearer ${env.RESEND_API_KEY}`,'content-type':'application/json'},body:JSON.stringify({from:env.EMAIL_FROM||EMAIL_ALERT_FROM,to:[row.email],reply_to:env.EMAIL_REPLY_TO||'support@betthisguy.com',subject:note.title,html,text,headers:{'List-Unsubscribe':`<${unsubscribe}>`,'List-Unsubscribe-Post':'List-Unsubscribe=One-Click'}}),signal:AbortSignal.timeout(15000)});
+  return res.ok;
 }
 async function sendFollowAlerts(env,now=Date.now()){
   if(!env.DB)return {sent:0};
@@ -3682,7 +3692,9 @@ async function sendFollowAlerts(env,now=Date.now()){
     if(!r||(!['won','lost','push'].includes(r.result)&&now-Date.parse(r.game_time)>4*86400000)){await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(row.key).run();continue}
     if(!['won','lost','push'].includes(r.result))continue;
     let eps=[];try{eps=JSON.parse(row.value)}catch{}
-    const msg=JSON.stringify(followMessage(r)),fresh=[];
+    const note=followMessage(r),msg=JSON.stringify(note),fresh=[];
+    // Signed-in bettors with pick emails on (Nov 5): the result by email too.
+    for(const e of eps.filter(x=>String(x).startsWith('email:'))){const uid=e.slice(6);const out=await env.DB.prepare('INSERT OR IGNORE INTO book_alerts (recipient,prop_key,sent_at,message_json) VALUES (?,?,?,?)').bind(e,`follow:${id}`,stamp,msg).run();if(out.meta?.changes&&await followEmail(env,uid,r,note).catch(()=>false))sent++}
     for(const e of eps){if(!validPushEndpoint(e))continue;const out=await env.DB.prepare('INSERT OR IGNORE INTO book_alerts (recipient,prop_key,sent_at,message_json) VALUES (?,?,?,?)').bind(`push:${e}`,`follow:${id}`,stamp,msg).run();if(out.meta?.changes)fresh.push(e)}
     await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(row.key).run();settled++;
     if(fresh.length)sent+=(await sendPickAlerts(env,now,fresh)).sent||0;

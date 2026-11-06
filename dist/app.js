@@ -3935,7 +3935,7 @@ function statsProp(l){
       <p class="mb-fine">${window.BTGAuth?.isSignedIn?.()?'Saved to your account, on every device.':'Saved on this device. <button type="button" class="mb-signin">Sign in</button> to keep them on every device.'} Amounts are what you tell us; change any amount above.</p>`
       :`<div class="mb-empty"><b>No bets tracked yet</b><span>Tap “I bet this” on any official pick and it lands here. We grade it with the pick, so you see your own record next to ours.</span></div>`;
     body.querySelector('.mb-signin')?.addEventListener('click',()=>{dlg.close();window.BTGAuth?.open?.('signup')});
-    body.querySelectorAll('.mb-row').forEach(row=>{const id=row.dataset.id;row.querySelector('.mb-x').onclick=()=>{const gone=load().find(b=>b.id===id);save(load().filter(b=>b.id!==id));if(gone?.pickId&&!load().some(b=>b.pickId===gone.pickId))followRemote(gone.pickId,false);render()};
+    body.querySelectorAll('.mb-row').forEach(row=>{const id=row.dataset.id;row.querySelector('.mb-x').onclick=()=>{const gone=load().find(b=>b.id===id);save(load().filter(b=>b.id!==id));if(gone?.pickId&&!load().some(b=>b.pickId===gone.pickId)){followRemote(gone.pickId,false);window.BTGAuth?.follow?.(gone.pickId,false)}render()};
       row.querySelector('.mb-stake').onchange=e=>{const v=Math.max(1,Number(e.target.value)||1);save(load().map(b=>b.id===id?{...b,stake:v}:b));render()}})}
   function open(){render();if(dlg&&!dlg.open)dlg.showModal?.();window.btgCount?.('mybets:open');if(window.BTGAuth?.isSignedIn?.())window.BTGAuth.serverBets?.().then(list=>{server=Array.isArray(list)?list:[];if(dlg?.open)render()}).catch(()=>{})}
   dlg?.querySelector('.mb-close')?.addEventListener('click',()=>dlg.close());dlg?.addEventListener('click',e=>{if(e.target===dlg)dlg.close()});
@@ -3945,6 +3945,7 @@ function statsProp(l){
   // After "I bet this" (Nov 5, Tim): notifications on, follow the pick; push possible here,
   // offer it once a session ("a ping when this one settles"); otherwise the email ask.
   async function followAsk(r){
+    if(window.BTGAuth?.isSignedIn?.()&&/^(official|nba)\|/.test(String(r.id||'')))window.BTGAuth.follow?.(r.id,true);
     let sub=null;try{sub=await window.BTGPush?.current?.()}catch{}
     if(sub){followRemote(r.id,true);return}
     let asked=false;try{asked=sessionStorage.getItem('btg-follow-ask')==='1'}catch{}
