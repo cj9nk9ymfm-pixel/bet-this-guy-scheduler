@@ -38,8 +38,9 @@ const api=async body=>J(await (await run(`alertsApi(new Request('https://betthis
   const out=J(await run(`sendFollowAlerts(env,${now})`));assert.deepEqual([out.sent,out.settled],[2,1]);assert.deepEqual(pushed,[A]);
   assert.equal(mails.length,1,'one email: only the bettor with pick emails on');assert.deepEqual(mails[0].to,['fan@example.com']);assert.equal(mails[0].subject,'✅ Your bet hit');
   assert.ok(mails[0].html.includes('YOUR BET')&&mails[0].html.includes('Payton Pritchard')&&mails[0].text.includes('tok-user-aaaaaaaa'),'the result, the pick and an unsubscribe link');
+  assert.ok(mails[0].html.includes('Share this hit')&&mails[0].html.includes('share=1'),'the email button shares the hit');
   const note=J(await run(`latestAlert(env,${now+60000},${JSON.stringify(A)})`));
-  assert.equal(note.title,'✅ Your bet hit');assert.match(note.body,/Payton Pritchard Under 3\.5 rebounds: finished with 2\. Cashed at -102\./);assert.match(note.url,/pick=/);
+  assert.equal(note.title,'✅ Your bet hit');assert.match(note.body,/Payton Pritchard Under 3\.5 rebounds: finished with 2\. Cashed at -102\./);assert.match(note.url,/share=1&pick=/,'a hit opens straight to sharing it');assert.match(note.body,/Tap to share it\./);
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM app_settings WHERE key LIKE 'follow:%'").get().n,0,'follow cleared');
   assert.equal(J(await run(`sendFollowAlerts(env,${now})`)).sent,0);assert.equal(pushed.length,1,'never twice');
   // A follow on a pick that never grades is dropped after 4 days.
