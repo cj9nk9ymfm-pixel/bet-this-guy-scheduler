@@ -1,0 +1,54 @@
+name: Live tracking check (live site)
+# During game windows: if one of our picks is in a game in progress, the real
+# site must show it live (picks page and Live tab). Pings the alert topic if not.
+on:
+  workflow_dispatch:
+  schedule:
+    # NBA nights and NFL night games (UTC): 23:00-07:00 every day.
+    - cron: '7,37 23 * * *'
+    - cron: '7,37 0-6 * * *'
+    # NFL Sundays from the early games (UTC 17:00-22:59).
+    - cron: '7,37 17-22 * * 0'
+permissions:
+  contents: read
+concurrency:
+  group: live-check
+  cancel-in-progress: true
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Check live tracking on betthisguy.com
+        id: check
+        shell: bash
+        run: node scripts/prod-live-check.cjs | tee check.txt
+      - name: Ping if live tracking is broken
+        if: failure()
+        shell: python
+        env:
+          ALERT_NTFY_TOPIC: ${{ secrets.ALERT_NTFY_TOPIC }}
+        run: |
+          import os, urllib.parse, urllib.request
+          detail = open("check.txt", encoding="utf-8").read()[-900:] if os.path.exists("check.txt") else "the check did not finish"
+          summary = os.environ.get("GITHUB_STEP_SUMMARY")
+          if summary:
+              with open(summary, "a", encoding="utf-8") as out:
+                  out.write("## Live tracking check failed\n\n```\n" + detail + "\n```\n")
+          topic = os.environ.get("ALERT_NTFY_TOPIC", "")
+          if topic:
+              try:
+                  urllib.request.urlopen(urllib.request.Request(
+                      "https://ntfy.sh/" + urllib.parse.quote(topic, safe=""),
+                      data=("Live tracking check failed on betthisguy.com:\n" + detail).encode(),
+                      headers={"Title": "Bet This Guy: live tracking broken", "Priority": "high", "Tags": "warning"},
+                      method="POST"), timeout=10)
+              except Exception as exc:
+                  print("alert: " + type(exc).__name__)
