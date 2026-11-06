@@ -3629,6 +3629,7 @@ async function sendNbaEmails(env,now=Date.now()){
   const newest=picks.reduce((m,r)=>r.posted_at>m?r.posted_at:m,''),value=`${newest}|${new Date(now).toISOString()}`;
   const claim=last==null?await env.DB.prepare('INSERT OR IGNORE INTO app_settings (key,value) VALUES (?,?)').bind('nba-email-for',value).run():await env.DB.prepare('UPDATE app_settings SET value=? WHERE key=? AND value=?').bind(value,'nba-email-for',last).run();
   if(!Number(claim?.meta?.changes??claim?.changes))return {sent:0,claimed:false};
+  await emailWhyAll(env,picks);
   const people=await emailPeople(env,'nba');
   if(!people.length)return {sent:0,picks:picks.length};
   const subject=picks.length===1?(picks[0].kind==='parlay'?`🏀 New NBA ${recordLegs(picks[0]).length}-leg parlay (${weeklyOdds(picks[0].combined_odds)})`:`🏀 New NBA pick: ${picks[0].player} ${weeklyLegText(picks[0])}`):`🏀 ${picks.length} new NBA picks`;
@@ -3702,15 +3703,28 @@ function emailSubject(picks){
   const r=picks[0];
   return r.kind==='parlay'?`✅ New ${recordLegs(r).length}-leg parlay (${weeklyOdds(r.combined_odds)})`:`✅ New pick: ${r.player} ${weeklyLegText(r)}`;
 }
+// Pick-alert email rows (Nov 5, Tim): the site's pick card. Headshot, name,
+// the bet, the game and time, the price big with the book, and the stat that
+// backs it (the site's "why" tiles) when the pick has a saved matchup.
 function emailPickRow(r){
-  const cell='padding:14px 16px;border:1px solid #dbe6f2;border-radius:12px;background:#f4f8fd;';
-  const when=`<div style="margin-top:4px;font-size:13px;color:#5a6f8c;">${weeklyEscape(weeklyDay(r.game_time))}</div>`;
+  const legs=recordLegs(r),first=legs[0]||{},nba=String(r.id||'').startsWith('nba|')||String(first.sport||'').toUpperCase()==='NBA';
+  const game=String(first.team||'').replace(' · @ ',' @ ').replace(' · vs ',' vs ');
+  const meta=[game,weeklyDay(r.game_time)].filter(Boolean).join(' · ');
+  const price=(odds,book)=>`<td align="right" valign="top" style="padding-left:10px;white-space:nowrap;"><div style="display:inline-block;padding:8px 12px;border-radius:12px;background:#10213d;color:#1fd88f;font-size:17px;font-weight:800;">${weeklyEscape(weeklyOdds(odds))}</div>${book?`<div style="margin-top:4px;font-size:12px;color:#5a6f8c;">${weeklyEscape(book)}</div>`:''}</td>`;
+  const card=inner=>`<tr><td style="padding:14px;border:1px solid #e3ebf5;border-radius:16px;background:#ffffff;">${inner}</td></tr><tr><td style="height:10px;"></td></tr>`;
   if(r.kind==='parlay'){
-    const legs=recordLegs(r).map(l=>`<li style="margin:4px 0;">${weeklyEscape(l.player)} · ${weeklyEscape(weeklyLegText(l))}${l.odds!=null?` <span style="color:#5a6f8c;">(${weeklyEscape(weeklyOdds(l.odds))})</span>`:''}</li>`).join('');
-    return `<tr><td style="${cell}"><div style="font-size:16px;font-weight:700;color:#10213d;">${recordLegs(r).length}-leg parlay <span style="float:right;color:#08875e;">${weeklyEscape(weeklyOdds(r.combined_odds))}</span></div><ul style="margin:8px 0 0;padding-left:18px;font-size:14px;color:#10213d;">${legs}</ul>${when}</td></tr><tr><td style="height:10px;"></td></tr>`;
+    const rows=legs.map(l=>`<tr><td style="padding:6px 0;border-top:1px solid #eef3f9;font-size:14px;color:#10213d;"><b>${weeklyEscape(l.player)}</b> · ${weeklyEscape(weeklyLegText(l))}${l.odds!=null?` <span style="color:#5a6f8c;">(${weeklyEscape(weeklyOdds(l.odds))})</span>`:''}</td></tr>`).join('');
+    return card(`<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td valign="top"><div style="font-size:17px;font-weight:800;color:#10213d;">${legs.length}-leg parlay</div><div style="margin-top:2px;font-size:13px;color:#5a6f8c;">${weeklyEscape(weeklyDay(r.game_time))} · $25 a ticket</div></td>${price(r.combined_odds,[...new Set(legs.map(l=>l.book).filter(Boolean))].join(', '))}</tr></table><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:8px;">${rows}</table>`);
   }
-  const book=recordLegs(r)[0]?.book,ex=exchangeLine(r);
-  return `<tr><td style="${cell}"><div style="font-size:16px;font-weight:700;color:#10213d;">${weeklyEscape(r.player)} <span style="float:right;color:#08875e;">${weeklyEscape(weeklyOdds(r.odds))}</span></div><div style="margin-top:4px;font-size:15px;color:#10213d;">${weeklyEscape(weeklyLegText(r))}${book?` <span style="color:#5a6f8c;">at ${weeklyEscape(book)}</span>`:''}</div>${ex?`<div style="margin-top:4px;font-size:13px;color:#4058c8;">Prediction markets: ${weeklyEscape(ex)}</div>`:''}${when}</td></tr><tr><td style="height:10px;"></td></tr>`;
+  const photo=`<img src="${SITE_URL}/api/player-photo?name=${encodeURIComponent(r.player||'')}${nba?'&sport=NBA':''}&fallback=1" width="48" height="48" alt="" style="display:block;width:48px;height:48px;border-radius:24px;background:#e3ebf5;object-fit:cover;border:0;">`;
+  const boxes=(r.why?.boxes||[]).slice(0,2),ex=exchangeLine(r);
+  const why=boxes.length?`<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:12px;"><tr>${boxes.map(b=>`<td width="${Math.floor(100/boxes.length)}%" valign="top" style="padding:0 3px;"><div style="padding:10px 12px;border-radius:12px;background:#f3f7fc;"><div style="font-size:20px;font-weight:800;color:#08875e;">${weeklyEscape(b.big)}</div><div style="margin-top:2px;font-size:12px;line-height:1.35;color:#40597a;">${weeklyEscape(b.label)}${b.sub?` · ${weeklyEscape(b.sub)}`:''}</div></div></td>`).join('')}</tr></table>`:'';
+  return card(`<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td width="60" valign="top">${photo}</td><td valign="top"><div style="font-size:17px;font-weight:800;color:#10213d;">${weeklyEscape(r.player)}</div><div style="margin-top:2px;font-size:15px;color:#10213d;">${weeklyEscape(weeklyLegText(r))}</div><div style="margin-top:3px;font-size:13px;color:#5a6f8c;">${weeklyEscape(meta)}</div></td>${price(r.odds,first.book)}</tr></table>${why}${ex?`<div style="margin-top:10px;font-size:13px;color:#4058c8;">Prediction markets: ${weeklyEscape(ex)}</div>`:''}`);
+}
+// The stat that backs each pick, from its saved matchup (as on the site).
+async function emailWhyAll(env,picks){
+  for(const r of picks||[]){if(r.kind!=='prop'||r.why)continue;try{const m=await appSetting(env,`matchup:${r.id}`);if(m){const w=pickWhy({...r,matchup_json:m});if(w)r.why=w}}catch{}}
+  return picks;
 }
 function emailAlertHtml(picks,unsubscribeUrl,postal,opts={}){
   const font="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
@@ -3762,7 +3776,7 @@ async function sendEmailAlerts(env,now=Date.now()){
   if(!env.DB||!env.RESEND_API_KEY)return {sent:0,disabled:true};
   const last=await appSetting(env,'email-alert-at'),lastTime=Date.parse(last||'');
   const since=new Date(Number.isFinite(lastTime)?Math.max(lastTime,now-12*3600000):now-3*3600000).toISOString();
-  const picks=(await env.DB.prepare("SELECT kind,player,market,side,line,odds,combined_odds,legs_json,game_time FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND posted_at>? AND game_time>? ORDER BY game_time,posted_at LIMIT 12").bind(since,new Date(now).toISOString()).all()).results||[];
+  const picks=(await env.DB.prepare("SELECT id,kind,player,market,side,line,odds,combined_odds,legs_json,game_time FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND posted_at>? AND game_time>? ORDER BY game_time,posted_at LIMIT 12").bind(since,new Date(now).toISOString()).all()).results||[];
   if(!picks.length)return {sent:0};
   const soonest=Math.min(...picks.map(r=>Date.parse(r.game_time)||Infinity));
   if(Number.isFinite(lastTime)&&now-lastTime<(soonest-now<90*60000?10*60000:EMAIL_ALERT_GAP))return {sent:0,throttled:true};
@@ -3770,6 +3784,7 @@ async function sendEmailAlerts(env,now=Date.now()){
   const stamp=new Date(now).toISOString();
   const claim=last==null?await env.DB.prepare('INSERT OR IGNORE INTO app_settings (key,value) VALUES (?,?)').bind('email-alert-at',stamp).run():await env.DB.prepare('UPDATE app_settings SET value=? WHERE key=? AND value=?').bind(stamp,'email-alert-at',last).run();
   if(!Number(claim?.meta?.changes??claim?.changes))return {sent:0,claimed:false};
+  await emailWhyAll(env,picks);
   const people=await emailPeople(env);
   const subject=emailSubject(picks),from=env.EMAIL_FROM||EMAIL_ALERT_FROM,postal=String(env.EMAIL_POSTAL_ADDRESS||'').trim();
   let sent=0;
