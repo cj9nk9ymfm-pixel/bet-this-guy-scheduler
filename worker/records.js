@@ -3455,6 +3455,19 @@ async function countUsage(env,metrics,request){
   if(!list.length)return;
   await env.DB.batch(list.map(metric=>env.DB.prepare('INSERT INTO usage_counts (day,metric,count) VALUES (?,?,1) ON CONFLICT(day,metric) DO UPDATE SET count=count+1').bind(day,metric)));
 }
+// Browser errors (Nov 5): a daily count per error (err:<code>) and, once, what it is
+// (app_settings errinfo:<code>: message, file:line, first seen). Owner and bots skipped.
+async function clientError(request,env){
+  const ok=new Response(null,{status:204,headers:{'cache-control':'no-store'}});
+  if(request.method!=='POST'||!env.DB||USAGE_BOTS.test(request.headers.get('user-agent')||'')||/(?:^|;\s*)btg_owner=1(?:;|$)/.test(request.headers.get('cookie')||''))return ok;
+  let b={};try{b=JSON.parse((await request.text()).slice(0,800))}catch{return ok}
+  const msg=String(b.msg||'').slice(0,180),file=String(b.file||'').replace(/[^\w./-]/g,'').slice(0,60),line=Math.max(0,Math.min(1e7,Number(b.line)||0));if(!msg)return ok;
+  const raw=`${msg}|${file}|${line}`;let h=5381;for(let i=0;i<raw.length;i++)h=((h*33)^raw.charCodeAt(i))>>>0;const code=h.toString(36).slice(0,8);
+  const day=new Date().toISOString().slice(0,10);
+  await env.DB.batch([env.DB.prepare('INSERT INTO usage_counts (day,metric,count) VALUES (?,?,1) ON CONFLICT(day,metric) DO UPDATE SET count=count+1').bind(day,`err:${code}`),
+    env.DB.prepare('INSERT OR IGNORE INTO app_settings (key,value) VALUES (?,?)').bind(`errinfo:${code}`,JSON.stringify({msg,file,line,first:new Date().toISOString()}))]).catch(()=>{});
+  return ok;
+}
 async function usageHit(request,env,ctx){
   if(request.method!=='POST')return new Response(null,{status:405});
   const text=(await request.text()).slice(0,300);
