@@ -3840,6 +3840,19 @@ function statsProp(l){
   const base=render;
   render=function(...args){const out=base.apply(this,args);const t=typeof document.getElementById==='function'?document.getElementById('viewTitle'):null;if(t&&BOARD_TITLES.has(t.textContent))t.textContent='More props';return out};
   window.render=render;
+  // Nov 5 (Tim, faster first load): while the board is collapsed, renders that
+  // land close together (one per data arrival at load: 7 on an NFL day, about
+  // 0.9s on a slow phone) run once, 300ms after the last. Opening the board,
+  // a player filter or any other page renders straight away.
+  {const full=render;let timer=null;
+   render=function(...args){
+     const idle=document.body?.classList?.contains('board-collapsed')&&!(typeof selectedPlayer!=='undefined'&&selectedPlayer)&&(innerWidth>720||document.body.dataset.mobilePage==='props');
+     clearTimeout(timer);timer=null;
+     if(!idle)return full.apply(this,args);
+     timer=setTimeout(()=>{timer=null;full()},300);
+   };
+   window.render=render;
+   if(typeof document.getElementById==='function')document.getElementById('boardBrowse')?.addEventListener('click',()=>{if(timer){clearTimeout(timer);timer=null;full()}});}
 })();
 
 // Speed (Oct 25). The other league's page is fetched in the background
