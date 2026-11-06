@@ -1826,7 +1826,7 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
       const done=items.filter(([r])=>officialDone(r)),live=items.filter(([r])=>!officialDone(r)&&liveLine(r)&&!later.some(([x])=>x===r)),open=items.filter(([r])=>!officialDone(r)&&!live.some(([x])=>x===r)&&!later.some(([x])=>x===r));
       const laterHtml=[...new Set(later.map(([r])=>weekOf(r)))].sort().map(n=>`<p class="on-group on-group-later">${htmlEscape(nightLabel(n))}</p>${rowsOf(later.filter(([r])=>weekOf(r)===n))}`).join('');
       const tally=done.reduce((t,[r])=>{if(!voidOf(r))t[r.result]=(t[r.result]||0)+1;return t},{}),doneRec=`${tally.won||0}–${tally.lost||0}${tally.push?`–${tally.push}`:''}`;
-      box.innerHTML=items.length?(later.length&&(open.length||live.length||done.length)?'<p class="on-group">Tonight</p>':'')+(live.length?`<p class="on-group on-group-live"><i class="on-dot"></i>Live now</p>${liveRowsOf(live)}${open.length?'<p class="on-group">Up next</p>':''}`:'')+(sel==='#officialNowList'&&open.length?(open.length>=4?busyDay(open):open.map(([r,i])=>pickCard(r,i)).join('')):rowsOf(open.slice(0,SHOW)))+(sel!=='#officialNowList'&&open.length>SHOW?`<div class="on-more" hidden>${rowsOf(open.slice(SHOW))}</div><button type="button" class="on-toggle" data-on-toggle="more" aria-expanded="false">See all ${open.length} ${noun}s</button>`:'')+(done.length?`<button type="button" class="on-toggle on-final-toggle" data-on-toggle="final" aria-expanded="${open.length?'false':'true'}">Final · ${done.length} ${noun}${done.length===1?'':'s'} · ${doneRec}</button><div class="on-final"${open.length?' hidden':''}>${rowsOf(done)}</div>`:'')+laterHtml:empty;
+      box.innerHTML=items.length?(later.length&&(open.length||live.length||done.length)?'<p class="on-group">Tonight</p>':'')+(live.length?`<p class="on-group on-group-live"><i class="on-dot"></i>Live now</p>${liveRowsOf(window.btgLiveKey?[...live].sort((a,b)=>window.btgLiveKey(a[0])-window.btgLiveKey(b[0])):live)}${open.length?'<p class="on-group">Up next</p>':''}`:'')+(sel==='#officialNowList'&&open.length?(open.length>=4?busyDay(open):open.map(([r,i])=>pickCard(r,i)).join('')):rowsOf(open.slice(0,SHOW)))+(sel!=='#officialNowList'&&open.length>SHOW?`<div class="on-more" hidden>${rowsOf(open.slice(SHOW))}</div><button type="button" class="on-toggle" data-on-toggle="more" aria-expanded="false">See all ${open.length} ${noun}s</button>`:'')+(done.length?`<button type="button" class="on-toggle on-final-toggle" data-on-toggle="final" aria-expanded="${open.length?'false':'true'}">Final · ${done.length} ${noun}${done.length===1?'':'s'} · ${doneRec}</button><div class="on-final"${open.length?' hidden':''}>${rowsOf(done)}</div>`:'')+laterHtml:empty;
       box.querySelectorAll('[data-slot]').forEach(b=>b.onclick=()=>box.querySelector(`[data-slot-sec="${b.dataset.slot}"]`)?.scrollIntoView({behavior:'smooth',block:'start'}));
       box.querySelectorAll('[data-on-toggle]').forEach(b=>b.onclick=()=>{const el=b.dataset.onToggle==='more'?b.previousElementSibling:b.nextElementSibling;const show=el.hidden;el.hidden=!show;b.setAttribute('aria-expanded',String(show));if(b.dataset.onToggle==='more')b.textContent=show?'Show fewer':`See all ${open.length} ${noun}s`});
     }
@@ -3221,8 +3221,14 @@ function statsProp(l){
     if(s.key==='hit')return under?`Stayed under · finished with ${v}`:`Cleared it · ${v} ${u}`;
     if(s.key==='miss')return under?`Went over · ${v} ${u}`:`Finished with ${v} · needed ${need}`;
     if(s.final)return `Push · ${v} ${u}`;
-    return under?`${v} so far · loses at ${need}`:`${v} so far · needs ${Math.max(0,need-v)} more`;
+    const pace=lvPace(prop,s);
+    return (under?`${v} so far · loses at ${need}`:`${v} so far · needs ${Math.max(0,need-v)} more`)+(pace!=null?` · on pace for ${pace}`:'');
   }
+  // On pace (Nov 5, Tim): the count over the share of the game played, from 10% to 95% of regulation.
+  function lvPace(prop,s){try{const g=window.BTGLive?.gameOf?.(prop),el=g&&g.state==='in_progress'?window.BTGLive.elapsed?.(g,String(prop.sport||'').toUpperCase()==='NBA'?'NBA':'NFL'):null;if(!(el>=.1&&el<=.95)||!Number.isFinite(Number(s?.value)))return null;const p=Number(s.value)/el;return p>=10?Math.round(p):+p.toFixed(1)}catch{return null}}
+  // Closest to a decision first: an Over one stat away, then Overs by what's left, Unders, then decided picks.
+  function lvKey(r){try{const legs=lvLegs(r);if(r.kind==='parlay'||!legs.length)return 50;const prop=lvProp(r,legs[0]),s=lvState(r,legs[0]);if(!s)return 90;if(s.key==='hit'||s.key==='miss'||s.final)return 80;const v=Number(s.value),need=Math.floor(Number(prop.line))+1;if(!Number.isFinite(v))return 60;return String(prop.side)==='Under'?40+Math.max(0,need-v)/100:Math.max(0,need-v)}catch{return 99}}
+  window.btgLiveKey=lvKey;
   const lvBadge=k=>k==='hit'?'<b class="lp2-b hit">✓ Hit</b>':k==='miss'?'<b class="lp2-b miss">✗ Lost</b>':k==='final'?'<b class="lp2-b">Push</b>':k==='next'?'<b class="lp2-b next">Up next</b>':'<b class="lp2-b live"><i></i>Live</b>';
   // One pick's live state (single or parlay), null before its game starts: the
   // same number / line / bars as the Live tab, plus a one-line scoreboard.
@@ -3257,6 +3263,7 @@ function statsProp(l){
       cnt[key==='final'?'live':key]++;const it={r,g,st,key,i:items.length};items.push(it);
       if(!started){next.push(it);continue}const gk=r.kind==='parlay'&&new Set(legs.map(l=>lvGame(r,l)?.id)).size>1?'parlays':String(g.id);
       if(!groups.has(gk))groups.set(gk,{g:gk==='parlays'?null:g,items:[]});groups.get(gk).items.push(it)}
+    for(const gr of groups.values()){gr.items.sort((a,b)=>lvKey(a.r)-lvKey(b.r));gr.key=Math.min(...gr.items.map(x=>lvKey(x.r)))}
     panel.hidden=!items.length;if(!items.length){host.innerHTML='';return}
     const title=document.getElementById('livePicksTitle');if(title)title.textContent='Our picks tonight';
     const row=it=>{const {r,st,key}=it,parlay=r.kind==='parlay',where=r.pm?chip(r.pm.exchange):htmlEscape(lvLegs(r)[0]?.book||'Sportsbook'),price=r.pm?`${r.pm.pct}%`:htmlEscape(typeof formatOdds==='function'?formatOdds(parlay?r.combined_odds:r.odds):'');
@@ -3270,7 +3277,7 @@ function statsProp(l){
     const head=g=>{const a=Number(g.awayScore),h=Number(g.homeScore),done=g.state==='final';return `<div class="lp2-sb">${team(g.away,g.awayScore,done&&a>h)}<span class="lp2-clk">${g.state==='in_progress'&&!g.halftime?'<i></i>':''}${htmlEscape(lvClock(g))}</span>${team(g.home,g.homeScore,done&&h>a)}</div>`};
     const tile=(n,label,cls)=>`<div class="lp2-t ${cls}"><b>${n}</b><span>${label}</span></div>`;
     host.innerHTML=`<div class="lp2-sum">${tile(cnt.hit,'Won','hit')}${tile(cnt.live,'Live','live')}${tile(cnt.miss,'Lost','miss')}${tile(cnt.next,'Up next','next')}</div>`
-      +[...groups.values()].sort((x,y)=>(x.g?.state==='final')-(y.g?.state==='final')).map(gr=>`<section class="lp2-game">${gr.g?head(gr.g):'<div class="lp2-sb lp2-sb-p">Parlays across games</div>'}${gr.items.map(row).join('')}</section>`).join('')
+      +[...groups.values()].sort((x,y)=>(x.g?.state==='final')-(y.g?.state==='final')||x.key-y.key).map(gr=>`<section class="lp2-game">${gr.g?head(gr.g):'<div class="lp2-sb lp2-sb-p">Parlays across games</div>'}${gr.items.map(row).join('')}</section>`).join('')
       +(next.length?`<section class="lp2-game lp2-next"><div class="lp2-sb lp2-sb-p">Up next</div>${next.sort((a,b)=>String(a.r.game_time).localeCompare(String(b.r.game_time))).map(row).join('')}</section>`:'');
     host.querySelectorAll('[data-live-pick]').forEach(b=>b.onclick=()=>window.BTGOpenPick?.(items[+b.dataset.livePick].r));
   };
