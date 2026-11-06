@@ -54,10 +54,19 @@ globalThis.BTGMovement=(()=>{
         }
       }
     }
-    const entries=Object.entries(history).filter(([,value])=>Array.isArray(value?.rows)&&value.rows.some(row=>validRow(row)&&row.at>=now-week)).sort((a,b)=>(b[1].rows.at(-1)?.lastSeenAt||b[1].rows.at(-1)?.seenAt||0)-(a[1].rows.at(-1)?.lastSeenAt||a[1].rows.at(-1)?.seenAt||0)).slice(0,50000);
-    if(!sharedImport)history=Object.fromEntries(entries);
+    // During a shared import the history is neither pruned nor saved, and the index is rebuilt once at the end (Nov 5: this ran once per snapshot).
+    if(sharedImport)return;
     reindex();
-    if(!sharedImport)try{localStorage.setItem(storageKey,JSON.stringify(Object.fromEntries(entries.slice(0,2000))))}catch{}
+    // Pruning and saving the history wait for an idle moment (Nov 5: about 0.1s
+    // on a slow phone at load); lookups already skip rows older than a week.
+    if(typeof setTimeout!=='function'){persist(now);return}
+    clearTimeout(persistTimer);persistTimer=setTimeout(()=>{const run=()=>persist(now);typeof requestIdleCallback==='function'?requestIdleCallback(run,{timeout:4000}):run()},1500);
+  }
+  let persistTimer=null;
+  function persist(now=Date.now()){
+    const entries=Object.entries(history).filter(([,value])=>Array.isArray(value?.rows)&&value.rows.some(row=>validRow(row)&&row.at>=now-week)).sort((a,b)=>(b[1].rows.at(-1)?.lastSeenAt||b[1].rows.at(-1)?.seenAt||0)-(a[1].rows.at(-1)?.lastSeenAt||a[1].rows.at(-1)?.seenAt||0)).slice(0,50000);
+    history=Object.fromEntries(entries);
+    try{localStorage.setItem(storageKey,JSON.stringify(Object.fromEntries(entries.slice(0,2000))))}catch{}
   }
   function seriesFor(prop,allowedBook=()=>true,now=Date.now(),includeBaseline=false){
     if(prop.sport!=='NFL'||prop.teamMarket||/^Alternate /i.test(prop.market||''))return [];
@@ -83,10 +92,11 @@ globalThis.BTGMovement=(()=>{
     sharedImport=true;
     const events=payload.data||[],ids=new Set(events.map(e=>e.eventID||`NFL--${e.id}`));
     for(const id of Object.keys(history))if(ids.has(history[id].eventID))delete history[id];
-    for(const id of ids)invalidate(id);
+    for(const [id,offer] of current)if(ids.has(offer.eventID))current.delete(id);
     for(const snapshot of [...(payload.snapshots||[])].sort((a,b)=>a.at-b.at))if(ids.has(snapshot.event?.eventID||`NFL--${snapshot.event?.id}`))observe([snapshot.event],snapshot.at);
     observe(events);
     sharedImport=false;
+    reindex();
   }
   return {observe,importShared,seriesFor,trackedFor:(p,allowed)=>seriesFor(p,allowed,Date.now(),true),probability,markets,invalidate,hasCurrent:()=>current.size>0,hasEvent:id=>[...current.values()].some(offer=>offer.eventID===id)};
 })();
