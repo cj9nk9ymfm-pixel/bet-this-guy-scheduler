@@ -1563,6 +1563,7 @@ async function routeRequest(request, env, ctx) {
     if (url.pathname === "/api/x-card.png") return xCardPreview(request, env);
     if (url.pathname === "/api/hit") return usageHit(request, env, ctx);
     if (url.pathname === "/api/client-error") return clientError(request, env);
+    if (url.pathname === "/api/passed") return new Response(JSON.stringify(await passedSummary(env, url.searchParams.get("sport") === "NBA" ? "NBA" : "NFL").catch(() => ({ success: false }))), { headers: { "content-type": "application/json; charset=utf-8", "cache-control": "public, max-age=120" } });
     if (url.pathname === "/api/csp-report") return cspReport(request, env, ctx);
     if (url.pathname === "/go") return goPage(request);
     if (url.pathname === "/api/affiliate") return affiliateApi(request, env);

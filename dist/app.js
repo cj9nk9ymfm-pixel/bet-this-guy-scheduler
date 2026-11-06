@@ -1734,6 +1734,16 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
     // Compact row: the book rides in the small line (the section already says these are official).
     return `<button type="button" class="on-row on-${status[0]}-row" data-on="${i}" data-pick-id="${htmlEscape(r.id||'')}" data-on-player="${htmlEscape(isParlay?'':r.player||'')}" data-on-team="${htmlEscape(isParlay?'':legs[0]?.team||'')}" aria-label="Details for ${htmlEscape(title)}">${avatar}<span class="on-who"><b>${htmlEscape(title)}${done?'':newTag(r.posted_at,r.game_time)}</b><span>${htmlEscape(sub)}</span><small>${htmlEscape([matchup,kickoff(r.game_time),books.length===1?books[0]:''].filter(Boolean).join(' · '))}</small>${winLine(r,isParlay,odds,done)}${(()=>{const clv=done&&!isParlay&&!voidOf(r)?closeNote(r):'';return clv?`<i class="on-why on-clv">${htmlEscape(clv)}</i>`:why?`<i class="on-why">${htmlEscape(why)}</i>`:''})()}<i class="on-form" data-on-form="${i}" hidden></i><i class="on-wx" data-wx="${htmlEscape(r.game_id||legs[0]?.gameId||'')}" hidden></i><em class="on-live" data-on-live="${i}" hidden></em>${isParlay?'':`<i class="on-pm" data-pm="${htmlEscape(r.id||'')}" data-pm-odds="${htmlEscape(String(odds))}" data-pm-status="${htmlEscape(status[0])}" hidden></i>`}</span><span class="on-end"><b class="on-price"${status[0]!=='won'&&status[0]!=='lost'?' data-slip-price title="Add to slip"':''}>${htmlEscape(formatOdds(odds))}</b><span class="on-tag on-${status[0]}"${status[0]==='locked'?' title="Posted at this price before kickoff"':''}>${tag}</span></span></button>`;
   }
+  // Quiet nights (Nov 5, Tim): what we passed on and why, under the picks.
+  let passedData=null,passedAt=0;
+  function paintPassed(){
+    const list=$('#officialNowList');if(!list||typeof fetch!=='function')return;let el=$('#onPassed');
+    if(!el){el=document.createElement('p');el.id='onPassed';el.className='on-passed';el.hidden=true;list.after(el)}
+    const draw=d=>{const n=Number(d?.count)||0;if(!n){el.hidden=true;return}const r=d.reasons||{},bits=[r.price?`${r.price} priced too long`:'',r.stats?`${r.stats} where his numbers disagreed`:'',r.sharp?`${r.sharp} the sharp book didn’t back`:'',r.other?`${r.other} more`:''].filter(Boolean);
+      el.hidden=false;el.innerHTML=`<b>We passed on ${n} prop${n===1?'':'s'} ${NBA?'tonight':'this week'}</b>${bits.length?`: ${htmlEscape(bits.join(', '))}`:''}. No price we like, no bet.`};
+    if(passedData&&Date.now()-passedAt<600000)return draw(passedData);
+    passedAt=Date.now();fetch(`/api/passed${NBA?'?sport=NBA':''}`).then(r=>r.json()).then(d=>{passedData=d;draw(d)}).catch(()=>{});
+  }
   // Live progress for locked picks, refreshed with the live board (every 5s in games).
   let officialLiveList=[];
   const liveLeg=(r,l)=>statsProp({...l,sport:l.sport||recSport(r,undefined),eventId:l.eventId||r.event_id,player:l.player||r.player,market:l.market||r.market,line:l.line??r.line,side:l.side||r.side,gameTime:l.gameTime||r.game_time});
@@ -1847,8 +1857,9 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
     const tonightOnly=items=>NBA?items.filter(([r])=>!(weekOf(r)>currentWeek())):items,nS=tonightOnly(singles).length,nP=tonightOnly(parlays).length;
     $('#officialNowCount').textContent=nS?String(nS):'';
     if($('#parlaysCount'))$('#parlaysCount').textContent=nP?String(nP):'';
-    fill('#officialNowList',singles,'pick',NBA?'<div class="on-empty"><strong>No NBA picks yet tonight.</strong><span>They post as soon as a price qualifies, often the day before. Only the best: 1% or more over the fair price, up to 5 a night.</span></div>':'<div class="on-empty"><strong>No picks yet this week.</strong><span>They post the moment a price qualifies, any day before kickoff.</span></div>');
+    fill('#officialNowList',singles,'pick',NBA?'<div class="on-empty"><strong>No NBA picks yet tonight.</strong><span>They post as soon as a price qualifies, often the day before. Only the best: 1% or more over the fair price at +125 or shorter, backed by the sharp book and his own numbers, up to 5 a night. Some nights nothing qualifies, and we pass.</span></div>':'<div class="on-empty"><strong>No picks yet this week.</strong><span>They post the moment a price qualifies, any day before kickoff.</span></div>');
     fill('#parlaysList',parlays,'parlay',NBA?'<div class="on-empty"><strong>No NBA parlays yet tonight.</strong><span>Up to 3 a night: 2 legs from different games, from qualifiers past the nightly 5 singles.</span></div>':'<div class="on-empty"><strong>No parlays yet this week.</strong><span>They post when two or more props that just missed line up.</span></div>');
+    paintPassed();
     // Tap the row for the bet screen; tap a single's price to add it to the slip.
     $$('#officialNowList [data-on], #parlaysList button[data-on]').forEach(b=>b.onclick=e=>{const r=list[+b.dataset.on];if(e.target.closest('[data-ibet]')&&r){window.BTGMyBets?.add?.(r);const t=e.target.closest('[data-ibet]');t.textContent='✓ Tracking in My bets';return}if(e.target.closest('[data-slip-price]')&&r&&!['won','lost','push'].includes(r.result)&&(r.kind==='parlay'?addParlayToSlip(r):addBetToSlip(r)))return;openPick(r)});
     officialLiveList=list;updateOfficialLive();window.btgOfficialForm?.(list);focusPick();

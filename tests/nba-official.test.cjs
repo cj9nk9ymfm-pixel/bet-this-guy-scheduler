@@ -172,7 +172,7 @@ const run=c=>vm.runInContext(c,context),req='new Request("https://betthisguy.com
   assert.equal((await run(`postNbaLaunchToX(env,${launchAt+600000})`)).done,true,'once');
   const thread=posts.slice(before);
   assert.match(thread[0].text,/^🏀 NBA player props start today on Bet This Guy\./);assert.ok(!thread[0].reply,'the first post starts the thread');
-  assert.ok(thread.slice(1).every((p,i)=>p.reply),'the rest are replies');assert.match(thread[1].text,/1.5%\+, up to 10 a night/);assert.match(thread[4].text,/1-800-GAMBLER/);assert.ok(thread.every(p=>!/https?:|\.com\b/.test(p.text)),'no links in the launch thread');assert.match(thread[0].text,/start today/);
+  assert.ok(thread.slice(1).every((p,i)=>p.reply),'the rest are replies');assert.match(thread[1].text,/1%\+ at \+125 or shorter, up to 5 a night/);assert.match(thread[4].text,/1-800-GAMBLER/);assert.ok(thread.every(p=>!/https?:|\.com\b/.test(p.text)),'no links in the launch thread');assert.match(thread[0].text,/start today/);
   // X counts most symbols and emoji (like • and 🏀) as 2 characters.
   const xLen=t=>[...t].reduce((n,ch)=>{const c=ch.codePointAt(0);return n+(c<=4351||(c>=8192&&c<=8205)||(c>=8208&&c<=8223)||(c>=8242&&c<=8247)?1:2)},0);
   assert.ok(thread.every(p=>xLen(p.text)<=280),'every post fits X\'s limit');

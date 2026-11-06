@@ -83,7 +83,9 @@ const run=code=>vm.runInContext(code,context);run('fetch=globalThis.fetch');
    const c=(n,extra={})=>({gameId:'NBA--sg2',player:n,market:'Rebounds',side:'Over',line:4.5,odds:-110,edge:2,gameTime:'2026-11-06T00:00:00.000Z',...extra});
    const g=J(await run(`signalGate(env,null,${JSON.stringify([c('Slumping Guy'),c('Hot Guy'),c('Slumping App',{exchange:'Novig'})])},${at})`));
    assert.deepEqual(g.ready.map(p=>p.player),['Hot Guy','Slumping App'],'stats back it: posts; prediction-app picks are not held for it');
-   assert.deepEqual(g.held.map(p=>[p.player,p.heldWhy]),[['Slumping Guy','his stats disagree']]);}
+   assert.deepEqual(g.held.map(p=>[p.player,p.heldWhy]),[['Slumping Guy','his stats disagree']]);
+   // "We passed on N tonight": the held sportsbook picks for this NBA night, by reason (prediction-app ones left out).
+   const ps=J(await run(`passedSummary(env,'NBA',${at})`));assert.equal(ps.count,1);assert.deepEqual(ps.reasons,{price:0,stats:1,sharp:0,other:0});}
   // NFL blank stat = 0 (Nov 3, J.K. Dobbins: carries and a TD, receiving left blank).
   assert.equal(run(`nflZeroStat('Receiving Yards',{rushing_attempts:9,receptions:null,receiving_yards:null})`),true,'no catches, ran the ball: 0 receiving yards');
   assert.equal(run(`nflZeroStat('Receiving Yards',{rushing_attempts:9,receptions:2})`),false,'had catches: never assumed 0');
