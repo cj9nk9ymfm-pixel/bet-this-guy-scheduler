@@ -72,6 +72,18 @@ const run=code=>vm.runInContext(code,context);run('fetch=globalThis.fetch');
    assert.deepEqual(g.ready.map(p=>p.player),['Priced Guy','Flip Good'],'sharp agrees: 55% vs 52.4% implied; the Under logged at 40% is 60% for the Over');assert.deepEqual(g.held.map(p=>p.player),['Unpriced Guy','Same Run Guy','Disagree Guy','Flip Bad','Moved Line'],'logged in the same run as the pull counts as checked');assert.deepEqual(g.deferred.map(p=>p.player),['Fresh Guy','New Guy']);
    const why=Object.fromEntries(g.held.map(p=>[p.player,p.heldWhy]));assert.equal(why['Disagree Guy'],'sharp book disagrees');assert.equal(why['Flip Bad'],'sharp book disagrees','the other side at 55% leaves the Over 45%');assert.equal(why['Moved Line'],'no sharp price at this line');
    const log=JSON.parse(db.prepare("SELECT value FROM app_settings WHERE key='signal-held:2026-11-02'").get().value);assert.ok(log.some(x=>x.player==='Unpriced Guy'&&x.why==='no sharp price'),'held and logged with the reason')}
+  // Nov 5 (Tim, pick to win): singles at +125 or shorter; NBA picks whose own numbers disagree are held.
+  {const J=v=>JSON.parse(JSON.stringify(v)),at=Date.parse('2026-11-05T20:00:00Z');
+   const ok=J(await run(`capSingles(env,[{player:'At 125',odds:125},{player:'At 126',odds:126},{player:'Fav',odds:-110}],${at})`));
+   assert.deepEqual(ok.map(p=>p.player),['At 125','Fav'],'+126 and longer are not singles');
+   const log=JSON.parse(db.prepare("SELECT value FROM app_settings WHERE key='signal-held:2026-11-05'").get().value);assert.ok(log.some(x=>x.player==='At 126'&&x.why==='price over +125'),'held and logged with the reason');
+   // Recent games first: five 2s then five 8s against Over 4.5 -> his typical game backs it (a signal) but the projection leans under: held.
+   const mk=vals=>({logs:vals.map(v=>({v,s:2026})),def:null});
+   for(const [n,vals] of [['slumpingguy',[2,2,2,2,2,8,8,8,8,8]],['hotguy',Array(10).fill(8)],['slumpingapp',[2,2,2,2,2,8,8,8,8,8]]])db.prepare('INSERT OR REPLACE INTO app_settings (key,value) VALUES (?,?)').run(`matchup:cand|NBA--sg2|${n}|Rebounds`,JSON.stringify(mk(vals)));
+   const c=(n,extra={})=>({gameId:'NBA--sg2',player:n,market:'Rebounds',side:'Over',line:4.5,odds:-110,edge:2,gameTime:'2026-11-06T00:00:00.000Z',...extra});
+   const g=J(await run(`signalGate(env,null,${JSON.stringify([c('Slumping Guy'),c('Hot Guy'),c('Slumping App',{exchange:'Novig'})])},${at})`));
+   assert.deepEqual(g.ready.map(p=>p.player),['Hot Guy','Slumping App'],'stats back it: posts; prediction-app picks are not held for it');
+   assert.deepEqual(g.held.map(p=>[p.player,p.heldWhy]),[['Slumping Guy','his stats disagree']]);}
   // NFL blank stat = 0 (Nov 3, J.K. Dobbins: carries and a TD, receiving left blank).
   assert.equal(run(`nflZeroStat('Receiving Yards',{rushing_attempts:9,receptions:null,receiving_yards:null})`),true,'no catches, ran the ball: 0 receiving yards');
   assert.equal(run(`nflZeroStat('Receiving Yards',{rushing_attempts:9,receptions:2})`),false,'had catches: never assumed 0');
