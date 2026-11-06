@@ -25,11 +25,14 @@ pick('official|2026-10-06|props|prop|d','Next Week Guy',100,null);
   // Not Tuesday morning yet: nothing.
   assert.equal((await run("sendWeeklyDigest(env,Date.parse('2026-10-06T14:00:00Z'))")).due,false);
   assert.equal((await run("sendWeeklyDigest(env,Date.parse('2026-10-05T16:00:00Z'))")).due,false,'Monday is not digest day');
+  // A tracked bet from that week on the account: "Your week".
+  db.prepare("INSERT INTO user_bets (id,auth_user_id,bet_type,stake_cents,american_odds,potential_payout_cents,profit_loss_cents,game_start,status,result,created_at,updated_at) VALUES ('b1','u1','single',10000,-110,19091,9091,'2026-10-04T17:00:00.000Z','final','won',?,?)").run(now,now);
   const out=await run("sendWeeklyDigest(env,Date.parse('2026-10-06T15:05:00Z'))");
   assert.equal(out.week,'2026-09-29');assert.equal(out.sent,1,'only people with alerts on');assert.equal(out.picks,2);
   const mail=sent[0][0];
   assert.deepEqual(mail.to,['fan@example.com']);
   assert.equal(mail.subject,'📊 Week 4: 1–1, +$20');
+  assert.ok(mail.html.includes('YOUR WEEK')&&mail.html.includes('You went <b>1–0</b>')&&mail.html.includes('+$91'),'their own week, from the account');
   assert.ok(mail.html.includes('WEEKLY RESULTS')&&mail.html.includes('Drake London')&&mail.html.includes('+$120'),'lists last week with profit');
   assert.ok(mail.html.includes('NFL season:</b> 2–1, +$195')&&mail.text.includes('Season: 2–1, +$195.'),'season record through last week only');
   assert.ok(mail.html.includes('font-size:46px')&&mail.html.includes('Sportsbook')&&mail.html.includes('player-photo?name=Drake%20London&fallback=1'),'new design: big money, record tiles, headshots');
