@@ -102,3 +102,30 @@ body.light .slip-live,body.light .mb-live{background:#f3f7fc}body.light .slip-li
 .live-other-jump{display:block;margin:12px auto 0;padding:10px 16px;border:1px solid rgba(248,113,113,.4);border-radius:999px;background:rgba(248,113,113,.1);color:#fecaca;font:600 14px "DM Sans",sans-serif;cursor:pointer}
 .live-other-jump[hidden]{display:none}.live-other-jump b{color:#fff;margin-right:4px}
 body.light .live-league-tabs{background:#eef3f9;border-color:#e3ebf5}body.light .live-league-tabs button{color:#475569}body.light .live-league-tabs button[aria-selected="true"]{color:#fff}
+/* Light theme for the Nov 4-5 live and betting pieces (contrast at least 4.5:1, Nov 5 audit) */
+html body.light .live-connection{background:#ecfdf5;border-color:#a7f3d0;color:#047857}
+html body.light .live-game-switcher>button{background:#fff;border-color:#dbe3ee;color:#0f172a}
+html body.light .live-game-switcher>button.active{background:#ecfdf5;border-color:#059669}
+html body.light .live-game-switcher>button .lg-tm b,html body.light .live-game-switcher>button .lg-tm strong{color:#0f172a}
+html body.light .live-game-switcher>button small{color:#047857}html body.light .live-game-switcher>button small em{color:#92400e}
+html body.light .lp2-clk{background:#eef3f9;color:#0f172a}
+html body.light .lp2-who small,html body.light .lp2-t span,html body.light .lv2-g,html body.light .lp2-leg em,html body.light .lp2-sb-p{color:#475569}
+html body.light .lp2-num strong span,html body.light .slip-live strong span{color:#64748b}
+html body.light .lp2-num em,html body.light .slip-live em{color:#334155}html body.light .slip-live small{color:#475569}
+html body.light .lp2-b{background:#eef3f9;color:#334155}html body.light .lp2-b.live{background:#fef3c7;color:#92400e}html body.light .lp2-b.live i{background:#b45309}
+html body.light .lp2-b.hit{background:#047857;color:#fff}html body.light .lp2-b.miss{background:#b91c1c;color:#fff}html body.light .lp2-b.next{color:#475569}
+html body.light .lp2-t.hit b,html body.light .lp2.hit .lp2-num strong,html body.light .lp2-tm.w strong,html body.light .slip-live.hit strong,html body.light .lp2-leg.hit em{color:#047857}
+html body.light .lp2-t.miss b,html body.light .lp2.miss .lp2-num strong,html body.light .slip-live.miss strong,html body.light .lp2-leg.miss em{color:#b91c1c}
+html body.light .lp2-t.live b{color:#b45309}
+html body.light .mb-kpis div{background:#fff;border-color:#e3ebf5}html body.light .mb-kpis span{color:#475569}
+html body.light .mybets-dialog .pos,html body.light .mb-m.pos{color:#047857!important}html body.light .mybets-dialog .neg,html body.light .mb-m.neg{color:#b91c1c!important}
+html body.light .ask-after>span{color:#475569}
+html body.light #officialNow>.on-sub{color:#52637a}
+html body.light .on-group,html body.light .pc-edge,html body.light .mb-m>small,html body.light .pc-foot>span,html body.light .pc-game,html body.light .pc-cd{color:#475569}
+html body.light .live-disclaimer{color:#52637a}
+html body.light .slip-live strong span,html body.light .lp2-num strong span{color:#556274}
+html body.light .mb-stake{background:#fff;color:#0f172a;border-color:#cbd5e1}
+html body.light .mb-signin{color:#1d4ed8}
+html body.light #liveStrip>span{color:#475569}
+.lp2-num strong,.slip-live strong{white-space:nowrap;flex:none}
+.lp2.lv2:focus-visible,.lp2:focus-visible{outline:2px solid #60a5fa;outline-offset:2px}
