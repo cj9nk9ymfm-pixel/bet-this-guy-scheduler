@@ -131,6 +131,11 @@ async function accountApi(request,env,ctx){
     }catch{return accountJson({success:false,error:'Your email alert setting could not be saved.'},400)}
   }
 
+  // "I bet this" while signed in (Nov 5): the result by email when it's graded (pick emails on).
+  if(url.pathname==='/api/me/follow'){
+    if(method!=='POST')return accountJson({success:false,error:'Method not allowed.'},405,{allow:'POST'});
+    try{const body=await accountBody(request,1000);const out=await followPick(env,`email:${user.id}`,String(body.pickId||''),body.on!==false);return accountJson(out,out.success?200:400)}catch{return accountJson({success:false,error:'Could not follow that pick.'},400)}
+  }
   if(url.pathname==='/api/me/test-email'){
     if(method!=='POST')return accountJson({success:false,error:'Method not allowed.'},405,{allow:'POST'});
     const result=await sendTestEmail(env,user,profile);
