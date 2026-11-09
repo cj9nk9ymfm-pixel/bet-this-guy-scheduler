@@ -140,6 +140,9 @@ const longshotOk=priced=>p=>Number(p.odds)<LONGSHOT_ODDS||priced.has(longshotKey
 // One official parlay per slate (an ET game day; an NBA night): since $25
 // parlays started (Oct 12) they went 2–6.
 let PARLAYS_PER_DAY=1;
+// Sportsbook parlays stopped Nov 8, 2026 (Tim): NFL 0–5 since Oct 23, built
+// from sub-1% legs. Singles only; tests turn it back on to exercise the code.
+let SB_PARLAYS_ON=false;
 // At most two official props per game: picks in one game win or lose
 // together, so a third goes to the leans list instead.
 const OFFICIAL_PER_GAME=2;
@@ -288,7 +291,7 @@ function officialPlan(candidates,existing,week,now=Date.now(),pool=candidates,cf
   const PER_DAY=cfg.parlaysPerDay??PARLAYS_PER_DAY,dayOf=legs=>{const t=Math.min(...legs.map(l=>Date.parse(l.gameTime)).filter(Number.isFinite));return Number.isFinite(t)?new Date(t-(String(prefix).startsWith('nba|')?6:5)*3600000).toISOString().slice(0,10):''},days=new Map();
   saved.filter(r=>r.kind==='parlay').forEach(r=>{const d=dayOf(r.legs.length?r.legs:[{gameTime:r.game_time}]);days.set(d,(days.get(d)||0)+1)});
   const legPool=pool.filter(p=>!used.has(p.playerKey)&&(!cfg.legOdds||(p.odds>=cfg.legOdds[0]&&p.odds<=cfg.legOdds[1])));
-  if(legPool.length<2)return plan;
+  if(!SB_PARLAYS_ON||legPool.length<2)return plan;
   for(const [tier,min,maxT,low,high] of tiers){
     const max=Math.max(min,Math.min(maxT,cfg.maxLegs||maxT));
     for(let attempt=0;attempt<500&&counts[tier]<(CAPS[tier]||0);attempt++){
