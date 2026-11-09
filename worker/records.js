@@ -1005,12 +1005,110 @@ async function gradePredictionNow(env,now=Date.now()){
 // Prediction result replies and the full-card recap run in their own
 // invocation (SELF binding), so their reads, uploads and posts get their own
 // request allowance instead of crowding out the main X run.
+// X queue (Nov 9, Tim): approved posts wait in app_settings x-queue (a JSON list,
+// oldest first, each the x-custom-post shape with an optional at). When the custom
+// slot is free, the first one that's due moves into it and posts on that run.
+async function xQueuePromote(env,now=Date.now()){
+  let q=[];try{q=JSON.parse(await appSetting(env,'x-queue')||'[]')}catch{}
+  const i=q.findIndex(x=>!x.at||Date.parse(x.at)<=now);if(i<0)return null;
+  const item=q.splice(i,1)[0],raw=JSON.stringify(item);
+  await setAppSetting(env,'x-queue',JSON.stringify(q));
+  const claim=await env.DB.prepare('INSERT OR IGNORE INTO app_settings (key,value) VALUES (?,?)').bind('x-custom-post',raw).run();
+  return Number(claim?.meta?.changes??claim?.changes)?raw:null;
+}
+async function xQueueAdd(env,item){let q=[];try{q=JSON.parse(await appSetting(env,'x-queue')||'[]')}catch{}if(!q.some(x=>x.id&&x.id===item.id))q.push(item);await setAppSetting(env,'x-queue',JSON.stringify(q.slice(-20)))}
+// Auto-drafts (Nov 9, Tim): receipts, bad beats, live sweats and injury heads-ups
+// are written from our own data, saved as app_settings x-draft:<key>, and pushed
+// to Tim's phone (the private ntfy topic) with a link to a page where he taps Post
+// or Skip. Nothing posts without that tap. Off unless app_settings x-drafts='on'.
+// At most this many drafts of each kind a day.
+const X_DRAFT_CAP={receipt:3,badbeat:2,sweat:3,injury:3};
+async function xDraft(env,{key,kind,text,poll=null},now=Date.now()){
+  if(await appSetting(env,'x-drafts')!=='on')return false;
+  text=String(text||'').trim();if(!text||[...text].length>280||!/^[\w:.|-]{3,120}$/.test(key))return false;
+  if(await appSetting(env,`x-draft:${key}`))return false;
+  const day=new Date(now).toISOString().slice(0,10),capKey=`x-draft-n:${kind}:${day}`,n=Number(await appSetting(env,capKey)||0);if(n>=(X_DRAFT_CAP[kind]||2))return false;
+  const token=[...crypto.getRandomValues(new Uint8Array(16))].map(b=>b.toString(16).padStart(2,'0')).join('');
+  const claim=await env.DB.prepare('INSERT OR IGNORE INTO app_settings (key,value) VALUES (?,?)').bind(`x-draft:${key}`,JSON.stringify({kind,text,poll,token,state:'new',at:new Date(now).toISOString()})).run();
+  if(!Number(claim?.meta?.changes??claim?.changes))return false;
+  await setAppSetting(env,capKey,String(n+1)).catch(()=>{});
+  const link=`${SITE_URL}/xdraft?k=${encodeURIComponent(key)}&t=${token}`,title={receipt:'X draft: receipt',badbeat:'X draft: bad beat',sweat:'X draft: live sweat',injury:'X draft: injury news'}[kind]||'X draft';
+  if(env.ALERT_NTFY_TOPIC)await fetch('https://ntfy.sh/'+encodeURIComponent(env.ALERT_NTFY_TOPIC),{method:'POST',headers:{Title:title,Click:link,Tags:'pencil'},body:`${text}\n\nTap to post or skip.`,signal:AbortSignal.timeout(10000)}).catch(()=>{});
+  return true;
+}
+// The approve page: GET shows the draft; POST (Post / Skip) acts on it. The token in
+// the link (only sent to Tim's private topic) is the key; a preview fetch can't post.
+async function xDraftPage(request,env){
+  const url=new URL(request.url),key=String(url.searchParams.get('k')||''),tok=String(url.searchParams.get('t')||'');
+  const page=(body,status=200)=>new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>X draft</title><style>body{font:16px/1.45 -apple-system,system-ui,sans-serif;background:#0b1530;color:#e8edf5;margin:0;padding:20px}main{max-width:520px;margin:0 auto}pre{white-space:pre-wrap;font:inherit;background:#13203f;border:1px solid #24345a;border-radius:14px;padding:16px}button{font:inherit;font-weight:700;border:0;border-radius:999px;padding:12px 22px;margin:6px 8px 0 0}.p{background:#2ee6a8;color:#06231a}.s{background:#24345a;color:#e8edf5}small{color:#9fb0cf}</style></head><body><main>${body}</main></body></html>`,{status,headers:{'content-type':'text/html; charset=utf-8','cache-control':'no-store'}});
+  let d=null;try{d=JSON.parse(await appSetting(env,`x-draft:${key}`)||'null')}catch{}
+  if(!d||!tok||d.token!==tok)return page('<h1>Draft not found</h1><p>It may have expired.</p>',404);
+  if(request.method==='POST'){
+    const form=await request.formData().catch(()=>null),act=String(form?.get('a')||'');
+    if(d.state!=='new')return page(`<h1>Already ${weeklyEscape(d.state)}</h1><pre>${weeklyEscape(d.text)}</pre>`);
+    if(act==='post'){await xQueueAdd(env,{text:d.text,...(d.poll?{poll:d.poll}:{}),id:`draft-${key}`.replace(/[^\w-]/g,'-').slice(0,40)});d.state='queued'}else d.state='skipped';
+    await setAppSetting(env,`x-draft:${key}`,JSON.stringify({...d,acted:new Date().toISOString()}));
+    return page(d.state==='queued'?`<h1>Queued ✅</h1><p>It posts on the next X run (within about 10 minutes).</p><pre>${weeklyEscape(d.text)}</pre>`:'<h1>Skipped</h1><p>Nothing was posted.</p>');
+  }
+  return page(`<h1>${weeklyEscape({receipt:'Receipt',badbeat:'Bad beat',sweat:'Live sweat',injury:'Injury news'}[d.kind]||'Draft')}</h1><pre>${weeklyEscape(d.text)}</pre>${d.poll?`<p><small>Poll: ${weeklyEscape((d.poll.options||[]).join(' · '))}</small></p>`:''}${d.state!=='new'?`<p>Already ${weeklyEscape(d.state)}.</p>`:`<form method="post"><button class="p" name="a" value="post">Post it</button><button class="s" name="a" value="skip">Skip</button></form><p><small>No links in the post (link in bio). Want to change the words? Skip it and tell Claude.</small></p>`}`);
+}
+const xDraftImplied=o=>{o=Number(o);return o<0?-o/(100-o):100/(o+100)};
+// Receipts, bad beats and live sweats, from official sportsbook singles (run with grading).
+async function draftXPosts(env,now=Date.now()){
+  if(!env.DB||await appSetting(env,'x-drafts')!=='on')return {off:true};
+  const out={receipt:0,badbeat:0,sweat:0};
+  const done=((await env.DB.prepare("SELECT id,player,market,side,line,odds,closing_odds,result,legs_json,settled_at FROM public_recommendations WHERE source='market-verified-v2' AND kind='prop' AND status='final' AND result IN ('won','lost') AND settled_at>?").bind(new Date(now-6*3600000).toISOString()).all()).results)||[];
+  for(const r of done){
+    const leg=recordLegs(r)[0]||{},bet=`${r.player} ${weeklyLegText(r)}`,act=leg.actualValue;
+    // Receipt: closed at least 5 points of chance shorter than we got it.
+    if(r.closing_odds!=null&&xDraftImplied(r.closing_odds)-xDraftImplied(r.odds)>=.05){
+      const text=r.result==='won'?`We locked ${bet} at ${weeklyOdds(r.odds)}. It closed at ${weeklyOdds(r.closing_odds)}. Same bet.\n\nIt hit. ✅\n\nEvery price posted before the game.`
+        :`${bet}. We got ${weeklyOdds(r.odds)}. It closed ${weeklyOdds(r.closing_odds)}. The market agreed with us.${act!=null?`\n\nHe finished with ${act}.`:''}\n\nRight price, wrong result. Over a season the price wins.`;
+      if(await xDraft(env,{key:`receipt:${r.id.slice(-24)}`,kind:'receipt',text},now))out.receipt++;
+    }
+    // Bad beat: lost by one.
+    if(r.result==='lost'&&act!=null&&Math.abs(Number(act)-Number(r.line))<=1){
+      const text=`Lost by one. ${bet}: finished with ${act}.\n\nLosses included, every time. What was your worst beat tonight? 👇`;
+      if(await xDraft(env,{key:`badbeat:${r.id.slice(-24)}`,kind:'badbeat',text},now))out.badbeat++;
+    }
+  }
+  // Live sweat: 4th quarter, one away from cashing an Over, or an Under one away from losing.
+  const open=((await env.DB.prepare("SELECT id,player,market,side,line,odds,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND kind='prop' AND status IN ('pending','provisional') AND game_time<? AND game_time>?").bind(new Date(now).toISOString(),new Date(now-5*3600000).toISOString()).all()).results)||[];
+  for(const r of open){
+    const leg=recordLegs(r)[0]||{},v=Number(leg.liveValue),line=Number(r.line);
+    if(!Number.isFinite(v)||!(Number(leg.livePeriod)>=4))continue;
+    const unit=typeof weeklyLegText==='function'?String(weeklyLegText(r)).replace(/^(Over|Under) [\d.]+ /,''):String(r.market||'').toLowerCase();
+    const over=r.side==='Over',need=Math.floor(line)+1-v;
+    let text=null;
+    if(over&&need===1)text=`${r.player} has ${v} ${unit} in the 4th. One more and Over ${line} cashes. Who's sweating it with us?`;
+    if(!over&&v===Math.floor(line))text=`${r.player}: ${v} ${unit}, 4th quarter. Under ${line} is hanging on by one. Sweat it with us 😅`;
+    if(text&&await xDraft(env,{key:`sweat:${r.id.slice(-24)}`,kind:'sweat',text},now))out.sweat++;
+  }
+  return out;
+}
+// Injury heads-up: a player newly ruled Out in a game where we have an open pick, before it starts.
+async function draftInjuryPosts(env,sport,before,rows,now=Date.now()){
+  if(!env.DB||await appSetting(env,'x-drafts')!=='on')return 0;
+  const newlyOut=rows.filter(x=>/^out$/i.test(String(x.status||''))&&!/^out$/i.test(String(before.get(normalizedName(x.player))||'')));
+  if(!newlyOut.length)return 0;
+  const picks=((await env.DB.prepare("SELECT id,player,market,side,line,odds,game_time,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND kind='prop' AND result IS NULL AND game_time>? AND game_time<?").bind(new Date(now).toISOString(),new Date(now+6*3600000).toISOString()).all()).results)||[];
+  let n=0;
+  for(const x of newlyOut){
+    const team=normalizedName(x.team||'');if(!team)continue;
+    const pick=picks.find(r=>(String(r.id).startsWith('nba|')?'NBA':'NFL')===sport&&normalizedName(recordLegs(r)[0]?.team||'').includes(team));if(!pick)continue;
+    const same=normalizedName(pick.player)===normalizedName(x.player);
+    const text=same?`${x.player} is OUT tonight. Our pick on him is void: stake back, no win or loss.\n\nThat's how the books grade it too.`
+      :`${x.player} is OUT tonight.\n\nWe're on ${pick.player} ${weeklyLegText(pick)} (${weeklyOdds(pick.odds)}) in that game. Lines are about to move. Are you on it?`;
+    if(await xDraft(env,{key:`injury:${sport}:${normalizedName(x.player)}:${new Date(now).toISOString().slice(0,10)}`,kind:'injury',text},now))n++;
+  }
+  return n;
+}
 // One-off post set by the owner: app_settings x-custom-post holds JSON
 // {"text":"…","quoteKey":"xid:…"} (quoteKey optional; poll: {options,minutes}; image: a dist/x PNG; video: a dist/x MP4; slate: a pick-list card; id: saves xid:x-custom:<id>). It posts once, after
 // the post it quotes exists, then the request is cleared.
 async function postCustomToX(env,now=Date.now()){
   if(!env.DB||!xReady(env))return {posted:0,disabled:true};
-  const raw=await appSetting(env,'x-custom-post');if(!raw)return {posted:0,none:true};
+  let raw=await appSetting(env,'x-custom-post');if(!raw&&!(raw=await xQueuePromote(env,now)))return {posted:0,none:true};
   let req;try{req=JSON.parse(raw)}catch{return {posted:0,invalid:true}}
   const text=String(req.text||'').trim();if(!text||[...text].length>280)return {posted:0,invalid:true};
   const quote=req.quoteKey?await appSetting(env,String(req.quoteKey)):null;if(req.quoteKey&&!quote)return {posted:0,waiting:true};
@@ -1125,9 +1223,11 @@ async function refreshInjuries(env,now=Date.now()){
       // What the feed looked like, for checking its shape.
       if(sport==='NFL')await setAppSetting(env,'injuries-sample',JSON.stringify({teams:Array.isArray(payload?.injuries)?payload.injuries.length:0,rows:rows.length,first:payload?.injuries?.[0]?.injuries?.[0]||null}).slice(0,3000));
       if(!rows.length){out[sport]=0;continue}
+      const before=new Map((((await env.DB.prepare('SELECT player,status FROM injuries WHERE id LIKE ?').bind(`${sport}|%`).all().catch(()=>({results:[]}))).results)||[]).map(r=>[normalizedName(r.player),r.status]));
       const statements=[env.DB.prepare('DELETE FROM injuries WHERE id LIKE ?').bind(`${sport}|%`)];
       for(const x of rows)statements.push(env.DB.prepare('INSERT OR REPLACE INTO injuries (id,player,team,position,status,detail,reported_at,fetched_at) VALUES (?,?,?,?,?,?,?,?)').bind(`${sport}|${normalizedName(x.player)}`,x.player,x.team||null,x.position||null,x.status,String(x.detail||'').slice(0,120)||null,x.date||null,now));
       await env.DB.batch(statements);out[sport]=rows.length;
+      if(before.size)await draftInjuryPosts(env,sport,before,rows,now).catch(error=>console.warn('injury_drafts_failed',error.message));
     }catch(error){out[sport]={error:error.message}}
   }
   // One league's report failing never blocks the other's.
