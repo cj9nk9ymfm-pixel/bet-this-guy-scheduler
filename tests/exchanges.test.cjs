@@ -14,7 +14,14 @@ context.env={DB:{prepare:sql=>wrap(sql),async batch(list){for(const s of list)aw
 const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v));
 // Prediction parlays are paused live; these tests still cover how they build.
 run("PM_PARLAYS_ON=true");
+// The +110 cap and the NFL stats rule (Nov 9) are checked first, then lifted so the
+// fixture's +115 Novig price still exercises how picks and parlays are built.
+assert.deepEqual(J(vm.runInContext('[PM_MAX_NET,PM_NFL_STATS_AGREE]',context)),[110,true]);
 (async()=>{
+  {context.env0={DB:{prepare:()=>({bind(){return this},async first(){return null},async all(){return {results:[]}},async run(){return {}}})}};
+   const kept=J(await run(`pmPriceCap(env0,[{player:'A',netOdds:110},{player:'B',netOdds:111},{player:'C',netOdds:-140}],0)`)).map(p=>p.player);
+   assert.deepEqual(kept,['A','C'],'prediction picks only at +110 or shorter after fees');}
+  run('PM_MAX_NET=1000;PM_NFL_STATS_AGREE=false');
   const now=Date.parse('2026-10-11T12:00:00Z'),kick='2026-10-11T17:00:00.000Z',upd=new Date(now-60000).toISOString();
   const m=(over,under)=>({key:'player_receptions',last_update:upd,outcomes:[{name:'Over',description:'Tre Tucker',point:3.5,price:over},{name:'Under',description:'Tre Tucker',point:3.5,price:under}]});
   const book=(key,o,u)=>({key,title:key,last_update:upd,markets:[m(o,u)]});

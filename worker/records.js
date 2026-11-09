@@ -1736,6 +1736,11 @@ const PREDICTION_PAUSED=new Set(['Pass Completions']);
 // market, beat the kickoff price only 51% of the time (Oct 2026).
 // Raised to 3 Oct 23 (8–13 so far).
 const PREDICTION_MIN_BY={'Novig|Receptions':3};
+// Price cap (Nov 9, Tim): prediction-app picks only at +110 or shorter after
+// the app's fee. They went 32–22 (+$1,010) there and 38–58 (−$1,041) at
+// +111 and longer, where our fair line overrates the long side.
+let PM_MAX_NET=110;
+async function pmPriceCap(env,list,now){const over=list.filter(p=>!(Number(p.netOdds)<=PM_MAX_NET));for(const p of over)p.heldWhy=`price over +${PM_MAX_NET}`;await logHeld(env,over,now).catch(()=>{});return list.filter(p=>Number(p.netOdds)<=PM_MAX_NET)}
 function predictionCandidates(board,exchangeBoard,fairs,now=Date.now(),opts={}){
   const gameId=board.eventID||`NFL--${board.id}`,kick=Date.parse(board.commence_time),best=new Map();
   if(!(kick>now+5*60000)||kick-now>PREDICTION_LOCK)return [];
@@ -1760,7 +1765,7 @@ async function recordPredictionPicks(env,board,exchangeBoard,fairs,now=Date.now(
   dirs||=await pickDirections(env,now);
   // A full game still takes every top pick.
   const picks=[],stamp=new Date(now).toISOString();let n=have.length;
-  for(const p of await pmSignalGate(env,predictionCandidates(board,exchangeBoard,fairs,now).filter(p=>!have.includes(normalizedName(p.player))&&sameDirection(dirs,p.eventId,p.player,p.side)),now))if(n<PREDICTION_PER_GAME||p.edge>=TOP_PICK.pm){picks.push(p);n++}
+  for(const p of await pmSignalGate(env,await pmPriceCap(env,predictionCandidates(board,exchangeBoard,fairs,now).filter(p=>!have.includes(normalizedName(p.player))&&sameDirection(dirs,p.eventId,p.player,p.side)),now),now))if(n<PREDICTION_PER_GAME||p.edge>=TOP_PICK.pm){picks.push(p);n++}
   picks.forEach(p=>dirs.set(directionKey(p.eventId,p.player),p.side));
   await pmSignalSave(env,gameId,picks);
   return picks.map(p=>env.DB.prepare('INSERT OR IGNORE INTO prediction_picks (id,exchange,event_id,player,team,market,side,line,odds,net_odds,fair_pct,edge,game_time,posted_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(`pm|${gameId}|${normalizedName(p.player)}`,p.exchange,gameId,p.player,p.team,p.market,p.side,p.line,p.odds,p.netOdds,+p.fair.toFixed(2),+p.edge.toFixed(2),p.gameTime,stamp));
@@ -1782,7 +1787,7 @@ async function recordTdPredictionPicks(env,board,exchangeBoard,fairsTd,now=Date.
   const used=Number((await env.DB.prepare("SELECT COUNT(*) AS n FROM prediction_picks WHERE market='Anytime Touchdown' AND game_time>=? AND game_time<?").bind(week,weekEnd).first())?.n||0);
   if(used>=TD_PICK.perWeek)return [];
   dirs||=await pickDirections(env,now);
-  const p=predictionCandidates(board,exchangeBoard,fairsTd,now,{min:TD_PICK.min}).filter(p=>p.market==='Anytime Touchdown'&&p.side==='Over'&&!listed(p.player)&&sameDirection(dirs,p.eventId,p.player,p.side))[0];
+  const p=predictionCandidates(board,exchangeBoard,fairsTd,now,{min:TD_PICK.min}).filter(p=>p.market==='Anytime Touchdown'&&p.side==='Over'&&!listed(p.player)&&sameDirection(dirs,p.eventId,p.player,p.side)&&Number(p.netOdds)<=PM_MAX_NET)[0];
   if(!p)return [];
   dirs.set(directionKey(p.eventId,p.player),p.side);
   return [env.DB.prepare('INSERT OR IGNORE INTO prediction_picks (id,exchange,event_id,player,team,market,side,line,odds,net_odds,fair_pct,edge,game_time,posted_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(`pm|${gameId}|${normalizedName(p.player)}|td`,p.exchange,gameId,p.player,p.team,p.market,p.side,p.line,p.odds,p.netOdds,+p.fair.toFixed(2),+p.edge.toFixed(2),p.gameTime,new Date(now).toISOString())];
@@ -2536,6 +2541,7 @@ function pickSignals(m,side,line){
   const against=recent.length>=6&&recent.filter(ours).length/recent.length<.35&&last10.length>=5&&!ours(median);
   return {count:list.length,list,known:vals.length>=5||f!=null,against,hold:(vals.length>=5||f!=null)&&(!list.length||(against&&list.length===1&&list[0]==='def'))};
 }
+let PM_NFL_STATS_AGREE=true;
 const candKey=p=>`cand|${p.gameId||p.eventId}|${normalizedName(p.player)}|${p.market}`;
 // Splits candidates into ready (signals known or unknowable), deferred (stats
 // not fetched yet; at most `budget` fetched a run) and held (no signal).
@@ -2550,10 +2556,17 @@ async function signalGate(env,ctx,list,now=Date.now(),budget=5){
     }
     const sig=pickSignals(m,p.side,p.line);p.signals=sig.count;p.signalNames=sig.list;
     if(sig.hold){p.heldWhy=sig.count?'defense only, his numbers against':'no signal';held.push(p);continue}
-    if(NBA_STATS_SKIP&&!p.exchange&&String(p.gameId||p.eventId||'').startsWith('NBA--')&&m?.logs?.length){
-      const logs=m.logs.map(g=>({value:Number(g.v),season:g.s})),def=m.def&&m.def.league?{factor:m.def.allowed/m.def.league,games:m.def.games}:null;
-      const v=statsVerdict(p,logs,def,nbaSeason(new Date(now)));p.statsVerdict=v.verdict;
+    // NBA, sportsbook and prediction-app picks alike (apps from Nov 9): held when his own numbers disagree.
+    const nbaPick=String(p.gameId||p.eventId||'').startsWith('NBA--'),statLogs=(m?.logs||[]).map(g=>({value:Number(g.v),season:g.s})).filter(g=>Number.isFinite(g.value)),statDef=m?.def&&m.def.league?{factor:m.def.allowed/m.def.league,games:m.def.games}:null;
+    if(NBA_STATS_SKIP&&nbaPick&&statLogs.length){
+      const v=statsVerdict(p,statLogs,statDef,nbaSeason(new Date(now)));p.statsVerdict=v.verdict;
       if(v.verdict==='disagree'){p.heldWhy='his stats disagree';held.push(p);continue}
+    }
+    // NFL prediction-app picks (Nov 9, Tim): only when his own numbers agree.
+    // They went 18–10 (+$963) when they did and 21–33 (−$812) when they didn't.
+    if(PM_NFL_STATS_AGREE&&p.exchange&&!nbaPick){
+      const v=statLogs.length?statsVerdict(p,statLogs,statDef,nflSeasonOf(now)):{verdict:'unknown'};p.statsVerdict=v.verdict;
+      if(v.verdict!=='agree'){p.heldWhy=v.verdict==='disagree'?'his stats disagree':'his numbers not clearly with it';held.push(p);continue}
     }
     ready.push(p);
   }
@@ -5350,7 +5363,7 @@ async function recordNbaPredictionPicks(env,board,ex,fairs,now,ctx){
   const picks=[];let n=have.length;
   if(n>=NBA_PM.perGame||ctx.night[night]>=NBA_PM.perNight)return [];
   const pool=predictionCandidates(board,ex,fairs,now,{min:Math.min(min,...Object.values(NBA_PM.minBy)),max:NBA_PM.max}).filter(p=>!(p.edge<(NBA_PM.minBy[p.exchange]??min)||!NBA_PM.markets.has(p.market)||have.includes(normalizedName(p.player))||listed(p.player)||!sameDirection(ctx.dirs,p.eventId,p.player,p.side)));
-  for(const p of await pmSignalGate(env,pool,now)){
+  for(const p of await pmSignalGate(env,await pmPriceCap(env,pool,now),now)){
     if(n>=NBA_PM.perGame||ctx.night[night]>=NBA_PM.perNight)break;
     if(!sameDirection(ctx.dirs,p.eventId,p.player,p.side))continue;
     picks.push(p);n++;ctx.night[night]++;ctx.dirs.set(directionKey(p.eventId,p.player),p.side);
