@@ -2760,3 +2760,6 @@ body.light .ask-after{background:#ecfdf5;border-color:#a7f3d0;color:#0f172a}
 
 .on-passed{margin:10px 2px 4px;padding:10px 12px;border-radius:12px;background:rgba(255,255,255,.03);border:1px dashed rgba(255,255,255,.12);font-size:13px;line-height:1.45;color:#a8b0bb}.on-passed b{color:#e8edf5}
 html body.light .on-passed{background:#f8fafc;border-color:#cbd5e1;color:#475569}html body.light .on-passed b{color:#0f172a}
+
+/* No play yet (Nov 9): the passed line sits above the collapsed picks. */
+.on-passed.on-passed-top{margin:0 2px 12px}
