@@ -3671,6 +3671,34 @@ async function sendCustomEmail(env,now=Date.now()){
   const id=(await r.json().catch(()=>({})))?.id||'';await xDone(env,key,now);await setAppSetting(env,'email-custom-result',`${new Date(now).toISOString()} sent ${m.id} ${id}`).catch(()=>{});
   return {sent:1};
 }
+// One-off email to the whole list (Nov 8, Tim: the 9–0 run). app_settings
+// email-blast holds JSON {id,subject,heading,eyebrow,lede,ids:[pick ids],image,
+// ctaLabel,note}: the picks are drawn as graded rows, image is a dist/x PNG shown
+// at the top (served from /x/<name>). Sent once per id (claimed first), in
+// batches of 100 with each person's own unsubscribe link. Nothing sends without it.
+async function sendBlastEmail(env,now=Date.now()){
+  if(!env.DB||!env.RESEND_API_KEY)return {none:true};
+  let m=null;try{m=JSON.parse(await appSetting(env,'email-blast')||'null')}catch{}
+  if(!m||!/^[\w-]{1,40}$/.test(String(m.id||''))||!m.subject||!m.lede)return {none:true};
+  const key=`email-blast-sent:${m.id}`;if(!(await xClaim(env,key,now)))return {done:true};
+  const ids=(Array.isArray(m.ids)?m.ids:[]).map(String).slice(0,30);
+  const found=ids.length?((await env.DB.prepare(`SELECT * FROM public_recommendations WHERE id IN (${ids.map(()=>'?').join(',')})`).bind(...ids).all()).results||[]):[];
+  const rows=ids.map(id=>found.find(r=>r.id===id)).filter(Boolean);
+  const img=/^[\w.-]+\.png$/.test(String(m.image||''))?`${SITE_URL}/x/${m.image}`:'';
+  const heroHtml=img?`<a href="${SITE_URL}/" style="text-decoration:none;"><img src="${img}" width="472" alt="${weeklyEscape(m.heading||m.subject)}" style="display:block;width:100%;height:auto;border:0;border-radius:14px;margin:6px 0 16px;"></a>`:'';
+  const from=env.EMAIL_FROM||EMAIL_ALERT_FROM,postal=String(env.EMAIL_POSTAL_ADDRESS||'').trim(),subject=String(m.subject).slice(0,200);
+  const opts={subject,heading:weeklyEscape(m.heading||subject),eyebrow:String(m.eyebrow||'BET THIS GUY'),heroHtml,lede:String(m.lede),rowsHtml:rows.map(digestRow).join(''),ctaLabel:String(m.ctaLabel||'See the picks'),...(m.note?{note:String(m.note)}:{})};
+  const text=unsubscribe=>`${m.heading||subject}\n${m.lede}\n\n${rows.map(r=>`- ${emailPickText(r)}: ${weeklyGraded(r)?r.result:'pending'}`).join('\n')}\n\nSee the picks: ${SITE_URL}/\n\nUnsubscribe: ${unsubscribe}\n21+ where legal. Gambling problem? Call 1-800-GAMBLER.${postal?`\n${postal}`:''}\n`;
+  const people=await emailPeople(env);let sent=0,failed=0;
+  for(let i=0;i<people.length;i+=100){
+    const batch=people.slice(i,i+100).map(person=>{const unsubscribe=`${SITE_URL}/api/email-alerts/unsubscribe?token=${person.token}`;
+      return {from,to:[person.email],reply_to:env.EMAIL_REPLY_TO||'support@betthisguy.com',subject,html:emailAlertHtml(rows,unsubscribe,postal,opts),text:text(unsubscribe),headers:{'List-Unsubscribe':`<${unsubscribe}>`,'List-Unsubscribe-Post':'List-Unsubscribe=One-Click'}}});
+    try{const r=await fetch('https://api.resend.com/emails/batch',{method:'POST',headers:{authorization:`Bearer ${env.RESEND_API_KEY}`,'content-type':'application/json'},body:JSON.stringify(batch),signal:AbortSignal.timeout(15000)});if(r.ok)sent+=batch.length;else failed+=batch.length}
+    catch{failed+=batch.length}
+  }
+  await xDone(env,key,now);await setAppSetting(env,'email-blast-result',`${new Date(now).toISOString()} ${m.id} sent ${sent} of ${people.length}${failed?` failed ${failed}`:''}`).catch(()=>{});
+  return {sent,failed,total:people.length,picks:rows.length};
+}
 // Official NBA picks by email, to accounts with email alerts and NBA on.
 // NBA picks post one game at a time across the day, so they're batched: one
 // email at most every 3 hours, or after 10 minutes when a new pick tips off
@@ -3756,12 +3784,13 @@ async function sendDueAlerts(env,now=Date.now()){
   if(!env.DB)return {sent:0};
   const follows=await sendFollowAlerts(env,now).catch(error=>({error:error.message}));
   const custom=await sendCustomEmail(env,now).catch(error=>({error:error.message}));
+  const blast=await sendBlastEmail(env,now).catch(error=>({error:error.message}));
   const nba=await sendNbaAlerts(env,now).catch(error=>({error:error.message}));
   const nbaEmails=await sendNbaEmails(env,now).catch(error=>({error:error.message}));
   const predictions=await sendPredictionAlerts(env,now).catch(error=>({error:error.message}));
   const predictionEmails=await sendPredictionEmails(env,now).catch(error=>({error:error.message}));
   const reminders=await remindPendingSubscribers(env,now).catch(error=>({error:error.message}));
-  return {...await sendOfficialAlerts(env,now),...(follows.sent||follows.settled||follows.error?{follows}:{}),nba,nbaEmails,predictions,predictionEmails,...(reminders.sent?{reminders}:{}),...(custom.none?{}:{custom})};
+  return {...await sendOfficialAlerts(env,now),...(follows.sent||follows.settled||follows.error?{follows}:{}),nba,nbaEmails,predictions,predictionEmails,...(reminders.sent?{reminders}:{}),...(custom.none?{}:{custom}),...(blast.none?{}:{blast})};
 }
 async function sendOfficialAlerts(env,now=Date.now()){
   if(!env.DB)return {sent:0};

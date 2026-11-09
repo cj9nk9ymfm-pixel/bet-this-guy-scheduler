@@ -1555,6 +1555,8 @@ async function routeRequest(request, env, ctx) {
     if (url.pathname === "/api/live-player") return livePlayer(request, env, ctx);
     if (url.pathname === "/api/live-game-stats") return liveGameStats(request, env, ctx);
     if (url.pathname === "/api/player-photo") return playerPhoto(request, env);
+    // Card images shipped in dist/x (also posted to X), for emails to show.
+    if (/^\/x\/[\w.-]+\.png$/.test(url.pathname) && X_POST_IMAGES[url.pathname.slice(3)]) return new Response(Uint8Array.from(atob(X_POST_IMAGES[url.pathname.slice(3)]), c => c.charCodeAt(0)), { headers: { "content-type": "image/png", "cache-control": "public, max-age=86400" } });
     if (url.pathname === "/api/player-teams") return playerTeamsApi(request, env);
     if (url.pathname === "/api/feed-status") return json({ configured: Boolean(env.THE_ODDS_API_KEY), provider: "The Odds API" });
     if (url.pathname === "/api/record") return publicRecord(request, env, ctx);
