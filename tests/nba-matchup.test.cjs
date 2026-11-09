@@ -82,8 +82,14 @@ const run=code=>vm.runInContext(code,context);run('fetch=globalThis.fetch');
    for(const [n,vals] of [['slumpingguy',[2,2,2,2,2,8,8,8,8,8]],['hotguy',Array(10).fill(8)],['slumpingapp',[2,2,2,2,2,8,8,8,8,8]]])db.prepare('INSERT OR REPLACE INTO app_settings (key,value) VALUES (?,?)').run(`matchup:cand|NBA--sg2|${n}|Rebounds`,JSON.stringify(mk(vals)));
    const c=(n,extra={})=>({gameId:'NBA--sg2',player:n,market:'Rebounds',side:'Over',line:4.5,odds:-110,edge:2,gameTime:'2026-11-06T00:00:00.000Z',...extra});
    const g=J(await run(`signalGate(env,null,${JSON.stringify([c('Slumping Guy'),c('Hot Guy'),c('Slumping App',{exchange:'Novig'})])},${at})`));
-   assert.deepEqual(g.ready.map(p=>p.player),['Hot Guy','Slumping App'],'stats back it: posts; prediction-app picks are not held for it');
-   assert.deepEqual(g.held.map(p=>[p.player,p.heldWhy]),[['Slumping Guy','his stats disagree']]);
+   assert.deepEqual(g.ready.map(p=>p.player),['Hot Guy'],'stats back it: posts');
+   assert.deepEqual(g.held.map(p=>[p.player,p.heldWhy]),[['Slumping Guy','his stats disagree'],['Slumping App','his stats disagree']],'prediction-app picks held the same way (Nov 9)');
+   // NFL prediction-app picks (Nov 9): only when his numbers agree; sportsbook NFL picks are not held for it.
+   for(const [n,vals] of [['hotwr',Array(10).fill(8)],['flatwr',[5,4,5,4,5,5,4,5,5,4]]])db.prepare('INSERT OR REPLACE INTO app_settings (key,value) VALUES (?,?)').run(`matchup:cand|NFL--nf1|${n}|Receptions`,JSON.stringify(mk(vals)));
+   const f=(n,extra={})=>({gameId:'NFL--nf1',player:n,market:'Receptions',side:'Over',line:4.5,odds:-110,edge:2,gameTime:'2026-11-08T18:00:00.000Z',...extra});
+   const nf=J(await run(`signalGate(env,null,${JSON.stringify([f('Hot WR',{exchange:'Novig'}),f('Flat WR',{exchange:'Novig'}),f('Flat WR Book')])},${at})`));
+   assert.deepEqual(nf.ready.map(p=>p.player).sort(),['Flat WR Book','Hot WR'],'app pick posts when his numbers agree; the sportsbook pick is not held by this rule');
+   assert.deepEqual(nf.held.map(p=>[p.player,p.statsVerdict]),[['Flat WR','neutral']],'an app pick his numbers only roughly back is held');
    // "We passed on N tonight": the held sportsbook picks for this NBA night, by reason (prediction-app ones left out).
    const ps=J(await run(`passedSummary(env,'NBA',${at})`));assert.equal(ps.count,1);assert.deepEqual(ps.reasons,{price:0,stats:1,sharp:0,other:0});}
   // NFL blank stat = 0 (Nov 3, J.K. Dobbins: carries and a TD, receiving left blank).
