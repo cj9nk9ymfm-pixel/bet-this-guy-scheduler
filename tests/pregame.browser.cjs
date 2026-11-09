@@ -55,15 +55,21 @@ const types = { js: 'application/javascript', css: 'text/css', html: 'text/html;
     assert.ok(picks.some(n => sheet.includes(n)), `the sheet is the pick: ${sheet.slice(0, 120)}`);
     await page.keyboard.press('Escape');await page.waitForTimeout(300);
 
-    // Prediction apps: the open pick is the compact card; its price goes into the slip.
+    // Prediction apps (Nov 9, Tim: the four pages look exactly the same): the open pick is the
+    // same card as the sportsbook's (header, price button, stat, edge line, "I bet this"), its
+    // price as a chance; the same record card on top; the price goes into the slip.
+    const anatomy = sel => page.$$eval(sel, els => els.slice(0, 1).map(el => ['.pc-head', '.pc-main', '.pc-price', '.pc-edge', '.pc-foot', '[data-ibet]'].map(q => !!el.querySelector(q))));
+    const bookParts = await anatomy('#officialNowList .pc2');
     await page.locator('button:visible:text-is("Prediction apps")').first().click();
-    await need('the prediction-app pick should show as a card', () => page.waitForSelector('#pmPicksList .pm-card', { timeout: 15000 }));
-    const pm = await page.locator('#pmPicksList .pm-card').first().innerText();
-    assert.ok(pm.includes(fx.predictions.pmPicks[0].player) && /\d+%/.test(pm), `prediction card with its price: ${pm}`);
-    await page.locator('#pmPicksList .pm-card [data-slip-price]').first().click();
+    await need('the prediction-app pick should show as the same card', () => page.waitForSelector('#pmPicksList .pc2', { timeout: 15000 }));
+    assert.deepEqual(await anatomy('#pmPicksList .pc2'), bookParts, 'prediction card has the same parts as the sportsbook card');
+    const pm = await page.locator('#pmPicksList .pc2').first().innerText();
+    assert.ok(pm.includes(fx.predictions.pmPicks[0].player) && /\d+%/.test(pm) && /I bet this/.test(pm), `prediction card with its price as a chance: ${pm}`);
+    assert.ok(await page.locator('#pmRecCard .rc-top').count(), 'the same record card on the prediction page');
+    await page.locator('#pmPicksList .pc2 [data-slip-price]').first().click();
     await need('tapping the prediction price should add it to the slip', () => page.waitForFunction(() => state.slip.length === 2, null, { timeout: 15000 }));
 
     assert.deepEqual(errors, [], 'no page errors');
-    console.log('PASS: pre-game: busy-day list with the backing stat, price to slip, row to sheet, prediction card price to slip');
+    console.log('PASS: pre-game: busy-day list with the backing stat, price to slip, row to sheet; the prediction page uses the same card and record card, price to slip');
   } finally { await browser.close(); }
 })().catch(e => { console.error(e); process.exit(1); });
