@@ -36,6 +36,7 @@ const context=vm.createContext({Date:Clock,URL,URLSearchParams,Request,Response,
   }});
 const template=read('worker/index.template.js');
 vm.runInContext(template.slice(template.indexOf('const API_BASE')).replace('__MOVEMENT_SERVER__',read('worker/movement.js')).replace('__LIVE_SERVER__',read('worker/live.js')).replace('__STATS_SHARED__',read('dist/stats.js')).replace('__RECORDS_SERVER__',read('worker/records.js')).replace('__ACCOUNTS_SERVER__',read('worker/accounts.js')).replace('export default {','this.worker={'),context);
+vm.runInContext('SB_PARLAYS_ON=true',context); // sportsbook parlays are off live (Nov 8); these tests exercise the code
 // These tests cover a post per pick (x-lean off); tests/x-lean.test.cjs covers lean posting.
 vm.runInContext('X_PICK_POSTS_DEFAULT=false;MATCHUP_WAIT=0;X_LEAN_DEFAULT=false;SHARP_GATE=false',context);
 const db=new DatabaseSync(':memory:');for(const f of ['0000_public_record.sql','0001_record_settlement.sql','0002_historical_replays.sql','0012_nba_shadow.sql','0018_player_form.sql','0021_injuries.sql','0006_push_alerts.sql','0008_book_alerts.sql','0013_follow_alerts.sql','0027_alert_price_view.sql','0031_alert_kinds.sql','0033_alert_nba.sql','0004_user_accounts.sql','0007_email_alerts.sql','0029_email_predictions.sql','0034_email_nba.sql','0028_prediction_picks.sql','0032_prediction_early.sql','0036_void_reason.sql'])db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''));db.exec('CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT)');

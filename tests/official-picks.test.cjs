@@ -29,6 +29,9 @@ const events=Array.from({length:16},(_,g)=>({id:'game'+g,eventID:'NFL--game'+g,c
  assert.equal(run('officialCandidates(later).length'),160,'a game three days out can lock a pick');
  context.thin=events.map(e=>({...e,bookmakers:e.bookmakers.slice(0,2)}));assert.equal(run('officialCandidates(thin).length'),0);
  // Live: one official parlay per game day. Checked here, then lifted so the tier tests below still run.
+ // Sportsbook parlays are off (Nov 8, Tim): singles only. The rest of this file turns them on to test the code.
+ assert.equal(run("officialPlan(officialCandidates(events),[],'2026-09-22',Date.parse('2026-09-27T15:30:00Z')).filter(p=>p.tier!=='props').length"),0,'no sportsbook parlays while they are off');
+ run('SB_PARLAYS_ON=true');
  assert.equal(run("officialPlan(officialCandidates(events),[],'2026-09-22',Date.parse('2026-09-27T15:30:00Z')).filter(p=>p.tier!=='props').length"),1,'one parlay a slate');
  run('PARLAYS_PER_DAY=Infinity');
  run("var candidates=officialCandidates(events),early=officialPlan(candidates,[],'2026-09-22')");

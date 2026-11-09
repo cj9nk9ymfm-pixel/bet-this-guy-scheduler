@@ -5,6 +5,7 @@ const context=vm.createContext({URL,URLSearchParams,Request,Response,Headers,Abo
   fetch:async(url,init={})=>{if(/media\/upload/.test(String(url))){uploads.push(String(url));return uploadFail?Response.json({title:'Forbidden'},{status:403}):Response.json({data:{id:'m'+uploads.length}})}if(String(url)==='https://api.twitter.com/2/tweets'){if(fail)return new Response('{}',{status:503});posts.push({auth:init.headers.authorization,body:JSON.parse(init.body)});return Response.json({data:{id:String(posts.length)}})}return new Response(null,{status:404})}});
 const template=read('worker/index.template.js');
 vm.runInContext(template.slice(template.indexOf('const API_BASE')).replace('__MOVEMENT_SERVER__',read('worker/movement.js')).replace('__LIVE_SERVER__',read('worker/live.js')).replace('__STATS_SHARED__',read('dist/stats.js')).replace('__RECORDS_SERVER__',read('worker/records.js')).replace('__ACCOUNTS_SERVER__',read('worker/accounts.js')).replace('export default {','this.worker={'),context);
+vm.runInContext('SB_PARLAYS_ON=true',context); // sportsbook parlays are off live (Nov 8); these tests exercise the code
 // These tests cover a post per pick (x-lean off); tests/x-lean.test.cjs covers lean posting.
 vm.runInContext('X_PICK_POSTS_DEFAULT=false;MATCHUP_WAIT=0;X_LEAN_DEFAULT=false;X_SPOT=false',context);
 const db=new DatabaseSync(':memory:');
