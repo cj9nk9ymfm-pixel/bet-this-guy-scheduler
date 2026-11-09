@@ -57,7 +57,7 @@ function newTag(posted,start,now=Date.now()){const t=Date.parse(posted||''),m=Ma
 // An alert opens /?pick=<id>: that pick is revealed, scrolled to and highlighted, once.
 function focusPick(){let id='';try{id=new URLSearchParams(location.search).get('pick')||''}catch{}if(!id||focusPick.done)return;
   // From a "Your bet hit" alert (?share=1, Nov 5): open the pick's sheet, where "Share this hit" waits.
-  try{if(new URLSearchParams(location.search).get('share')==='1'&&!focusPick.shared){const all=[...(window.BTGOfficialRows?.()||[]),...(Array.isArray(window.BTG_HOME)?window.BTG_HOME:[]),...(Array.isArray(window.BTG_REC_ROWS)?window.BTG_REC_ROWS:[])],r=all.find(x=>x?.id===id);if(r&&window.BTGOpenPick){focusPick.shared=true;focusPick.done=true;window.btgCount?.('share:from-hit');setTimeout(()=>{window.BTGOpenPick(r);setTimeout(()=>{const b=[...document.querySelectorAll('dialog[open] button')].find(x=>/Share this hit/.test(x.textContent||''));if(b){b.scrollIntoView({block:'center',behavior:'smooth'});b.classList.add('share-flash');setTimeout(()=>b.classList.remove('share-flash'),4000)}},500)},300);try{const u=new URL(location.href);u.searchParams.delete('pick');u.searchParams.delete('share');history.replaceState(null,'',u.pathname+u.search+u.hash)}catch{}return}}}catch{}
+  try{if(new URLSearchParams(location.search).get('share')==='1'&&!focusPick.shared){const all=[...(window.BTGOfficialRows?.()||[]),...(window.BTGPmRows?.()||[]),...(Array.isArray(window.BTG_HOME)?window.BTG_HOME:[]),...(Array.isArray(window.BTG_REC_ROWS)?window.BTG_REC_ROWS:[])],r=all.find(x=>x?.id===id);if(r&&window.BTGOpenPick){focusPick.shared=true;focusPick.done=true;window.btgCount?.('share:from-hit');setTimeout(()=>{window.BTGOpenPick(r);setTimeout(()=>{const b=[...document.querySelectorAll('dialog[open] button')].find(x=>/Share this hit/.test(x.textContent||''));if(b){b.scrollIntoView({block:'center',behavior:'smooth'});b.classList.add('share-flash');setTimeout(()=>b.classList.remove('share-flash'),4000)}},500)},300);try{const u=new URL(location.href);u.searchParams.delete('pick');u.searchParams.delete('share');history.replaceState(null,'',u.pathname+u.search+u.hash)}catch{}return}}}catch{}
   const el=[...document.querySelectorAll('[data-pick-id]')].find(e=>e.dataset.pickId===id);if(!el)return;focusPick.done=true;
   for(let p=el.parentElement;p&&p!==document.body;p=p.parentElement)if(p.hidden){p.hidden=false;const b=p.previousElementSibling;if(b?.matches?.('[data-on-toggle]'))b.setAttribute('aria-expanded','true')}
   el.classList.add('on-flash');setTimeout(()=>el.scrollIntoView({behavior:'smooth',block:'center'}),350);setTimeout(()=>el.classList.remove('on-flash'),5000);
@@ -1849,6 +1849,7 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
   // The prediction-app pages use this same list (Nov 9, Tim): records from
   // pmRecord, with taps, the slip, "I bet this" and live tags wired the same.
   let pmBoxList=[],pmBoxArgs=null,pmLiveSig='';
+  window.BTGPmRows=()=>pmBoxList;
   window.BTGPickBox=(box,list,opts={})=>{
     if(!box)return;pmBoxList=list;pmBoxArgs=[box,list,opts];
     pickBox(box,list.map((r,i)=>[r,i]),{cards:true,noun:'pick',lvKind:'pm',...opts});
@@ -4010,11 +4011,11 @@ function statsProp(l){
   // After "I bet this" (Nov 5, Tim): notifications on, follow the pick; push possible here,
   // offer it once a session ("a ping when this one settles"); otherwise the email ask.
   async function followAsk(r){
-    if(window.BTGAuth?.isSignedIn?.()&&/^(official|nba)\|/.test(String(r.id||'')))window.BTGAuth.follow?.(r.id,true);
+    if(window.BTGAuth?.isSignedIn?.()&&/^(official|nba|pm)\|/.test(String(r.id||'')))window.BTGAuth.follow?.(r.id,true);
     let sub=null;try{sub=await window.BTGPush?.current?.()}catch{}
     if(sub){followRemote(r.id,true);return}
     let asked=false;try{asked=sessionStorage.getItem('btg-follow-ask')==='1'}catch{}
-    if(asked||!/^(official|nba)\|/.test(String(r.id||''))||!window.BTGPush?.possible?.()){window.BTGEmailAsk?.('mybets');return}
+    if(asked||!/^(official|nba|pm)\|/.test(String(r.id||''))||!window.BTGPush?.possible?.()){window.BTGEmailAsk?.('mybets');return}
     try{sessionStorage.setItem('btg-follow-ask','1')}catch{}
     const el=document.createElement('div');el.className='ask-after follow-ask';el.setAttribute('role','dialog');el.setAttribute('aria-label','Get a notification when this bet settles');
     el.innerHTML='<button type="button" class="aa-x" aria-label="Close">×</button><b>Get a ping when this one settles?</b><span>One notification with the result. Turn off anytime in More.</span><button type="button" class="aa-on">Turn on notifications</button>';
@@ -4026,7 +4027,7 @@ function statsProp(l){
     setTimeout(()=>el.isConnected&&!el.contains(document.activeElement)&&el.remove(),25000);
   }
   // A phone with notifications on follows the pick: one push when it's graded (Nov 5, Tim).
-  function followRemote(pickId,on){try{if(!pickId||!/^(official|nba)\|/.test(pickId)||!navigator.serviceWorker?.ready)return;navigator.serviceWorker.ready.then(reg=>reg.pushManager?.getSubscription?.()).then(sub=>{if(!sub)return;window.btgCount?.(on?'follow:on':'follow:off');return fetch('/api/alerts/follow',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({endpoint:sub.endpoint,pickId,on})})}).catch(()=>{})}catch{}}
+  function followRemote(pickId,on){try{if(!pickId||!/^(official|nba|pm)\|/.test(pickId)||!navigator.serviceWorker?.ready)return;navigator.serviceWorker.ready.then(reg=>reg.pushManager?.getSubscription?.()).then(sub=>{if(!sub)return;window.btgCount?.(on?'follow:on':'follow:off');return fetch('/api/alerts/follow',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({endpoint:sub.endpoint,pickId,on})})}).catch(()=>{})}catch{}}
   window.BTGMyBets={add,has,open,render}})();
 
 // More sheet (Nov 3 redesign): alerts open the chooser; theme is a segmented control.
