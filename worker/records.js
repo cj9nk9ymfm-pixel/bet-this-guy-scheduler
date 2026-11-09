@@ -525,6 +525,7 @@ async function publishNbaPicks(request,env,ctx,now=Date.now()){
     posted+=Number(await writeOfficialPlan(plan,night,env,cfg))||0;
     await logNbaSkips(env,night,cfg,qualified.filter(longshotOk(priced)),ok,Date.now()).catch(error=>console.warn('nba_skips_failed',error.message));
     const trail=officialTrailStatements(tonight,existing,env,Date.now());if(trail.length)await env.DB.batch(trail);
+    await recordPickTests(env,tonight,existing,Date.now()).catch(error=>console.warn('pick_tests_failed',error.message));
     // Worth a look: props from 0.75% up that aren't a pick or a parlay leg
     // tonight, two a game, ten at most. Shown only, never graded or counted.
     const taken=new Set(((await env.DB.prepare('SELECT legs_json FROM public_recommendations WHERE id>=? AND id<?').bind(cfg.prefix,cfg.prefix+'\uffff').all()).results||[]).flatMap(r=>recordLegs(r).map(officialPlayer)));
@@ -2907,7 +2908,7 @@ async function publishOfficialPicks(request,env,ctx,opts={}){
     // the database stays small (the history endpoint's own cleanup rarely runs).
     // Awaited: a deferred delete did not run after the maintenance response.
     if(!opts.soonOnly)jobStep('publish','prune');if(Date.now()-snapshotPrunedAt>3600000){snapshotPrunedAt=Date.now();await env.DB.prepare('DELETE FROM movement_snapshots WHERE captured_at<?').bind(Math.floor(Date.now()-7*86400000)).run().catch(error=>console.warn('snapshot_prune_failed',error.message))}
-    if(!opts.soonOnly)jobStep('publish','trail');const trail=officialTrailStatements(boards,existing.results||[],env,Date.now());if(trail.length)await env.DB.batch(trail);
+    if(!opts.soonOnly)jobStep('publish','trail');const trail=officialTrailStatements(boards,existing.results||[],env,Date.now());if(trail.length)await env.DB.batch(trail);await recordPickTests(env,boards,existing.results||[],Date.now()).catch(error=>console.warn('pick_tests_failed',error.message));
     if(!opts.soonOnly)jobStep('publish','line shadow');await recordLineShadow(env,boards,Date.now()).catch(error=>console.warn('line_shadow_failed',error.message));
     if(!opts.soonOnly)jobStep('publish','near shadow');await recordNearShadow(env,boards,plan.filter(p=>p.tier==='props').flatMap(p=>p.legs),Date.now()).catch(error=>console.warn('near_shadow_failed',error.message));
     if(!opts.soonOnly)jobStep('publish','leans');await recordLeans(env,boards,Date.now()).catch(error=>console.warn('lean_shadow_failed',error.message));
@@ -4090,12 +4091,44 @@ function xPollText(r,now=Date.now()){
   const price=r.exchange?`${exchangePct(r.odds)}% on ${r.exchange}`:`${weeklyOdds(r.odds)}${f.book?` at ${f.book}`:''}`,game=xMatchup(f.team||r.team);
   return xShort(`🗳️ Are you tailing ${night?'tonight’s':'today’s'} top pick?\n\n${r.player} ${weeklyLegText(r)} (${price})${game?`\n${game}`:''}\n\nVote, then see the full card in the replies 👇👇 ${r.exchange?'18+/21+':'21+'}`);
 }
+// Pick tests (Nov 9, Tim). For each open official single: its book, how far ahead
+// it posted and what the sharp book said (the DraftKings test); and for picks posted
+// 3+ hours early, whether the price still qualifies about 2 hours before the game
+// (the late-confirm test). Saved in app_settings pick-test:<id>; judged against
+// results later. Logged only: nothing posts or holds on it.
+async function recordPickTests(env,boards,existing,now=Date.now()){
+  const open=(existing||[]).filter(r=>r.kind==='prop'&&!r.result&&Date.parse(r.game_time)>now);if(!open.length)return {logged:0};
+  let cands=null;const cand=()=>cands||=officialCandidates(boards,now,{},{min:-50});
+  let n=0;
+  for(const r of open){
+    const key=`pick-test:${r.id}`;let t={};try{t=JSON.parse(await appSetting(env,key)||'{}')}catch{}
+    const leg=recordLegs(r)[0]||{},gid=r.game_id||leg.gameId,kick=Date.parse(r.game_time),lead=(kick-Date.parse(r.posted_at))/3600000;let changed=false;
+    if(!('book' in t)){
+      const sh=await env.DB.prepare('SELECT pin_edge FROM sharp_shadow WHERE event_id=? AND player=? AND market=? AND side=? AND line=? AND pin_fair IS NOT NULL ORDER BY logged_at DESC LIMIT 1').bind(gid,r.player,r.market,r.side,r.line).first().catch(()=>null);
+      Object.assign(t,{book:leg.book||null,lead:+lead.toFixed(2),sharp:sh?(Number(sh.pin_edge)>0?'agree':'disagree'):'none',sharpEdge:sh?Number(sh.pin_edge):null});changed=true}
+    const toGo=(kick-now)/3600000;
+    if(lead>3&&!t.late&&toGo<=2.5&&toGo>=1.25){
+      const c=cand().find(p=>p.gameId===gid&&normalizedName(p.player)===normalizedName(r.player)&&p.market===r.market&&Number(p.line)===Number(r.line));
+      const same=c&&c.side===r.side,edge=same?+Number(c.edge).toFixed(2):null;
+      t.late={at:new Date(now).toISOString(),edge,odds:same?c.odds:null,book:same?c.book:null,still:edge!=null&&edge>=1};changed=true}
+    if(changed){await setAppSetting(env,key,JSON.stringify(t)).catch(()=>{});n++}
+  }
+  return {logged:n};
+}
+// The top pick (Nov 9 audit, official picks and the shadow log): what actually wins
+// is a price that qualified close to the game, a book other than DraftKings, and
+// NBA assists / NFL field goals and interceptions. A bigger edge alone doesn't.
+const RANK_MARKETS={good:new Set(['NBA|Assists','NFL|Field Goals Made','NFL|Interceptions Thrown']),weak:new Set(['NBA|Rebounds'])};
+function pickRank(r,withEdge=true){
+  const l=recordLegs(r)[0]||{},sport=String(r.id||'').startsWith('nba|')||String(r.event_id||'').startsWith('NBA--')?'NBA':'NFL',k=`${sport}|${r.market||l.market}`,lead=(Date.parse(r.game_time)-Date.parse(r.posted_at))/3600000;
+  return (String(l.book||'')!=='DraftKings'?2:0)+(Number.isFinite(lead)&&lead<=3?1.5:0)+(RANK_MARKETS.good.has(k)?1:RANK_MARKETS.weak.has(k)?-1:0)+(withEdge?Math.min(Number(l.edge??r.edge)||0,3)/10:0);
+}
 // The slate's top pick (Oct 31): a price edge the player's recent form also
 // backs (7+ of his last 10 on our side) comes first; those picks went 21–12
 // (64% against a 48% price) in the stats check. Then the biggest edge.
 function xPollPick(rows,now=Date.now(),strong=new Set()){
   const edge=r=>Number(r.exchange?r.edge/2:(recordLegs(r)[0]?.edge??r.edge));
-  return rows.filter(r=>r.kind!=='parlay'&&r.player&&Date.parse(r.game_time)>now+10*60000).sort((a,b)=>Boolean(a.exchange)-Boolean(b.exchange)||strong.has(b.id)-strong.has(a.id)||edge(b)-edge(a))[0]||null;
+  return rows.filter(r=>r.kind!=='parlay'&&r.player&&Date.parse(r.game_time)>now+10*60000).sort((a,b)=>Boolean(a.exchange)-Boolean(b.exchange)||(a.exchange?0:pickRank(b,false)-pickRank(a,false))||strong.has(b.id)-strong.has(a.id)||edge(b)-edge(a))[0]||null;
 }
 // Picks whose saved matchup shows 7+ of the last 10 games on our side.
 async function xStrongForm(env,rows){

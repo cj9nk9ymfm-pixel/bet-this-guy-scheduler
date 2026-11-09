@@ -37,7 +37,7 @@ const run=code=>vm.runInContext(code,context);run('fetch=globalThis.fetch');
   assert.equal(await run(`xMatchupReady(env,pick,${now})`),false,'waits');
   assert.equal(await run(`xMatchupReady(env,pick,${now+12*60000})`),true,'goes after 12 minutes');
   db.prepare("INSERT INTO app_settings(key,value) VALUES('matchup:nba|x|1','{}')").run();assert.equal(await run(`xMatchupReady(env,pick,${now})`),true,'goes once the matchup is saved');
-  // Top pick: strong recent form (7+ of 10 on our side) beats a bigger edge.
+  // Top pick: ranked on what wins (Nov 9); on the same rank, strong recent form (7+ of 10 on our side) beats a bigger edge.
   const gt=new Date(now+3*3600000).toISOString(),mk=(id,edge,line)=>({id,kind:'prop',player:'P '+id,side:'Under',line,game_time:gt,legs_json:JSON.stringify([{edge,side:'Under',line}])});
   context.rows=[mk('a',3.0,5.5),mk('b',1.2,5.5)];
   db.prepare("INSERT INTO app_settings(key,value) VALUES('matchup:b',?)").run(JSON.stringify({logs:[3,4,5,2,4,6,3,4,5,4].map(v=>({v,s:2026}))}));

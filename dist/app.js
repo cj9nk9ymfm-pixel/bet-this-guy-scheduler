@@ -1623,7 +1623,7 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
       const board=document.getElementById('propsSection'),rail=document.querySelector('.board.has-rail>.desk-rail');if(rail)rail.appendChild(em);else if(board)board.before(em);else hero.after(em);
       let tries=0;const mount=()=>{if(window.BTGEmailSub?.inline){window.BTGEmailSub.inline(em,ev==='b'?'homeb':'home');window.btgCount?.(ev==='b'?'email:home-shown-b':'email:home-shown')}else if(tries++<40)setTimeout(mount,50)};mount()}
       // Lead with the best pick still to play, so the sign-up shows what you'd get.
-      if(em){const now=Date.now(),top=(heroRows||[]).filter(r=>r.kind==='prop'&&!r.result&&Date.parse(r.game_time||'')>now).map(r=>({r,edge:Number(recordLegs(r)[0]?.edge)||0})).sort((a,b)=>b.edge-a.edge)[0]?.r;
+      if(em){const now=Date.now(),top=(heroRows||[]).filter(r=>r.kind==='prop'&&!r.result&&Date.parse(r.game_time||'')>now).map(r=>({r,edge:window.BTGPickRank?window.BTGPickRank(r):Number(recordLegs(r)[0]?.edge)||0})).sort((a,b)=>b.edge-a.edge)[0]?.r;
         const b=em.querySelector('.he-copy b');if(b){if(top){const f=recordLegs(top)[0]||{};b.textContent=`${NBA?'Tonight’s':'This week’s'} top pick: ${top.player} ${top.side} ${top.line} ${String(top.market||'').toLowerCase()} ${formatOdds(top.odds)}${f.book?` at ${f.book}`:''}. Get the next one the moment it locks.`}else b.textContent='Get each pick the moment it locks'}}}
     if(!strip||!s.hits.length)return;
     $('#hitsTitle').textContent=['LAST WEEK','THIS WEEK SO FAR','LAST NIGHT','TONIGHT SO FAR'].includes(s.label)?`${periodOwner(s.label).replace(/^./,c=>c.toUpperCase())} hits`:'Recent hits';
@@ -1701,8 +1701,14 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
     const l=recordLegs(r)[0]||{};
     return `<button type="button" class="pr2" data-on="${i}" data-pick-id="${htmlEscape(r.id||'')}">${face(r,'pr2-ph')}<span class="pr2-t"><b>${htmlEscape(r.player||'')}</b><span>${htmlEscape(`${r.side} ${r.line} ${typeof unitOf==='function'?unitOf(r.market):String(r.market||'').toLowerCase()}`)}</span>${r.why?.boxes?.[0]?`<em class="pr2-why">✓ ${htmlEscape(r.why.boxes[0].big)} ${htmlEscape(r.why.boxes[0].label.toLowerCase())}</em>`:''}</span><span class="pr2-q" data-slip-price><b>${pxOf(r)}</b><small>${htmlEscape(l.book||'')} ${strength(Number(l.edge))}</small></span></button>`;
   }
+  // The top pick (Nov 9 audit): posted close to the game, a book other than DraftKings,
+  // a stat type that wins; the edge only breaks ties. Same rule as the server's pickRank.
+  const RANK_GOOD=new Set(['NBA|Assists','NFL|Field Goals Made','NFL|Interceptions Thrown']),RANK_WEAK=new Set(['NBA|Rebounds']);
+  function pickRank(r){const l=recordLegs(r)[0]||{},sport=r.sport==='NBA'||String(r.id||'').startsWith('nba|')||/NBA--/.test(String(r.id||''))?'NBA':'NFL',k=`${sport}|${r.market||l.market}`,lead=(Date.parse(r.game_time)-Date.parse(r.posted_at))/3600000;
+    return (String(l.book||'')!=='DraftKings'?2:0)+(Number.isFinite(lead)&&lead<=3?1.5:0)+(RANK_GOOD.has(k)?1:RANK_WEAK.has(k)?-1:0)+Math.min(Number(l.edge)||0,3)/10}
+  window.BTGPickRank=pickRank;
   function busyDay(items){
-    const ranked=[...items].sort((a,b)=>(Number(recordLegs(b[0])[0]?.edge)||0)-(Number(recordLegs(a[0])[0]?.edge)||0)),top=ranked[0];
+    const ranked=[...items].sort((a,b)=>pickRank(b[0])-pickRank(a[0])),top=ranked[0];
     // The top pick is the card; the rows are the others (Nov 5: it showed twice).
     const slots=new Map();for(const it of items){if(it===top)continue;const k=it[0].game_time;(slots.get(k)||slots.set(k,[]).get(k)).push(it)}
     const keys=[...slots.keys()].sort(),t=k=>new Date(k).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
