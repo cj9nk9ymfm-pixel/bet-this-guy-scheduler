@@ -4105,7 +4105,7 @@ async function recordPickTests(env,boards,existing,now=Date.now()){
     const leg=recordLegs(r)[0]||{},gid=r.game_id||leg.gameId,kick=Date.parse(r.game_time),lead=(kick-Date.parse(r.posted_at))/3600000;let changed=false;
     if(!('book' in t)){
       const sh=await env.DB.prepare('SELECT pin_edge FROM sharp_shadow WHERE event_id=? AND player=? AND market=? AND side=? AND line=? AND pin_fair IS NOT NULL ORDER BY logged_at DESC LIMIT 1').bind(gid,r.player,r.market,r.side,r.line).first().catch(()=>null);
-      Object.assign(t,{book:leg.book||null,lead:+lead.toFixed(2),sharp:sh?(Number(sh.pin_edge)>0?'agree':'disagree'):'none',sharpEdge:sh?Number(sh.pin_edge):null});changed=true}
+      Object.assign(t,{book:leg.book||null,lead:+lead.toFixed(2),sharp:sh?(Number(sh.pin_edge)>=0?'agree':'disagree'):'none',sharpEdge:sh?Number(sh.pin_edge):null});changed=true}
     const toGo=(kick-now)/3600000;
     if(lead>3&&!t.late&&toGo<=2.5&&toGo>=1.25){
       const c=cand().find(p=>p.gameId===gid&&normalizedName(p.player)===normalizedName(r.player)&&p.market===r.market&&Number(p.line)===Number(r.line));
