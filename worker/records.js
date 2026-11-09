@@ -3755,14 +3755,16 @@ async function sendNbaEmails(env,now=Date.now()){
 // pick is graded each of those phones gets one push with the result (stored
 // for it in book_alerts, which /api/alerts/latest reads), then the follow is
 // cleared. Sends only while app_settings follow-alerts = 'on'.
-const FOLLOW_ID=/^(official|nba)\|[^\s]{4,300}$/;
+const FOLLOW_ID=/^(official|nba|pm)\|[^\s]{4,300}$/;
 function followMessage(r){
   const legs=recordLegs(r),f=legs[0]||{},what=r.kind==='parlay'?`${legs.length}-leg parlay (${legs.map(l=>String(l.player||'').split(' ').slice(-1)[0]).join(' + ')})`:`${r.player} ${weeklyLegText(r)}`;
   const had=r.kind!=='parlay'&&f.actualValue!=null?`: finished with ${f.actualValue}`:'';
   const voided=r.result==='push'&&legs.every(l=>l.voided);
-  if(r.result==='won')return {title:'✅ Your bet hit',body:`${what}${had}. Cashed at ${weeklyOdds(r.kind==='parlay'?r.combined_odds:r.odds)}. Tap to share it.`,url:pickUrl(r.id,'share=1&'),won:true};
-  if(r.result==='lost')return {title:'❌ Your bet missed',body:`${what}${had}. On to the next one.`,url:pickUrl(r.id)};
-  return {title:'➖ No action',body:`${what}${voided?' was voided (didn’t play)':' pushed'}: stake back.`,url:pickUrl(r.id)};
+  const price=r.pm?`${exchangePct(r.odds)}% on ${r.pm.exchange}`:weeklyOdds(r.kind==='parlay'?r.combined_odds:r.odds);
+  const at=r.pm?`${r.sport==='NBA'?'league=NBA&':''}view=predictions&`:'';
+  if(r.result==='won')return {title:'✅ Your bet hit',body:`${what}${had}. Cashed at ${price}. Tap to share it.`,url:pickUrl(r.id,`${at}share=1&`),won:true};
+  if(r.result==='lost')return {title:'❌ Your bet missed',body:`${what}${had}. On to the next one.`,url:pickUrl(r.id,at)};
+  return {title:'➖ No action',body:`${what}${voided?' was voided (didn’t play)':' pushed'}: stake back.`,url:pickUrl(r.id,at)};
 }
 async function followPick(env,endpoint,pickId,on=true){
   if(!FOLLOW_ID.test(pickId)||!(validPushEndpoint(endpoint)||/^email:[A-Za-z0-9-]{8,64}$/.test(endpoint)))return {success:false};
@@ -3781,13 +3783,20 @@ async function followEmail(env,uid,r,note){
   const res=await fetch('https://api.resend.com/emails',{method:'POST',headers:{authorization:`Bearer ${env.RESEND_API_KEY}`,'content-type':'application/json'},body:JSON.stringify({from:env.EMAIL_FROM||EMAIL_ALERT_FROM,to:[row.email],reply_to:env.EMAIL_REPLY_TO||'support@betthisguy.com',subject:note.title,html,text,headers:{'List-Unsubscribe':`<${unsubscribe}>`,'List-Unsubscribe-Post':'List-Unsubscribe=One-Click'}}),signal:AbortSignal.timeout(15000)});
   return res.ok;
 }
+async function followRecord(env,id){
+  if(!String(id).startsWith('pm|'))return env.DB.prepare("SELECT id,kind,player,market,side,line,odds,combined_odds,legs_json,result,game_time FROM public_recommendations WHERE id=? AND source='market-verified-v2'").bind(id).first();
+  const p=await env.DB.prepare('SELECT * FROM prediction_picks WHERE id=?').bind(id).first();if(!p)return null;
+  const sport=String(p.event_id||'').startsWith('NBA--')?'NBA':'NFL',voided=Boolean(p.void_reason);
+  return {id:p.id,kind:'prop',sport,player:p.player,market:p.market,side:p.side,line:p.line,odds:p.odds,net_odds:p.net_odds,result:voided?'push':p.result,game_time:p.game_time,pm:{exchange:p.exchange},
+    legs_json:JSON.stringify([{player:p.player,market:p.market,side:p.side,line:p.line,odds:p.odds,team:p.team||'',sport,book:p.exchange,actualValue:p.actual,...(voided?{voided:true,voidReason:p.void_reason}:{})}])};
+}
 async function sendFollowAlerts(env,now=Date.now()){
   if(!env.DB)return {sent:0};
   if(await appSetting(env,'follow-alerts')!=='on')return {sent:0,off:true};
   const rows=(await env.DB.prepare("SELECT key,value FROM app_settings WHERE key LIKE 'follow:%' LIMIT 200").all()).results||[];
   let sent=0,settled=0;const stamp=new Date(now).toISOString();
   for(const row of rows){
-    const id=row.key.slice(7),r=await env.DB.prepare("SELECT id,kind,player,market,side,line,odds,combined_odds,legs_json,result,game_time FROM public_recommendations WHERE id=? AND source='market-verified-v2'").bind(id).first().catch(()=>null);
+    const id=row.key.slice(7),r=await followRecord(env,id).catch(()=>null);
     if(!r||(!['won','lost','push'].includes(r.result)&&now-Date.parse(r.game_time)>4*86400000)){await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(row.key).run();continue}
     if(!['won','lost','push'].includes(r.result))continue;
     let eps=[];try{eps=JSON.parse(row.value)}catch{}
@@ -3870,7 +3879,7 @@ function emailPickRow(r){
   const legs=recordLegs(r),first=legs[0]||{},nba=String(r.id||'').startsWith('nba|')||String(first.sport||'').toUpperCase()==='NBA';
   const game=String(first.team||'').replace(' · @ ',' @ ').replace(' · vs ',' vs ');
   const meta=[game,weeklyDay(r.game_time)].filter(Boolean).join(' · ');
-  const price=(odds,book)=>`<td align="right" valign="top" style="padding-left:10px;white-space:nowrap;"><div style="display:inline-block;padding:8px 12px;border-radius:12px;background:#10213d;color:#1fd88f;font-size:17px;font-weight:800;">${weeklyEscape(weeklyOdds(odds))}</div>${book?`<div style="margin-top:4px;font-size:12px;color:#5a6f8c;">${weeklyEscape(book)}</div>`:''}</td>`;
+  const price=(odds,book)=>`<td align="right" valign="top" style="padding-left:10px;white-space:nowrap;"><div style="display:inline-block;padding:8px 12px;border-radius:12px;background:#10213d;color:#1fd88f;font-size:17px;font-weight:800;">${weeklyEscape(r.pm?`${exchangePct(odds)}%`:weeklyOdds(odds))}</div>${book?`<div style="margin-top:4px;font-size:12px;color:#5a6f8c;">${weeklyEscape(book)}</div>`:''}</td>`;
   const card=inner=>`<tr><td style="padding:14px;border:1px solid #e3ebf5;border-radius:16px;background:#ffffff;">${inner}</td></tr><tr><td style="height:10px;"></td></tr>`;
   if(r.kind==='parlay'){
     const rows=legs.map(l=>`<tr><td style="padding:6px 0;border-top:1px solid #eef3f9;font-size:14px;color:#10213d;"><b>${weeklyEscape(l.player)}</b> · ${weeklyEscape(weeklyLegText(l))}${l.odds!=null?` <span style="color:#5a6f8c;">(${weeklyEscape(weeklyOdds(l.odds))})</span>`:''}</td></tr>`).join('');

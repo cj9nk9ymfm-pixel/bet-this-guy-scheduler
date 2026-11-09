@@ -8,7 +8,7 @@ const context=vm.createContext({URL,URLSearchParams,Request,Response,Headers,Abo
 const template=read('worker/index.template.js');
 vm.runInContext(template.slice(template.indexOf('const API_BASE')).replace('__MOVEMENT_SERVER__',read('worker/movement.js')).replace('__LIVE_SERVER__',read('worker/live.js')).replace('__STATS_SHARED__',read('dist/stats.js')).replace('__RECORDS_SERVER__',read('worker/records.js')).replace('__ACCOUNTS_SERVER__',read('worker/accounts.js')).replace('export default {','this.worker={'),context);
 const db=new DatabaseSync(':memory:');
-for(const f of ['0004_user_accounts.sql','0007_email_alerts.sql','0000_public_record.sql','0001_record_settlement.sql','0002_historical_replays.sql','0006_push_alerts.sql','0008_book_alerts.sql','0013_follow_alerts.sql','0027_alert_price_view.sql','0031_alert_kinds.sql','0033_alert_nba.sql'])db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''));
+for(const f of ['0004_user_accounts.sql','0007_email_alerts.sql','0000_public_record.sql','0001_record_settlement.sql','0002_historical_replays.sql','0006_push_alerts.sql','0008_book_alerts.sql','0013_follow_alerts.sql','0027_alert_price_view.sql','0031_alert_kinds.sql','0033_alert_nba.sql','0028_prediction_picks.sql','0032_prediction_early.sql','0036_void_reason.sql'])db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''));
 const wrap=(sql,args=[])=>({bind(...v){return wrap(sql,v)},async first(){return db.prepare(sql).get(...args)||null},async all(){return{results:db.prepare(sql).all(...args)}},async run(){const r=db.prepare(sql).run(...args);return{success:true,meta:{changes:Number(r.changes)}}}});
 const env={RESEND_API_KEY:'test',DB:{prepare:sql=>wrap(sql),async batch(l){for(const s of l)await s.run()}}};context.env=env;
 const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v));
@@ -47,6 +47,16 @@ const api=async body=>J(await (await run(`alertsApi(new Request('https://betthis
   db.prepare("INSERT INTO public_recommendations (id,kind,player,market,side,line,odds,game_time,legs_json,posted_at,status,result,source) VALUES ('nba|old|x','prop','Old Guy','Points','Over',10.5,100,'2026-10-20T00:00:00.000Z','[]','2026-10-19T00:00:00.000Z','pending',NULL,'market-verified-v2')").run();
   await api({endpoint:A,pickId:'nba|old|x'});await run(`sendFollowAlerts(env,${now})`);
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM app_settings WHERE key LIKE 'follow:%'").get().n,0,'stale follow dropped');
+  // A prediction-app pick (Nov 9): followed the same way, its price as a chance on the app.
+  const PM='pm|NBA--g9|nazreid';
+  db.prepare("INSERT INTO prediction_picks (id,exchange,event_id,player,team,market,side,line,odds,net_odds,fair_pct,edge,game_time,posted_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)").run(PM,'Novig','NBA--g9','Naz Reid','Cleveland Cavaliers · @ Charlotte Hornets','Rebounds','Over',8.5,104,104,52,3.1,'2026-11-05T00:00:00.000Z','2026-11-04T18:00:00.000Z');
+  assert.equal((await api({endpoint:A,pickId:PM})).success,true,'prediction picks can be followed');
+  await run(`sendFollowAlerts(env,${now})`);assert.equal(pushed.length,1,'nothing until it grades');
+  db.prepare("UPDATE prediction_picks SET result='won',actual=11 WHERE id=?").run(PM);
+  assert.equal(J(await run(`sendFollowAlerts(env,${now})`)).settled,1);assert.deepEqual(pushed.slice(1),[A]);
+  const pmNote=J(await run(`latestAlert(env,${now+60000},${JSON.stringify(A)})`));
+  assert.match(pmNote.body,/Naz Reid Over 8\.5 rebounds: finished with 11\. Cashed at 49% on Novig\./,'the price as a chance on the app');
+  assert.match(pmNote.url,/league=NBA&view=predictions&share=1&pick=pm/,'opens the NBA prediction page');
   // Wording for a miss and a void.
   assert.equal(run(`followMessage({id:'nba|1',kind:'prop',player:'A B',market:'Points',side:'Over',line:20.5,odds:110,result:'lost',legs_json:JSON.stringify([{actualValue:14}])})`).title,'❌ Your bet missed');
   assert.match(run(`followMessage({id:'nba|1',kind:'prop',player:'A B',market:'Points',side:'Over',line:20.5,odds:110,result:'push',legs_json:JSON.stringify([{voided:true}])})`).body,/voided \(didn’t play\): stake back/);
