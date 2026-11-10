@@ -1621,7 +1621,7 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
       // The record bar keeps the real alerts button (hidden); this link presses it.
       em.querySelector('.he-alerts').onclick=()=>document.querySelector('#heroBanner [data-alerts-toggle]')?.click();
       // Right under the record card (Nov 10); the desktop rail keeps it beside the picks.
-      const rcEl=document.getElementById('recCard'),board=document.getElementById('propsSection'),rail=document.querySelector('.board.has-rail>.desk-rail');if(rail)rail.appendChild(em);else if(rcEl)rcEl.after(em);else if(board)board.before(em);else hero.after(em);
+      const rcEl=document.getElementById('recCard'),board=document.getElementById('propsSection'),rail=document.querySelector('.board.has-rail>.desk-rail');if(rail)rail.appendChild(em);else if(rcEl)hero.after(em);else if(board)board.before(em);else hero.after(em);
       let tries=0;const mount=()=>{if(window.BTGEmailSub?.inline){window.BTGEmailSub.inline(em,'homec');window.btgCount?.('email:home-shown-c')}else if(tries++<40)setTimeout(mount,50)};mount()}
       // Lead with the best pick still to play, so the sign-up shows what you'd get.
       if(em){const now=Date.now(),top=(heroRows||[]).filter(r=>r.kind==='prop'&&!r.result&&Date.parse(r.game_time||'')>now).map(r=>({r,edge:window.BTGPickRank?window.BTGPickRank(r):Number(recordLegs(r)[0]?.edge)||0})).sort((a,b)=>b.edge-a.edge)[0]?.r;
