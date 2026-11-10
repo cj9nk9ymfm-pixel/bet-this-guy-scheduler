@@ -2479,6 +2479,7 @@ body.light .hero-ticker{background:#fff;border-color:#e2e8f0}body.light .hero-ti
 .hero-email{margin:6px 0 10px;padding:12px 14px;border:1px solid rgba(46,230,168,.35);border-radius:14px;background:rgba(46,230,168,.07)}
 .hero-email .he-copy{display:flex;flex-direction:column;gap:2px;margin-bottom:8px}.hero-email .he-copy b{font-size:15px;color:#f2f4f7}.hero-email .he-copy span{font-size:12.5px;color:#98a1ad}
 body.light .hero-email{background:#ecfdf5;border-color:#a7f3d0}body.light .hero-email .he-copy b{color:#0f172a}
+.hero-email .he-top{font-style:normal;color:#d7dde6}body.light .hero-email .he-top{color:#334155}
 
 /* ===== Simplified home (Oct 24): one layout for NFL/NBA, sportsbook and prediction apps =====
    Order: control bar · one-line record · picks · parlays · Just missed · sign-up · More props.

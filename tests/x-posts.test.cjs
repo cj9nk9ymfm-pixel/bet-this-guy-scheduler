@@ -60,13 +60,14 @@ pick('official|2026-10-06|props|prop|a','Travis Kelce',105,null,new Date(now-20*
   // Tuesday results post, once.
   const tue=Date.parse('2026-10-06T15:10:00Z');
   out=await run(`postWeeklyToX(env,${tue})`);assert.equal(out.posted,1);
-  const weekly=posts.at(-1).body.text;
-  // One record, the split under it, short enough that X never cuts it (Nov 3).
-  assert.ok(weekly.startsWith('📊 Week 4: 4–2, +')&&weekly.includes('\nSportsbook 4–2 +')&&weekly.includes('\nSeason: ')&&weekly.includes('link in bio')&&[...weekly].length<=280&&!/https?:|\.com/.test(weekly),weekly);
+  // The simple weekly recap (Nov 10): two records, the total; the link goes in a reply under it.
+  const weekly=posts.at(-2).body.text,link=posts.at(-1).body;
+  assert.ok(weekly.startsWith('NFL Week 4, plain and simple:')&&/Sportsbook: 4–2, \+\$/.test(weekly)&&weekly.includes('Losses included.')&&[...weekly].length<=280&&!/https?:|\.com/.test(weekly),weekly);
+  assert.ok(/utm_source=x/.test(link.text)&&link.reply?.in_reply_to_tweet_id,'the link reply under it');
   assert.equal((await run(`postWeeklyToX(env,${tue+600000})`)).done,true);
   assert.equal((await run(`postWeeklyToX(env,Date.parse('2026-10-05T16:00:00Z'))`)).due,false,'not on Monday');
-  assert.ok(posts.at(-1).body.media,'weekly post carries the results graphic');
-  const week=run('__svg');for(const bit of ['WEEK 4 · RESULTS','4–2','Old Player 0','Every pick graded in public','HIT'])assert.ok(week.includes(bit),bit);
+  assert.ok(posts.at(-2).body.media,'weekly post carries the results graphic');
+  const week=run('__svg');for(const bit of ['WEEK 4 RECAP','Our week, ','SPORTSBOOK','4–2','PREDICTION APPS','Together: ','THE SPORTSBOOK PICKS','WON'])assert.ok(week.includes(bit),bit);
   // The pick post's id is saved so later posts can reply under it.
   const kelce='official|2026-10-06|props|prop|a';
   assert.equal(db.prepare("SELECT value FROM app_settings WHERE key=?").get(`xid:${kelce}`).value,'1');
@@ -108,7 +109,8 @@ pick('official|2026-10-06|props|prop|a','Travis Kelce',105,null,new Date(now-20*
   pick('official|2026-10-06|props|prop|e','Never Posted',110,'won','2026-10-01T12:00:00Z','2026-10-04T17:00:00Z');
   db.prepare("UPDATE public_recommendations SET settled_at=? WHERE id='official|2026-10-06|props|prop|e'").run(new Date(kick+4*3600000).toISOString());
   assert.equal((await run(`postResultsToX(env,${kick+6*3600000})`)).posted,0);
-  for(const t of posts)assert.ok(t.body.text.length<=280&&!/https?:|\.com/.test(t.body.text),t.body.text);
+  // No links in posts; the one exception is the link reply under a recap (Nov 10).
+  for(const t of posts.filter(t=>!/utm_source=x/.test(t.body.text)))assert.ok(t.body.text.length<=280&&!/https?:|\.com/.test(t.body.text),t.body.text);
   // Pinned season summary: goes out once, on the first run with nothing heavier to post.
   const pins=posts.filter(t=>t.body.text.startsWith('🔔 Turn on notifications'));assert.equal(pins.length,1,'posted once by the X runs');
   const pin=pins[0].body;assert.ok(pin.media,'with the season graphic');assert.ok(pin.text.length<=280&&!/https?:|\.com/.test(pin.text)&&pin.text.includes('losses included'),pin.text);
