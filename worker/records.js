@@ -1023,17 +1023,21 @@ async function xQueueAdd(env,item){let q=[];try{q=JSON.parse(await appSetting(en
 // or Skip. Nothing posts without that tap. Off unless app_settings x-drafts='on'.
 // At most this many drafts of each kind a day.
 const X_DRAFT_CAP={receipt:3,badbeat:2,sweat:3,injury:3};
-async function xDraft(env,{key,kind,text,poll=null},now=Date.now()){
+async function xDraft(env,{key,kind,text,poll=null,svg=null},now=Date.now()){
   if(await appSetting(env,'x-drafts')!=='on')return false;
   text=String(text||'').trim();if(!text||[...text].length>280||!/^[\w:.|-]{3,120}$/.test(key))return false;
   if(await appSetting(env,`x-draft:${key}`))return false;
   const day=new Date(now).toISOString().slice(0,10),capKey=`x-draft-n:${kind}:${day}`,n=Number(await appSetting(env,capKey)||0);if(n>=(X_DRAFT_CAP[kind]||2))return false;
   const token=[...crypto.getRandomValues(new Uint8Array(16))].map(b=>b.toString(16).padStart(2,'0')).join('');
-  const claim=await env.DB.prepare('INSERT OR IGNORE INTO app_settings (key,value) VALUES (?,?)').bind(`x-draft:${key}`,JSON.stringify({kind,text,poll,token,state:'new',at:new Date(now).toISOString()})).run();
+  const claim=await env.DB.prepare('INSERT OR IGNORE INTO app_settings (key,value) VALUES (?,?)').bind(`x-draft:${key}`,JSON.stringify({kind,text,poll,token,card:Boolean(svg),state:'new',at:new Date(now).toISOString()})).run();
   if(!Number(claim?.meta?.changes??claim?.changes))return false;
+  if(svg)await setAppSetting(env,`x-draft-svg:${key}`,svg).catch(()=>{});
   await setAppSetting(env,capKey,String(n+1)).catch(()=>{});
   const link=`${SITE_URL}/xdraft?k=${encodeURIComponent(key)}&t=${token}`,title={receipt:'X draft: receipt',badbeat:'X draft: bad beat',sweat:'X draft: live sweat',injury:'X draft: injury news'}[kind]||'X draft';
-  if(env.ALERT_NTFY_TOPIC)await fetch('https://ntfy.sh/'+encodeURIComponent(env.ALERT_NTFY_TOPIC),{method:'POST',headers:{Title:title,Click:link,Tags:'pencil'},body:`${text}\n\nTap to post or skip.`,signal:AbortSignal.timeout(10000)}).catch(()=>{});
+  // Post it / Skip right in the notification (ntfy http actions), the card as its picture.
+  const act=v=>`http, ${v==='post'?'Post it':'Skip'}, ${link}, method=POST, headers.Content-Type=application/x-www-form-urlencoded, body=a=${v}, clear=true`;
+  const headers={Title:title,Click:link,Tags:'pencil',Actions:`${act('post')}; ${act('skip')}`,...(svg?{Attach:`${SITE_URL}/xdraft/img?k=${encodeURIComponent(key)}&t=${token}`,Filename:'card.png'}:{})};
+  if(env.ALERT_NTFY_TOPIC)await fetch('https://ntfy.sh/'+encodeURIComponent(env.ALERT_NTFY_TOPIC),{method:'POST',headers,body:`${text}\n\nPost it or Skip below, or tap to see it.`,signal:AbortSignal.timeout(10000)}).catch(()=>{});
   return true;
 }
 // The approve page: GET shows the draft; POST (Post / Skip) acts on it. The token in
@@ -1046,11 +1050,18 @@ async function xDraftPage(request,env){
   if(request.method==='POST'){
     const form=await request.formData().catch(()=>null),act=String(form?.get('a')||'');
     if(d.state!=='new')return page(`<h1>Already ${weeklyEscape(d.state)}</h1><pre>${weeklyEscape(d.text)}</pre>`);
-    if(act==='post'){await xQueueAdd(env,{text:d.text,...(d.poll?{poll:d.poll}:{}),id:`draft-${key}`.replace(/[^\w-]/g,'-').slice(0,40)});d.state='queued'}else d.state='skipped';
+    if(act==='post'){await xQueueAdd(env,{text:d.text,...(d.poll?{poll:d.poll}:{}),...(d.card?{svgKey:`x-draft-svg:${key}`}:{}),id:`draft-${key}`.replace(/[^\w-]/g,'-').slice(0,40)});d.state='queued'}else d.state='skipped';
     await setAppSetting(env,`x-draft:${key}`,JSON.stringify({...d,acted:new Date().toISOString()}));
     return page(d.state==='queued'?`<h1>Queued ✅</h1><p>It posts on the next X run (within about 10 minutes).</p><pre>${weeklyEscape(d.text)}</pre>`:'<h1>Skipped</h1><p>Nothing was posted.</p>');
   }
-  return page(`<h1>${weeklyEscape({receipt:'Receipt',badbeat:'Bad beat',sweat:'Live sweat',injury:'Injury news'}[d.kind]||'Draft')}</h1><pre>${weeklyEscape(d.text)}</pre>${d.poll?`<p><small>Poll: ${weeklyEscape((d.poll.options||[]).join(' · '))}</small></p>`:''}${d.state!=='new'?`<p>Already ${weeklyEscape(d.state)}.</p>`:`<form method="post"><button class="p" name="a" value="post">Post it</button><button class="s" name="a" value="skip">Skip</button></form><p><small>No links in the post (link in bio). Want to change the words? Skip it and tell Claude.</small></p>`}`);
+  return page(`<h1>${weeklyEscape({receipt:'Receipt',badbeat:'Bad beat',sweat:'Live sweat',injury:'Injury news'}[d.kind]||'Draft')}</h1>${d.card?`<img src="/xdraft/img?k=${encodeURIComponent(key)}&t=${tok}" alt="" style="width:100%;border-radius:14px;margin:0 0 12px">`:''}<pre>${weeklyEscape(d.text)}</pre>${d.poll?`<p><small>Poll: ${weeklyEscape((d.poll.options||[]).join(' · '))}</small></p>`:''}${d.state!=='new'?`<p>Already ${weeklyEscape(d.state)}.</p>`:`<form method="post"><button class="p" name="a" value="post">Post it</button><button class="s" name="a" value="skip">Skip</button></form><p><small>No links in the post (link in bio). Want to change the words? Skip it and tell Claude.</small></p>`}`);
+}
+async function xDraftImage(request,env){
+  const url=new URL(request.url),key=String(url.searchParams.get('k')||''),tok=String(url.searchParams.get('t')||'');
+  let d=null;try{d=JSON.parse(await appSetting(env,`x-draft:${key}`)||'null')}catch{}
+  const svg=d&&tok&&d.token===tok?await appSetting(env,`x-draft-svg:${key}`):null;
+  if(!svg||typeof renderCardPng!=='function')return new Response('',{status:404});
+  return new Response(await renderCardPng(svg),{headers:{'content-type':'image/png','cache-control':'private, max-age=3600'}});
 }
 const xDraftImplied=o=>{o=Number(o);return o<0?-o/(100-o):100/(o+100)};
 // Receipts, bad beats and live sweats, from official sportsbook singles (run with grading).
@@ -1086,20 +1097,79 @@ async function draftXPosts(env,now=Date.now()){
   }
   return out;
 }
-// Injury heads-up: a player newly ruled Out in a game where we have an open pick, before it starts.
+// Injury heads-up (Nov 9, Tim: a graphic, and only players who matter): a player
+// newly ruled Out before the game who is our pick's own player (the bet is void) or
+// his teammate playing real minutes (NBA: 20+ a game lately; NFL: a QB, RB, WR or TE).
+// The draft carries the OUT card: his headshot stamped OUT, then our pick in that game.
+const OUT_UNITS={Rebounds:'boards',Assists:'assists',Points:'points','3-Pointers Made':'threes',Receptions:'catches','Receiving Yards':'yards','Rushing Yards':'yards','Rush Attempts':'carries'};
+function xOutReason(pos,sport,market,side){
+  const unit=OUT_UNITS[market]||'stats',who=sport==='NBA'?(/C|F/.test(pos)?(/C/.test(pos)?'big':'forward'):'guard'):({QB:'quarterback',RB:'back',WR:'receiver',TE:'tight end'}[pos]||'starter');
+  return side==='Over'?`One less ${who} on the ${sport==='NBA'?'floor':'field'}. More ${unit} to go around.`:'';
+}
+function xOutSvg(d){
+  const W=1200,H=1420,M='#2ee6a8',RED='#ff4d5e',G='#fdbb30',F={g:'BTG Grotesk',xb:'BTG Inter XB',sb:'BTG Inter SB'},cx=W/2;
+  const ph=(p,x,y,w,h,clip,extra='')=>p?`<image href="data:${p.type};base64,${p.b64}" x="${x}" y="${y}" width="${w}" height="${h}" preserveAspectRatio="xMidYMax meet" clip-path="url(#${clip})"${extra}/>`:'';
+  const ini=n=>String(n||'').split(/\s+/).map(w=>w[0]||'').join('').slice(0,2).toUpperCase();
+  const fit=(txt,max,size)=>Math.max(28,Math.min(size,Math.floor(max/Math.max(1,String(txt).length*.56))));
+  const p=d.pick;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+<defs><linearGradient id="obg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a0b14"/><stop offset=".45" stop-color="#0b1530"/><stop offset="1" stop-color="#060c1a"/></linearGradient>
+<radialGradient id="oglow" cx=".5" cy=".3" r=".5"><stop offset="0" stop-color="${RED}" stop-opacity=".35"/><stop offset="1" stop-color="${RED}" stop-opacity="0"/></radialGradient>
+<filter id="ogray"><feColorMatrix type="saturate" values="0"/></filter><clipPath id="oph"><circle cx="${cx}" cy="420" r="204"/></clipPath><clipPath id="opk"><circle cx="190" cy="1030" r="70"/></clipPath></defs>
+<rect width="${W}" height="${H}" fill="url(#obg)"/><rect width="${W}" height="${H}" fill="url(#oglow)"/>
+<rect width="${W}" height="96" fill="${RED}"/>
+<text x="64" y="62" font-family="${F.xb}" font-size="34" letter-spacing="6" fill="#ffffff">INJURY NEWS · ${xEsc(d.sport)}</text>
+<text x="${W-64}" y="62" text-anchor="end" font-family="${F.sb}" font-size="28" fill="#ffffff" fill-opacity=".9">${xEsc(d.game||'')}</text>
+<circle cx="${cx}" cy="420" r="214" fill="${RED}"/><circle cx="${cx}" cy="420" r="204" fill="#1b2a4a"/>
+${d.photo?ph(d.photo,cx-286,216,572,416,'oph',' filter="url(#ogray)" opacity=".85"'):`<text x="${cx}" y="470" text-anchor="middle" font-family="${F.g}" font-size="150" fill="#ffffff" fill-opacity=".5">${xEsc(ini(d.name))}</text>`}
+<g transform="rotate(-14 ${cx} 430)"><rect x="${cx-250}" y="360" width="500" height="140" rx="18" fill="none" stroke="${RED}" stroke-width="12"/><text x="${cx}" y="472" text-anchor="middle" font-family="${F.g}" font-size="128" letter-spacing="10" fill="${RED}">OUT</text></g>
+<text x="${cx}" y="732" text-anchor="middle" font-family="${F.g}" font-size="${fit(d.name,1060,84)}" fill="#ffffff">${xEsc(d.name)}</text>
+<text x="${cx}" y="790" text-anchor="middle" font-family="${F.sb}" font-size="${fit(d.sub,1080,34)}" fill="#c9d4e8">${xEsc(d.sub)}</text>
+<rect x="64" y="850" width="${W-128}" height="360" rx="30" fill="#ffffff" fill-opacity=".06" stroke="${M}" stroke-opacity=".6" stroke-width="3"/>
+<text x="104" y="912" font-family="${F.xb}" font-size="26" letter-spacing="4" fill="${M}">${d.void?'OUR PICK ON HIM':'OUR PICK IN THIS GAME'}</text>
+<circle cx="190" cy="1030" r="76" fill="${d.void?'#8a93a0':M}"/><circle cx="190" cy="1030" r="70" fill="#1b2a4a"/>
+${p.photo?ph(p.photo,92,960,196,143,'opk'):`<text x="190" y="1052" text-anchor="middle" font-family="${F.xb}" font-size="56" fill="#ffffff">${xEsc(ini(p.name))}</text>`}
+<text x="296" y="1010" font-family="${F.g}" font-size="${fit(p.name,560,54)}" fill="#ffffff">${xEsc(p.name)}</text>
+<text x="296" y="1062" font-family="${F.xb}" font-size="${fit(p.bet,560,36)}" fill="${G}">${xEsc(p.bet)}</text>
+<text x="${W-104}" y="1050" text-anchor="end" font-family="${F.g}" font-size="76" fill="#ffffff"${d.void?' text-decoration="line-through" fill-opacity=".55"':''}>${xEsc(p.price)}</text>
+<text x="${W-104}" y="1092" text-anchor="end" font-family="${F.sb}" font-size="26" fill="#c9d4e8">${xEsc(d.void?'Void · stake back':p.book||'')}</text>
+${d.reason?`<line x1="104" y1="1128" x2="${W-104}" y2="1128" stroke="#ffffff" stroke-opacity=".12" stroke-width="2"/><text x="104" y="1176" font-family="${F.sb}" font-size="${fit(d.reason,990,30)}" fill="#e8edf5">${xEsc(d.reason)}</text>`:''}
+<text x="${cx}" y="1270" text-anchor="middle" font-family="${F.xb}" font-size="36" fill="#ffffff">${xEsc(d.void?'No action. That’s how the books grade it too.':'Lines are about to move. Are you on it?')}</text>
+<rect y="${H-104}" width="${W}" height="104" fill="${M}"/>${xLogo(64,H-82,60)}
+<text x="142" y="${H-40}" font-family="${F.g}" font-size="36" fill="#0b1530">Bet This Guy</text>
+<text x="${W-64}" y="${H-40}" text-anchor="end" font-family="${F.xb}" font-size="28" fill="#0b1530">Every pick graded in public · 21+</text></svg>`;
+}
+// Does a teammate who's out play real minutes? NBA: 20+ a game over his last 5.
+async function xOutMatters(env,sport,x){
+  if(sport!=='NBA')return /^(QB|RB|WR|TE)$/.test(String(x.position||'').toUpperCase());
+  if(typeof playerStats!=='function')return false;
+  const url=new URL('/api/player-stats',SITE_URL);url.searchParams.set('sport','NBA');url.searchParams.set('player',x.player);url.searchParams.set('team',x.team||'');
+  const payload=await (await playerStats(new Request(url),env,{waitUntil(){}})).json().catch(()=>({}));
+  const mins=(payload?.success?payload.stats||[]:[]).map(r=>parseFloat(r?.min)).filter(Number.isFinite).slice(0,5);
+  return mins.length>=3&&mins.reduce((a,b)=>a+b,0)/mins.length>=20;
+}
 async function draftInjuryPosts(env,sport,before,rows,now=Date.now()){
   if(!env.DB||await appSetting(env,'x-drafts')!=='on')return 0;
   const newlyOut=rows.filter(x=>/^out$/i.test(String(x.status||''))&&!/^out$/i.test(String(before.get(normalizedName(x.player))||'')));
   if(!newlyOut.length)return 0;
-  const picks=((await env.DB.prepare("SELECT id,player,market,side,line,odds,game_time,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND kind='prop' AND result IS NULL AND game_time>? AND game_time<?").bind(new Date(now).toISOString(),new Date(now+6*3600000).toISOString()).all()).results)||[];
-  let n=0;
+  const picks=(((await env.DB.prepare("SELECT id,player,market,side,line,odds,game_time,legs_json FROM public_recommendations WHERE source='market-verified-v2' AND kind='prop' AND result IS NULL AND game_time>? AND game_time<?").bind(new Date(now).toISOString(),new Date(now+6*3600000).toISOString()).all()).results)||[]).filter(r=>(String(r.id).startsWith('nba|')?'NBA':'NFL')===sport);
+  if(!picks.length)return 0;
+  const teams=await playerTeams(env).catch(()=>new Map());let n=0;
   for(const x of newlyOut){
     const team=normalizedName(x.team||'');if(!team)continue;
-    const pick=picks.find(r=>(String(r.id).startsWith('nba|')?'NBA':'NFL')===sport&&normalizedName(recordLegs(r)[0]?.team||'').includes(team));if(!pick)continue;
-    const same=normalizedName(pick.player)===normalizedName(x.player);
-    const text=same?`${x.player} is OUT tonight. Our pick on him is void: stake back, no win or loss.\n\nThat's how the books grade it too.`
-      :`${x.player} is OUT tonight.\n\nWe're on ${pick.player} ${weeklyLegText(pick)} (${weeklyOdds(pick.odds)}) in that game. Lines are about to move. Are you on it?`;
-    if(await xDraft(env,{key:`injury:${sport}:${normalizedName(x.player)}:${new Date(now).toISOString().slice(0,10)}`,kind:'injury',text},now))n++;
+    const inGame=picks.filter(r=>normalizedName(recordLegs(r)[0]?.team||'').includes(team));if(!inGame.length)continue;
+    const self=inGame.find(r=>normalizedName(r.player)===normalizedName(x.player));
+    const mate=self?null:inGame.find(r=>normalizedName(teams.get(normalizedName(r.player))||'')===team);
+    const pick=self||mate;if(!pick)continue;
+    if(!self&&!(await xOutMatters(env,sport,x).catch(()=>false)))continue;
+    const leg=recordLegs(pick)[0]||{},bet=weeklyLegText(pick),reason=self?'':xOutReason(String(x.position||'').toUpperCase(),sport,pick.market,pick.side);
+    const text=self?`${x.player} is OUT tonight. Our pick on him is void: stake back, no win or loss.\n\nThat's how the books grade it too.`
+      :`${x.player} is OUT tonight.\n\nWe're on ${pick.player} ${bet} (${weeklyOdds(pick.odds)}).${reason?` ${reason}`:''}\n\nLines are about to move. Are you on it?`;
+    const face=async name=>{const shot=typeof playerHeadshot==='function'?await playerHeadshot(name,sport,true).catch(()=>null):null;return shot?.bytes?{type:shot.type||'image/png',b64:xBase64(shot.bytes)}:null};
+    const game=String(leg.team||'').replace(' · @ ',' @ ').replace(' · vs ',' vs ');
+    const when=new Date(pick.game_time).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/Los_Angeles'})+' PT';
+    let svg=null;try{svg=xOutSvg({sport,game:[typeof compactGameName==='function'?compactGameName(game):game,when].filter(Boolean).join(' · '),name:x.player,photo:await face(x.player),sub:[x.team,x.detail,'ruled out tonight'].filter(Boolean).join(' · '),void:Boolean(self),reason,pick:{name:pick.player,bet,price:weeklyOdds(pick.odds),book:leg.book||'',photo:self?await face(x.player):await face(pick.player)}})}catch{}
+    if(await xDraft(env,{key:`injury:${sport}:${normalizedName(x.player)}:${new Date(now).toISOString().slice(0,10)}`,kind:'injury',text,svg},now))n++;
   }
   return n;
 }
@@ -1112,6 +1182,16 @@ async function postCustomToX(env,now=Date.now()){
   let req;try{req=JSON.parse(raw)}catch{return {posted:0,invalid:true}}
   const text=String(req.text||'').trim();if(!text||[...text].length>280)return {posted:0,invalid:true};
   const quote=req.quoteKey?await appSetting(env,String(req.quoteKey)):null;if(req.quoteKey&&!quote)return {posted:0,waiting:true};
+  // Pick posts (Nov 9: a post went up about a player already ruled out): pickId names the
+  // pick. If it's void or its player is Out now, the post is held and Tim gets a push.
+  if(req.pickId&&(!req.at||now>=Date.parse(req.at))){
+    const pk=await env.DB.prepare('SELECT id,player,result,legs_json FROM public_recommendations WHERE id=?').bind(String(req.pickId)).first().catch(()=>null);
+    const sp=String(req.pickId).startsWith('nba|')?'NBA':'NFL',inj=pk?await env.DB.prepare('SELECT status FROM injuries WHERE id=?').bind(`${sp}|${normalizedName(pk.player)}`).first().catch(()=>null):null;
+    const why=!pk?null:recordLegs(pk).some(l=>l.voided)||(pk.result==='push'&&recordLegs(pk).every(l=>l.voided))?'the pick is void':/^out$/i.test(String(inj?.status||''))?`${pk.player} is ruled out`:null;
+    if(why){await env.DB.prepare('DELETE FROM app_settings WHERE key=? AND value=?').bind('x-custom-post',raw).run();await setAppSetting(env,`x-held:${req.id||Date.now()}`,JSON.stringify({why,req,at:new Date(now).toISOString()})).catch(()=>{});
+      if(env.ALERT_NTFY_TOPIC)await fetch('https://ntfy.sh/'+encodeURIComponent(env.ALERT_NTFY_TOPIC),{method:'POST',headers:{Title:'X post held',Tags:'no_entry'},body:`Not posted: ${why}.\n\n${text}`,signal:AbortSignal.timeout(10000)}).catch(()=>{});
+      return {posted:0,held:why}}
+  }
   // at: post no earlier than this time. svgKey: an app_settings key holding a card SVG to attach.
   if(req.at&&now<Date.parse(req.at))return {posted:0,waiting:true};
   const svg=req.svgKey?await appSetting(env,String(req.svgKey)):null;if(req.svgKey&&!svg)return {posted:0,invalid:true};
