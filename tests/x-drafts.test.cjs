@@ -4,7 +4,7 @@
 const assert=require('node:assert/strict'),vm=require('node:vm'),{webcrypto}=require('node:crypto'),{DatabaseSync}=require('node:sqlite');
 const {read}=require('./helpers/client.cjs');
 const pushes=[];
-const context=vm.createContext({URL,URLSearchParams,Request,Response,Headers,FormData,AbortSignal,Date,console,setTimeout,clearTimeout,crypto:webcrypto,TextEncoder,btoa,atob,fetch:async(url,init)=>{if(String(url).startsWith('https://ntfy.sh/'))pushes.push({title:init.headers.Title,click:init.headers.Click,body:init.body});return new Response(null,{status:200})}});
+const context=vm.createContext({URL,URLSearchParams,Request,Response,Headers,FormData,AbortSignal,Date,console,setTimeout,clearTimeout,crypto:webcrypto,TextEncoder,btoa,atob,fetch:async(url,init)=>{if(String(url).startsWith('https://ntfy.sh/'))pushes.push({title:init.headers.Title,click:init.headers.Click,attach:init.headers.Attach,actions:init.headers.Actions||'',body:init.body});return new Response(null,{status:200})}});
 const template=read('worker/index.template.js');
 vm.runInContext(template.slice(template.indexOf('const API_BASE')).replace('__MOVEMENT_SERVER__',read('worker/movement.js')).replace('__LIVE_SERVER__',read('worker/live.js')).replace('__STATS_SHARED__',read('dist/stats.js')).replace('__RECORDS_SERVER__',read('worker/records.js')).replace('__ACCOUNTS_SERVER__',read('worker/accounts.js')).replace('export default {','this.worker={'),context);
 const db=new DatabaseSync(':memory:');
@@ -26,12 +26,22 @@ const run=c=>vm.runInContext(c,context),J=v=>JSON.parse(JSON.stringify(v)),setti
   assert.ok(pushes.find(p=>p.title==='X draft: bad beat').body.includes('Lost by one. Darius Acuff Jr. Over 3.5 rebounds: finished with 3.'));
   assert.ok(/Devin Booker has 4 assists in the 4th\. One more and Over 4\.5 cashes/.test(pushes.find(p=>p.title==='X draft: live sweat').body));
   assert.equal(J(await run(`draftXPosts(env,${now})`)).receipt,0,'each one drafted once');
-  // Injury: a newly Out player in a game where we have a pick.
-  context.before=new Map([['traeyoung','Questionable']]);context.rows=[{player:'Trae Young',team:'Atlanta Hawks',status:'Out'}];
-  assert.equal(await run(`draftInjuryPosts(env,'NBA',before,rows,${now})`),1);
-  assert.ok(/Trae Young is OUT tonight\.\n\nWe're on Austin Reaves Under 3\.5 rebounds \(\+119\)/.test(pushes.at(-1).body));
+  // Injury (Nov 9): only our pick's own player (void) or a teammate who plays real minutes, with the OUT card.
+  db.exec('CREATE TABLE player_form (player TEXT, team TEXT)');db.prepare("INSERT INTO player_form VALUES ('Austin Reaves','Los Angeles Lakers'),('Naz Reid','Charlotte Hornets')").run();
+  add('nba|x|reid',{player:'Naz Reid',market:'Rebounds',side:'Over',line:8.5,odds:105,gt:'2026-11-09T08:00:00Z',status:'pending',leg:{team:'Cleveland Cavaliers · @ Charlotte Hornets',book:'DraftKings'}});
+  run('xOutMatters=async(env,sport,x)=>x.player!=="Bench Guy"');
+  context.before=new Map([['traeyoung','Questionable'],['lukadoncic','Questionable']]);
+  context.rows=[{player:'Trae Young',team:'Atlanta Hawks',status:'Out'},{player:'Bench Guy',team:'Charlotte Hornets',position:'F',status:'Out'},{player:'Moussa Diabate',team:'Charlotte Hornets',position:'C',status:'Out',detail:'Right Quadriceps'},{player:'Austin Reaves',team:'Los Angeles Lakers',status:'Out',detail:'Illness'}];
+  const before=pushes.length;assert.equal(await run(`draftInjuryPosts(env,'NBA',before,rows,${now})`),2,'Diabate (a teammate who plays) and Reaves (our own pick); not the opponent or the bench guy');
+  const inj=pushes.slice(before);
+  assert.ok(inj.some(p=>/Moussa Diabate is OUT tonight\.\n\nWe're on Naz Reid Over 8\.5 rebounds \(\+105\)\. One less big on the floor\. More boards to go around\./.test(p.body)),'the teammate reason line');
+  assert.ok(inj.some(p=>/Austin Reaves is OUT tonight\. Our pick on him is void/.test(p.body)),'the void notice');
+  assert.ok(inj.every(p=>/\/xdraft\/img\?k=/.test(p.attach||'')),'the OUT card rides along as the picture');
+  const svg=db.prepare("SELECT value FROM app_settings WHERE key LIKE 'x-draft-svg:injury:NBA:moussadiabate%'").get().value;
+  assert.ok(svg.includes('>OUT<')&&svg.includes('Moussa Diabate')&&svg.includes('OUR PICK IN THIS GAME')&&svg.includes('One less big on the floor'),'the card: OUT stamp, the player, our pick, the reason');
+  assert.ok(inj[0].actions.includes('Post it')&&inj[0].actions.includes('body=a=post')&&inj[0].actions.includes('Skip'),'Post it / Skip buttons in the notification');
   // The link opens the draft; a wrong token doesn't; Post queues it, it never posts directly.
-  const link=new URL(pushes[0].click);assert.equal(link.pathname,'/xdraft');
+  const link=new URL(pushes.find(p=>p.title==='X draft: receipt').click);assert.equal(link.pathname,'/xdraft');
   const page=async(u,init)=>{context.__u=u;context.__i=init||null;return run('this.worker.fetch(new Request(__u,__i||undefined),env,{waitUntil(){}})')};
   let r=await page(link.toString());assert.equal(r.status,200);assert.match(await r.text(),/It closed at -129/);
   r=await page(`https://betthisguy.com/xdraft?k=${encodeURIComponent(link.searchParams.get('k'))}&t=nope`);assert.equal(r.status,404,'needs the token');
@@ -41,5 +51,13 @@ const run=c=>vm.runInContext(c,context),J=v=>JSON.parse(JSON.stringify(v)),setti
   // The queue fills the custom slot when it's free, one at a time.
   const raw=await run(`xQueuePromote(env,${now})`);assert.ok(JSON.parse(raw).text.includes('Malik Monk'));assert.equal(JSON.parse(setting('x-queue')).length,0);
   assert.ok(setting('x-custom-post'),'moved into the post slot');
+  // A post about a pick (pickId) is held, with a push, if its player has been ruled out.
+  Object.assign(context.env,{X_API_KEY:'k',X_API_SECRET:'s',X_ACCESS_TOKEN:'t',X_ACCESS_SECRET:'a'});
+  db.exec("CREATE TABLE IF NOT EXISTS injuries (id TEXT PRIMARY KEY, player TEXT, team TEXT, position TEXT, status TEXT, detail TEXT, reported_at TEXT, fetched_at TEXT)");
+  db.prepare("INSERT INTO injuries (id,player,status) VALUES ('NBA|austinreaves','Austin Reaves','Out')").run();
+  db.prepare("DELETE FROM app_settings WHERE key='x-custom-post'").run();
+  db.prepare("INSERT INTO app_settings (key,value) VALUES ('x-custom-post',?)").run(JSON.stringify({text:'Austin Reaves Under 3.5 rebounds at +119. Over or Under?',id:'reaves-test',pickId:'nba|x|reaves'}));
+  const held=J(await run(`postCustomToX(env,${now})`));assert.equal(held.held,'Austin Reaves is ruled out','held, not posted');
+  assert.equal(setting('x-custom-post'),undefined,'taken out of the slot');assert.equal(pushes.at(-1).title,'X post held');
   console.log('PASS: X drafts: receipt, bad beat, live sweat and injury drafts pushed with a Post / Skip link (token needed); Post queues it; the queue fills the post slot');
 })().catch(e=>{console.error(e);process.exit(1)});
