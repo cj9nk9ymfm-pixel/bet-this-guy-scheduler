@@ -20,12 +20,15 @@ const add=(id,o)=>db.prepare("INSERT INTO public_recommendations (id,kind,sport,
   add('nba|t|reaves',reaves);
   add('nba|t|push',{player:'Real Push',market:'Points',side:'Over',line:20,odds:-110,gt:'2026-11-10T00:10:00Z',status:'final',result:'push',settled:'2026-11-10T03:00:00Z',leg:{actualValue:20,result:'push'}});
   add('nba|t|booker',{player:'Devin Booker',market:'Assists',side:'Over',line:4.5,odds:-115,gt:'2026-11-10T02:10:00Z',status:'pending'});
+  add('nba|t|dnp',{player:'Bench Guy',market:'Assists',side:'Over',line:1.5,odds:110,gt:'2026-11-01T22:10:00Z',status:'final',result:'push',settled:'2026-11-02T03:00:00Z',leg:{player:'Bench Guy',sport:'NBA',voided:true,result:'push'}});
+  add('nba|t|zero',{player:'One Minute',market:'Points',side:'Over',line:0.5,odds:-200,gt:'2026-11-01T22:10:00Z',status:'final',result:'lost',settled:'2026-11-02T03:00:00Z',leg:{player:'One Minute',sport:'NBA',actualValue:0,minutes:1,result:'lost'}});
   db.prepare("INSERT INTO prediction_picks (id,exchange,event_id,player,market,side,line,odds,game_time,result,void_reason) VALUES ('pm|NBA--g|x','Novig','NBA--g','Out Guy','Points','Over',10.5,100,'2026-11-10T00:10:00Z','void','Ruled out (Knee)')").run();
   // The follow-up reply first: a posted pick waits for it (up to 3 hours).
   set('xid:nba|t|reaves','123');
   assert.equal(run(`xScratched(${JSON.stringify({kind:'prop',result:'push',legs_json:JSON.stringify([reaves.leg])})})`),true);
   let out=J(await run(`scratchRuledOut(env,${Date.parse('2026-11-09T23:00:00Z')})`));
-  assert.deepEqual(out.players,['Out Guy'],'the posted pick waits for its reply; the app pick goes');
+  assert.deepEqual(out.players.sort(),['Bench Guy','Out Guy'],'the posted pick waits for its reply; the app pick and the did-not-play go');
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM public_recommendations WHERE id='nba|t|zero'").get().n,1,'played a minute with no stat: it counts');
   set('x-nba-r:nba|t|reaves','2026-11-09T23:36:00Z');
   out=J(await run(`scratchRuledOut(env,${now})`));
   assert.deepEqual(out.players,['Austin Reaves'],'once the reply is up, the pick comes off the record');
