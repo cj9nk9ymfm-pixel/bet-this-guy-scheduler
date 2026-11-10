@@ -51,6 +51,15 @@ const run=c=>vm.runInContext(c,context),J=v=>JSON.parse(JSON.stringify(v)),setti
   // The queue fills the custom slot when it's free, one at a time.
   const raw=await run(`xQueuePromote(env,${now})`);assert.ok(JSON.parse(raw).text.includes('Malik Monk'));assert.equal(JSON.parse(setting('x-queue')).length,0);
   assert.ok(setting('x-custom-post'),'moved into the post slot');
+  // waitFor: a queued post waits for its pick to win; a loss drops it with a push.
+  db.prepare("DELETE FROM app_settings WHERE key='x-custom-post'").run();
+  db.prepare("INSERT OR REPLACE INTO app_settings (key,value) VALUES ('x-queue',?)").run(JSON.stringify([{text:'10 in a row',id:'ten',waitFor:{pickId:'nba|x|booker',result:'won'}}]));
+  assert.equal(await run(`xQueuePromote(env,${now})`),null,'waits while the pick is open');
+  db.prepare("UPDATE public_recommendations SET result='won',status='provisional' WHERE id='nba|x|booker'").run();
+  assert.ok(JSON.parse(await run(`xQueuePromote(env,${now})`)).text==='10 in a row','posts the moment it wins');
+  db.prepare("DELETE FROM app_settings WHERE key='x-custom-post'").run();
+  db.prepare("INSERT OR REPLACE INTO app_settings (key,value) VALUES ('x-queue',?)").run(JSON.stringify([{text:'streak',id:'s2',waitFor:{pickId:'nba|x|acuff',result:'won'}}]));
+  assert.equal(await run(`xQueuePromote(env,${now})`),null);assert.equal(JSON.parse(setting('x-queue')).length,0,'a loss drops it');assert.equal(pushes.at(-1).title,'X post dropped');
   // A post about a pick (pickId) is held, with a push, if its player has been ruled out.
   Object.assign(context.env,{X_API_KEY:'k',X_API_SECRET:'s',X_ACCESS_TOKEN:'t',X_ACCESS_SECRET:'a'});
   db.exec("CREATE TABLE IF NOT EXISTS injuries (id TEXT PRIMARY KEY, player TEXT, team TEXT, position TEXT, status TEXT, detail TEXT, reported_at TEXT, fetched_at TEXT)");
