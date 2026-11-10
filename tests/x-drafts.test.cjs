@@ -60,6 +60,12 @@ const run=c=>vm.runInContext(c,context),J=v=>JSON.parse(JSON.stringify(v)),setti
   db.prepare("DELETE FROM app_settings WHERE key='x-custom-post'").run();
   db.prepare("INSERT OR REPLACE INTO app_settings (key,value) VALUES ('x-queue',?)").run(JSON.stringify([{text:'streak',id:'s2',waitFor:{pickId:'nba|x|acuff',result:'won'}}]));
   assert.equal(await run(`xQueuePromote(env,${now})`),null);assert.equal(JSON.parse(setting('x-queue')).length,0,'a loss drops it');assert.equal(pushes.at(-1).title,'X post dropped');
+  // Several picks: waits until every one has won.
+  db.prepare("DELETE FROM app_settings WHERE key='x-custom-post'").run();
+  db.prepare("INSERT OR REPLACE INTO app_settings (key,value) VALUES ('x-queue',?)").run(JSON.stringify([{text:'perfect night',id:'p7',waitFor:{picks:['nba|x|booker','nba|x|reid'],result:'won'}}]));
+  assert.equal(await run(`xQueuePromote(env,${now})`),null,'Reid still open');
+  db.prepare("UPDATE public_recommendations SET result='won' WHERE id='nba|x|reid'").run();
+  assert.equal(JSON.parse(await run(`xQueuePromote(env,${now})`)).text,'perfect night','both won');
   // A post about a pick (pickId) is held, with a push, if its player has been ruled out.
   Object.assign(context.env,{X_API_KEY:'k',X_API_SECRET:'s',X_ACCESS_TOKEN:'t',X_ACCESS_SECRET:'a'});
   db.exec("CREATE TABLE IF NOT EXISTS injuries (id TEXT PRIMARY KEY, player TEXT, team TEXT, position TEXT, status TEXT, detail TEXT, reported_at TEXT, fetched_at TEXT)");

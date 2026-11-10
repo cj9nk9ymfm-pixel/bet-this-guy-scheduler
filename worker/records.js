@@ -1016,10 +1016,13 @@ async function xQueuePromote(env,now=Date.now()){
   const ready=[];let changed=false;
   for(const x of q){
     if(!x.waitFor){ready.push(true);continue}
-    const pk=await env.DB.prepare('SELECT player,result FROM public_recommendations WHERE id=?').bind(String(x.waitFor.pickId||'')).first().catch(()=>null);
-    if(pk&&pk.result&&pk.result!==(x.waitFor.result||'won')){x.drop=true;changed=true;
-      if(env.ALERT_NTFY_TOPIC)await fetch('https://ntfy.sh/'+encodeURIComponent(env.ALERT_NTFY_TOPIC),{method:'POST',headers:{Title:'X post dropped',Tags:'no_entry'},body:`Not posted: ${pk.player} ${pk.result==='push'?'was voided':'missed'}.\n\n${x.text}`,signal:AbortSignal.timeout(10000)}).catch(()=>{});}
-    ready.push(Boolean(pk&&pk.result===(x.waitFor.result||'won')));
+    // One pick (pickId) or several (picks): sportsbook ids, or prediction-app ids (pm|...).
+    const want=x.waitFor.result||'won',ids=[...(Array.isArray(x.waitFor.picks)?x.waitFor.picks:[]),...(x.waitFor.pickId?[x.waitFor.pickId]:[])].map(String);
+    const got=await Promise.all(ids.map(id=>id.startsWith('pm|')?env.DB.prepare("SELECT player,CASE WHEN void_reason IS NOT NULL THEN 'push' ELSE result END AS result FROM prediction_picks WHERE id=?").bind(id).first().catch(()=>null):env.DB.prepare('SELECT player,result FROM public_recommendations WHERE id=?').bind(id).first().catch(()=>null)));
+    const bad=got.find(pk=>pk&&pk.result&&pk.result!==want);
+    if(bad){x.drop=true;changed=true;
+      if(env.ALERT_NTFY_TOPIC)await fetch('https://ntfy.sh/'+encodeURIComponent(env.ALERT_NTFY_TOPIC),{method:'POST',headers:{Title:'X post dropped',Tags:'no_entry'},body:`Not posted: ${bad.player} ${bad.result==='push'?'was voided':'missed'}.\n\n${x.text}`,signal:AbortSignal.timeout(10000)}).catch(()=>{});}
+    ready.push(Boolean(ids.length&&got.every(pk=>pk&&pk.result===want)));
   }
   if(changed){const keep=q.filter(x=>!x.drop);if(keep.length!==q.length){q=keep;await setAppSetting(env,'x-queue',JSON.stringify(q));return xQueuePromote(env,now)}}
   const i=q.findIndex((x,j)=>ready[j]&&(!x.at||Date.parse(x.at)<=now));if(i<0)return null;
