@@ -1010,7 +1010,19 @@ async function gradePredictionNow(env,now=Date.now()){
 // slot is free, the first one that's due moves into it and posts on that run.
 async function xQueuePromote(env,now=Date.now()){
   let q=[];try{q=JSON.parse(await appSetting(env,'x-queue')||'[]')}catch{}
-  const i=q.findIndex(x=>!x.at||Date.parse(x.at)<=now);if(i<0)return null;
+  // waitFor (Nov 9, Tim: post the second the last pick wins): {pickId, result:'won'}.
+  // The item waits until that pick is graded (an Over decided early counts); a
+  // different result drops it, with a push saying why.
+  const ready=[];let changed=false;
+  for(const x of q){
+    if(!x.waitFor){ready.push(true);continue}
+    const pk=await env.DB.prepare('SELECT player,result FROM public_recommendations WHERE id=?').bind(String(x.waitFor.pickId||'')).first().catch(()=>null);
+    if(pk&&pk.result&&pk.result!==(x.waitFor.result||'won')){x.drop=true;changed=true;
+      if(env.ALERT_NTFY_TOPIC)await fetch('https://ntfy.sh/'+encodeURIComponent(env.ALERT_NTFY_TOPIC),{method:'POST',headers:{Title:'X post dropped',Tags:'no_entry'},body:`Not posted: ${pk.player} ${pk.result==='push'?'was voided':'missed'}.\n\n${x.text}`,signal:AbortSignal.timeout(10000)}).catch(()=>{});}
+    ready.push(Boolean(pk&&pk.result===(x.waitFor.result||'won')));
+  }
+  if(changed){const keep=q.filter(x=>!x.drop);if(keep.length!==q.length){q=keep;await setAppSetting(env,'x-queue',JSON.stringify(q));return xQueuePromote(env,now)}}
+  const i=q.findIndex((x,j)=>ready[j]&&(!x.at||Date.parse(x.at)<=now));if(i<0)return null;
   const item=q.splice(i,1)[0],raw=JSON.stringify(item);
   await setAppSetting(env,'x-queue',JSON.stringify(q));
   const claim=await env.DB.prepare('INSERT OR IGNORE INTO app_settings (key,value) VALUES (?,?)').bind('x-custom-post',raw).run();
