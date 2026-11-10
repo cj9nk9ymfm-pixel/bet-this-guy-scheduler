@@ -32,10 +32,10 @@ const run=c=>vm.runInContext(c,context),J=v=>JSON.parse(JSON.stringify(v)),setti
   run('xOutMatters=async(env,sport,x)=>x.player!=="Bench Guy"');
   context.before=new Map([['traeyoung','Questionable'],['lukadoncic','Questionable']]);
   context.rows=[{player:'Trae Young',team:'Atlanta Hawks',status:'Out'},{player:'Bench Guy',team:'Charlotte Hornets',position:'F',status:'Out'},{player:'Moussa Diabate',team:'Charlotte Hornets',position:'C',status:'Out',detail:'Right Quadriceps'},{player:'Austin Reaves',team:'Los Angeles Lakers',status:'Out',detail:'Illness'}];
-  const before=pushes.length;assert.equal(await run(`draftInjuryPosts(env,'NBA',before,rows,${now})`),2,'Diabate (a teammate who plays) and Reaves (our own pick); not the opponent or the bench guy');
+  const before=pushes.length;assert.equal(await run(`draftInjuryPosts(env,'NBA',before,rows,${now})`),1,'Diabate (a teammate who plays); not the opponent or the bench guy, and not Reaves (our own pick: its follow-up posts on its own)');
   const inj=pushes.slice(before);
   assert.ok(inj.some(p=>/Moussa Diabate is OUT tonight\.\n\nWe're on Naz Reid Over 8\.5 rebounds \(\+105\)\. One less big on the floor\. More boards to go around\./.test(p.body)),'the teammate reason line');
-  assert.ok(inj.some(p=>/Austin Reaves is OUT tonight\. Our pick on him is void/.test(p.body)),'the void notice');
+  assert.ok(!inj.some(p=>/Austin Reaves is OUT/.test(p.body)),'no draft for our own pick\'s player');
   assert.ok(inj.every(p=>/\/xdraft\/img\?k=/.test(p.attach||'')),'the OUT card rides along as the picture');
   const svg=db.prepare("SELECT value FROM app_settings WHERE key LIKE 'x-draft-svg:injury:NBA:moussadiabate%'").get().value;
   assert.ok(svg.includes('>OUT<')&&svg.includes('Moussa Diabate')&&svg.includes('OUR PICK IN THIS GAME')&&svg.includes('One less big on the floor'),'the card: OUT stamp, the player, our pick, the reason');
