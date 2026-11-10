@@ -3280,7 +3280,7 @@ function statsProp(l){
   const lvProp=(r,l)=>statsProp({...l,sport:l.sport||recSport(r,undefined),eventId:l.eventId||r.event_id,player:l.player||r.player,market:l.market||r.market,line:l.line??r.line,side:l.side||r.side,gameTime:l.gameTime||r.game_time});
   const lvState=(r,l)=>{try{return window.BTGLive.legStatus(lvProp(r,l))}catch{return null}};
   const lvUnit=m=>window.BTGLive?.shortUnit?window.BTGLive.shortUnit(m):String(m||'').toLowerCase();
-  function lvPicks(){const seen=new Set();return [...(window.BTGOfficialRows?.()||[]),...[...(data?.pmPicks||[]),...(data?.pmParlays||[])].map(pmRecord)].filter(r=>r&&!seen.has(r.id)&&seen.add(r.id)&&Date.now()-Date.parse(r.game_time)<10*3600000&&Date.parse(r.game_time)-Date.now()<20*3600000)}
+  function lvPicks(){const seen=new Set();return [...(window.BTGOfficialRows?.()||[]),...[...(data?.pmPicks||[]),...(data?.pmParlays||[])].map(pmRecord)].filter(r=>r&&!seen.has(r.id)&&seen.add(r.id)&&Date.now()-Date.parse(r.game_time)<10*3600000&&Date.parse(r.game_time)-Date.now()<20*3600000&&!(r.kind!=='parlay'&&lvLegs(r)[0]?.voided))}
   window.btgLivePickCount=game=>lvPicks().filter(r=>lvLegs(r).some(l=>String(lvGame(r,l)?.id)===String(game?.id))).length;
   function lvLine(prop,s){
     const line=Number(prop.line),v=s?.value,under=String(prop.side)==='Under',u=lvUnit(prop.market),need=Math.floor(line)+1;

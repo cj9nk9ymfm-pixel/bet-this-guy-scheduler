@@ -1017,12 +1017,10 @@ async function xQueuePromote(env,now=Date.now()){
   for(const x of q){
     if(!x.waitFor){ready.push(true);continue}
     // One pick (pickId) or several (picks): sportsbook ids, or prediction-app ids (pm|...).
-    const want=x.waitFor.result||'won',ids=[...(Array.isArray(x.waitFor.picks)?x.waitFor.picks:[]),...(x.waitFor.pickId?[x.waitFor.pickId]:[])].map(String);
-    const got=await Promise.all(ids.map(id=>id.startsWith('pm|')?env.DB.prepare("SELECT player,CASE WHEN void_reason IS NOT NULL THEN 'push' ELSE result END AS result FROM prediction_picks WHERE id=?").bind(id).first().catch(()=>null):env.DB.prepare('SELECT player,result FROM public_recommendations WHERE id=?').bind(id).first().catch(()=>null)));
-    const bad=got.find(pk=>pk&&pk.result&&pk.result!==want);
+    const {bad,ready:ok}=await waitForPicks(env,x.waitFor);
     if(bad){x.drop=true;changed=true;
       if(env.ALERT_NTFY_TOPIC)await fetch('https://ntfy.sh/'+encodeURIComponent(env.ALERT_NTFY_TOPIC),{method:'POST',headers:{Title:'X post dropped',Tags:'no_entry'},body:`Not posted: ${bad.player} ${bad.result==='push'?'was voided':'missed'}.\n\n${x.text}`,signal:AbortSignal.timeout(10000)}).catch(()=>{});}
-    ready.push(Boolean(ids.length&&got.every(pk=>pk&&pk.result===want)));
+    ready.push(ok);
   }
   if(changed){const keep=q.filter(x=>!x.drop);if(keep.length!==q.length){q=keep;await setAppSetting(env,'x-queue',JSON.stringify(q));return xQueuePromote(env,now)}}
   const i=q.findIndex((x,j)=>ready[j]&&(!x.at||Date.parse(x.at)<=now));if(i<0)return null;
@@ -1030,6 +1028,22 @@ async function xQueuePromote(env,now=Date.now()){
   await setAppSetting(env,'x-queue',JSON.stringify(q));
   const claim=await env.DB.prepare('INSERT OR IGNORE INTO app_settings (key,value) VALUES (?,?)').bind('x-custom-post',raw).run();
   return Number(claim?.meta?.changes??claim?.changes)?raw:null;
+}
+// A pick's player and result by id: a sportsbook pick, a prediction-app pick (pm|...),
+// or one scratched off the record (ruled out: counts as void).
+async function pickResult(env,id){
+  id=String(id);
+  const pk=id.startsWith('pm|')?await env.DB.prepare("SELECT player,CASE WHEN void_reason IS NOT NULL THEN 'push' ELSE result END AS result FROM prediction_picks WHERE id=?").bind(id).first().catch(()=>null):await env.DB.prepare('SELECT player,result FROM public_recommendations WHERE id=?').bind(id).first().catch(()=>null);
+  if(pk)return pk;
+  let x=null;try{x=JSON.parse(await appSetting(env,`scratched:${id}`)||'null')}catch{}
+  return x?.row?{player:x.row.player,result:'push',scratched:true}:null;
+}
+// waitFor {pickId | picks:[...], result:'won'}: ready once every pick has that result;
+// bad is the first pick graded otherwise (then the post or email is dropped).
+async function waitForPicks(env,w){
+  const want=w.result||'won',ids=[...(Array.isArray(w.picks)?w.picks:[]),...(w.pickId?[w.pickId]:[])].map(String);
+  const got=await Promise.all(ids.map(id=>pickResult(env,id)));
+  return {bad:got.find(pk=>pk&&pk.result&&pk.result!==want)||null,ready:Boolean(ids.length&&got.every(pk=>pk&&pk.result===want))};
 }
 async function xQueueAdd(env,item){let q=[];try{q=JSON.parse(await appSetting(env,'x-queue')||'[]')}catch{}if(!q.some(x=>x.id&&x.id===item.id))q.push(item);await setAppSetting(env,'x-queue',JSON.stringify(q.slice(-20)))}
 // Auto-drafts (Nov 9, Tim): receipts, bad beats, live sweats and injury heads-ups
@@ -1121,6 +1135,16 @@ function xOutReason(pos,sport,market,side){
   const unit=OUT_UNITS[market]||'stats',who=sport==='NBA'?(/C|F/.test(pos)?(/C/.test(pos)?'big':'forward'):'guard'):({QB:'quarterback',RB:'back',WR:'receiver',TE:'tight end'}[pos]||'starter');
   return side==='Over'?`One less ${who} on the ${sport==='NBA'?'floor':'field'}. More ${unit} to go around.`:'';
 }
+// A single whose player was ruled out (scratched off the record once its reply is up).
+function xScratched(r){const legs=recordLegs(r);return r.kind!=='parlay'&&r.result==='push'&&legs.length>0&&legs.every(l=>l.voided&&/^ruled out/i.test(String(l.voidReason||'')))}
+async function xScratchSvg(r){
+  const leg=recordLegs(r)[0]||{},sport=String(r.id||'').startsWith('nba|')?'NBA':'NFL';
+  const shot=typeof playerHeadshot==='function'?await playerHeadshot(r.player,sport,true).catch(()=>null):null,photo=shot?.bytes?{type:shot.type||'image/png',b64:xBase64(shot.bytes)}:null;
+  const game=String(leg.team||'').replace(' · @ ',' @ ').replace(' · vs ',' vs ');
+  const when=new Date(r.game_time).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/Los_Angeles'})+' PT';
+  const detail=(String(leg.voidReason||'').match(/\(([^)]+)\)/)||[])[1]||'';
+  return xOutSvg({sport,game:[typeof compactGameName==='function'?compactGameName(game):game,when].filter(Boolean).join(' · '),name:r.player,photo,sub:[String(leg.team||'').split(' · ')[0],detail,'ruled out tonight'].filter(Boolean).join(' · '),void:true,reason:'',pick:{name:r.player,bet:weeklyLegText(r),price:weeklyOdds(r.odds),book:leg.book||'',photo}});
+}
 function xOutSvg(d){
   const W=1200,H=1420,M='#2ee6a8',RED='#ff4d5e',G='#fdbb30',F={g:'BTG Grotesk',xb:'BTG Inter XB',sb:'BTG Inter SB'},cx=W/2;
   const ph=(p,x,y,w,h,clip,extra='')=>p?`<image href="data:${p.type};base64,${p.b64}" x="${x}" y="${y}" width="${w}" height="${h}" preserveAspectRatio="xMidYMax meet" clip-path="url(#${clip})"${extra}/>`:'';
@@ -1175,7 +1199,9 @@ async function draftInjuryPosts(env,sport,before,rows,now=Date.now()){
     const inGame=picks.filter(r=>normalizedName(recordLegs(r)[0]?.team||'').includes(team));if(!inGame.length)continue;
     const self=inGame.find(r=>normalizedName(r.player)===normalizedName(x.player));
     const mate=self?null:inGame.find(r=>normalizedName(teams.get(normalizedName(r.player))||'')===team);
-    const pick=self||mate;if(!pick)continue;
+    // Our own pick's player (Nov 10): the follow-up reply posts on its own and the pick comes off the record.
+    if(self)continue;
+    const pick=mate;if(!pick)continue;
     if(!self&&!(await xOutMatters(env,sport,x).catch(()=>false)))continue;
     const leg=recordLegs(pick)[0]||{},bet=weeklyLegText(pick),reason=self?'':xOutReason(String(x.position||'').toUpperCase(),sport,pick.market,pick.side);
     const text=self?`${x.player} is OUT tonight. Our pick on him is void: stake back, no win or loss.\n\nThat's how the books grade it too.`
@@ -1200,7 +1226,8 @@ async function postCustomToX(env,now=Date.now()){
   // Pick posts (Nov 9: a post went up about a player already ruled out): pickId names the
   // pick. If it's void or its player is Out now, the post is held and Tim gets a push.
   if(req.pickId&&(!req.at||now>=Date.parse(req.at))){
-    const pk=await env.DB.prepare('SELECT id,player,result,legs_json FROM public_recommendations WHERE id=?').bind(String(req.pickId)).first().catch(()=>null);
+    let pk=await env.DB.prepare('SELECT id,player,result,legs_json FROM public_recommendations WHERE id=?').bind(String(req.pickId)).first().catch(()=>null);
+    if(!pk){try{const sc=JSON.parse(await appSetting(env,`scratched:${req.pickId}`)||'null');if(sc?.row)pk=sc.row}catch{}}
     const sp=String(req.pickId).startsWith('nba|')?'NBA':'NFL',inj=pk?await env.DB.prepare('SELECT status FROM injuries WHERE id=?').bind(`${sp}|${normalizedName(pk.player)}`).first().catch(()=>null):null;
     const why=!pk?null:recordLegs(pk).some(l=>l.voided)||(pk.result==='push'&&recordLegs(pk).every(l=>l.voided))?'the pick is void':/^out$/i.test(String(inj?.status||''))?`${pk.player} is ruled out`:null;
     if(why){await env.DB.prepare('DELETE FROM app_settings WHERE key=? AND value=?').bind('x-custom-post',raw).run();await setAppSetting(env,`x-held:${req.id||Date.now()}`,JSON.stringify({why,req,at:new Date(now).toISOString()})).catch(()=>{});
@@ -1358,8 +1385,8 @@ async function voidRuledOut(env,now=Date.now()){
     if(r.kind==='parlay')statements.push(env.DB.prepare("UPDATE public_recommendations SET legs_json=? WHERE id=? AND status IN ('pending','provisional')").bind(JSON.stringify(legs),r.id));
     else statements.push(env.DB.prepare("UPDATE public_recommendations SET status='final',result='push',settled_at=?,legs_json=? WHERE id=? AND status IN ('pending','provisional')").bind(stamp,JSON.stringify(legs),r.id));
   }
-  const picks=(await env.DB.prepare('SELECT id,player,game_time FROM prediction_picks WHERE result IS NULL AND game_time<=? AND game_time>?').bind(soon,old).all().catch(()=>({results:[]}))).results||[];
-  for(const r of picks){const i=ruledOut('NFL',r.player,r.game_time);if(!i)continue;voided.push(r.player);statements.push(env.DB.prepare('UPDATE prediction_picks SET result=?,void_reason=?,graded_at=? WHERE id=? AND result IS NULL').bind('void',voidReason(i),stamp,r.id))}
+  const picks=(await env.DB.prepare('SELECT id,event_id,player,game_time FROM prediction_picks WHERE result IS NULL AND game_time<=? AND game_time>?').bind(soon,old).all().catch(()=>({results:[]}))).results||[];
+  for(const r of picks){const i=ruledOut(String(r.event_id||'').startsWith('NBA--')?'NBA':'NFL',r.player,r.game_time);if(!i)continue;voided.push(r.player);statements.push(env.DB.prepare('UPDATE prediction_picks SET result=?,void_reason=?,graded_at=? WHERE id=? AND result IS NULL').bind('void',voidReason(i),stamp,r.id))}
   const parlays=(await env.DB.prepare('SELECT id,legs_json FROM prediction_parlays WHERE result IS NULL AND game_time>?').bind(old).all().catch(()=>({results:[]}))).results||[];
   for(const r of parlays){
     let legs;try{legs=JSON.parse(r.legs_json||'[]')}catch{continue}
@@ -1369,6 +1396,28 @@ async function voidRuledOut(env,now=Date.now()){
   }
   if(statements.length)await env.DB.batch(statements);
   return {voided:voided.length,players:[...new Set(voided)]};
+}
+// Ruled out before the game (Nov 10, Tim): the pick comes off the record as if it
+// was never a play. A sportsbook pick with an X post waits for its follow-up reply
+// (x-nba-r, up to 3 hours); then the row is copied to app_settings scratched:<id>
+// (followers' alerts and queued posts still find it there) and deleted.
+async function scratchRuledOut(env,now=Date.now()){
+  if(!env.DB)return {scratched:0};
+  const out=/^ruled out/i;
+  const sb=((await env.DB.prepare("SELECT * FROM public_recommendations WHERE kind='prop' AND result='push' AND legs_json LIKE '%\"voided\":true%'").all().catch(()=>({results:[]}))).results)||[];
+  const pm=((await env.DB.prepare('SELECT * FROM prediction_picks WHERE void_reason IS NOT NULL').all().catch(()=>({results:[]}))).results)||[];
+  const go=[];
+  for(const r of sb){
+    const legs=recordLegs(r);if(!legs.length||!legs.every(l=>l.voided&&out.test(String(l.voidReason||''))))continue;
+    if(String(r.id).startsWith('nba|')&&await appSetting(env,`xid:${r.id}`)&&!(await appSetting(env,`x-nba-r:${r.id}`))&&now-Date.parse(r.settled_at||'')<3*3600000)continue;
+    go.push(['public_recommendations',r]);
+  }
+  for(const r of pm)if(out.test(String(r.void_reason)))go.push(['prediction_picks',r]);
+  for(const [table,r] of go){
+    await setAppSetting(env,`scratched:${r.id}`,JSON.stringify({table,row:r,at:new Date(now).toISOString()}));
+    await env.DB.prepare(`DELETE FROM ${table} WHERE id=?`).bind(r.id).run();
+  }
+  return {scratched:go.length,players:go.map(([,r])=>r.player)};
 }
 // Boards without the props of players listed Out or Doubtful, so no pick,
 // lean or test lands on someone who isn't expected to play.
@@ -3896,10 +3945,17 @@ async function sendBlastEmail(env,now=Date.now()){
   if(!env.DB||!env.RESEND_API_KEY)return {none:true};
   let m=null;try{m=JSON.parse(await appSetting(env,'email-blast')||'null')}catch{}
   if(!m||!/^[\w-]{1,40}$/.test(String(m.id||''))||!m.subject||!m.lede)return {none:true};
-  const key=`email-blast-sent:${m.id}`;if(!(await xClaim(env,key,now)))return {done:true};
+  const key=`email-blast-sent:${m.id}`;
+  // waitFor (Nov 10, Tim: send the email thread when the perfect night hits): wait for
+  // those picks to win; if one doesn't, the email is dropped with a push.
+  if(m.waitFor&&!(await appSetting(env,key))){const {bad,ready}=await waitForPicks(env,m.waitFor);
+    if(bad){await setAppSetting(env,key,`dropped ${new Date(now).toISOString()}`);if(env.ALERT_NTFY_TOPIC)await fetch('https://ntfy.sh/'+encodeURIComponent(env.ALERT_NTFY_TOPIC),{method:'POST',headers:{Title:'Email dropped',Tags:'no_entry'},body:`Not sent: ${bad.player} ${bad.result==='push'?'was voided':'missed'}.\n\n${m.subject}`,signal:AbortSignal.timeout(10000)}).catch(()=>{});return {dropped:bad.player}}
+    if(!ready)return {waiting:true}}
+  if(!(await xClaim(env,key,now)))return {done:true};
   const ids=(Array.isArray(m.ids)?m.ids:[]).map(String).slice(0,30);
-  const found=ids.length?((await env.DB.prepare(`SELECT * FROM public_recommendations WHERE id IN (${ids.map(()=>'?').join(',')})`).bind(...ids).all()).results||[]):[];
-  const rows=ids.map(id=>found.find(r=>r.id===id)).filter(Boolean);
+  const sbIds=ids.filter(id=>!id.startsWith('pm|')),found=sbIds.length?((await env.DB.prepare(`SELECT * FROM public_recommendations WHERE id IN (${sbIds.map(()=>'?').join(',')})`).bind(...sbIds).all()).results||[]):[];
+  const pmFound=await Promise.all(ids.filter(id=>id.startsWith('pm|')).map(id=>followRecord(env,id).catch(()=>null)));
+  const rows=ids.map(id=>found.find(r=>r.id===id)||pmFound.find(r=>r?.id===id)).filter(Boolean);
   const img=/^[\w.-]+\.png$/.test(String(m.image||''))?`${SITE_URL}/x/${m.image}`:'';
   const heroHtml=img?`<a href="${SITE_URL}/" style="text-decoration:none;"><img src="${img}" width="472" alt="${weeklyEscape(m.heading||m.subject)}" style="display:block;width:100%;height:auto;border:0;border-radius:14px;margin:6px 0 16px;"></a>`:'';
   const from=env.EMAIL_FROM||EMAIL_ALERT_FROM,postal=String(env.EMAIL_POSTAL_ADDRESS||'').trim(),subject=String(m.subject).slice(0,200);
@@ -3980,6 +4036,15 @@ async function followEmail(env,uid,r,note){
   return res.ok;
 }
 async function followRecord(env,id){
+  const live=await followRecordLive(env,id);if(live)return live;
+  let sc=null;try{sc=JSON.parse(await appSetting(env,`scratched:${id}`)||'null')}catch{}
+  if(!sc?.row)return null;const p=sc.row;
+  if(sc.table!=='prediction_picks')return {...p,result:'push'};
+  const sport=String(p.event_id||'').startsWith('NBA--')?'NBA':'NFL';
+  return {id:p.id,kind:'prop',sport,player:p.player,market:p.market,side:p.side,line:p.line,odds:p.odds,net_odds:p.net_odds,result:'push',game_time:p.game_time,pm:{exchange:p.exchange},
+    legs_json:JSON.stringify([{player:p.player,market:p.market,side:p.side,line:p.line,odds:p.odds,team:p.team||'',sport,book:p.exchange,voided:true,voidReason:p.void_reason}])};
+}
+async function followRecordLive(env,id){
   if(!String(id).startsWith('pm|'))return env.DB.prepare("SELECT id,kind,player,market,side,line,odds,combined_odds,legs_json,result,game_time FROM public_recommendations WHERE id=? AND source='market-verified-v2'").bind(id).first();
   const p=await env.DB.prepare('SELECT * FROM prediction_picks WHERE id=?').bind(id).first();if(!p)return null;
   const sport=String(p.event_id||'').startsWith('NBA--')?'NBA':'NFL',voided=Boolean(p.void_reason);
@@ -5837,7 +5902,9 @@ async function postNbaRepliesToX(env,now=Date.now(),limit=2){
     const jobs=[
       ...leanAdded,
       ...rows.filter(r=>!lean&&Date.parse(r.game_time)>now).map(r=>({key:`x-nba-pick:${r.id}`,kind:'added',save:r.id,media:async()=>xUploadImage(env,await renderCardPng(xPickSvg(await xCardData(env,r,await nbaRecordSummary(env))))),text:()=>`🔒 Added for the late games:\n${nbaLine(r)}\n\nLocked before tip-off. 21+`})),
-      ...rows.filter(nbaDecided).filter(r=>every||xTopPick(r)||(lean&&r.kind==='parlay')).map(r=>({key:`x-nba-r:${r.id}`,kind:'results',pick:r.id,media:async()=>xUploadImage(env,await renderCardPng(xPickSvg(await xResultData(env,r,await nbaRecordSummary(env))))),text:()=>{const legs=recordLegs(r),f=legs[0]||{},[e,w]=r.result==='push'&&legs.every(l=>l.voided)?['➖','NO ACTION']:look[r.result],stake=r.kind==='parlay'?25:100,d=recordDecimal(r.kind==='parlay'?r.combined_odds:r.odds),win=r.result==='won'?stake*(d-1):r.result==='lost'?-stake:0,unit=String(r.market||'').toLowerCase();
+      ...rows.filter(nbaDecided).filter(r=>every||xTopPick(r)||xScratched(r)||(lean&&r.kind==='parlay')).map(r=>({key:`x-nba-r:${r.id}`,kind:'results',pick:r.id,media:async()=>xUploadImage(env,await renderCardPng(xScratched(r)?await xScratchSvg(r):xPickSvg(await xResultData(env,r,await nbaRecordSummary(env))))),text:()=>{const legs=recordLegs(r),f=legs[0]||{};
+        if(xScratched(r))return `➖ PICK PULLED: ${r.player} ${weeklyLegText(r)}\n${r.player} was ruled out before tip-off${/\(([^)]+)\)/.test(String(f.voidReason||''))?` (${String(f.voidReason).match(/\(([^)]+)\)/)[1].toLowerCase()})`:''}.\n\nIt comes off our record: no win, no loss. Books void it too, so your stake comes back.`;
+        const [e,w]=r.result==='push'&&legs.every(l=>l.voided)?['➖','NO ACTION']:look[r.result],stake=r.kind==='parlay'?25:100,d=recordDecimal(r.kind==='parlay'?r.combined_odds:r.odds),win=r.result==='won'?stake*(d-1):r.result==='lost'?-stake:0,unit=String(r.market||'').toLowerCase();
         if(r.kind==='parlay')return `${e} ${w}: ${legs.length}-leg parlay (${weeklyOdds(r.combined_odds)})\n${legs.map(l=>`${l.result==='won'?'✅':l.result==='lost'?'❌':'➖'} ${l.player} ${weeklyLegText(l)}`).join('\n')}\n${r.result==='push'?'Stake back.':`${weeklyMoney(win)} on a $25 ticket.`}`;
         return `${e} ${w}: ${r.player} ${weeklyLegText(r)} (${weeklyOdds(r.odds)})${f.voided?`\n${r.player} didn’t play: no action, stake back.`:f.actualValue!=null?`\n${r.status!=='final'&&f.decidedEarly?'Already':'Final:'} ${f.actualValue} ${Number(f.actualValue)===1?unit.replace(/s$/,''):unit}${r.status!=='final'&&f.decidedEarly?', with the game still on.':'.'}`:''}${r.result==='push'?'':`\n${weeklyMoney(win)} on a $100 pick.`}`}}))
     ];
