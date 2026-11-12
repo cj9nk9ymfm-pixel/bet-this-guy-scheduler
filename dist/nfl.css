@@ -2765,3 +2765,42 @@ html body.light .on-passed{background:#f8fafc;border-color:#cbd5e1;color:#475569
 
 /* No play yet (Nov 9): the passed line sits above the collapsed picks. */
 .on-passed.on-passed-top{margin:0 2px 12px}
+
+/* Nov 12 visual refresh (Tim: make the site look like the X graphics). Fewer boxes, color only
+   for meaning (green wins/money, red losses, blue actions), the graphics' number font, a little motion. */
+.pc{border:0!important;background:#14181f!important;box-shadow:none!important}
+.pc:after{display:none}
+.pc2 .pc-head{opacity:.85}
+.pc-why1{display:block;margin:10px 0 0;font-size:14px;color:#c9d2de;line-height:1.35}
+.pc-why1 b{font:700 18px "Space Grotesk",sans-serif;color:#2bd97c;margin-right:4px}
+.pc2 .pc-edge{font-size:12.5px;color:#8b97a8}
+.pc2 .pc-foot span:empty{display:none}
+.pc2 .pc-price{border:0!important;background:#2f6bff!important;color:#fff!important}
+.pc2 .pc-price small{color:#dbe6ff!important}
+.pc2 .pc-ph{width:58px!important;height:58px!important}
+.rc{border:0!important}
+.rc-big{font-family:"Space Grotesk",sans-serif!important;letter-spacing:-1px}
+.hero-email{border:0!important;background:#14181f!important}
+.ln{display:block;margin:10px 0 12px;padding:12px 14px;border-radius:18px;background:#14181f;color:#f4f6f9;text-decoration:none}
+.ln-top{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.ln-eye{font:800 12px "DM Sans",sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#98a1ac}
+.ln-rec{font:700 26px "Space Grotesk",sans-serif;color:#f4f6f9}
+.ln-net{font:700 18px "Space Grotesk",sans-serif;color:#2bd97c}.ln-net.down{color:#f87171}
+.ln-3{font-style:normal;font-size:13px;color:#c9d2de;margin-left:auto}
+.ln-go{color:#7fb4ff;font-weight:800}
+.ln-faces{display:flex;gap:6px;margin-top:10px;overflow-x:auto;scrollbar-width:none}
+.ln-faces::-webkit-scrollbar{display:none}
+.ln-f{position:relative;flex:none;width:44px;height:44px;border-radius:50%;background:#222a35;overflow:visible;display:grid;place-items:center}
+.ln-f img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center top;border-radius:50%}
+.ln-f .ln-i{font:700 13px "DM Sans",sans-serif;color:#98a1ac}
+.ln-f.won{box-shadow:0 0 0 2px #2bd97c}.ln-f.lost{box-shadow:0 0 0 2px #f87171;opacity:.75}
+.ln-f i{position:absolute;right:-3px;bottom:-3px;width:18px;height:18px;border-radius:50%;display:grid;place-items:center;font:800 11px "DM Sans",sans-serif;font-style:normal;color:#07090d;background:#2bd97c;animation:lnpop .35s ease-out both}
+.ln-f.lost i{background:#f87171}
+@keyframes lnpop{0%{transform:scale(0)}70%{transform:scale(1.25)}100%{transform:scale(1)}}
+@media (prefers-reduced-motion: reduce){.ln-f i{animation:none}}
+html body #propsSection>.board-browse,.board-browse{display:grid!important;grid-template-columns:1fr auto;align-items:center;width:100%!important;margin:8px 0 0!important;padding:14px 16px!important;border:0!important;border-radius:16px!important;background:#14181f!important;color:#f4f6f9!important;text-align:left;white-space:normal!important}
+.board-browse b{font:700 16px "DM Sans",sans-serif;color:#f4f6f9}
+.board-browse small{grid-column:1;font:500 12.5px "DM Sans",sans-serif;color:#98a1ac;margin-top:2px}
+.board-browse .bb-go{grid-column:2;grid-row:1/span 2;color:#7fb4ff;font:800 20px "DM Sans",sans-serif}
+body.light .pc,body.light .ln,body.light .hero-email,html body.light #propsSection>.board-browse{background:#fff!important;color:#0f172a!important;box-shadow:0 8px 24px -18px rgba(15,23,42,.35)!important}
+body.light .ln-rec,body.light .board-browse b{color:#0f172a}body.light .pc-why1{color:#334155}

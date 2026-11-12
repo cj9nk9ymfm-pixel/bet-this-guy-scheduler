@@ -1605,13 +1605,18 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
         if(!rc){rc=document.createElement('a');rc.id='recCard';rc.className='rc'}
         rc.href=NBA?'/trust#nba':'/trust';hero.prepend(rc);hero.classList.add('has-rc');
         const all=window.btgAll(sea);
-        rc.innerHTML=recordCardHtml({lede:'We only bet when the sportsbook <em>gets the price wrong.</em>',eye:`${NBA?'NBA':'NFL'} sportsbook · every official pick`,profit:all.profit,wins:all.wins,losses:all.losses,pushes:all.pushes,sub:'singles at $100, parlays at $25',curve:sea.curve,beat:sea.beat,tracked:sea.tracked,chips:[`On X before ${NBA?'tip-off':'kickoff'}`,'Losses included','Free']});
+        setTimeout(()=>countUp(rc.querySelector('.rc-big')),0);rc.innerHTML=recordCardHtml({lede:'We only bet when the sportsbook <em>gets the price wrong.</em>',eye:`${NBA?'NBA':'NFL'} sportsbook · every official pick`,profit:all.profit,wins:all.wins,losses:all.losses,pushes:all.pushes,sub:'singles at $100, parlays at $25',curve:sea.curve,beat:sea.beat,tracked:sea.tracked,chips:[`On X before ${NBA?'tip-off':'kickoff'}`,'Losses included','Free']});
       }else{rc?.remove();hero.classList.remove('has-rc')}}
     // Running profit, every graded pick in order, and the latest results (wins and losses).
     {let box=$('#heroCurve');const pts=heroSeason?.curve||[];if(pts.length>=3){if(!box){box=document.createElement('div');box.id='heroCurve';box.className='hero-curve'}$('#heroStats').after(box);box.innerHTML=heroCurveSvg(pts)}else box?.remove()}
     {let tk=$('#heroTicker');const list=heroSeason?.latest||[];if(list.length){if(!tk){tk=document.createElement('div');tk.id='heroTicker';tk.className='hero-ticker'}hero.after(tk);
       const day=iso=>{const d=new Date(iso);return Number.isFinite(d.getTime())?d.toLocaleDateString([],{month:'short',day:'numeric'}):''};
       tk.innerHTML=`<span class="tk-label">Latest results</span><div class="tk-row">${list.map(r=>{const w=r.result==='won',l=r.result==='lost';return `<span class="tk-item ${w?'won':l?'lost':'push'}"><i aria-hidden="true">${w?'✓':l?'✗':'–'}</i><em>${htmlEscape(day(r.day))}</em><b>${htmlEscape(r.player||'')}</b> ${htmlEscape(r.bet||'')} <small>${htmlEscape(formatOdds(r.odds))}</small><strong>${htmlEscape(r.result==='push'?'push':money(r.pay))}</strong></span>`}).join('')}</div><a class="tk-all" href="/trust#official">Every pick ›</a>`}else tk?.remove()}
+    // Last night (Nov 12, Tim: make the proof the first thing people see): every graded pick
+    // from the latest night, sportsbook and prediction apps, as faces with a check or a cross,
+    // the night's record and the last three nights. Taps through to Results.
+    try{let ln=$('#lastNight');const strip=lastNightHtml(heroRows||[]);
+      if(strip){if(!ln){ln=document.createElement('a');ln.id='lastNight';ln.className='ln';hero.after(ln)}ln.href=NBA?'/trust#nba':'/trust';ln.innerHTML=strip}else ln?.remove()}catch{}
     // One email field right under the record: the simplest way to get picks (hidden once on email or push).
     {let em=$('#heroEmail');const on=/\b(email-on|alerts-on)\b/.test(document.documentElement.className);if(on){em?.remove()}else if(!em){em=document.createElement('section');em.id='heroEmail';em.className='hero-email';
       // Nov 10 (Tim): one version, the hook first, right under the record card (version c;
@@ -1621,7 +1626,7 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
       // The record bar keeps the real alerts button (hidden); this link presses it.
       em.querySelector('.he-alerts').onclick=()=>document.querySelector('#heroBanner [data-alerts-toggle]')?.click();
       // Right under the record card (Nov 10); the desktop rail keeps it beside the picks.
-      const rcEl=document.getElementById('recCard'),board=document.getElementById('propsSection'),rail=document.querySelector('.board.has-rail>.desk-rail');if(rail)rail.appendChild(em);else if(rcEl)hero.after(em);else if(board)board.before(em);else hero.after(em);
+      const rcEl=document.getElementById('recCard'),board=document.getElementById('propsSection'),rail=document.querySelector('.board.has-rail>.desk-rail');if(rail)rail.appendChild(em);else if(rcEl)(document.getElementById('lastNight')||hero).after(em);else if(board)board.before(em);else hero.after(em);
       let tries=0;const mount=()=>{if(window.BTGEmailSub?.inline){window.BTGEmailSub.inline(em,'homec');window.btgCount?.('email:home-shown-c')}else if(tries++<40)setTimeout(mount,50)};mount()}
       // Lead with the best pick still to play, so the sign-up shows what you'd get.
       if(em){const now=Date.now(),top=(heroRows||[]).filter(r=>r.kind==='prop'&&!r.result&&Date.parse(r.game_time||'')>now).map(r=>({r,edge:window.BTGPickRank?window.BTGPickRank(r):Number(recordLegs(r)[0]?.edge)||0})).sort((a,b)=>b.edge-a.edge)[0]?.r;
@@ -1684,7 +1689,8 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
   // Compact card (Nov 4, Tim): about half a phone screen. The price is the
   // add-to-slip button; the stat that backs the bet (the X post's stat) sits
   // under the bet; the edge is one line.
-  const whyHtml=r=>{const w=r.why;if(!w)return '';const b=w.boxes||[];return `<div class="pc-why">${b.map(x=>`<span class="pc-wb"><b>${htmlEscape(x.big)}</b><small>${htmlEscape(x.label)}${x.sub?` · ${htmlEscape(x.sub)}`:''}</small></span>`).join('')}</div>`};
+  const whyHtml=r=>{const x=(r.why?.boxes||[])[0];if(!x)return '';return `<p class="pc-why pc-why1"><b>${htmlEscape(x.big)}</b> ${htmlEscape(x.label)}${x.sub?` · ${htmlEscape(x.sub)}`:''}</p>`};
+  window.BTGWhyLine=whyHtml;
   function pickCard(r,i,top=false){
     const l=recordLegs(r)[0]||{},edge=Number(l.edge),fair=fairAm(l.fairPower??l.fairShin),book=l.book||'';
     const apps=(l.exchanges||[]).filter(x=>Number.isFinite(+x.odds)).map(x=>`${htmlEscape(x.exchange)} ${amOdds(x.odds)}`).join(' · ');
@@ -1695,8 +1701,8 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
       <div class="pc-main">${face(r)}<div class="pc-mid"><b class="pc-name">${htmlEscape(r.player||'')}</b><span class="pc-bet">${htmlEscape(`${r.side} ${r.line} ${String(r.market||'').toLowerCase()}`)}</span><span class="pc-game">${htmlEscape([gameOf(r),kickoff(r.game_time)].filter(Boolean).join(' · '))}</span></div>
         <button type="button" class="pc-price" data-slip-price aria-label="Add to slip at ${px}"><b>${px}</b><small>＋ Slip</small></button></div>
       ${whyHtml(r)}
-      <p class="pc-edge">${htmlEscape(book)} ${px}${fairTxt?` · fair ${fairTxt}`:''}${Number.isFinite(edge)?` · <b>${edge.toFixed(1)}% edge</b>`:''} · $${stake} wins $${win}${apps?`<br><span class="pc-apps">Apps: ${apps}</span>`:''}</p>
-      <div class="pc-foot"><span>Tap the price to add it · tap the card for stats</span><button type="button" class="pc-ibet" data-ibet>${window.BTGMyBets?.has?.(r.id)?'✓ Tracking':'I bet this'}</button></div>
+      <p class="pc-edge">${htmlEscape(book?`${book} · `:'')}$${stake} wins $${win}</p>
+      <div class="pc-foot"><span></span><button type="button" class="pc-ibet" data-ibet>${window.BTGMyBets?.has?.(r.id)?'✓ Tracking':'I bet this'}</button></div>
     </div>`;
   }
   function pickRowLite(r,i){
@@ -1870,6 +1876,35 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
   };
   // One record card for all four pages (Nov 9, Tim): the record in dollars,
   // its curve, the last six weeks and the proof chips, sportsbook or apps.
+  // The night a pick belongs to: its local date, games after midnight counting as the night before.
+  const lnNight=iso=>{const d=new Date(Date.parse(iso)-6*3600000);return Number.isFinite(d.getTime())?d.toLocaleDateString('en-CA'):''};
+  function lastNightHtml(rows){
+    const pm=(()=>{try{return (window.BTGPmRows?.()||[]).filter(r=>r&&r.kind!=='parlay')}catch{return []}})();
+    const all=[...rows.filter(r=>r.kind!=='parlay'),...pm].filter(r=>['won','lost'].includes(r.result)&&r.game_time&&r.player);
+    const seen=new Set(),list=all.filter(r=>!seen.has(r.id)&&seen.add(r.id));if(!list.length)return '';
+    const nights=[...new Set(list.map(r=>lnNight(r.game_time)))].sort().reverse(),last=list.filter(r=>lnNight(r.game_time)===nights[0]);
+    if(last.length<2)return '';
+    const dec=o=>{o=Number(o);return o>0?1+o/100:o<0?1+100/-o:0};
+    const pay=r=>r.result==='won'?100*(dec(r.pm?(r.pm.net??r.odds):r.odds)-1):-100;
+    const rec=l=>`${l.filter(r=>r.result==='won').length}–${l.filter(r=>r.result==='lost').length}`;
+    const three=list.filter(r=>nights.slice(0,3).includes(lnNight(r.game_time))),net=last.reduce((a,r)=>a+pay(r),0);
+    const mny=v=>`${v<0?'−':'+'}$${Math.abs(Math.round(v)).toLocaleString('en-US')}`;
+    const sport=r=>String(r.sport||'').toUpperCase()==='NBA'||String(r.id||'').startsWith('nba|')||/NBA--/.test(String(r.id||''))||NBA;
+    const faces=last.sort((a,b)=>(b.result==='won')-(a.result==='won')).slice(0,10).map(r=>{const ini=String(r.player||'').split(' ').map(x=>x[0]||'').join('').slice(0,2);
+      return `<span class="ln-f ${r.result}" title="${htmlEscape(`${r.player} ${r.side} ${r.line} ${String(r.market||'').toLowerCase()}`)}"><span class="ln-i">${htmlEscape(ini)}</span><img loading="lazy" decoding="async" src="/api/player-photo?name=${encodeURIComponent(r.player)}${sport(r)?'&sport=NBA':''}" alt="" onerror="this.remove()"><i aria-hidden="true">${r.result==='won'?'✓':'✕'}</i></span>`}).join('');
+    return `<div class="ln-top"><span class="ln-eye">Last night</span><b class="ln-rec">${rec(last)}</b><span class="ln-net ${net<0?'down':''}">${mny(net)}</span>${nights.length>=3?`<em class="ln-3">${rec(three)} last 3 nights</em>`:''}<span class="ln-go" aria-hidden="true">›</span></div><div class="ln-faces">${faces}</div>`;
+  }
+  // Count-up (Nov 12): the record card's profit rolls up once per page load.
+  const btgCounted=new Set();
+  function countUp(el){
+    if(!el||btgCounted.has(el.className+el.textContent))return;btgCounted.add(el.className+el.textContent);
+    const txt=el.textContent,m=txt.match(/^([+−-]?\$)([\d,]+)$/);if(!m)return;
+    try{if(matchMedia('(prefers-reduced-motion: reduce)').matches)return}catch{}
+    const end=Number(m[2].replace(/,/g,'')),t0=performance.now(),dur=900;
+    const step=t=>{const k=Math.min(1,(t-t0)/dur),v=Math.round(end*(1-Math.pow(1-k,3)));el.textContent=`${m[1]}${v.toLocaleString('en-US')}`;if(k<1)requestAnimationFrame(step);else el.textContent=txt};
+    requestAnimationFrame(step);
+  }
+  window.BTGCountUp=countUp;
   function recordCardHtml({lede='',eye,profit,wins,losses,pushes=0,sub,curve=[],beat=0,tracked=0,chips=[]}){
     const mny=window.btgMoney||(v=>`${v<0?'−':'+'}$${Math.abs(Math.round(v)).toLocaleString('en-US')}`),pts=(curve||[]).map(p=>({v:+p.v||0,t:Date.parse(p.d)})).filter(p=>Number.isFinite(p.t));
     // Weeks run Tuesday to Monday (NFL) — the same for NBA so the bars line up.
@@ -3370,8 +3405,8 @@ function statsProp(l){
       <div class="pc-head"><span class="pc-tag pm-tag">Prediction pick · ${app}</span><span class="pc-cd">${typeof icon==='function'?icon('clock'):''} ${htmlEscape(cd)}</span></div>
       <div class="pc-main"><span class="pc-ph"><span>${htmlEscape(ini)}</span><img loading="lazy" decoding="async" src="/api/player-photo?name=${encodeURIComponent(r.player||'')}${LEAGUE==='NBA'?'&sport=NBA':''}" alt="" onerror="this.remove()"></span><div class="pc-mid"><b class="pc-name">${htmlEscape(r.player||'')}</b><span class="pc-bet">${htmlEscape(bet)}</span><span class="pc-game">${htmlEscape([matchup,when].filter(Boolean).join(' · '))}</span></div>
         <button type="button" class="pc-price pm-price" data-slip-price aria-label="Add to slip at ${price}"><b>${price}</b><small>＋ Slip</small></button></div>
-      ${(r.why?.boxes||[]).length?`<div class="pc-why">${r.why.boxes.map(x=>`<span class="pc-wb"><b>${htmlEscape(x.big)}</b><small>${htmlEscape(x.label)}${x.sub?` · ${htmlEscape(x.sub)}`:''}</small></span>`).join('')}</div>`:''}
-      <p class="pc-edge">${htmlEscape(pmWin(r.netOdds??r.odds,wagerStake(),null))}${Number.isFinite(fair)?` · hit chance <b>${Math.round(fair)}%</b>`:''}${Number.isFinite(edge)?` · ${edge.toFixed(1)} pts under fair`:''}${r.open===false?` · not offered in ${htmlEscape(data?.stateName||'your state')}`:''}</p>
+      ${window.BTGWhyLine?window.BTGWhyLine(r):''}
+      <p class="pc-edge">${app} · ${htmlEscape(pmWin(r.netOdds??r.odds,wagerStake(),null))}${r.open===false?` · not offered in ${htmlEscape(data?.stateName||'your state')}`:''}</p>
     </div>`;
   }
   // Busy prediction night (4+ to play): the top pick's card, then one row each by kickoff.
@@ -3855,7 +3890,7 @@ function statsProp(l){
     // Until someone opens the board only tonight's props are loaded (Nov 5): no count, never hidden for it.
     const all=typeof parlayUniverseReady==='undefined'||parlayUniverseReady;
     btn.hidden=!body.classList.contains('board-collapsed')||(all&&total<=SHOW);
-    btn.innerHTML=`Browse all ${all&&total?`${total} `:''}props <span aria-hidden="true">›</span>`;btn.setAttribute('aria-label',all&&total?`Browse every prop (${total})`:'Browse every prop');
+    btn.innerHTML=`<b>Browse all ${all&&total?`${total} `:''}props</b><small>Every prop tonight, priced against the market</small><span class="bb-go" aria-hidden="true">›</span>`;btn.setAttribute('aria-label',all&&total?`Browse every prop (${total})`:'Browse every prop');
   }
   btn.onclick=()=>{body.classList.remove('board-collapsed','board-shut');btn.hidden=true;window.btgCount?.('board:browse')};
   if(typeof MutationObserver==='function')new MutationObserver(paint).observe(list,{childList:true});
