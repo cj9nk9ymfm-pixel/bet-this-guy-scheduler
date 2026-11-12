@@ -1867,7 +1867,7 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
     if(!box)return;pmBoxList=list;pmBoxArgs=[box,list,opts];
     pickBox(box,list.map((r,i)=>[r,i]),{cards:true,noun:'pick',lvKind:'pm',...opts});
     box.querySelectorAll('[data-on]').forEach(b=>b.onclick=e=>{const r=list[+b.dataset.on];if(!r)return;const ib=e.target.closest('[data-ibet]');if(ib){window.BTGMyBets?.add?.(r);ib.textContent='✓ Tracking in My bets';return}if(e.target.closest('[data-slip-price]')&&!['won','lost','push'].includes(r.result)&&(r.kind==='parlay'?addParlayToSlip(r):addBetToSlip(r)))return;openPick(r)});
-    updateOfficialLive();paintPassed('#pmPicksList','pm');
+    updateOfficialLive();paintPassed('#pmPicksList','pm');setTimeout(()=>window.BTGPlaceTop?.(),0);
     // "Add all to slip" in the heading, like the sportsbook pages.
     const openOnes=list.filter(r=>!officialDone(r)&&Date.parse(r.game_time)>Date.now()),head=box.closest('section')?.querySelector('.on-head');
     if(head){let b=head.querySelector('.on-addall');if(!b&&openOnes.length){b=document.createElement('button');b.type='button';b.className='on-addall';head.append(b)}
