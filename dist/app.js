@@ -3317,7 +3317,7 @@ function statsProp(l){
     const done=['won','lost','push','void'].includes(r.result),res=r.result==='void'?'push':r.result||null;
     const sport=/NBA--/.test(`${r.id||''} ${r.eventId||''}`)?'NBA':'NFL';
     return r.parlay?{id:r.id,kind:'parlay',sport,combined_odds:r.odds,game_time:r.gameTime,posted_at:r.postedAt||r.gameTime,result:res,status:done?'final':'pending',legs_json:JSON.stringify(r.legs.map(leg)),pm:{exchange:r.exchange,pct:pctOf(r.odds)}}
-      :{id:r.id,kind:'prop',sport,player:r.player,market:r.market,side:r.side,line:r.line,odds:r.odds,game_time:r.gameTime,posted_at:r.postedAt,result:res,status:done?'final':'pending',closing_odds:r.closeOdds??null,closing_captured_at:r.closeOdds!=null?r.gameTime:null,legs_json:JSON.stringify([{...leg(r),actualValue:r.actual??null,...(r.voidReason?{voided:true,voidReason:r.voidReason}:{})}]),pm:{exchange:r.exchange,odds:r.odds,pct:pctOf(r.odds),fair:r.fair,now:r.nowOdds!=null?pctOf(r.nowOdds):null}};
+      :{id:r.id,kind:'prop',sport,player:r.player,market:r.market,side:r.side,line:r.line,odds:r.odds,game_time:r.gameTime,posted_at:r.postedAt,result:res,status:done?'final':'pending',closing_odds:r.closeOdds??null,closing_captured_at:r.closeOdds!=null?r.gameTime:null,legs_json:JSON.stringify([{...leg(r),actualValue:r.actual??null,...(r.voidReason?{voided:true,voidReason:r.voidReason}:{})}]),pm:{exchange:r.exchange,odds:r.odds,net:r.netOdds??null,pct:pctOf(r.odds),fair:r.fair,now:r.nowOdds!=null?pctOf(r.nowOdds):null}};
   }
   let pmRows=[];
   const pmLiveSpan=i=>`<span class="on-live" data-pm-live="${i}" hidden></span>`;
