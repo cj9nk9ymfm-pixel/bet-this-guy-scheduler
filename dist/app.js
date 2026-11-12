@@ -1900,7 +1900,7 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
     try{
       const pm=document.body.dataset.priceView==='predictions',pmHero=document.getElementById('pmHero'),hero=document.getElementById('heroBanner');
       const anchor=pm?(pmHero&&!pmHero.hidden?pmHero:null):hero;if(!anchor)return;
-      const rows=pm?(()=>{try{return (window.BTGPmRows?.()||[])}catch{return []}})():(heroRows||[]);
+      const rows=pm?(()=>{try{return [...(window.BTGPmGraded?.()||[]),...(window.BTGPmRows?.()||[])]}catch{return []}})():(heroRows||[]);
       let ln=document.getElementById('lastNight');const strip=lastNightHtml(rows);
       if(strip){if(!ln){ln=document.createElement('a');ln.id='lastNight';ln.className='ln'}ln.href=pm?'/trust#predictions':NBA?'/trust#nba':'/trust';ln.innerHTML=strip;if(anchor.nextElementSibling!==ln)anchor.after(ln)}else ln?.remove();
       const em=document.getElementById('heroEmail'),after=strip?ln:anchor;if(em&&!em.closest('.desk-rail')&&after.nextElementSibling!==em)after.after(em);
@@ -3324,6 +3324,7 @@ function statsProp(l){
   function updatePmLive(){document.querySelectorAll('[data-pm-live]').forEach(el=>{const line=window.BTGOfficialLive?.(pmRows[+el.dataset.pmLive]||{});el.hidden=!line;if(el.previousElementSibling)el.previousElementSibling.hidden=!!line;el.className=`on-live${line?.cls?' '+line.cls:''}`;el.innerHTML=line?line.html:'';
     const row=el.closest('.on-row'),tag=row?.querySelector('.on-tag'),r=pmRows[+el.dataset.pmLive]||{};if(row&&tag&&!['won','lost','push','void'].includes(r.result)){row.classList.toggle('on-live-now',!!line);row.classList.toggle('on-live-hit',line?.state==='hit');row.classList.toggle('on-live-miss',line?.state==='miss');if(line&&window.BTGLiveTag){tag.dataset.preLive??=tag.innerHTML;tag.className=`on-tag on-tag-${line.state}${line.count?' on-tag-count':''}`;tag.innerHTML=window.BTGLiveTag(line)}}})}
   (window.btgLiveHooks||=[]).push(updatePmLive);
+  window.BTGPmGraded=()=>{try{return (data?.pmPicks||[]).filter(r=>['won','lost'].includes(r.result)).map(pmRecord)}catch{return []}};
   // Live tab (Nov 4, Tim): every pick of ours tonight, grouped under its game's
   // scoreboard, with won / live / lost / up next counted on top. Each pick shows
   // its number against the line ("1 so far · needs 3 more") and a progress bar.
