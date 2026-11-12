@@ -53,6 +53,11 @@ const types = { js: 'application/javascript', css: 'text/css', html: 'text/html;
     await need('tapping a pick row should open its sheet', () => page.waitForSelector('dialog[open]', { timeout: 10000 }));
     const sheet = await page.locator('dialog[open]').first().innerText();
     assert.ok(picks.some(n => sheet.includes(n)), `the sheet is the pick: ${sheet.slice(0, 120)}`);
+    // Nov 12 (Tim): the book is one tap away, right under Add to slip.
+    const bookBtn = page.locator('dialog[open] [data-bs-book]');
+    assert.equal(await bookBtn.count(), 1, 'a Bet at <book> button on the sheet');
+    assert.match(await bookBtn.innerText(), /^Bet at \S/, 'labelled with the book');
+    if (process.env.SHOT) await page.locator('dialog[open]').first().screenshot({ path: process.env.SHOT });
     await page.keyboard.press('Escape');await page.waitForTimeout(300);
 
     // Prediction apps (Nov 9, Tim: the four pages look exactly the same): the open pick is the
