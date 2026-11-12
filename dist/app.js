@@ -1605,7 +1605,7 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
         if(!rc){rc=document.createElement('a');rc.id='recCard';rc.className='rc'}
         rc.href=NBA?'/trust#nba':'/trust';hero.prepend(rc);hero.classList.add('has-rc');
         const all=window.btgAll(sea);
-        setTimeout(()=>countUp(rc.querySelector('.rc-big')),0);rc.innerHTML=recordCardHtml({lede:'We only bet when the sportsbook <em>gets the price wrong.</em>',eye:`${NBA?'NBA':'NFL'} sportsbook · every official pick`,profit:all.profit,wins:all.wins,losses:all.losses,pushes:all.pushes,sub:'singles at $100, parlays at $25',curve:sea.curve,beat:sea.beat,tracked:sea.tracked,chips:[`On X before ${NBA?'tip-off':'kickoff'}`,'Losses included','Free']});
+        rc.innerHTML=recordCardHtml({lede:'We only bet when the sportsbook <em>gets the price wrong.</em>',eye:`${NBA?'NBA':'NFL'} sportsbook · every official pick`,profit:all.profit,wins:all.wins,losses:all.losses,pushes:all.pushes,sub:'singles at $100, parlays at $25',curve:sea.curve,beat:sea.beat,tracked:sea.tracked,chips:[`On X before ${NBA?'tip-off':'kickoff'}`,'Losses included','Free']});
       }else{rc?.remove();hero.classList.remove('has-rc')}}
     // Running profit, every graded pick in order, and the latest results (wins and losses).
     {let box=$('#heroCurve');const pts=heroSeason?.curve||[];if(pts.length>=3){if(!box){box=document.createElement('div');box.id='heroCurve';box.className='hero-curve'}$('#heroStats').after(box);box.innerHTML=heroCurveSvg(pts)}else box?.remove()}
@@ -1615,8 +1615,6 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
     // Last night (Nov 12, Tim: make the proof the first thing people see): every graded pick
     // from the latest night, sportsbook and prediction apps, as faces with a check or a cross,
     // the night's record and the last three nights. Taps through to Results.
-    try{let ln=$('#lastNight');const strip=lastNightHtml(heroRows||[]);
-      if(strip){if(!ln){ln=document.createElement('a');ln.id='lastNight';ln.className='ln';hero.after(ln)}ln.href=NBA?'/trust#nba':'/trust';ln.innerHTML=strip}else ln?.remove()}catch{}
     // One email field right under the record: the simplest way to get picks (hidden once on email or push).
     {let em=$('#heroEmail');const on=/\b(email-on|alerts-on)\b/.test(document.documentElement.className);if(on){em?.remove()}else if(!em){em=document.createElement('section');em.id='heroEmail';em.className='hero-email';
       // Nov 10 (Tim): one version, the hook first, right under the record card (version c;
@@ -1632,6 +1630,7 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
       if(em){const now=Date.now(),top=(heroRows||[]).filter(r=>r.kind==='prop'&&!r.result&&Date.parse(r.game_time||'')>now).map(r=>({r,edge:window.BTGPickRank?window.BTGPickRank(r):Number(recordLegs(r)[0]?.edge)||0})).sort((a,b)=>b.edge-a.edge)[0]?.r;
         // The hook stays the headline; the top pick still to play shows what you'd get.
         const t=em.querySelector('.he-top');if(t){if(top){const f=recordLegs(top)[0]||{};t.textContent=`Like ${NBA?'tonight’s':'this week’s'} top pick: ${top.player} ${top.side} ${top.line} ${String(top.market||'').toLowerCase()} ${formatOdds(top.odds)}${f.book?` at ${f.book}`:''}. `}else t.textContent=''}}}
+    placeTop();
     if(!strip||!s.hits.length)return;
     $('#hitsTitle').textContent=['LAST WEEK','THIS WEEK SO FAR','LAST NIGHT','TONIGHT SO FAR'].includes(s.label)?`${periodOwner(s.label).replace(/^./,c=>c.toUpperCase())} hits`:'Recent hits';
     $('#hitsRow').innerHTML=s.hits.map((r,i)=>{const n=pickName(r),odds=r.kind==='parlay'?r.combined_odds:r.odds;return `<button type="button" class="hit-card-mini" data-hit="${i}" aria-label="Details for ${htmlEscape(n.title)}"><span class="hit-tag">${icon('check')} HIT</span><strong>${htmlEscape(n.title)}</strong><small>${htmlEscape(n.detail)}</small><div class="hit-foot"><b>${htmlEscape(formatOdds(odds))}</b><span>${htmlEscape(stakeText())} → ${htmlEscape(money(payout(r)))}</span></div><em class="hit-more">Tap for details ›</em></button>`}).join('');
@@ -1879,8 +1878,7 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
   // The night a pick belongs to: its local date, games after midnight counting as the night before.
   const lnNight=iso=>{const d=new Date(Date.parse(iso)-6*3600000);return Number.isFinite(d.getTime())?d.toLocaleDateString('en-CA'):''};
   function lastNightHtml(rows){
-    const pm=(()=>{try{return (window.BTGPmRows?.()||[]).filter(r=>r&&r.kind!=='parlay')}catch{return []}})();
-    const all=[...rows.filter(r=>r.kind!=='parlay'),...pm].filter(r=>['won','lost'].includes(r.result)&&r.game_time&&r.player);
+    const all=rows.filter(r=>r&&r.kind!=='parlay'&&['won','lost'].includes(r.result)&&r.game_time&&r.player);
     const seen=new Set(),list=all.filter(r=>!seen.has(r.id)&&seen.add(r.id));if(!list.length)return '';
     const nights=[...new Set(list.map(r=>lnNight(r.game_time)))].sort().reverse(),last=list.filter(r=>lnNight(r.game_time)===nights[0]);
     if(last.length<2)return '';
@@ -1892,16 +1890,35 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
     const sport=r=>String(r.sport||'').toUpperCase()==='NBA'||String(r.id||'').startsWith('nba|')||/NBA--/.test(String(r.id||''))||NBA;
     const faces=last.sort((a,b)=>(b.result==='won')-(a.result==='won')).slice(0,10).map(r=>{const ini=String(r.player||'').split(' ').map(x=>x[0]||'').join('').slice(0,2);
       return `<span class="ln-f ${r.result}" title="${htmlEscape(`${r.player} ${r.side} ${r.line} ${String(r.market||'').toLowerCase()}`)}"><span class="ln-i">${htmlEscape(ini)}</span><img loading="lazy" decoding="async" src="/api/player-photo?name=${encodeURIComponent(r.player)}${sport(r)?'&sport=NBA':''}" alt="" onerror="this.remove()"><i aria-hidden="true">${r.result==='won'?'✓':'✕'}</i></span>`}).join('');
-    return `<div class="ln-top"><span class="ln-eye">Last night</span><b class="ln-rec">${rec(last)}</b><span class="ln-net ${net<0?'down':''}">${mny(net)}</span>${nights.length>=3?`<em class="ln-3">${rec(three)} last 3 nights</em>`:''}<span class="ln-go" aria-hidden="true">›</span></div><div class="ln-faces">${faces}</div>`;
+    const yday=lnNight(new Date(Date.now()-24*3600000+6*3600000).toISOString()),eye=nights[0]===yday?'Last night':new Date(`${nights[0]}T12:00:00`).toLocaleDateString('en-US',{weekday:'long'});
+    return `<div class="ln-top"><span class="ln-eye">${htmlEscape(eye)}</span><b class="ln-rec">${rec(last)}</b><span class="ln-net ${net<0?'down':''}">${mny(net)}</span>${nights.length>=3?`<em class="ln-3">${rec(three)} last 3 ${NBA?'nights':'game days'}</em>`:''}<span class="ln-go" aria-hidden="true">›</span></div><div class="ln-faces">${faces}</div>`;
   }
+  // Same top on all four pages (Nov 12, Tim): record card, then Last night (that page's own picks:
+  // sportsbook or prediction apps, this league), then the email box.
+  let lastCounted='';
+  function placeTop(){
+    try{
+      const pm=document.body.dataset.priceView==='predictions',pmHero=document.getElementById('pmHero'),hero=document.getElementById('heroBanner');
+      const anchor=pm?(pmHero&&!pmHero.hidden?pmHero:null):hero;if(!anchor)return;
+      const rows=pm?(()=>{try{return (window.BTGPmRows?.()||[])}catch{return []}})():(heroRows||[]);
+      let ln=document.getElementById('lastNight');const strip=lastNightHtml(rows);
+      if(strip){if(!ln){ln=document.createElement('a');ln.id='lastNight';ln.className='ln'}ln.href=pm?'/trust#predictions':NBA?'/trust#nba':'/trust';ln.innerHTML=strip;if(anchor.nextElementSibling!==ln)anchor.after(ln)}else ln?.remove();
+      const em=document.getElementById('heroEmail'),after=strip?ln:anchor;if(em&&!em.closest('.desk-rail')&&after.nextElementSibling!==em)after.after(em);
+      // The money counts up each time a page opens (league or sportsbook/apps switch).
+      const key=`${typeof LEAGUE==='string'?LEAGUE:''}|${pm?'pm':'sb'}`,big=document.querySelector(pm?'#pmRecCard .rc-big':'#recCard .rc-big');
+      if(big&&key!==lastCounted){lastCounted=key;countUp(big,true)}
+    }catch{}
+  }
+  window.BTGPlaceTop=placeTop;
+  if(typeof MutationObserver==='function'&&document.body)new MutationObserver(()=>setTimeout(placeTop,0)).observe(document.body,{attributes:true,attributeFilter:['data-price-view']});
   // Count-up (Nov 12): the record card's profit rolls up once per page load.
   const btgCounted=new Set();
-  function countUp(el){
-    if(!el||btgCounted.has(el.className+el.textContent))return;btgCounted.add(el.className+el.textContent);
+  function countUp(el,again=false){
+    if(!el||el.dataset.counting)return;if(!again&&btgCounted.has(el.className+el.textContent))return;btgCounted.add(el.className+el.textContent);
     const txt=el.textContent,m=txt.match(/^([+−-]?\$)([\d,]+)$/);if(!m)return;
     try{if(matchMedia('(prefers-reduced-motion: reduce)').matches)return}catch{}
-    const end=Number(m[2].replace(/,/g,'')),t0=performance.now(),dur=900;
-    const step=t=>{const k=Math.min(1,(t-t0)/dur),v=Math.round(end*(1-Math.pow(1-k,3)));el.textContent=`${m[1]}${v.toLocaleString('en-US')}`;if(k<1)requestAnimationFrame(step);else el.textContent=txt};
+    const end=Number(m[2].replace(/,/g,'')),t0=performance.now(),dur=900;el.dataset.counting='1';
+    const step=t=>{const k=Math.min(1,(t-t0)/dur),v=Math.round(end*(1-Math.pow(1-k,3)));el.textContent=`${m[1]}${v.toLocaleString('en-US')}`;if(k<1)requestAnimationFrame(step);else{el.textContent=txt;delete el.dataset.counting}};
     requestAnimationFrame(step);
   }
   window.BTGCountUp=countUp;
@@ -3452,6 +3469,7 @@ function statsProp(l){
     // Nov 3 redesign: the same record card as the sportsbook view, for the apps.
     {let rc=document.getElementById('pmRecCard');if(!rc){rc=document.createElement('a');rc.id='pmRecCard';rc.className='rc pm-rc';hero.prepend(rc)}rc.href='/trust#predictions';hero.classList.add('has-rc');
       rc.innerHTML=window.BTGRecordCard?window.BTGRecordCard({lede:'We only bet when the app <em>gets the price wrong.</em>',eye:`${nbaRec?'NBA':'NFL'} prediction apps · every official pick`,profit:net,wins:w,losses:l,pushes:pu,sub:nbaRec?'singles at $100, after each app’s fee':'singles at $100, parlays at $25, after each app’s fee',curve:data.pmCurve||[],beat:rec.beat,tracked:rec.tracked,chips:['Novig · ProphetX','Losses included','Free']}):''}
+    setTimeout(()=>window.BTGPlaceTop?.(),0);
     const lead='';
     title.hidden=true;
     title.innerHTML=`${lead}<button type="button" class="hero-toggle${lead?' pm-second':''}" id="pmHeroToggle" aria-expanded="${!panel.hidden}" aria-controls="pmHeroPicks">Every graded pick${lead&&w+l<20?'<em class="pm-new">new</em>':''}<i aria-hidden="true"><svg class="ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></i></button>`;
