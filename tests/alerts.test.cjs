@@ -36,6 +36,8 @@ const fromB64=s=>Uint8Array.from(Buffer.from(s.replace(/-/g,'+').replace(/_/g,'/
   db.prepare("INSERT INTO public_recommendations(id,kind,player,market,side,line,odds,game_time,legs_json,posted_at,status,source) VALUES('official|2026-09-29|props|prop|a','prop','Jonnu Smith','Receptions','Over',1.5,175,'2026-10-04T17:00:00Z','[]',?,'pending','market-verified-v2')").run(new Date().toISOString());
   const latest=(await call('/api/alerts/latest')).body;
   assert.equal(latest.title,'✅ New Bet This Guy pick');assert.equal(latest.body,'Jonnu Smith Over 1.5 receptions (+175)');
+  // A tap opens the site with the pick in the bet slip (Nov 14).
+  assert.equal(latest.url,'/?pick=official%7C2026-09-29%7Cprops%7Cprop%7Ca&slip=official%7C2026-09-29%7Cprops%7Cprop%7Ca');
   // Sending: gone subscriptions are removed, failures counted, one batch per 15 minutes.
   const now=Date.parse('2026-10-04T15:00:00Z'),first=JSON.parse(JSON.stringify(await run(`sendPickAlerts(env,${now})`)));
   assert.equal(first.sent,2,'the two working subscriptions got a push');assert.equal(pushes.length,4);

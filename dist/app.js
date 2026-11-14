@@ -61,7 +61,13 @@ function focusPick(){let id='';try{id=new URLSearchParams(location.search).get('
   const el=[...document.querySelectorAll('[data-pick-id]')].find(e=>e.dataset.pickId===id);if(!el)return;focusPick.done=true;
   for(let p=el.parentElement;p&&p!==document.body;p=p.parentElement)if(p.hidden){p.hidden=false;const b=p.previousElementSibling;if(b?.matches?.('[data-on-toggle]'))b.setAttribute('aria-expanded','true')}
   el.classList.add('on-flash');setTimeout(()=>el.scrollIntoView({behavior:'smooth',block:'center'}),350);setTimeout(()=>el.classList.remove('on-flash'),5000);
-  try{const u=new URL(location.href);u.searchParams.delete('pick');u.searchParams.delete('view');history.replaceState(null,'',u.pathname+u.search+u.hash)}catch{}}
+  // From a new-pick alert (?slip=id,id, Nov 14): the alert's picks go straight into the bet slip,
+  // the same way a tap on a card's price adds it (picks not started or graded only), then the slip opens.
+  let slip=[];try{slip=(new URLSearchParams(location.search).get('slip')||'').split(',').filter(Boolean).slice(0,6)}catch{}
+  if(slip.length)setTimeout(()=>{let n=0;const rows=[...(window.BTGOfficialRows?.()||[]),...(window.BTGPmRows?.()||[])];
+    for(const sid of slip){const r=rows.find(x=>x?.id===sid);if(!r||['won','lost','push','void'].includes(r.result)||Date.parse(r.game_time)<=Date.now())continue;try{if(r.legs||r.kind==='parlay'?addParlayToSlip(r):addBetToSlip(r))n++}catch{}}
+    window.btgCount?.('funnel:push-slip');if(n&&typeof innerWidth==='number'&&innerWidth<=720&&typeof showMobilePage==='function')setTimeout(()=>showMobilePage('slip',true),900)},700);
+  try{const u=new URL(location.href);u.searchParams.delete('pick');u.searchParams.delete('view');u.searchParams.delete('slip');history.replaceState(null,'',u.pathname+u.search+u.hash)}catch{}}
 const leagueParam=(prefix='?')=>LEAGUE==='NBA'?`${prefix}sport=NBA`:'';
 // The URL's ?league= wins over the saved choice, so switching rewrites it
 // (a reload of /?league=NBA would otherwise land on NBA again).
@@ -2088,7 +2094,7 @@ if(typeof fetch==='function')window.btgCountVisit?.('view:home');
   // first time, prediction pings follow the home view.
   const KINDS='btg-alert-kinds';
   // NBA picks are on unless turned off (k.nba===false).
-  function alertKinds(){let k=null;try{k=JSON.parse(localStorage.getItem(KINDS)||'null')}catch{}return k&&typeof k==='object'?{alertSportsbook:k.sb!==false,alertPredictions:!!k.pm,alertNba:k.nba!==false}:{alertSportsbook:true,alertPredictions:window.BTGPriceView?.view?.()==='predictions',alertNba:true}}
+  function alertKinds(){let k=null;try{k=JSON.parse(localStorage.getItem(KINDS)||'null')}catch{}return k&&typeof k==='object'?{alertSportsbook:k.sb!==false,alertPredictions:!!k.pm,alertNba:k.nba!==false}:{alertSportsbook:true,alertPredictions:true,alertNba:true}}
   function paintKinds(){const k=alertKinds(),sb=$('#alertSportsbook'),pm=$('#alertPredictions'),nba=$('#alertNba');if(sb)sb.checked=k.alertSportsbook;if(pm)pm.checked=k.alertPredictions;if(nba)nba.checked=k.alertNba}
   // At least one kind stays on: turning off the last one turns NFL picks back on.
   ['#alertSportsbook','#alertPredictions','#alertNba'].forEach(sel=>$(sel)?.addEventListener('change',()=>{const sb=$('#alertSportsbook'),pm=$('#alertPredictions'),nba=$('#alertNba');if(!sb.checked&&!pm.checked&&!nba?.checked){(sel==='#alertSportsbook'?(nba||pm):sb).checked=true}try{localStorage.setItem(KINDS,JSON.stringify({sb:sb.checked,pm:pm.checked,nba:nba?nba.checked:true}))}catch{}window.BTGSyncAlertBooks?.()}));
