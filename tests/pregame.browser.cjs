@@ -19,7 +19,7 @@ const types = { js: 'application/javascript', css: 'text/css', html: 'text/html;
     const page = await browser.newPage({ viewport: { width: 390, height: 844 }, timezoneId: 'America/Los_Angeles', userAgent: 'Mozilla/5.0 (iPhone) headless-audit' });
     const errors = []; page.on('pageerror', e => errors.push(e.message));
     await page.clock.install({ time: new Date(fx.at) }); await page.clock.resume();
-    await page.route('**/*', async route => {
+    const handler = async route => {
       const url = new URL(route.request().url());
       if (url.hostname !== 'betthisguy.com') return route.abort();
       const p = url.pathname;
@@ -32,7 +32,8 @@ const types = { js: 'application/javascript', css: 'text/css', html: 'text/html;
       if (p === '/api/predictions') return route.fulfill({ json: fx.predictions });
       if (p.startsWith('/api/')) return route.fulfill({ json: { success: true, data: [] } });
       return route.fulfill({ status: 404, body: '' });
-    });
+    };
+    await page.route('**/*', handler);
     await page.goto('https://betthisguy.com/?league=NBA');
     const need = async (what, wait) => { try { await wait(); } catch { assert.fail(`pre-game broke: ${what}`); } };
     const picks = fx.record.recent.map(r => r.player);
@@ -73,6 +74,27 @@ const types = { js: 'application/javascript', css: 'text/css', html: 'text/html;
     assert.ok(await page.locator('#pmRecCard .rc-top').count(), 'the same record card on the prediction page');
     await page.locator('#pmPicksList .pc2 [data-slip-price]').first().click();
     await need('tapping the prediction price should add it to the slip', () => page.waitForFunction(() => state.slip.length === 2, null, { timeout: 15000 }));
+
+    // A new-pick alert's tap (Nov 14, Tim): /?pick=..&slip=id,id opens with those picks in the slip, then the slip.
+    const page2 = await browser.newPage({ viewport: { width: 390, height: 844 }, timezoneId: 'America/Los_Angeles', userAgent: 'Mozilla/5.0 (iPhone) headless-audit' });
+    page2.on('pageerror', e => errors.push(e.message));
+    await page2.clock.install({ time: new Date(fx.at) }); await page2.clock.resume(); await page2.route('**/*', handler);
+    const ids = fx.record.recent.slice(1, 3).map(r => r.id);
+    await page2.goto(`https://betthisguy.com/?league=NBA&pick=${encodeURIComponent(ids[0])}&slip=${encodeURIComponent(ids.join(','))}`);
+    await need('an alert link should put its picks in the slip', () => page2.waitForFunction(() => state.slip.length === 2, null, { timeout: 20000 }));
+    const inSlip = await page2.evaluate(() => state.slip.map(l => l.p.player));
+    assert.deepEqual(inSlip.sort(), fx.record.recent.slice(1, 3).map(r => r.player).sort(), 'the alert\'s own picks, nothing else');
+    await need('the slip should open on a phone', () => page2.waitForFunction(() => document.body.dataset.mobilePage === 'slip', null, { timeout: 5000 }));
+    assert.ok(!(await page2.evaluate(() => location.search)).includes('slip='), 'the link is cleaned up after');
+
+    // A prediction-app alert opens the prediction page with that pick in the slip.
+    const page3 = await browser.newPage({ viewport: { width: 390, height: 844 }, timezoneId: 'America/Los_Angeles', userAgent: 'Mozilla/5.0 (iPhone) headless-audit' });
+    page3.on('pageerror', e => errors.push(e.message));
+    await page3.clock.install({ time: new Date(fx.at) }); await page3.clock.resume(); await page3.route('**/*', handler);
+    const pmId = fx.predictions.pmPicks[0].id;
+    await page3.goto(`https://betthisguy.com/?league=NBA&view=predictions&pick=${encodeURIComponent(pmId)}&slip=${encodeURIComponent(pmId)}`);
+    await need('a prediction alert link should put its pick in the slip', () => page3.waitForFunction(() => state.slip.length === 1, null, { timeout: 20000 }));
+    assert.equal(await page3.evaluate(() => state.slip[0].p.player), fx.predictions.pmPicks[0].player);
 
     assert.deepEqual(errors, [], 'no page errors');
     console.log('PASS: pre-game: busy-day list with the backing stat, price to slip, row to sheet; the prediction page uses the same card and record card, price to slip');
