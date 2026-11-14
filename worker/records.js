@@ -5417,7 +5417,7 @@ async function postSlateToX(env,now=Date.now(),final=false,morning=false,request
     :xPostText({head,lines:[counts,final?`First kickoff ${kick}. More can drop until then: turn on alerts.`:'More can drop up to kickoff: turn on alerts.'],rec,...(apps?{age:'18+/21+ by app'}:{})});
   let mediaId=null;
   if(none)try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(xSlateSvg({final:true,kicker:`${dayName.toUpperCase()} · NFL`,day:`No picks ${tonight}`,dateLine:`First kickoff ${kick}`,note:'Nothing beat our price bar. No price we like, no bet.',picks:[],records:await xCardRecords(env).catch(()=>null)})))}catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} no-picks graphic: ${error.message}`).catch(()=>{})}
-  else try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(await xSlateSvgFaces({final,kick,day:dayName,date:etDate(first,{month:'short',day:'numeric'}),picks,records:await xCardRecords(env).catch(()=>null),season:season.wins+season.losses>=5?`${season.wins}–${season.losses} · ${weeklyMoney(season.profit)}`:''})))}
+  else try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(await slate2Card(env,{sport:'NFL',first,sbRows:rows,pmRows:[...pmRows,...pmParlays],day:etDay})))}
   catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} slate graphic: ${error.message}`).catch(()=>{})}
   try{const sent=await xPost(env,text,mediaId);await xDone(env,key,now);await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} slate ${key}`).catch(()=>{});const ids=[...rows,...pmRows,...pmParlays].map(r=>r.id);await xCovered(env,ids,now);
     // The day's card: results and the recap reply under it.
@@ -5904,6 +5904,93 @@ async function postNbaPicksToX(env,now=Date.now()){
   }
   return {posted};
 }
+// The daily slate card, v2 (Nov 14, Tim): "Tonight's picks" in big neon ("Today's" when the
+// first game starts before 3 PM ET), the counts, a gold sticker (the last 3 nights or game days
+// when that run is a winning one, else the season), then every pick grouped by game with its
+// headshot, an OVER / UNDER chip, the price and the book or app. Same card for NBA and NFL.
+const SLATE2_MAX=14;
+function xSlateV2Svg(d){
+  const GOLD='#ffc83d',NEON='#c6ff2e',GRL='#34d399',PL='#a78bfa',INK='#07090d',F={g:'BTG Grotesk',xb:'BTG Inter XB',sb:'BTG Inter SB'},W=1200;
+  const cut=(v,n)=>{v=String(v??'');return v.length>n?`${v.slice(0,n-1).trimEnd()}…`:v};
+  const all=(d.games||[]).flatMap(g=>g.picks.map(p=>({g,p}))),shown=all.slice(0,SLATE2_MAX),more=all.length-shown.length;
+  const groups=[];for(const {g,p} of shown){const last=groups.at(-1);if(last&&last.g===g)last.picks.push(p);else groups.push({g,picks:[p]})}
+  const chipW=t=>({OVER:78,UNDER:90,YES:62,NO:52}[t]||Math.round(22+t.length*13));
+  let y=380,body='',k=0;
+  for(const {g,picks} of groups){
+    body+=`<text x="60" y="${y+6}" font-family="${F.xb}" font-size="22" letter-spacing="3" fill="#9aa6b6">${xEsc(cut(String(g.label||'').toUpperCase(),40))}</text>${g.tip?`<text x="${W-60}" y="${y+6}" text-anchor="end" font-family="${F.xb}" font-size="22" fill="${GOLD}">${xEsc(g.tip)}</text>`:''}`;y+=22;
+    for(const p of picks){const cy=y+44;k++;
+      const chip=String(p.chip||'').toUpperCase(),cw=chip?chipW(chip):0,lx=164+(chip?cw+12:0),col=chip==='UNDER'||chip==='NO'?'#8b5cf6':'#10b981';
+      body+=`<rect x="56" y="${y}" width="${W-112}" height="88" rx="18" fill="#141b24"/>
+<circle cx="112" cy="${cy}" r="32" fill="#222a35"/>${p.photo?`<clipPath id="s2c${k}"><circle cx="112" cy="${cy}" r="32"/></clipPath><image href="data:${p.photo.type};base64,${p.photo.b64}" x="68" y="${cy-32}" width="88" height="64" preserveAspectRatio="xMidYMax meet" clip-path="url(#s2c${k})"/>`:`<text x="112" y="${cy+9}" text-anchor="middle" font-family="${F.xb}" font-size="24" fill="#8b97a8">${xEsc(String(p.name||'').split(/\s+/).map(w=>w[0]||'').join('').slice(0,2).toUpperCase())}</text>`}
+<text x="164" y="${cy-6}" font-family="${F.xb}" font-size="28" fill="#ffffff">${xEsc(cut(p.name,30))}</text>
+${chip?`<rect x="164" y="${cy+8}" width="${cw}" height="30" rx="8" fill="${col}"/><text x="${164+cw/2}" y="${cy+30}" text-anchor="middle" font-family="${F.xb}" font-size="17" letter-spacing="1" fill="${INK}">${xEsc(chip)}</text>`:''}
+<text x="${lx}" y="${cy+30}" font-family="${F.sb}" font-size="22" fill="#e6ebf2">${xEsc(cut(p.detail,chip?44:52))}</text>
+<text x="${W-80}" y="${cy+4}" text-anchor="end" font-family="${F.g}" font-size="44" fill="#ffffff">${xEsc(p.price)}</text>
+<text x="${W-80}" y="${cy+32}" text-anchor="end" font-family="${F.sb}" font-size="18" fill="${p.pm?PL:GRL}">${xEsc(cut(p.book,18))}${p.pm?' · app':''}</text>`;
+      y+=98}
+    y+=26}
+  if(more>0){body+=`<text x="${W/2}" y="${y+8}" text-anchor="middle" font-family="${F.xb}" font-size="26" fill="#c9d2de">+${more} more pick${more===1?'':'s'} at betthisguy.com</text>`;y+=44}
+  const c=d.counts||{},n=c.total||0,H=y+260;
+  const parts=[`<tspan fill="#ffffff">${n} pick${n===1?'':'s'}</tspan>`,...(c.sb?[`<tspan fill="${GRL}">${c.sb} sportsbook</tspan>`]:[]),...(c.pm?[`<tspan fill="${PL}">${c.pm} prediction app${c.pm===1?'':'s'}</tspan>`]:[])].join(' <tspan fill="#8b97a8">·</tspan> ');
+  const st=d.sticker;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+<defs><radialGradient id="s2g" cx=".25" cy=".06" r=".7"><stop offset="0" stop-color="#0d3a2a"/><stop offset=".6" stop-color="#08140f"/><stop offset="1" stop-color="${INK}"/></radialGradient>
+<linearGradient id="s2n" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ecffb0"/><stop offset="1" stop-color="${NEON}"/></linearGradient></defs>
+<rect width="${W}" height="${H}" fill="url(#s2g)"/>
+<text x="60" y="92" font-family="${F.xb}" font-size="28" letter-spacing="6" fill="#ffffff" fill-opacity=".85">${xEsc(d.kicker)}</text>
+<text x="52" y="210" font-family="${F.g}" font-size="128" letter-spacing="-5" fill="url(#s2n)">${xEsc(d.headline)}</text>
+<text x="60" y="270" font-family="${F.xb}" font-size="30">${parts}</text>
+${st?`<g transform="rotate(-4 1010 300)"><rect x="840" y="262" width="320" height="78" rx="22" fill="${GOLD}"/><text x="1000" y="296" text-anchor="middle" font-family="${F.xb}" font-size="18" letter-spacing="2" fill="${INK}">${xEsc(st.label)}</text><text x="1000" y="328" text-anchor="middle" font-family="${F.g}" font-size="32" fill="${INK}">${xEsc(st.rec)}</text></g>`:''}
+${body}
+<rect x="56" y="${y+10}" width="${W-112}" height="120" rx="28" fill="${NEON}"/>
+<text x="96" y="${y+66}" font-family="${F.g}" font-size="42" fill="${INK}">Tail or fade?</text>
+<text x="96" y="${y+106}" font-family="${F.xb}" font-size="24" fill="#1d3a10">Every pick graded in public, losses included</text>
+<text x="${W-170}" y="${y+84}" text-anchor="end" font-family="${F.g}" font-size="38" fill="${INK}">betthisguy.com</text>
+<circle cx="${W-112}" cy="${y+70}" r="32" fill="${INK}"/><path d="M${W-127} ${y+70}h28m-11-11 11 11-11 11" fill="none" stroke="${NEON}" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect y="${H-110}" width="${W}" height="110" fill="${GOLD}"/>${xLogo(56,H-86,60)}
+<text x="134" y="${H-43}" font-family="${F.g}" font-size="38" fill="${INK}">Bet This Guy</text>
+<text x="${W-56}" y="${H-43}" text-anchor="end" font-family="${F.xb}" font-size="25" fill="${INK}">${xEsc(d.foot)}</text></svg>`;
+}
+// One card row from a sportsbook pick or a prediction-app pick.
+function slate2Row(r,pm){
+  const legs=pm?[]:recordLegs(r),f=legs[0]||r,td=/touchdown/i.test(r.market||'')&&Number(r.line)===0.5;
+  if(r.kind==='parlay'||(pm&&r.legs_json)){let l=legs;if(pm){try{l=JSON.parse(r.legs_json)}catch{l=[]}}
+    return {name:`${l.length}-leg parlay`,chip:'',detail:l.map(x=>x.player).join(' + '),price:pm?`${exchangePct(r.odds)}%`:weeklyOdds(r.combined_odds),book:pm?r.exchange:(f.book||''),pm,team:f.team||r.team,time:f.gameTime||r.game_time}}
+  return {name:r.player,player:r.player,chip:td?(r.side==='Under'?'NO':'YES'):String(r.side||''),detail:td?String(r.market||''):`${r.line} ${String(r.market||'').toLowerCase()}`,
+    price:pm?`${exchangePct(r.odds)}%`:weeklyOdds(r.odds).replace(/−/g,'-'),book:pm?(r.exchange||''):(f.book||''),pm,team:f.team||r.team,time:f.gameTime||r.game_time};
+}
+// Rows → games (in tip order), each with its tip time in ET; headshots for every player (up to 20).
+async function slate2Games(rows,sport){
+  const faces=new Map();
+  if(typeof playerHeadshot==='function')await Promise.all([...new Set(rows.map(r=>r.player).filter(Boolean))].slice(0,20).map(async name=>{const shot=await playerHeadshot(name,sport,true).catch(()=>null);if(shot?.bytes)faces.set(name,{type:shot.type||'image/png',b64:xBase64(shot.bytes)})}));
+  const games=new Map();
+  for(const r of [...rows].sort((a,b)=>Date.parse(a.time)-Date.parse(b.time))){const label=xMatchup(r.team)||'More picks',key=label;
+    if(!games.has(key))games.set(key,{label,tip:Number.isFinite(Date.parse(r.time))?`${etDate(Date.parse(r.time),{hour:'numeric',minute:'2-digit'})} ET`:'',picks:[]});
+    games.get(key).picks.push(r.player&&faces.has(r.player)?{...r,photo:faces.get(r.player)}:r)}
+  // Sportsbook first within a game, as on the site.
+  return [...games.values()].map(g=>({...g,picks:[...g.picks.filter(p=>!p.pm),...g.picks.filter(p=>p.pm)]}));
+}
+// The sticker: the last 3 nights (NBA) or game days (NFL) before this one when the run is a
+// winning one, otherwise the season. Singles, sportsbook and prediction apps together.
+async function slate2Sticker(env,sport,before){
+  const nba=sport==='NBA',since=new Date(Date.now()-21*86400000).toISOString();
+  const sb=((await env.DB.prepare(`SELECT kind,result,game_time FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE ? AND kind!='parlay' AND result IN ('won','lost')`).bind(nba?'nba|%':'official|%').all().catch(()=>({results:[]}))).results)||[];
+  const pm=((await env.DB.prepare(`SELECT result,game_time FROM prediction_picks WHERE event_id ${nba?'LIKE':'NOT LIKE'} 'NBA--%' AND result IN ('won','lost')`).all().catch(()=>({results:[]}))).results)||[];
+  const graded=[...sb,...pm].filter(r=>r.game_time),dayOf=r=>nba?nbaNight(Date.parse(r.game_time)):etDate(Date.parse(r.game_time),{year:'numeric',month:'2-digit',day:'2-digit'});
+  const rec=l=>({w:l.filter(r=>r.result==='won').length,l:l.filter(r=>r.result==='lost').length});
+  const days=[...new Set(graded.filter(r=>r.game_time>=since&&dayOf(r)!==before).map(dayOf))].sort((a,b)=>nba?b.localeCompare(a):Date.parse(b)-Date.parse(a)).slice(0,3);
+  const three=rec(graded.filter(r=>days.includes(dayOf(r))));
+  if(days.length===3&&three.w>three.l)return {label:nba?'LAST 3 NIGHTS':'LAST 3 GAME DAYS',rec:`${three.w}–${three.l}`};
+  const season=rec(graded);return season.w+season.l?{label:`${sport} SEASON`,rec:`${season.w}–${season.l}`}:null;
+}
+async function slate2Card(env,{sport,first,sbRows,pmRows,day}){
+  const rows=[...sbRows.map(r=>slate2Row(r,false)),...pmRows.map(r=>slate2Row(r,true))];
+  const early=Number(etDate(first,{hour:'numeric',hourCycle:'h23'}))<15,apps=pmRows.length;
+  return xSlateV2Svg({kicker:`${sport} · ${etDate(first,{weekday:'long'}).toUpperCase()}, ${etDate(first,{month:'short',day:'numeric'}).toUpperCase()}`,
+    headline:early?"Today's picks":"Tonight's picks",counts:{total:rows.length,sb:sbRows.length,pm:apps},
+    sticker:await slate2Sticker(env,sport,day).catch(()=>null),games:await slate2Games(rows,sport),
+    foot:`Locked before ${sport==='NBA'?'tip-off':'kickoff'} · 21+${apps?' · apps 18+/21+':''}`});
+}
 async function postNbaCardToX(env,now=Date.now()){
   if(!env.DB||!xReady(env)||await appSetting(env,'x-nba')==='hold')return {posted:0,disabled:true};
   const night=nbaNight(now),key=`x-nba-card:${night}`,rows=await nbaRows(env,night);
@@ -5917,14 +6004,10 @@ async function postNbaCardToX(env,now=Date.now()){
   const pmLine=r=>`• ${r.player} ${weeklyLegText(r)} (${exchangePct(r.odds)}% on ${r.exchange})`,counts=`${singles} pick${singles===1?'':'s'}${parlays?` + ${parlays} parlay${parlays===1?'':'s'}`:''}${apps?` + ${apps} prediction-app pick${apps===1?'':'s'}`:''}`;
   const rec=season.wins+season.losses>=1?`\nNBA record: ${season.wins}–${season.losses}${season.pushes?`–${season.pushes}`:''}, ${weeklyMoney(season.profit)}.`:'';
   // Every pick in the text when it fits; otherwise the counts, with the full list on the graphic.
-  const tail=`${rec}\nLate games can add more. Every pick graded in public, link in bio. 21+`,when=Number(new Date(first).toLocaleString('en-US',{hour:'numeric',hour12:false,timeZone:'America/Los_Angeles'}))<15?'Today’s':'Tonight’s',full=`🏀 ${when} NBA picks\n${[...rows.map(nbaLine),...(apps?['Prediction apps:',...pm.map(pmLine)]:[])].join('\n')}\n${tail}`;
+  const tail=`${rec}\nLate games can add more. Every pick graded in public, link in bio. 21+`,when=Number(etDate(first,{hour:'numeric',hourCycle:'h23'}))<15?'Today’s':'Tonight’s',full=`🏀 ${when} NBA picks\n${[...rows.map(nbaLine),...(apps?['Prediction apps:',...pm.map(pmLine)]:[])].join('\n')}\n${tail}`;
   const text=full.length<=280?full:xShort(`🏀 ${when} NBA picks: ${counts}, all on the card 👇\n${tail}`);
   let mediaId=null;
-  // Each single carries its player's headshot (ESPN's small copy, up to 8) when the card has room for photos.
-  const singlesRows=rows.filter(r=>r.kind==='prop'),faces=new Map();
-  if(singlesRows.length<=8&&typeof playerHeadshot==='function')await Promise.all(singlesRows.map(async r=>{const shot=await playerHeadshot(r.player,'NBA',true).catch(()=>null);if(shot?.bytes)faces.set(r.player,{type:shot.type||'image/png',b64:xBase64(shot.bytes)})}));
-  const cardPicks=[...nbaSlatePicks(rows).map(p=>p.player&&faces.has(p.player)?{...p,photo:faces.get(p.player)}:p),...pm.map(r=>({color:'#2ee6a8',text:`${r.player} · ${weeklyLegText(r)}`,odds:`${exchangePct(r.odds)}%`,sub:`${r.exchange} · prediction app`,res:['won','lost','push'].includes(r.result)?r.result:null}))];
-  try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(await xSlateSvgFaces({final:true,kicker:'NBA · OFFICIAL PICKS',day:etDate(first,{weekday:'long'}),date:etDate(first,{month:'short',day:'numeric'}),dateLine:`${etDate(first,{month:'short',day:'numeric'})} · ${counts}`,note:`First tip ${etDate(first,{hour:'numeric',minute:'2-digit'})} ET`,note2:'Late games can add more',foot:apps?'LOCKED PRE-TIP · 18+/21+':'LOCKED BEFORE TIP-OFF · 21+',picks:cardPicks,season:season.wins+season.losses>=1?`${season.wins}–${season.losses} · ${weeklyMoney(season.profit)}`:''})))}
+  try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(await slate2Card(env,{sport:'NBA',first,sbRows:rows,pmRows:pm,day:night})))}
   catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} nba card graphic: ${error.message}`).catch(()=>{})}
   try{const sent=await xPost(env,text,mediaId);await xDone(env,key,now);if(sent?.data?.id)await setAppSetting(env,`xid:${key}`,String(sent.data.id)).catch(()=>{});
     // Picks on the card count as announced, so only later ones get an "added" reply.

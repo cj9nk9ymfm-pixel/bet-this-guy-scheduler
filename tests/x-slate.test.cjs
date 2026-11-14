@@ -24,7 +24,7 @@ pick('d','Brock Purdy',110,'2026-10-13T00:15:00.000Z');pick('e','Old Pick',150,'
   const text=posts[0].text;
   assert.ok(text.startsWith('🔒 Sunday’s official picks: 3 so far\n3 singles, every one on the card 👇')&&text.includes('More can drop up to kickoff')&&text.includes('Record: sportsbooks'),text);assert.ok(text.length<=280&&!text.includes('Carnell Tate'),'counts, not a list');
   assert.deepEqual(posts[0].media,{media_ids:['m1']});assert.ok(!/https?:\/\//.test(text),'no link in the text');
-  const svg=run('globalThis.__svg');assert.ok(svg.includes('Sunday')&&svg.includes('Carnell Tate')&&svg.includes('Texans @ Titans · FanDuel'));
+  const svg=run('globalThis.__svg');assert.ok(svg.includes('NFL · SUNDAY, OCT 11')&&svg.includes('Carnell Tate')&&svg.includes('TEXANS @ TITANS')&&svg.includes('>FanDuel<')&&svg.includes('>UNDER<'),'the v2 slate card');
   // A big day: every pick on the card, tighter rows, nothing cut.
   const big=run(`xSlateSvg({day:'Sunday',date:'Oct 18',picks:Array.from({length:30},(_,i)=>({text:'Player '+i+' · Over 1.5 receptions',odds:'+110',sub:'Bills @ Jets · FanDuel'}))})`);
   const legs=run(`xSlateSvg({day:'Sunday',date:'Oct 18',picks:[...Array.from({length:9},(_,i)=>({text:'Player '+i+' · Over 1.5 receptions',odds:'+110',sub:'Bills @ Jets'})),{text:'2-leg parlay',odds:'+433',legLines:[{text:'Ryan Fitzgerald Under 1.5 extra points',odds:'+160'},{text:'Daniel Carlson Over 7.5 kicking points',odds:'+105'}]}]})`);
@@ -47,7 +47,7 @@ pick('d','Brock Purdy',110,'2026-10-13T00:15:00.000Z');pick('e','Old Pick',150,'
   const fin=await run(`postSlateToX(env,${Date.parse('2026-10-11T16:15:00Z')},true)`);
   assert.equal(fin.posted,1);assert.equal(fin.final,true);
   assert.ok(posts.at(-1).text.startsWith('🔒 Locked for Sunday: 3 official picks so far')&&posts.at(-1).text.includes('First kickoff 1:00 PM ET'),posts.at(-1).text);
-  assert.ok(run('globalThis.__svg').includes('LOCKED SO FAR')&&run('globalThis.__svg').includes('More can drop until kickoff')&&run('globalThis.__svg').includes('SPORTSBOOKS')&&run('globalThis.__svg').includes('PREDICTION APPS'));
+  assert.ok(run('globalThis.__svg').includes('Today&#39;s picks')&&run('globalThis.__svg').includes('Locked before kickoff · 21+')&&run('globalThis.__svg').includes('Tail or fade?'),'1 PM ET first kickoff: Today\'s picks');
   assert.equal((await run(`postSlateToX(env,${Date.parse('2026-10-11T16:18:00Z')},true)`)).done,true,'final card once a day');
   // Alerts pin post: once per x-pin-request date, with the day's locked picks (even after kickoff).
   assert.equal((await run(`postAlertsPinToX(env,${Date.parse('2026-10-11T17:40:00Z')})`)).none,true,'nothing until requested');
