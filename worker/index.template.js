@@ -1595,14 +1595,13 @@ async function routeRequest(request, env, ctx) {
     // The results page is built in the browser; a server-written summary of
     // the record gives search engines and link previews real content too.
     if (["/", "/app", "/index.html"].includes(url.pathname) && env.DB && typeof STATIC !== "undefined") {
-      const rows = await homeRecentRows(env).catch(() => null), season = await homeSeason(env).catch(() => null);
+      // One round of lookups at once (Nov 16: one after another slowed the page), the NBA rows every
+      // day of the season (they were only sent Tue, Wed, Fri, Sat; other nights phones waited on a second request).
+      const nbaSeason = Date.now() >= Date.parse("2026-10-20T14:00:00Z");
+      const [rows, season, nba, track] = await Promise.all([homeRecentRows(env).catch(() => null), homeSeason(env).catch(() => null), nbaSeason ? nbaHomeData(env, Date.now()).catch(() => null) : null, siteTrack(env).catch(() => "")]);
       const layout = rows ? homeLayout(rows) : null, classes = layout ? ["home-data", ...(layout.stats ? ["home-stats"] : []), ...(layout.hits ? ["home-hits"] : [])] : [];
       const data = rows ? `<script>window.BTG_HOME=${JSON.stringify(rows).replace(/</g, "\\u003c")};window.BTG_SEASON=${JSON.stringify(season)};document.documentElement.classList.add(${classes.map(c => JSON.stringify(c)).join(",")})</script>` : "";
-      // NBA nights (Tue, Wed, Fri, Sat: the app's default league then): the NBA rows ride along, saving phones a round trip.
-      const nbaDay = Date.now() >= Date.parse("2026-10-20T14:00:00Z") && [2, 3, 5, 6].includes(new Date(Date.now() - 4 * 3600000).getUTCDay());
-      const nba = nbaDay ? await nbaHomeData(env, Date.now()).catch(() => null) : null;
       const nbaData = nba ? `<script>window.BTG_HOME_NBA=${JSON.stringify({ success: true, sport: "NBA", ...nba }).replace(/</g, "\\u003c")}</script>` : "";
-      const track = await siteTrack(env).catch(() => "");
       return new Response(withSiteChrome(STATIC[url.pathname][1].replace("<!--HOME_DATA-->", () => data + nbaData), "/", track), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache" } });
     }
     if ((url.pathname === "/trust" || url.pathname === "/about" || url.pathname === "/legal") && env.DB && typeof STATIC !== "undefined") {
