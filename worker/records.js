@@ -4537,7 +4537,7 @@ function xSportsbookText(r,rec,q=''){
   const legs=recordLegs(r),first=legs[0]||{},when=xShortWhen(r.game_time||first.gameTime),matchup=xMatchup(first.team);
   if(r.kind==='parlay'){const odds=weeklyOdds(r.combined_odds),same=legs.some(l=>l.sameGame);
     return xPostText({head:`🔒 Official parlay · Sportsbook${recordShare(r)<1?' · $25':''}`,lines:[[`${odds} · ${legs.length} legs${same?` · same-game: bet it at ${odds} or better`:''}`,`${odds} · ${legs.length} legs${same?' · same-game':''}`]],legs,rec});}
-  return xPostText({head:`${Number(first.edge)>=TOP_PICK.sb?'⭐ Top pick':'🔒 Official pick'} · Sportsbook`,lines:[`${r.player}${q} ${weeklyLegText(r)}`,[`${weeklyOdds(r.odds)}${first.book?` at ${first.book}`:''}`,matchup,when].filter(Boolean).join(' · '),xWhyLine(r)].filter(Boolean),rec});
+  return xPostText({head:`${Number(first.edge)>=TOP_PICK.sb?'⭐ Top pick':'🔒 Official pick'} · Sportsbook`,lines:[`${r.player}${q} ${weeklyLegText(r)}`,[`${weeklyOdds(r.odds)}${first.book?` at ${first.book}`:''}`,matchup,when].filter(Boolean).join(' · '),xWhyLine(r)].filter(Boolean),extra:'Tail or fade? 👇',rec});
 }
 // X post claims read "pending <time>" while a post is in flight and the post
 // time once it's confirmed. A run cut off mid-post (Tez Johnson's result,
@@ -5904,11 +5904,16 @@ async function postNbaPicksToX(env,now=Date.now()){
     const legs=recordLegs(r),f=legs[0]||{},edge=Number(f.edge),parlay=r.kind==='parlay';
     // Already on X (its own post, or the night's card): never again.
     if(await appSetting(env,`xid:${r.id}`)||await appSetting(env,`x-nba-pick:${r.id}`)||!(await xClaimable(env,`xi:${r.id}`,now))||r.kind==='prop'&&!(await xMatchupReady(env,r,now))||!(await xClaim(env,`xi:${r.id}`,now)))continue;
+    // Singles that locked within 10 minutes of this one (up to 3 in all) share one post.
+    if(!parlay){const group=[r];
+      for(const o of rows){if(group.length>=3)break;if(o===r||o.kind!=='prop'||Math.abs(Date.parse(o.posted_at)-Date.parse(r.posted_at))>10*60000||nbaNight(Date.parse(o.game_time))!==nbaNight(Date.parse(r.game_time)))continue;
+        if(await appSetting(env,`xid:${o.id}`)||await appSetting(env,`x-nba-pick:${o.id}`)||!(await xClaimable(env,`xi:${o.id}`,now))||!(await xMatchupReady(env,o,now))||!(await xClaim(env,`xi:${o.id}`,now)))continue;group.push(o)}
+      if(group.length>1){const out=await xNbaGroupPost(env,group,now);if(out.error)return {posted,error:out.error};posted++;today++;continue}}
     let mediaId=null;
     try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(xPickSvg(await xCardData(env,r,await nbaRecordSummary(env)))))}catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} nba pick graphic: ${error.message}`).catch(()=>{})}
     const ahead=nbaAhead(r.game_time,now);
     const text=parlay?xShort(`${ahead}🔒 Official parlay · NBA\n${legs.length}-leg parlay ${weeklyOdds(r.combined_odds)}\n${legs.map(l=>`• ${l.player} ${weeklyLegText(l)}`).join('\n')}\n${xShortWhen(r.game_time)}\n\n${xLocked(r.game_time,now)} Every pick graded in public, link in bio. 21+`)
-      :xShort(`${ahead}${edge>=NBA_TOP?'⭐ Top pick':'🔒 Official pick'} · NBA\n${r.player} ${weeklyLegText(r)}\n${[`${weeklyOdds(r.odds)}${f.book?` at ${f.book}`:''}`,xMatchup(f.team),xShortWhen(r.game_time)].filter(Boolean).join(' · ')}${xWhyLine(r)?`\n${xWhyLine(r)}`:''}\n\n${xLocked(r.game_time,now)} Every pick graded in public, link in bio. 21+`);
+      :xShort(`${ahead}${edge>=NBA_TOP?'⭐ Top pick':'🔒 Official pick'} · NBA\n${r.player} ${weeklyLegText(r)}\n${[`${weeklyOdds(r.odds)}${f.book?` at ${f.book}`:''}`,xMatchup(f.team),xShortWhen(r.game_time)].filter(Boolean).join(' · ')}${xWhyLine(r)?`\n${xWhyLine(r)}`:''}\n\nTail or fade? 👇\n${xLocked(r.game_time,now)} Every pick graded in public, link in bio. 21+`);
     try{const sent=await xPost(env,text,mediaId);await xDone(env,`xi:${r.id}`,now);
       if(sent?.data?.id)await setAppSetting(env,`xid:${r.id}`,String(sent.data.id)).catch(()=>{});
       await env.DB.prepare('INSERT OR IGNORE INTO app_settings (key,value) VALUES (?,?)').bind(`x-nba-pick:${r.id}`,new Date(now).toISOString()).run().catch(()=>{});
@@ -5916,6 +5921,68 @@ async function postNbaPicksToX(env,now=Date.now()){
     catch(error){await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(`xi:${r.id}`).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {posted,error:error.message}}
   }
   return {posted};
+}
+// Two or three NBA singles that locked together: one post listing each, the slate-card graphic,
+// and every pick's results threading under it (xid:<pick> names this post for each).
+function xNbaGroupText(group,now){
+  const line=r=>{const f=recordLegs(r)[0]||{};return `${Number(f.edge)>=NBA_TOP?'⭐ ':'• '}${r.player} ${weeklyLegText(r)} (${weeklyOdds(r.odds)}${f.book?` ${f.book}`:''})`};
+  const first=group.map(r=>r.game_time).sort()[0],tail=`\n\nTail or fade? 👇\n${xLocked(first,now)} Every pick graded in public, link in bio. 21+`;
+  const full=`${nbaAhead(first,now)}🔒 ${group.length} official picks · NBA\n${group.map(line).join('\n')}${tail}`;
+  return full.length<=280?full:xShort(`${nbaAhead(first,now)}🔒 ${group.length} official picks · NBA\n${group.map(r=>`• ${r.player} ${xShortLeg(weeklyLegText(r))} (${weeklyOdds(r.odds)})`).join('\n')}${tail}`);
+}
+async function xNbaGroupPost(env,group,now){
+  let mediaId=null;const first=Math.min(...group.map(r=>Date.parse(r.game_time)));
+  try{if(typeof renderCardPng==='function')mediaId=await xUploadImage(env,await renderCardPng(await slate2Card(env,{sport:'NBA',first,sbRows:group,pmRows:[],day:nbaNight(first)})))}catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} nba group graphic: ${error.message}`).catch(()=>{})}
+  try{const sent=await xPost(env,xNbaGroupText(group,now),mediaId);
+    for(const r of group){await xDone(env,`xi:${r.id}`,now);if(sent?.data?.id)await setAppSetting(env,`xid:${r.id}`,String(sent.data.id)).catch(()=>{});
+      await env.DB.prepare('INSERT OR IGNORE INTO app_settings (key,value) VALUES (?,?)').bind(`x-nba-pick:${r.id}`,new Date(now).toISOString()).run().catch(()=>{})}
+    await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} nba picks ${sent?.data?.id||''} ${group.length}`).catch(()=>{});return {posted:1}}
+  catch(error){for(const r of group)await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(`xi:${r.id}`).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {error:error.message}}
+}
+// 1. Reply alerts (Nov 16, Tim): a reply we answer counts far more than a like, so every reply
+// to us pings the owner's phone (ntfy), with a tap to the reply. Every 10 minutes, newest only.
+// app_settings x-reply-alerts = off stops it.
+async function xReplyAlerts(env,now=Date.now()){
+  if(!env.DB||!xReady(env)||!env.ALERT_NTFY_TOPIC||await appSetting(env,'x-reply-alerts')==='off')return {off:true};
+  const last=Date.parse(String(await appSetting(env,'x-mentions-at')||''));if(Number.isFinite(last)&&now-last<10*60000)return {skipped:true};
+  await setAppSetting(env,'x-mentions-at',new Date(now).toISOString());
+  const user=String(env.X_ACCESS_TOKEN||'').split('-')[0];if(!/^\d+$/.test(user))return {off:true};
+  const since=String(await appSetting(env,'x-mentions-since')||''),base=`https://api.twitter.com/2/users/${user}/mentions`;
+  const params={max_results:'20','tweet.fields':'author_id,created_at,referenced_tweets',expansions:'author_id,referenced_tweets.id','user.fields':'username,public_metrics',...(/^\d+$/.test(since)?{since_id:since}:{start_time:new Date(now-30*60000).toISOString()})};
+  const r=await fetch(`${base}?${new URLSearchParams(params)}`,{headers:{authorization:await xOAuthHeader(env,'GET',base,params)},signal:AbortSignal.timeout(15000)});
+  if(!r.ok)throw new Error(`X mentions read failed (${r.status})`);
+  const body=await r.json().catch(()=>({}));if(body.meta?.newest_id)await setAppSetting(env,'x-mentions-since',String(body.meta.newest_id));
+  const users=new Map((body.includes?.users||[]).map(u=>[String(u.id),u])),tweets=new Map((body.includes?.tweets||[]).map(t=>[String(t.id),t]));
+  const fresh=(body.data||[]).filter(t=>String(t.author_id)!==user).reverse();let sent=0;
+  for(const t of fresh.slice(0,5)){const u=users.get(String(t.author_id))||{},name=String(u.username||'someone'),parent=tweets.get(String((t.referenced_tweets||[]).find(x=>x.type==='replied_to')?.id||''));
+    const followers=u.public_metrics?.followers_count;
+    await fetch('https://ntfy.sh/'+encodeURIComponent(env.ALERT_NTFY_TOPIC),{method:'POST',headers:{Title:`Reply from @${name.replace(/[^\w]/g,'')}${Number.isFinite(followers)?` (${followers} followers)`:''}`,Tags:'speech_balloon',Click:`https://x.com/${encodeURIComponent(name)}/status/${t.id}`},
+      body:`${String(t.text||'').slice(0,240)}${parent?`\n\nOn our post: ${String(parent.text||'').split('\n').slice(0,2).join(' ').slice(0,90)}`:''}\n\nAnswer within the hour: a reply we answer counts the most.`,signal:AbortSignal.timeout(10000)}).then(()=>sent++).catch(()=>{});}
+  if(fresh.length>5)await fetch('https://ntfy.sh/'+encodeURIComponent(env.ALERT_NTFY_TOPIC),{method:'POST',headers:{Title:`${fresh.length-5} more replies on X`,Tags:'speech_balloon',Click:'https://x.com/notifications/mentions'},body:'Open your mentions to answer them.',signal:AbortSignal.timeout(10000)}).catch(()=>{});
+  return {replies:fresh.length,sent};
+}
+// 4. Reply targets (Nov 16, Tim): twice a day (noon and 5 PM ET) the owner's phone gets the three
+// busiest fresh posts from big betting accounts, plus our top pick as the angle, to reply to by hand.
+// We never auto-reply to other accounts. app_settings x-reply-targets: a comma list of handles
+// (default below); "off" stops it.
+const X_REPLY_TARGETS='ActionNetworkHQ,br_betting,Covers,VSiNLive,DKSportsbook,FDSportsbook,BetMGM,PrizePicks';
+async function xReplyTargets(env,now=Date.now()){
+  const list=String(await appSetting(env,'x-reply-targets')||X_REPLY_TARGETS);
+  if(!env.DB||!xReady(env)||!env.ALERT_NTFY_TOPIC||list==='off')return {off:true};
+  const hour=Number(etDate(now,{hour:'numeric',hourCycle:'h23'}));if(![12,17].includes(hour))return {due:false};
+  const key=`x-targets:${etDate(now,{year:'numeric',month:'2-digit',day:'2-digit'})}:${hour}`;if(!(await xClaim(env,key,now)))return {done:true};
+  const handles=list.split(',').map(h=>h.trim().replace(/^@/,'')).filter(h=>/^\w{1,15}$/.test(h)).slice(0,12);if(!handles.length)return {off:true};
+  const base='https://api.twitter.com/2/tweets/search/recent',params={query:`(${handles.map(h=>`from:${h}`).join(' OR ')}) -is:reply -is:retweet`,max_results:'50',start_time:new Date(now-6*3600000).toISOString(),'tweet.fields':'public_metrics,created_at,author_id',expansions:'author_id','user.fields':'username'};
+  const r=await fetch(`${base}?${new URLSearchParams(params)}`,{headers:{authorization:await xOAuthHeader(env,'GET',base,params)},signal:AbortSignal.timeout(15000)});
+  if(!r.ok)throw new Error(`X search failed (${r.status})`);
+  const body=await r.json().catch(()=>({})),users=new Map((body.includes?.users||[]).map(u=>[String(u.id),String(u.username||'')]));
+  const score=t=>{const m=t.public_metrics||{};return 3*(m.reply_count||0)+2*(m.retweet_count||0)+(m.like_count||0)};
+  const top=(body.data||[]).sort((a,b)=>score(b)-score(a)).slice(0,3);if(!top.length)return {found:0};
+  const pick=(((await env.DB.prepare("SELECT * FROM public_recommendations WHERE source='market-verified-v2' AND kind='prop' AND result IS NULL AND game_time>? AND game_time<? ORDER BY game_time LIMIT 30").bind(new Date(now).toISOString(),new Date(now+18*3600000).toISOString()).all().catch(()=>({results:[]}))).results)||[]).sort((a,b)=>Number(recordLegs(b)[0]?.edge||0)-Number(recordLegs(a)[0]?.edge||0))[0];
+  const lines=top.map(t=>{const u=users.get(String(t.author_id))||'',m=t.public_metrics||{};return `@${u} (${m.reply_count||0} replies, ${m.like_count||0} likes): ${String(t.text||'').replace(/\s+/g,' ').slice(0,110)}\nhttps://x.com/${u}/status/${t.id}`});
+  await fetch('https://ntfy.sh/'+encodeURIComponent(env.ALERT_NTFY_TOPIC),{method:'POST',headers:{Title:'Reply targets on X',Tags:'dart'},
+    body:`${lines.join('\n\n')}${pick?`\n\nYour angle: our top pick, ${pick.player} ${weeklyLegText(pick)} (${weeklyOdds(pick.odds)}). Add to the conversation first; no links.`:''}`,signal:AbortSignal.timeout(10000)}).catch(()=>{});
+  return {sent:top.length};
 }
 // The daily slate card, v2 (Nov 14, Tim): "Tonight's picks" in big neon ("Today's" when the
 // first game starts before 3 PM ET), the counts, a gold sticker (the last 3 nights or game days
@@ -6314,7 +6381,9 @@ async function runXPosts(env,now=Date.now()){
   // The pinned summary waits for a run with nothing else heavy.
   const summary=picks.posted||predictions.posted||combo.posted||weekly.posted||final.posted||slate.posted||pin.posted||recap.posted||results.posted?{posted:0,waiting:true}:await postSummaryToX(env,now);
   const metrics=await xMetricsDaily(env,now).catch(error=>({error:error.message}));
-  return {metrics,picks,weekly,closing,combo,final,catchUp,slate,pmSlate,pin,recap,proof,nbaLaunch,nba,nbaPick,nbaPm,predictions,results,summary};
+  const replyAlerts=await xReplyAlerts(env,now).catch(async error=>{await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} reply alerts: ${error.message}`).catch(()=>{});return {error:error.message}});
+  const targets=await xReplyTargets(env,now).catch(async error=>{await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} reply targets: ${error.message}`).catch(()=>{});return {error:error.message}});
+  return {metrics,replyAlerts,targets,picks,weekly,closing,combo,final,catchUp,slate,pmSlate,pin,recap,proof,nbaLaunch,nba,nbaPick,nbaPm,predictions,results,summary};
 }
 // "My book" alerts: a good-value price at one of someone's own sportsbooks.
 // The fair price always comes from every book (3+ pricing both sides, the same
