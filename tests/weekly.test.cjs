@@ -42,27 +42,27 @@ context.env={DB};
   for(const path of ['/picks</loc>','/picks/2026/week-3</loc>','/picks/2026/week-4</loc>','/trust</loc>'])assert.ok(sitemap.includes(path),`sitemap has ${path}`);
   // Anonymous usage counts: known metric names only, no bots, daily totals only.
   context.jobs=[];context.ctx={waitUntil:p=>context.jobs.push(p)};
-  const hit=async(body,ua='Mozilla/5.0 (iPhone)')=>{const r=await run(`usageHit(new Request('https://betthisguy.com/api/hit',{method:'POST',headers:{'user-agent':${JSON.stringify(ua)}},body:${JSON.stringify(JSON.stringify(body))}}),env,ctx)`);await Promise.all(context.jobs.splice(0));return r.status};
+  const hit=async(body,ua='Mozilla/5.0 (iPhone)',lang='en-US')=>{const r=await run(`usageHit(new Request('https://betthisguy.com/api/hit',{method:'POST',headers:{'user-agent':${JSON.stringify(ua)},...(${JSON.stringify(lang)}?{'accept-language':${JSON.stringify(lang)}}:{})},body:${JSON.stringify(JSON.stringify(body))}}),env,ctx)`);await Promise.all(context.jobs.splice(0));return r.status};
   assert.equal(await hit({m:['view:home','visit:new']}),204);
-  await hit({m:['view:home','slip:add','slip:add']});await hit({m:['drop table','<script>']});await hit({m:['view:home']},'Googlebot/2.1');await hit('not json');
+  await hit({m:['view:home','slip:add','slip:add']});await hit({m:['drop table','<script>']});await hit({m:['view:home']},'Googlebot/2.1');await hit({m:['view:home','visit:new']},'Mozilla/5.0 (Windows NT 10.0) Chrome/130','');await hit('not json');
   const counts=Object.fromEntries(db.prepare('SELECT metric,count FROM usage_counts ORDER BY metric').all().map(r=>[r.metric,r.count]));
-  assert.equal(JSON.stringify(counts),JSON.stringify({'slip:add':1,'view:home':2,'visit:new':1}),'known metrics counted once per send, unknown names and bots ignored');
+  assert.equal(JSON.stringify(counts),JSON.stringify({'bot:view':2,'slip:add':1,'view:home':2,'visit:new':1}),'known metrics counted once per send, unknown names ignored, bots (bot name, or no Accept-Language) only as bot:view');
   assert.equal(JSON.stringify(db.prepare('PRAGMA table_info(usage_counts)').all().map(c=>c.name)),'["day","metric","count"]','only a day, a metric name and a total are stored');
   assert.equal((await run("usageHit(new Request('https://betthisguy.com/api/hit'),env,ctx)")).status,405,'reads are refused');
   // Visits by place: a daily total per US state or country, only with a visit.
   assert.equal(run("usageGeo({cf:{country:'US',regionCode:'TX'}})"),'geo:US-TX');assert.equal(run("usageGeo({cf:{country:'GB',regionCode:'ENG'}})"),'geo:GB');
   assert.equal(run("usageGeo({cf:{country:'T1'}})"),null,'Tor and unknown places are skipped');assert.equal(run('usageGeo({})'),null);
   {const before=db.prepare("SELECT COALESCE(SUM(count),0) n FROM usage_counts WHERE metric LIKE 'geo:%'").get().n;
-   const geoHit=async(m)=>{await run(`(()=>{const r=new Request('https://betthisguy.com/api/hit',{method:'POST',headers:{'user-agent':'Mozilla/5.0 (iPhone)'},body:${JSON.stringify(JSON.stringify({m}))}});Object.defineProperty(r,'cf',{value:{country:'US',regionCode:'TX'}});return usageHit(r,env,ctx)})()`);await Promise.all(context.jobs.splice(0))};
+   const geoHit=async(m)=>{await run(`(()=>{const r=new Request('https://betthisguy.com/api/hit',{method:'POST',headers:{'accept-language':'en','user-agent':'Mozilla/5.0 (iPhone)'},body:${JSON.stringify(JSON.stringify({m}))}});Object.defineProperty(r,'cf',{value:{country:'US',regionCode:'TX'}});return usageHit(r,env,ctx)})()`);await Promise.all(context.jobs.splice(0))};
    await geoHit(['visit:new']);await geoHit(['view:home']);
    assert.equal(db.prepare("SELECT count FROM usage_counts WHERE metric='geo:US-TX'").get()?.count,1,'a visit counts its state once; other actions do not');
    assert.equal(db.prepare("SELECT COALESCE(SUM(count),0) n FROM usage_counts WHERE metric LIKE 'geo:%'").get().n-before,1);
    db.prepare("DELETE FROM usage_counts WHERE metric='geo:US-TX'").run();db.prepare("UPDATE usage_counts SET count=count-1 WHERE metric IN ('visit:new','view:home')").run()}
   // The owner's devices (cookie set by /?me=1) are never counted; visit sources are.
-  const ownerHit=await run(`usageHit(new Request('https://betthisguy.com/api/hit',{method:'POST',headers:{'user-agent':'Mozilla/5.0','cookie':'a=1; btg_owner=1'},body:JSON.stringify({m:['view:home','src:reddit']})}),env,ctx)`);await Promise.all(context.jobs.splice(0));
+  const ownerHit=await run(`usageHit(new Request('https://betthisguy.com/api/hit',{method:'POST',headers:{'accept-language':'en','user-agent':'Mozilla/5.0','cookie':'a=1; btg_owner=1'},body:JSON.stringify({m:['view:home','src:reddit']})}),env,ctx)`);await Promise.all(context.jobs.splice(0));
   assert.equal(ownerHit.status,204);assert.equal(db.prepare("SELECT count FROM usage_counts WHERE metric='view:home'").get().count,2,'owner visits are not counted');
   await hit({m:['src:reddit']});assert.equal(db.prepare("SELECT count FROM usage_counts WHERE metric='src:reddit'").get().count,1,'visit sources are counted');
-  const routed=await run("routeRequest(new Request('https://betthisguy.com/picks/2026/week-3',{headers:{'user-agent':'Mozilla/5.0'}}),env,ctx)");await Promise.all(context.jobs.splice(0));
+  const routed=await run("routeRequest(new Request('https://betthisguy.com/picks/2026/week-3',{headers:{'accept-language':'en','user-agent':'Mozilla/5.0'}}),env,ctx)");await Promise.all(context.jobs.splice(0));
   assert.equal(routed.status,200);assert.equal(db.prepare("SELECT count FROM usage_counts WHERE metric='view:week'").get().count,1,'weekly pages count their own views');
   // Partner links: off with no setting, shown only in listed US states, and
   // bad entries dropped.

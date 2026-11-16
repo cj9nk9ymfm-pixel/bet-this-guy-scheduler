@@ -3750,7 +3750,11 @@ async function cspReport(request,env,ctx){
 // Anonymous usage counts: daily totals per metric. No cookies, IP addresses or
 // per-person identifiers are stored; unknown metric names are ignored.
 const USAGE_METRICS=new Set([...['picks','switch'].flatMap(k=>['<1s','1-2s','2-4s','4s+'].map(b=>`perf:${k}:${b}`)),'card:stats','slip:copy','slip:topm','alerts:x','alerts:chooser','alerts:choose-email','alerts:choose-site','go:safari','go:novig','a2hs:shown','alerts:banner-hide','alerts:fromweek','alerts:lapsed','alerts:denied','alerts:unsupported','board:browse','board:value','empty:alerts','email:pitch','hero:picks','official:bet','prop:bet','slip:addpicks','view:nba','sheet:alerts','sheet:email','sheet:xproof','email:subscribe','email:open','reply:copy','reply:image','partner:novig:copy','app:novig','app:prophetx','app:kalshi','app:polymarket','app:betopenly','welcome:shown','welcome:alerts','welcome:account','welcome:skip','welcome:close','welcome:reopen','view:home','view:trust','view:picks','view:player','view:nfl','live:league-tab','sheet:player-page','follow:on','follow:off','follow:ask-shown','follow:ask-close','follow:ask-on','share:from-hit','view:week','visit:new','visit:return','card:open','slip:add','parlay:add','share','hit:open','profile:open','affiliate:click','alerts:on','alerts:off','gate:shown','gate:signup','gate:login','nudge:shown','nudge:alerts','nudge:signup','nudge:shown-a','nudge:shown-b','nudge:alerts-b','email:inline-board','mybets:add','mybets:open','sheet:line','email:after-shown','email:after-close','email:inline-after','slip:bar','slip:stake-chip','board:browse','alerts:email','view:post','post:copy','post:open','post:image','src:reddit','src:x','src:google','src:social','src:other','src:direct','src:xbio','src:search','src:email','email:home-shown-b','email:inline-homeb','email:home-shown-c','email:inline-homec','welcome:email','email:inline-welcome','email:inline-banner','email:inline-sheet','email:inline-home','email:home-shown','email:inline-nudge','email:nudge-shown','email:nudge-close','welcome:a2hs','live:strip','slip:parlay']);
-const USAGE_BOTS=/bot|crawl|spider|slurp|preview|facebookexternalhit|curl|wget|python|headless|lighthouse/i;
+const USAGE_BOTS=/bot|crawl|spider|slurp|preview|facebookexternalhit|curl|wget|python|headless|lighthouse|scrap|fetch|http-?client|okhttp|axios|go-http|java\/|ruby|perl|php|gptbot|claude|anthropic|perplexity|bytespider|amazonbot|petal|semrush|ahrefs|meta-external|externalagent|feed|monitor|uptime|check/i;
+// Traffic that isn't a person (Nov 16, Tim: real numbers): no Accept-Language (every browser sends
+// one), or from a cloud or hosting network rather than a home or phone connection.
+const USAGE_DATACENTER=/amazon|aws|google cloud|microsoft|azure|digitalocean|hetzner|ovh|alibaba|tencent|linode|oracle|contabo|choopa|vultr|m247|datacamp|leaseweb|scaleway|huawei|hostinger|ionos|hostroyale|colocrossing|psychz|quadranet|cogent|zenlayer|g-core|gcore/i;
+function usageBot(request){const ua=request.headers.get('user-agent')||'';return !ua||USAGE_BOTS.test(ua)||!request.headers.get('accept-language')||USAGE_DATACENTER.test(String(request.cf?.asOrganization||''))}
 function usageGeo(request){
   const cf=request.cf||{},country=String(cf.country||'').toUpperCase(),region=String(cf.regionCode||'').toUpperCase();
   if(!/^[A-Z]{2}$/.test(country)||country==='T1'||country==='XX')return null;
@@ -3758,7 +3762,9 @@ function usageGeo(request){
 }
 async function countUsage(env,metrics,request){
   // The owner's own devices (opted out with /?me=1) are never counted.
-  if(!env.DB||USAGE_BOTS.test(request.headers.get('user-agent')||'')||/(?:^|;\s*)btg_owner=1(?:;|$)/.test(request.headers.get('cookie')||''))return;
+  if(!env.DB||/(?:^|;\s*)btg_owner=1(?:;|$)/.test(request.headers.get('cookie')||''))return;
+  // Bots aren't counted as views or visits; one bot:view a hit shows how much there is.
+  if(usageBot(request)){if(metrics.some(m=>/^(view|visit):/.test(m)))await env.DB.prepare('INSERT INTO usage_counts (day,metric,count) VALUES (?,?,1) ON CONFLICT(day,metric) DO UPDATE SET count=count+1').bind(new Date().toISOString().slice(0,10),'bot:view').run().catch(()=>{});return}
   const day=new Date().toISOString().slice(0,10),list=[...new Set(metrics)].filter(m=>USAGE_METRICS.has(m)||/^ref:[a-z0-9.-]{3,40}$/.test(m)||/^(book|funnel):[a-z0-9-]{2,24}$/.test(m)).slice(0,4);
   // Visits by place: a daily count per US state (geo:US-TX) or country (geo:GB)
   // from Cloudflare's lookup of the request. Only the total is kept.
@@ -4357,7 +4363,7 @@ const xLean=async env=>{const v=await appSetting(env,'x-lean').catch(()=>null);r
 function xPollText(r,now=Date.now()){
   const f=recordLegs(r)[0]||{},night=Number(new Date(Date.parse(r.game_time)).toLocaleString('en-US',{hour:'numeric',hour12:false,timeZone:'America/Los_Angeles'}))>=15;
   const price=r.exchange?`${exchangePct(r.odds)}% on ${r.exchange}`:`${weeklyOdds(r.odds)}${f.book?` at ${f.book}`:''}`,game=xMatchup(f.team||r.team);
-  return xShort(`🗳️ Are you tailing ${night?'tonight’s':'today’s'} top pick?\n\n${r.player} ${weeklyLegText(r)} (${price})${game?`\n${game}`:''}\n\nVote, then see the full card in the replies 👇👇 ${r.exchange?'18+/21+':'21+'}`);
+  return xShort(`🗳️ Are you tailing ${night?'tonight’s':'today’s'} top pick?\n\n${r.player} ${weeklyLegText(r)} (${price})${game?`\n${game}`:''}\n\nVote, then check back: the result goes in the replies. ${r.exchange?'18+/21+':'21+'}`);
 }
 // Pick tests (Nov 9, Tim). For each open official single: its book, how far ahead
 // it posted and what the sharp book said (the DraftKings test); and for picks posted
@@ -4414,8 +4420,7 @@ async function xPoll(env,rows,now,day,mediaId=null){
   try{sent=await xPost(env,xPollText(r,now),null,null,null,{poll:{options:['Tailing ✅','Fading ❌'],duration_minutes:minutes}});await xDone(env,key,now);
     if(sent?.data?.id){await setAppSetting(env,`xid:${key}`,String(sent.data.id)).catch(()=>{});await setAppSetting(env,`x-poll-pick:${day}`,String(r.id)).catch(()=>{})}}
   catch(error){await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} poll: ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}
-  // The card under the poll (the same uploaded image; X keeps a media id usable for a day).
-  if(mediaId&&sent?.data?.id)try{await xPost(env,`👇 ${Date.parse(r.game_time)-now<12*3600000?'Tonight’s':'The'} full card. Locked before ${String(r.id||'').startsWith('nba|')||String(r.event_id||'').startsWith('NBA--')?'tip-off':'kickoff'}, every pick graded in public. Link in bio.`,mediaId,sent.data.id)}catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} poll card: ${error.message}`).catch(()=>{})}
+  // No "full card" reply under the poll any more (Nov 16, Tim: fewer, better posts).
   return {posted:1,pick:r.id};
 }
 // A poll's votes (one X read): {tail, total} from the first option's share.
@@ -4427,6 +4432,8 @@ async function xPollVotes(env,id){
   const total=opts.reduce((t,o)=>t+Number(o.votes||0),0),first=Number(opts.find(o=>o.position===1)?.votes??opts[0]?.votes??0);
   return {tail:first,total};
 }
+// The day's poll picks (Nov 16): their result goes in the poll's reply, not a second result reply.
+async function xPollPickIds(env){return new Set((((await env.DB.prepare("SELECT value FROM app_settings WHERE key LIKE 'x-poll-pick:%'").all().catch(()=>({results:[]}))).results)||[]).map(r=>String(r.value)))}
 function xPollResultText(r,v){
   const pm=String(r.id||'').startsWith('pm|'),f=pm?{}:recordLegs(r)[0]||{},actual=pm?r.actual:f.actualValue,unit=String(r.market||'').toLowerCase();
   const look={won:['✅','HIT'],lost:['❌','MISS'],push:['➖','PUSH'],void:['➖','NO ACTION']}[r.result]||['➖','FINAL'];
@@ -4970,7 +4977,7 @@ async function xResultData(env,r,season){
 // with its graphic, as a reply under the original pick when we have its id.
 async function postResultsToX(env,now=Date.now(),limit=1){
   if(!env.DB||!xReady(env))return {posted:0,disabled:true};
-  const every=await xPickPosts(env);if(every)limit=Math.max(limit,3);
+  const every=await xPickPosts(env);if(every)limit=Math.max(limit,3);let pollIds=null;
   const since=new Date(now-3*86400000).toISOString();
   const rows=(await env.DB.prepare("SELECT id,kind,sport,player,market,side,line,odds,combined_odds,legs_json,game_time,status,result FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND ((status='final' AND result IN ('won','lost','push') AND settled_at>?) OR (status='provisional' AND result IN ('won','lost') AND game_time>?)) AND NOT EXISTS(SELECT 1 FROM app_settings WHERE key='xr:'||public_recommendations.id AND value NOT LIKE 'pending %') ORDER BY COALESCE(settled_at,game_time) LIMIT 8").bind(since,since).all()).results||[];
   let posted=0,season=null;
@@ -4979,6 +4986,7 @@ async function postResultsToX(env,now=Date.now(),limit=1){
     // Only picks that went out on X get a result post, and since Oct 26 only
     // top picks: the day's recap card carries every result.
     if(!xTopPick(r)&&r.kind!=='parlay'&&!every)continue;
+    if((pollIds||=await xPollPickIds(env)).has(r.id))continue;
     const parent=(await appSetting(env,`xi:${r.id}`))?await xThreadTail(env,r.id):await appSetting(env,`xcard:${r.id}`);
     if(!parent||!(await xClaim(env,`xr:${r.id}`,now)))continue;
     // Count tries before the heavy work: after three cut-off tries the result posts as text.
@@ -5865,6 +5873,9 @@ async function postNbaPredictionToX(env,now=Date.now()){
   // New picks first, each with its graphic (player photo, team colors, price).
   const rows=(await env.DB.prepare("SELECT * FROM prediction_picks WHERE event_id LIKE 'NBA--%' AND posted_at>? AND game_time>? ORDER BY posted_at LIMIT 5").bind(new Date(now-6*3600000).toISOString(),new Date(now).toISOString()).all()).results||[];
   for(const r of rows){const key=`x-nba-pm:${r.id}`;if(!(await xClaimable(env,key,now))||!(await xMatchupReady(env,r,now))||!(await xClaim(env,key,now)))continue;
+    // Same player, stat and side as a sportsbook pick that night (Nov 16): already on X, so no second post.
+    const t=Date.parse(r.game_time),twin=await env.DB.prepare("SELECT 1 AS ok FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'nba|%' AND player=? AND market=? AND side=? AND game_time>=? AND game_time<=? LIMIT 1").bind(r.player,r.market,r.side,new Date(t-3*3600000).toISOString(),new Date(t+3*3600000).toISOString()).first().catch(()=>null);
+    if(twin){await xDone(env,key,now);continue}
     try{const mediaId=await xPredictionMedia(env,r,false);const sent=await xPost(env,nbaPmXText(r),mediaId);await xDone(env,key,now);if(sent?.data?.id)await setAppSetting(env,`xid:${r.id}`,String(sent.data.id)).catch(()=>{});await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} nba prediction ${sent?.data?.id||''} ${r.id}`).catch(()=>{});return {posted:1,graphic:Boolean(mediaId)}}
     catch(error){await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(key).run().catch(()=>{});await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} ${error.message}`).catch(()=>{});return {posted:0,error:error.message}}}
   // Then results: a reply under the pick's own post with the result graphic, once graded.
@@ -6022,7 +6033,7 @@ async function postNbaCardToX(env,now=Date.now()){
 // land, then the recap once every pick is graded. Text only, limit per run.
 async function postNbaRepliesToX(env,now=Date.now(),limit=2){
   if(!env.DB||!xReady(env)||await appSetting(env,'x-nba')==='hold')return {posted:0,disabled:true};
-  let posted=0,more=false;const out={added:0,results:0,recap:0},lean=await xLean(env),every=await xPickPosts(env);
+  let posted=0,more=false;const out={added:0,results:0,recap:0},lean=await xLean(env),every=await xPickPosts(env),pollIds=await xPollPickIds(env);
   for(const night of [...new Set([nbaNight(now),nbaNight(now-86400000)])]){
     const card=await appSetting(env,`xid:x-nba-card:${night}`);if(!card)continue;
     const rows=await nbaRows(env,night),look={won:['✅','HIT'],lost:['❌','MISS'],push:['➖','NO ACTION']};
@@ -6038,7 +6049,7 @@ async function postNbaRepliesToX(env,now=Date.now(),limit=2){
     const jobs=[
       ...leanAdded,
       ...rows.filter(r=>!lean&&Date.parse(r.game_time)>now).map(r=>({key:`x-nba-pick:${r.id}`,kind:'added',save:r.id,media:async()=>xUploadImage(env,await renderCardPng(xPickSvg(await xCardData(env,r,await nbaRecordSummary(env))))),text:()=>`🔒 Added for the late games:\n${nbaLine(r)}\n\nLocked before tip-off. 21+`})),
-      ...rows.filter(nbaDecided).filter(r=>every||xTopPick(r)||xScratched(r)||(lean&&r.kind==='parlay')).map(r=>({key:`x-nba-r:${r.id}`,kind:'results',pick:r.id,media:async()=>xUploadImage(env,await renderCardPng(xScratched(r)?await xScratchSvg(r):xPickSvg(await xResultData(env,r,await nbaRecordSummary(env))))),text:()=>{const legs=recordLegs(r),f=legs[0]||{};
+      ...rows.filter(nbaDecided).filter(r=>xScratched(r)||!pollIds.has(r.id)).filter(r=>every||xTopPick(r)||xScratched(r)||(lean&&r.kind==='parlay')).map(r=>({key:`x-nba-r:${r.id}`,kind:'results',pick:r.id,media:async()=>xUploadImage(env,await renderCardPng(xScratched(r)?await xScratchSvg(r):xPickSvg(await xResultData(env,r,await nbaRecordSummary(env))))),text:()=>{const legs=recordLegs(r),f=legs[0]||{};
         if(xScratched(r))return `➖ PICK PULLED: ${r.player} ${weeklyLegText(r)}\n${/^did not play/i.test(String(f.voidReason||''))?`${r.player} didn’t get into the game`:`${r.player} was ruled out before tip-off`}${/\(([^)]+)\)/.test(String(f.voidReason||''))?` (${String(f.voidReason).match(/\(([^)]+)\)/)[1].toLowerCase()})`:''}.\n\nIt comes off our record: no win, no loss. Books void it too, so your stake comes back.`;
         const [e,w]=r.result==='push'&&legs.every(l=>l.voided)?['➖','NO ACTION']:look[r.result],stake=r.kind==='parlay'?25:100,d=recordDecimal(r.kind==='parlay'?r.combined_odds:r.odds),win=r.result==='won'?stake*(d-1):r.result==='lost'?-stake:0,unit=String(r.market||'').toLowerCase();
         if(r.kind==='parlay')return `${e} ${w}: ${legs.length}-leg parlay (${weeklyOdds(r.combined_odds)})\n${legs.map(l=>`${l.result==='won'?'✅':l.result==='lost'?'❌':'➖'} ${l.player} ${weeklyLegText(l)}`).join('\n')}\n${r.result==='push'?'Stake back.':`${weeklyMoney(win)} on a $25 ticket.`}`;

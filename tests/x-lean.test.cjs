@@ -53,13 +53,12 @@ const pm=(id,player,eventId,gameTime,edge=3)=>db.prepare("INSERT INTO prediction
   nba(`nba|${night}|props|prop|1`,'Josh Hart',105,tip,1.4);nba(`nba|${night}|props|prop|2`,'Jalen Brunson',-110,tip,2.1);
   assert.equal((await run(`postNbaPicksToX(env,${nbaAt-3600000})`)).lean,true,'NBA picks wait for the card');
   const before=posts.length;assert.equal((await run(`postNbaCardToX(env,${nbaAt})`)).posted,1);
-  const nbaCard=posts[before],poll=posts[before+1],under=posts[before+2],pollId=String(1900000000000000000n+BigInt(before+2));
+  const nbaCard=posts[before],poll=posts[before+1],pollId=String(1900000000000000000n+BigInt(before+2));
   assert.match(nbaCard.text,/NBA picks/);assert.ok(poll&&poll.poll,'poll as its own post right after the card');assert.ok(!poll.reply,'not a reply');
   assert.deepEqual(poll.poll.options,['Tailing ✅','Fading ❌']);assert.equal(poll.poll.duration_minutes,30,'open until tip-off');
-  assert.match(poll.text,/^🗳️ Are you tailing tonight’s top pick\?/);assert.match(poll.text,/Jalen Brunson Over 6.5 rebounds \(-110 at DraftKings\)/,'the highest edge');assert.match(poll.text,/full card in the replies 👇👇/);assert.ok(!poll.media&&!/https?:\/\//.test(poll.text));
-  assert.equal(under.reply.in_reply_to_tweet_id,pollId,'the card goes under the poll');assert.deepEqual(under.media,nbaCard.media,'same card image');
+  assert.match(poll.text,/^🗳️ Are you tailing tonight’s top pick\?/);assert.match(poll.text,/Jalen Brunson Over 6.5 rebounds \(-110 at DraftKings\)/,'the highest edge');assert.match(poll.text,/the result goes in the replies/);assert.ok(!poll.media&&!/https?:\/\//.test(poll.text));
   assert.equal(setting(`x-poll-pick:nba-${night}`),`nba|${night}|props|prop|2`);
-  assert.equal(posts.length,before+3);
+  assert.equal(posts.length,before+2,'no card reply under the poll (Nov 16)');
   // Late picks: one reply under the card for everything new, then nothing again.
   nba(`nba|${night}|props|prop|3`,'Jayson Tatum',115,later,1.1);nba(`nba|${night}|props|prop|4`,'Jaylen Brown',120,later,1.3);
   const added=await run(`postNbaRepliesToX(env,${Date.parse(tip)+3600000},2)`);
@@ -74,6 +73,9 @@ const pm=(id,player,eventId,gameTime,edge=3)=>db.prepare("INSERT INTO prediction
   assert.equal(pr.posted,1);const res2=posts.at(-1);assert.equal(res2.reply.in_reply_to_tweet_id,pollId);
   assert.match(res2.text,/^✅ HIT: Jalen Brunson Over 6.5 rebounds\nFinal: 8 rebounds\.\n72% of you tailed \(25 votes\)\.\nTailers: \+\$91 on a \$100 bet\./);
   assert.equal((await run(`postPollResultsToX(env,${Date.parse(tip)+3*3600000+600000})`)).posted,0,'once');
+  // The poll's pick gets its result in the poll reply only, not a second result reply (Nov 16).
+  {const n=posts.length;await run(`postNbaRepliesToX(env,${Date.parse(tip)+3*3600000+700000},5)`);
+   assert.equal(posts.slice(n).filter(p=>/HIT: Jalen Brunson/.test(p.text)).length,0,'no second Brunson result');}
   // Every post is logged; the metrics read takes posts 20 hours to 7 days old, once a day.
   assert.equal(db.prepare('SELECT COUNT(*) n FROM x_posts').get().n,posts.length);
   assert.equal(db.prepare('SELECT poll FROM x_posts WHERE text LIKE ?').get('🗳️%').poll,1);
