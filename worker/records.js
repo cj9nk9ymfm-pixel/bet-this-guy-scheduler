@@ -3754,7 +3754,11 @@ const USAGE_BOTS=/bot|crawl|spider|slurp|preview|facebookexternalhit|curl|wget|p
 // Traffic that isn't a person (Nov 16, Tim: real numbers): no Accept-Language (every browser sends
 // one), or from a cloud or hosting network rather than a home or phone connection.
 const USAGE_DATACENTER=/amazon|aws|google cloud|microsoft|azure|digitalocean|hetzner|ovh|alibaba|tencent|linode|oracle|contabo|choopa|vultr|m247|datacamp|leaseweb|scaleway|huawei|hostinger|ionos|hostroyale|colocrossing|psychz|quadranet|cogent|zenlayer|g-core|gcore/i;
-function usageBot(request){const ua=request.headers.get('user-agent')||'';return !ua||USAGE_BOTS.test(ua)||!request.headers.get('accept-language')||USAGE_DATACENTER.test(String(request.cf?.asOrganization||''))}
+// Nov 19 fix: the page's own counting hits (POST /api/hit from the browser) only drop on a bot user
+// agent; phones sent some without Accept-Language or from hosting networks and real visits vanished.
+// Server-side page loads (GET) still drop on all three. Each reason is counted (bot:ua, bot:lang, bot:dc).
+function usageBot(request){const ua=request.headers.get('user-agent')||'';if(!ua||USAGE_BOTS.test(ua))return 'ua';if(request.method==='POST')return null;
+  if(!request.headers.get('accept-language'))return 'lang';if(USAGE_DATACENTER.test(String(request.cf?.asOrganization||'')))return 'dc';return null}
 function usageGeo(request){
   const cf=request.cf||{},country=String(cf.country||'').toUpperCase(),region=String(cf.regionCode||'').toUpperCase();
   if(!/^[A-Z]{2}$/.test(country)||country==='T1'||country==='XX')return null;
@@ -3764,7 +3768,7 @@ async function countUsage(env,metrics,request){
   // The owner's own devices (opted out with /?me=1) are never counted.
   if(!env.DB||/(?:^|;\s*)btg_owner=1(?:;|$)/.test(request.headers.get('cookie')||''))return;
   // Bots aren't counted as views or visits; one bot:view a hit shows how much there is.
-  if(usageBot(request)){if(metrics.some(m=>/^(view|visit):/.test(m)))await env.DB.prepare('INSERT INTO usage_counts (day,metric,count) VALUES (?,?,1) ON CONFLICT(day,metric) DO UPDATE SET count=count+1').bind(new Date().toISOString().slice(0,10),'bot:view').run().catch(()=>{});return}
+  const bot=usageBot(request);if(bot){if(metrics.some(m=>/^(view|visit):/.test(m)))await env.DB.prepare('INSERT INTO usage_counts (day,metric,count) VALUES (?,?,1) ON CONFLICT(day,metric) DO UPDATE SET count=count+1').bind(new Date().toISOString().slice(0,10),`bot:${bot}`).run().catch(()=>{});return}
   const day=new Date().toISOString().slice(0,10),list=[...new Set(metrics)].filter(m=>USAGE_METRICS.has(m)||/^ref:[a-z0-9.-]{3,40}$/.test(m)||/^(book|funnel):[a-z0-9-]{2,24}$/.test(m)).slice(0,4);
   // Visits by place: a daily count per US state (geo:US-TX) or country (geo:GB)
   // from Cloudflare's lookup of the request. Only the total is kept.
