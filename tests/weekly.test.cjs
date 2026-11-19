@@ -46,7 +46,7 @@ context.env={DB};
   assert.equal(await hit({m:['view:home','visit:new']}),204);
   await hit({m:['view:home','slip:add','slip:add']});await hit({m:['drop table','<script>']});await hit({m:['view:home']},'Googlebot/2.1');await hit({m:['view:home','visit:new']},'Mozilla/5.0 (Windows NT 10.0) Chrome/130','');await hit('not json');
   const counts=Object.fromEntries(db.prepare('SELECT metric,count FROM usage_counts ORDER BY metric').all().map(r=>[r.metric,r.count]));
-  assert.equal(JSON.stringify(counts),JSON.stringify({'bot:view':2,'slip:add':1,'view:home':2,'visit:new':1}),'known metrics counted once per send, unknown names ignored, bots (bot name, or no Accept-Language) only as bot:view');
+  assert.equal(JSON.stringify(counts),JSON.stringify({'bot:ua':1,'slip:add':1,'view:home':3,'visit:new':2}),'known metrics counted once per send, unknown names ignored, bot names only as bot:ua; the page\'s own hits count without Accept-Language (Nov 19: phones send some without it)');
   assert.equal(JSON.stringify(db.prepare('PRAGMA table_info(usage_counts)').all().map(c=>c.name)),'["day","metric","count"]','only a day, a metric name and a total are stored');
   assert.equal((await run("usageHit(new Request('https://betthisguy.com/api/hit'),env,ctx)")).status,405,'reads are refused');
   // Visits by place: a daily total per US state or country, only with a visit.
@@ -60,7 +60,7 @@ context.env={DB};
    db.prepare("DELETE FROM usage_counts WHERE metric='geo:US-TX'").run();db.prepare("UPDATE usage_counts SET count=count-1 WHERE metric IN ('visit:new','view:home')").run()}
   // The owner's devices (cookie set by /?me=1) are never counted; visit sources are.
   const ownerHit=await run(`usageHit(new Request('https://betthisguy.com/api/hit',{method:'POST',headers:{'accept-language':'en','user-agent':'Mozilla/5.0','cookie':'a=1; btg_owner=1'},body:JSON.stringify({m:['view:home','src:reddit']})}),env,ctx)`);await Promise.all(context.jobs.splice(0));
-  assert.equal(ownerHit.status,204);assert.equal(db.prepare("SELECT count FROM usage_counts WHERE metric='view:home'").get().count,2,'owner visits are not counted');
+  assert.equal(ownerHit.status,204);assert.equal(db.prepare("SELECT count FROM usage_counts WHERE metric='view:home'").get().count,3,'owner visits are not counted');
   await hit({m:['src:reddit']});assert.equal(db.prepare("SELECT count FROM usage_counts WHERE metric='src:reddit'").get().count,1,'visit sources are counted');
   const routed=await run("routeRequest(new Request('https://betthisguy.com/picks/2026/week-3',{headers:{'accept-language':'en','user-agent':'Mozilla/5.0'}}),env,ctx)");await Promise.all(context.jobs.splice(0));
   assert.equal(routed.status,200);assert.equal(db.prepare("SELECT count FROM usage_counts WHERE metric='view:week'").get().count,1,'weekly pages count their own views');
