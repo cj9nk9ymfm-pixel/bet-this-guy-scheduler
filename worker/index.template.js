@@ -805,6 +805,36 @@ async function recordGameBoxscore(record,env,signal,cache){
 // the stat's own group blank while he recorded something else: J.K. Dobbins
 // had carries and a TD but no catches, and his receiving yards came back
 // blank, so an Over 4.5 sat ungraded. Catch, rush and pass stats only.
+// NFL snap counts (Nov 23, Tim: "we need to be able to check snap counts"). nflverse publishes
+// every player's offense, defense and special-teams snaps per game (from Pro Football Reference),
+// usually by the next morning: one CSV per season on GitHub. A player missing from the box score
+// either played without a stat (a blocking tight end: the bet counts, 0) or didn't play (no action).
+// The snaps decide which. known=false while the game isn't in the file yet.
+const NFL_SNAPS_URL=season=>`https://github.com/nflverse/nflverse-data/releases/download/snap_counts/snap_counts_${season}.csv`;
+const nflSnapsCache=new Map();
+async function nflSnapsIndex(season){
+  const hit=nflSnapsCache.get(season);if(hit&&Date.now()-hit.at<30*60000)return hit;
+  const r=await fetch(NFL_SNAPS_URL(season),{cf:{cacheTtl:1800,cacheEverything:true},signal:AbortSignal.timeout(20000)});
+  if(!r.ok)throw new Error(`snap counts ${r.status}`);
+  const lines=(await r.text()).split(/\r?\n/),head=lines[0].split(',').map(h=>h.replace(/"/g,'')),ix=k=>head.indexOf(k);
+  const iP=ix('player'),iG=ix('pfr_game_id'),iT=ix('team'),iO=ix('offense_snaps'),iD=ix('defense_snaps'),iS=ix('st_snaps');
+  const byPlayer=new Map(),dayTeams=new Map();
+  for(const line of lines.slice(1)){const c=line.split(',').map(v=>v.replace(/"/g,''));if(c.length<head.length)continue;
+    const row={date:String(c[iG]).slice(0,8),team:c[iT],snaps:(Number(c[iO])||0)+(Number(c[iD])||0)+(Number(c[iS])||0)},name=normalizedName(c[iP]);
+    if(!byPlayer.has(name))byPlayer.set(name,[]);byPlayer.get(name).push(row);
+    if(!dayTeams.has(row.date))dayTeams.set(row.date,new Set());dayTeams.get(row.date).add(row.team)}
+  const out={at:Date.now(),byPlayer,dayTeams};nflSnapsCache.set(season,out);return out;
+}
+async function nflSnaps(player,gameTime){
+  const t=Date.parse(gameTime);if(!Number.isFinite(t)||!player)return {known:false};
+  const d=new Date(t),season=d.getUTCMonth()<2?d.getUTCFullYear()-1:d.getUTCFullYear();
+  const day=d.toLocaleDateString('en-CA',{timeZone:'America/New_York'}).replace(/-/g,'');
+  const idx=await nflSnapsIndex(season),rows=idx.byPlayer.get(normalizedName(player))||[],mine=rows.find(r=>r.date===day);
+  if(mine)return {known:true,snaps:mine.snaps,team:mine.team};
+  // Not listed that day: no snaps, if his team's game is in the file (his latest team this season).
+  const team=rows.length?rows[rows.length-1].team:null;
+  return team&&idx.dayTeams.get(day)?.has(team)?{known:true,snaps:0,team}:{known:false};
+}
 function nflZeroStat(market,row){
   const m=String(market||'').trim().toLowerCase(),all=['receptions','receiving_targets','rushing_attempts','passing_attempts','passing_completions'];
   if(!/^(receptions|receiving yards|rushing yards|rush attempts|rush \+ receiving yards|passing yards|pass completions|pass attempts)$/.test(m)||!row)return false;
@@ -994,8 +1024,15 @@ async function gradePublicRecord(record, env, statsCache, signal) {
     // (books grade any snap as action), so he has 0. Catch, rush and pass
     // stats only (never kickers or touchdowns). Wait 4 hours after kickoff
     // so late box-score fixes land.
-    let noStats=false;
-    if(!nba&&finished&&observedValue===null&&nflZeroStat(leg.market,row)&&BTGStats.supports(leg)&&Date.now()-Date.parse(leg.gameTime)>4*3600000){observedValue=0;noStats=true}
+    let noStats=false,snapWait=false;
+    // No row in the box score: the snap count says whether he played (0 snaps: no action, Nov 23).
+    // Until the game is in the snap file, wait (up to 4 days, then the old rule: played, 0).
+    if(!nba&&finished&&observedValue===null&&!voided&&row?.missingPlayerStats&&nflZeroStat(leg.market,row)&&typeof nflSnaps==='function'){
+      const s=await nflSnaps(leg.player,leg.gameTime).catch(()=>({known:false}));
+      if(s.known&&!(s.snaps>0)){voided=true;observedValue=null}
+      else if(!s.known&&Date.now()-Date.parse(leg.gameTime)<4*86400000)snapWait=true;
+    }
+    if(!nba&&finished&&!voided&&!snapWait&&observedValue===null&&nflZeroStat(leg.market,row)&&BTGStats.supports(leg)&&Date.now()-Date.parse(leg.gameTime)>4*3600000){observedValue=0;noStats=true}
     // Stats that only go up (not yards: a loss of yards can lower them): once
     // the live box score passes the line, the bet is decided, so it settles
     // now (Under lost, Over won) instead of waiting for the final.
