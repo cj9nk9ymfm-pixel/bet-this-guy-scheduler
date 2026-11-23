@@ -1959,7 +1959,7 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
     const tonightOnly=items=>NBA?items.filter(([r])=>!(weekOf(r)>currentWeek())):items,nS=tonightOnly(singles).length,nP=tonightOnly(parlays).length;
     $('#officialNowCount').textContent=nS?String(nS):'';
     if($('#parlaysCount'))$('#parlaysCount').textContent=nP?String(nP):'';
-    fill('#officialNowList',singles,'pick',NBA?'<div class="on-empty"><strong>No NBA picks yet tonight.</strong><span>They post as soon as a price qualifies, often the day before. Only the best: 1% or more over the fair price at +125 or shorter, backed by the sharp book and his own numbers, up to 5 a night. Some nights nothing qualifies, and we pass.</span></div>':'<div class="on-empty"><strong>No picks yet this week.</strong><span>They post the moment a price qualifies, any day before kickoff.</span></div>');
+    fill('#officialNowList',singles,'pick',NBA?'<div class="on-empty"><strong>No NBA picks yet tonight.</strong><span>They post as soon as a price qualifies, often the day before. Only the best: 1% or more over the fair price at +110 or shorter, backed by the sharp book and his own numbers, up to 5 a night. Some nights nothing qualifies, and we pass.</span></div>':'<div class="on-empty"><strong>No picks yet this week.</strong><span>They post the moment a price qualifies, any day before kickoff.</span></div>');
     fill('#parlaysList',parlays,'parlay','<div class="on-empty"><strong>Official parlays are paused.</strong><span>We’re posting singles only for now. You can still build your own in the slip.</span></div>');
     paintPassed();
     // Tap the row for the bet screen; tap a single's price to add it to the slip.

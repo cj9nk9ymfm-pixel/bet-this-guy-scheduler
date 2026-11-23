@@ -123,7 +123,10 @@ function officialBarFor(p,sport='NFL'){
   if(/^fanduel$/i.test(String(p.book||'')))bar+=FANDUEL_EXTRA;
   return bar;
 }
-const officialBar=p=>p.edge>=officialBarFor(p,'NFL'),nbaOfficialBar=p=>p.edge>=officialBarFor(p,'NBA');
+// Nov 23 (Tim): a sportsbook edge of 3%+ is usually news or a stale line, not value
+// (3%+ went 9–14: NBA 8–12, NFL 1–2), so official singles need under 3%.
+let SB_MAX_EDGE=3;
+const officialBar=p=>p.edge>=officialBarFor(p,'NFL')&&p.edge<SB_MAX_EDGE,nbaOfficialBar=p=>p.edge>=officialBarFor(p,'NBA')&&p.edge<SB_MAX_EDGE;
 // Singles at +150 or longer post only when the sharp-book shadow priced the
 // same player, market, side and line in the last 3 hours (internal only, see
 // recordSharpShadow). Audit: NBA longshots with no sharp price went 5–28
@@ -1971,7 +1974,8 @@ function predictionParlayNet(key,decimal){const p=1/decimal,fee=(PREDICTION_PARL
 // Oct 18: 1 point and 2 a game made 23 prediction picks on one Sunday; now
 // 1.5 points and one a game.
 // 2 points over fair after the app's fee (1.5 until Oct 23: NFL prediction picks went 16–21).
-const PREDICTION_MIN=2,PREDICTION_MAX=12,PREDICTION_PER_GAME=1;
+// Nov 23 (Tim): at most 4 points over fair (was 12): a big gap is usually the app being right.
+let PREDICTION_MIN=2,PREDICTION_MAX=4,PREDICTION_PER_GAME=1;
 // Picks and parlay legs lock only inside 24 hours of kickoff: earlier prices
 // beat the app's own closing price far less often (41% at 24-48 hours out vs
 // 66% inside 6 hours in the price test).
@@ -1980,6 +1984,10 @@ function predictionNet(key,odds){const d=recordDecimal(odds),p=1/d,win=PREDICTIO
 // Markets left out of prediction picks and parlays: pass completions went
 // 0–6 on the apps (Oct 2026), and our sportsbook side never posts it.
 const PREDICTION_PAUSED=new Set(['Pass Completions']);
+// Nov 23 (Tim): NFL app picks only in the markets that win on the apps: interceptions
+// (+36% a bet tracked), passing touchdowns (+27%) and receptions; receiving and rushing
+// yards lost (−5% each). Anytime TD picks have their own path.
+const PM_NFL_MARKETS=new Set(['Interceptions Thrown','Passing Touchdowns','Receptions']);
 // Higher bars by app and market: Novig receptions, our biggest prediction
 // market, beat the kickoff price only 51% of the time (Oct 2026).
 // Raised to 3 Oct 23 (8–13 so far).
@@ -2003,7 +2011,9 @@ function predictionCandidates(board,exchangeBoard,fairs,now=Date.now(),opts={}){
         if(opts.min===undefined&&edge<(PREDICTION_MIN_BY[`${EXCHANGES[ex.key]}|${label}`]??min))continue;
         if(edge<min||(opts.max!==undefined?edge>=max:edge>max))continue;
         const row={exchange:EXCHANGES[ex.key],eventId:gameId,player,team:`${board.away_team} · @ ${board.home_team}`,market:label,side:side==='over'?'Over':'Under',line,odds,netOdds:n.netOdds,fair:f,edge,gameTime:new Date(kick).toISOString()};
-        const k=opts.perExchange?`${ex.key}|${normalizedName(player)}`:normalizedName(player);if(!best.has(k)||best.get(k).edge<edge)best.set(k,row);
+        // Nov 23 (Tim): when more than one app qualifies, ProphetX or Polymarket beats Novig
+        // (tracked app prices: Novig −2% a bet, Polymarket +3%, ProphetX +2%); otherwise the bigger edge.
+        const k=opts.perExchange?`${ex.key}|${normalizedName(player)}`:normalizedName(player),rank=r=>(r.exchange==='Novig'?0:1)*1000+r.edge;if(!best.has(k)||rank(best.get(k))<rank(row))best.set(k,row);
       }}}
   return [...best.values()].sort((a,b)=>b.edge-a.edge);
 }
@@ -2013,7 +2023,7 @@ async function recordPredictionPicks(env,board,exchangeBoard,fairs,now=Date.now(
   dirs||=await pickDirections(env,now);
   // A full game still takes every top pick.
   const picks=[],stamp=new Date(now).toISOString();let n=have.length;
-  for(const p of await pmSignalGate(env,await pmPriceCap(env,predictionCandidates(board,exchangeBoard,fairs,now).filter(p=>!have.includes(normalizedName(p.player))&&sameDirection(dirs,p.eventId,p.player,p.side)),now),now))if(n<PREDICTION_PER_GAME||p.edge>=TOP_PICK.pm){picks.push(p);n++}
+  for(const p of await pmSignalGate(env,await pmSharpGate(env,await pmPriceCap(env,predictionCandidates(board,exchangeBoard,fairs,now).filter(p=>PM_NFL_MARKETS.has(p.market)&&!have.includes(normalizedName(p.player))&&sameDirection(dirs,p.eventId,p.player,p.side)),now),now),now))if(n<PREDICTION_PER_GAME||p.edge>=TOP_PICK.pm){picks.push(p);n++}
   picks.forEach(p=>dirs.set(directionKey(p.eventId,p.player),p.side));
   await pmSignalSave(env,gameId,picks);
   return picks.map(p=>env.DB.prepare('INSERT OR IGNORE INTO prediction_picks (id,exchange,event_id,player,team,market,side,line,odds,net_odds,fair_pct,edge,game_time,posted_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(`pm|${gameId}|${normalizedName(p.player)}`,p.exchange,gameId,p.player,p.team,p.market,p.side,p.line,p.odds,p.netOdds,+p.fair.toFixed(2),+p.edge.toFixed(2),p.gameTime,stamp));
@@ -2809,7 +2819,8 @@ function pickSignals(m,side,line){
   const against=recent.length>=6&&recent.filter(ours).length/recent.length<.35&&last10.length>=5&&!ours(median);
   return {count:list.length,list,known:vals.length>=5||f!=null,against,hold:(vals.length>=5||f!=null)&&(!list.length||(against&&list.length===1&&list[0]==='def'))};
 }
-let PM_NFL_STATS_AGREE=true;
+// Off Nov 23 (Tim): in NFL, stats agreeing didn't predict wins (disagree near-misses went 50–59, +$395).
+let PM_NFL_STATS_AGREE=false;
 const candKey=p=>`cand|${p.gameId||p.eventId}|${normalizedName(p.player)}|${p.market}`;
 // Splits candidates into ready (signals known or unknowable), deferred (stats
 // not fetched yet; at most `budget` fetched a run) and held (no signal).
@@ -2963,10 +2974,13 @@ let SIGNAL_GATE=true;
 // singles at +111 and longer went 48-67 (-$367), the 1%+ shadow 51-78
 // (-$1,275), while -149 to +110 went 40-27 (+$1,200). Longer prices stay
 // parlay legs. Held ones are logged as "price over +125".
-const SINGLE_MAX_ODDS=125;
+// Nov 23 (Tim): NBA singles at +110 or shorter. NBA +111 to +125 went 18–24
+// (−$304) while −110 to +110 went 35–25 (+$1,006); NFL +111 to +125 won (14–11).
+let SINGLE_MAX_ODDS=125,NBA_SINGLE_MAX_ODDS=110;
+const singleCap=p=>String(p.gameId||p.eventId||p.id||'').startsWith('NBA--')||String(p.id||'').startsWith('nba|')||p.sport==='NBA'?NBA_SINGLE_MAX_ODDS:SINGLE_MAX_ODDS;
 async function capSingles(env,list,now=Date.now()){
-  const ok=[],over=[];for(const p of list||[])(Number(p.odds)<=SINGLE_MAX_ODDS?ok:over).push(p);
-  for(const p of over)p.heldWhy=`price over +${SINGLE_MAX_ODDS}`;
+  const ok=[],over=[];for(const p of list||[])(Number(p.odds)<=singleCap(p)?ok:over).push(p);
+  for(const p of over)p.heldWhy=`price over +${singleCap(p)}`;
   if(over.length)await logHeld(env,over,now).catch(()=>{});
   return ok;
 }
@@ -2976,6 +2990,45 @@ async function capSingles(env,list,now=Date.now()){
 let NBA_STATS_SKIP=true;
 // Prediction-app picks get the same check; which stats backed each one is
 // saved as app_settings signals:<pick id>.
+// Sharp check on prediction-app picks (Nov 23, Tim): the sharp book's no-vig chance for our side,
+// at the same line, must be at least what the app's after-fee price implies. Without it the app is
+// usually the one that's right (our app picks beat the app's close 62-68% of the time and still lost
+// in NFL). One sharp-book pull per game, cached 2 hours (pin-pm:<game>). Internal only: the sharp
+// book is never named anywhere public. Held picks are logged ('sharp book disagrees', 'no sharp price').
+const PM_SHARP_EVERY=2*3600000;
+let PM_SHARP_GATE=true;
+async function pmSharpPrices(env,gameId,markets,now){
+  const key=`pin-pm:${gameId}`;let cache=null;try{cache=JSON.parse(await appSetting(env,key)||'null')}catch{}
+  if(cache&&now-cache.at<PM_SHARP_EVERY&&markets.every(m=>cache.markets.includes(m)))return cache.outcomes;
+  if(!env.THE_ODDS_API_KEY||(oddsCreditsLeft!==null&&oddsCreditsLeft<LOW_ODDS_CREDITS))return null;
+  const want=[...new Set([...markets,...(cache&&now-cache.at<PM_SHARP_EVERY?cache.markets:[])])],nba=String(gameId).startsWith('NBA--');
+  const q=new URLSearchParams({apiKey:env.THE_ODDS_API_KEY,bookmakers:'pinnacle',markets:want.join(','),oddsFormat:'american',dateFormat:'iso'});
+  const r=await fetch(`${API_BASE}/sports/${nba?NBA_SPORT.key:SPORTS[0].key}/events/${oddsEventId(gameId)}/odds?${q}`,{headers:{accept:'application/json'},signal:AbortSignal.timeout(15000)});
+  const left=r.headers.get('x-requests-remaining');if(left!==null&&Number.isFinite(Number(left)))oddsCreditsLeft=Number(left);
+  if(!r.ok)return null;
+  const pin=((await r.json().catch(()=>({}))).bookmakers||[]).find(b=>b.key==='pinnacle'),outcomes=[];
+  for(const m of pin?.markets||[]){const label=recordLabels[m.key];if(!label)continue;for(const o of m.outcomes||[]){const x=exchangeOutcome(o);if(x.player&&x.line!==null&&x.odds!==null)outcomes.push({label,player:normalizedName(x.player),line:x.line,side:x.side,odds:x.odds})}}
+  await setAppSetting(env,key,JSON.stringify({at:now,markets:want,outcomes})).catch(()=>{});
+  return outcomes;
+}
+async function pmSharpGate(env,list,now=Date.now()){
+  if(!PM_SHARP_GATE||!list.length||!env.DB)return list;
+  const ready=[],held=[],games=new Map();for(const p of list){if(!games.has(p.eventId))games.set(p.eventId,[]);games.get(p.eventId).push(p)}
+  for(const [gameId,ps] of games){
+    const markets=[...new Set(ps.map(p=>sharpKey(p.market)).filter(Boolean))];
+    const prices=markets.length?await pmSharpPrices(env,gameId,markets,now).catch(()=>null):null;
+    for(const p of ps){
+      const at=(prices||[]).filter(o=>o.label===p.market&&o.player===normalizedName(p.player)&&o.line===Number(p.line)),ov=at.find(o=>o.side==='over')?.odds,un=at.find(o=>o.side==='under')?.odds;
+      if(ov==null||un==null){p.heldWhy='no sharp price';held.push(p);continue}
+      const a=1/recordDecimal(ov),b=1/recordDecimal(un),fair=100*(p.side==='Over'?a/(a+b):b/(a+b)),need=100/recordDecimal(p.netOdds??p.odds);
+      p.sharpEdge=+(fair-need).toFixed(2);
+      if(fair<need){p.heldWhy='sharp book disagrees';held.push(p);continue}
+      ready.push(p);
+    }
+  }
+  if(held.length)await logHeld(env,held,now).catch(()=>{});
+  return ready;
+}
 async function pmSignalGate(env,list,now,budget=3){
   if(!SIGNAL_GATE||!list.length)return list;
   const g=await signalGate(env,null,list,now,budget).catch(()=>null);return g?g.ready:list;
@@ -3454,7 +3507,7 @@ async function nbaPage(request,env){
   const nights=[...new Set(all.map(r=>String(r.id).split('|')[1]))].sort().reverse();
   if(url.pathname==='/nba'||url.pathname==='/nba/'){
     const items=nights.map(n=>{const rows=all.filter(r=>String(r.id).startsWith(`nba|${n}|`)),s=weeklySummary(rows),g=s.wins+s.losses+s.pushes;return `<li><a href="/nba/${n}"><span><strong>${weeklyEscape(nbaNightLabel(n).replace(/, \d{4}$/,''))}</strong> <small>${rows.length} pick${rows.length===1?'':'s'}</small></span><small>${g?`${s.wins}–${s.losses}${s.pushes?`–${s.pushes}`:''} · ${weeklyMoney(s.profit)}`:'To play'}</small></a></li>`}).join('');
-    const body=`<p class="eyebrow">OFFICIAL NBA PICKS</p><h1>NBA player prop picks tonight</h1><p class="lead">Free NBA player prop picks, posted the moment a sportsbook price beats the fair line across the big books. Only the best prices post: 1% or more over the fair line at +125 or shorter, backed by the sharp book and the player’s own numbers, up to 5 a night, each locked before tip-off and graded from the box score, losses included.${graded?` NBA record: ${record}, ${weeklyMoney(season.profit)} at $100 a pick.`:' The first picks post for opening night, Tuesday, October 20.'}</p>${stats(season)}<p><a class="cta" href="/?league=NBA">Tonight’s NBA board →</a><a href="/trust#nba" style="white-space:nowrap">NBA results →</a></p>${items?`<h2>Every night</h2><ul class="weeks">${items}</ul>`:''}${faqBlock([['When do NBA picks post?','Any time before tip-off, the moment a price qualifies, often the night before. Turn on email or notifications on the <a href="/?league=NBA">home page</a> to get each one as it locks.'],['What’s the bar?','A pick posts only when one sportsbook’s price beats the fair line across the big books, at +125 or shorter, the sharp book agrees, and the player’s own numbers (recent games, typical game, the opponent) don’t lean against it. No price we like, no bet.'],['How are they graded?','From the official box score, singles at $100 and parlays at $25. A player ruled out before tip-off is no action. The full NBA record is on <a href="/trust#nba">our results page</a>.']],'How NBA picks work')}`;
+    const body=`<p class="eyebrow">OFFICIAL NBA PICKS</p><h1>NBA player prop picks tonight</h1><p class="lead">Free NBA player prop picks, posted the moment a sportsbook price beats the fair line across the big books. Only the best prices post: 1% or more over the fair line at +110 or shorter, backed by the sharp book and the player’s own numbers, up to 5 a night, each locked before tip-off and graded from the box score, losses included.${graded?` NBA record: ${record}, ${weeklyMoney(season.profit)} at $100 a pick.`:' The first picks post for opening night, Tuesday, October 20.'}</p>${stats(season)}<p><a class="cta" href="/?league=NBA">Tonight’s NBA board →</a><a href="/trust#nba" style="white-space:nowrap">NBA results →</a></p>${items?`<h2>Every night</h2><ul class="weeks">${items}</ul>`:''}${faqBlock([['When do NBA picks post?','Any time before tip-off, the moment a price qualifies, often the night before. Turn on email or notifications on the <a href="/?league=NBA">home page</a> to get each one as it locks.'],['What’s the bar?','A pick posts only when one sportsbook’s price beats the fair line across the big books, at +125 or shorter (+110 for NBA), the sharp book agrees, and the player’s own numbers (recent games, typical game, the opponent) don’t lean against it. No price we like, no bet.'],['How are they graded?','From the official box score, singles at $100 and parlays at $25. A player ruled out before tip-off is no action. The full NBA record is on <a href="/trust#nba">our results page</a>.']],'How NBA picks work')}`;
     return new Response(weeklyShell({track:await siteTrack(env),title:'NBA Player Prop Picks Tonight: Free, Graded in Public | Bet This Guy',description:graded?`Free NBA player prop picks every night, locked before tip-off and graded in public: ${record} on singles, ${weeklyMoney(season.profit)} at $100 a pick.`:'Free NBA player prop picks every night from opening night, Oct 20: priced against the fair line across the big books, locked before tip-off, graded in public.',path:'/nba',body}),{headers});
   }
   const m=url.pathname.match(/^\/nba\/(\d{4}-\d{2}-\d{2})\/?$/);if(!m||!nights.includes(m[1]))return null;
@@ -3527,7 +3580,7 @@ function postKitTexts(kit){
   out.today={mode:'today',ready:upcoming.length>0,recordLabel:recWeek.week?`Week ${recWeek.week} record`:'Last week',recordValue:rs.wins+rs.losses?`${rs.wins}–${rs.losses}${rs.pushes?`–${rs.pushes}`:''} props`:'',recordProfit:rs.wins+rs.losses?rs.profit:null,empty:'No official picks are posted for upcoming games yet. Picks post the moment a price qualifies, any day before kickoff.',eyebrow:`OFFICIAL PICKS · ${when.toUpperCase()}`,rows:upcoming,
     x:fit(`✅ Bet This Guy picks · ${when}`,upcoming.map(r=>line(r,true)),`Every pick locked before kickoff, graded in public 👇\n${site}`,275),
     threads:fit(`✅ Today’s Bet This Guy picks (${when})`,upcoming.map(r=>line(r,false)),`Every pick is locked before kickoff and graded in public, wins and losses. Free picks and alerts:\n${site}`,495),
-    reddit:[`**Bet This Guy official picks: ${when}**`,'',...(upcoming.some(r=>r.kind==='prop')?['| Player | Bet | Odds | Book | Kickoff |','|---|---|---|---|---|',...upcoming.filter(r=>r.kind==='prop').map(r=>`| ${r.player} | ${bet(r,false)} | ${odds(r.odds)} | ${r.book||'—'} | ${time(r.game_time)} |`),'']:[]),...upcoming.filter(r=>r.kind==='parlay').map(r=>`**${r.legs.length}-leg parlay (${odds(r.combined_odds)}):** ${r.legs.map(l=>`${l.player} ${bet(l,false)}`).join(' + ')}`),...(upcoming.some(r=>r.kind==='parlay')?['']:[]),'How we pick: a prop only makes the list when the best sportsbook price beats the fair price from 3+ books, at +125 or shorter. NBA picks also need the sharp book and his own numbers on the same side. No hype.','',...(rs.wins+rs.losses?[`${recWeek.week?`Week ${recWeek.week}`:'Last week'}: ${rs.wins}–${rs.losses}${rs.pushes?`–${rs.pushes}`:''} on props, ${money(rs.profit)} at ${D}100 a pick${rs.tracked?`, ${rs.beat} of ${rs.tracked} beat the closing price`:''}.`,'']:[]),`Every pick is locked before kickoff and graded from box scores, wins and losses: ${kit.site}${kit.current.path}`].join('\n')};
+    reddit:[`**Bet This Guy official picks: ${when}**`,'',...(upcoming.some(r=>r.kind==='prop')?['| Player | Bet | Odds | Book | Kickoff |','|---|---|---|---|---|',...upcoming.filter(r=>r.kind==='prop').map(r=>`| ${r.player} | ${bet(r,false)} | ${odds(r.odds)} | ${r.book||'—'} | ${time(r.game_time)} |`),'']:[]),...upcoming.filter(r=>r.kind==='parlay').map(r=>`**${r.legs.length}-leg parlay (${odds(r.combined_odds)}):** ${r.legs.map(l=>`${l.player} ${bet(l,false)}`).join(' + ')}`),...(upcoming.some(r=>r.kind==='parlay')?['']:[]),'How we pick: a prop only makes the list when the best sportsbook price beats the fair price from 3+ books, at +125 or shorter (+110 for NBA). NBA picks also need the sharp book and his own numbers on the same side. No hype.','',...(rs.wins+rs.losses?[`${recWeek.week?`Week ${recWeek.week}`:'Last week'}: ${rs.wins}–${rs.losses}${rs.pushes?`–${rs.pushes}`:''} on props, ${money(rs.profit)} at ${D}100 a pick${rs.tracked?`, ${rs.beat} of ${rs.tracked} beat the closing price`:''}.`,'']:[]),`Every pick is locked before kickoff and graded from box scores, wins and losses: ${kit.site}${kit.current.path}`].join('\n')};
   // Replies: per pick, its graphic and three short captions to post as a reply
   // under a big account's game post (no link: X shows link replies less).
   out.replies={mode:'replies',ready:(kit.replies||[]).length>0,empty:'No upcoming official picks right now. Replies show up here as soon as a pick posts.',items:(kit.replies||[]).map(r=>{
@@ -5720,7 +5773,7 @@ async function fetchNbaExchangeOdds(eventId,apiKey){
 // the five core markets, no player on the injury report, one a game, three a
 // night, 10 points at most (bigger gaps are usually news the apps haven't
 // caught). app_settings nba-pm-picks=off stops them; nba-pm-min changes the bar.
-const NBA_PM={min:2.5,minBy:{ProphetX:2},max:10,perGame:1,perNight:3,books:4,markets:new Set(['Points','Rebounds','Assists','3-Pointers Made','Points + Rebounds + Assists'])};
+const NBA_PM={min:2.5,minBy:{ProphetX:2},max:4,perGame:1,perNight:3,books:4,markets:new Set(['Points','Rebounds','Assists','3-Pointers Made','Points + Rebounds + Assists'])};
 // What every app offers on a game vs the sportsbook fair price: lines listed,
 // lines we can price, how far each price is from fair after fees, and which
 // app has the best price on the props two or more apps share.
@@ -5745,7 +5798,7 @@ async function recordNbaPredictionPicks(env,board,ex,fairs,now,ctx){
   const picks=[];let n=have.length;
   if(n>=NBA_PM.perGame||ctx.night[night]>=NBA_PM.perNight)return [];
   const pool=predictionCandidates(board,ex,fairs,now,{min:Math.min(min,...Object.values(NBA_PM.minBy)),max:NBA_PM.max}).filter(p=>!(p.edge<(NBA_PM.minBy[p.exchange]??min)||!NBA_PM.markets.has(p.market)||have.includes(normalizedName(p.player))||listed(p.player)||!sameDirection(ctx.dirs,p.eventId,p.player,p.side)));
-  for(const p of await pmSignalGate(env,await pmPriceCap(env,pool,now),now)){
+  for(const p of await pmSignalGate(env,await pmSharpGate(env,await pmPriceCap(env,pool,now),now),now)){
     if(n>=NBA_PM.perGame||ctx.night[night]>=NBA_PM.perNight)break;
     if(!sameDirection(ctx.dirs,p.eventId,p.player,p.side))continue;
     picks.push(p);n++;ctx.night[night]++;ctx.dirs.set(directionKey(p.eventId,p.player),p.side);
@@ -5841,7 +5894,7 @@ function nbaLaunchThread(s){
   const rec=s&&s.wins+s.losses>=10?`Same rules that got our NFL singles to ${s.wins}–${s.losses}, ${money(s.profit)}: a pick posts only when a sportsbook price beats the fair line across the big books. Locked before tip-off, graded in public.`:'Same rules as our NFL picks: a pick posts only when a sportsbook price beats the fair line across the big books. Locked before tip-off, graded in public.';
   const close=s&&s.tracked>=10?`The number we judge ourselves by: ${s.beat} of ${s.tracked} NFL picks beat the closing price (${Math.round(100*s.beat/s.tracked)}%).\n\nOne game is luck. Beating the final price week after week is how you know the edge is real.`:'The number we judge ourselves by: how often our price beats the closing price.\n\nOne game is luck. Beating the final price week after week is how you know the edge is real.';
   return [`🏀 NBA player props start today on Bet This Guy.\n\n${rec}`,
-    'How it works:\n• Posts only when a big-book price beats the fair line by 1%+ at +125 or shorter, up to 5 a night\n• Points, rebounds, assists, threes and PRA\n• Posted the moment a price qualifies\n• Player sits = no action, same as at the book\n• Singles at $100, parlays at $25',
+    'How it works:\n• Posts only when a big-book price beats the fair line by 1%+ at +110 or shorter, up to 5 a night\n• Points, rebounds, assists, threes and PRA\n• Posted the moment a price qualifies\n• Player sits = no action, same as at the book\n• Singles at $100, parlays at $25',
     close,
     'Every loss stays on the record. NBA gets its own public record, separate from NFL. Link in bio.',
     'Free. No paywall. Turn on alerts and get each pick the second it locks. Link in bio.\n\n21+ · Gambling problem? Call 1-800-GAMBLER'];
