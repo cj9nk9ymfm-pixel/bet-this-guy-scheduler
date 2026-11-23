@@ -2049,7 +2049,15 @@ async function gradePredictionPicks(env,now=Date.now(),limit=30){
     const stat=await recordPlayerStats(record,env,undefined,cache).catch(()=>null);
     // NBA: graded from a final box score; a player who didn't play is no action, as on the apps.
     if(nba){if(!stat||!stat.scoreboardFinal||stat.missingPlayerStats)continue;if(!BTGStats.nbaPlayed(stat)){statements.push(env.DB.prepare('UPDATE prediction_picks SET result=?,graded_at=? WHERE id=?').bind('void',stamp,r.id));continue}}
-    else if(shadowVoid(stat,r.game_time,now)){statements.push(env.DB.prepare('UPDATE prediction_picks SET result=?,graded_at=? WHERE id=?').bind('void',stamp,r.id));continue}
+    // NFL, no row in the final box score (Nov 23): the snap count decides. 0 snaps: didn't play,
+    // no action (comes off the record). Snaps but no stat: 0. Not in the snap file yet: wait up to 4 days.
+    else if(stat?.missingPlayerStats&&stat.scoreboardFinal&&nflZeroStat(r.market,stat)&&typeof nflSnaps==='function'&&now-Date.parse(r.game_time)>4*3600000){
+      const s=await nflSnaps(r.player,r.game_time).catch(()=>({known:false}));
+      if(s.known&&!(s.snaps>0)){statements.push(env.DB.prepare('UPDATE prediction_picks SET result=?,void_reason=?,graded_at=? WHERE id=?').bind('void','Did not play',stamp,r.id));continue}
+      if(s.known){const result=BTGStats.grade(r.side,r.line,0);if(result)statements.push(env.DB.prepare('UPDATE prediction_picks SET actual=?,result=?,graded_at=? WHERE id=?').bind(0,result,stamp,r.id));continue}
+      if(now-Date.parse(r.game_time)<4*86400000)continue;
+    }
+    if(!nba&&shadowVoid(stat,r.game_time,now)&&!nflZeroStat(r.market,stat)){statements.push(env.DB.prepare('UPDATE prediction_picks SET result=?,graded_at=? WHERE id=?').bind('void',stamp,r.id));continue}
     // A blank stat in a played game is 0 after 4 hours, as on the sportsbook side (nflZeroStat).
     const fin=Boolean(stat&&(stat.scoreboardFinal||nflGameState(stat.game||{})==='final'));
     if(!nba&&fin&&nflZeroStat(r.market,stat)&&BTGStats.metric(record,stat).value===null&&now-Date.parse(r.game_time)>4*3600000){const result=BTGStats.grade(r.side,r.line,0);if(result)statements.push(env.DB.prepare('UPDATE prediction_picks SET actual=?,result=?,graded_at=? WHERE id=?').bind(0,result,stamp,r.id));continue}
