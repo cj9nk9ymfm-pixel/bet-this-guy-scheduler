@@ -38,7 +38,7 @@ const template=read('worker/index.template.js');
 vm.runInContext(template.slice(template.indexOf('const API_BASE')).replace('__MOVEMENT_SERVER__',read('worker/movement.js')).replace('__LIVE_SERVER__',read('worker/live.js')).replace('__STATS_SHARED__',read('dist/stats.js')).replace('__RECORDS_SERVER__',read('worker/records.js')).replace('__ACCOUNTS_SERVER__',read('worker/accounts.js')).replace('export default {','this.worker={'),context);
 vm.runInContext('SB_PARLAYS_ON=true',context); // sportsbook parlays are off live (Nov 8); these tests exercise the code
 // These tests cover a post per pick (x-lean off); tests/x-lean.test.cjs covers lean posting.
-vm.runInContext('X_PICK_POSTS_DEFAULT=false;MATCHUP_WAIT=0;X_LEAN_DEFAULT=false;SHARP_GATE=false',context);
+vm.runInContext('X_PICK_POSTS_DEFAULT=false;MATCHUP_WAIT=0;X_LEAN_DEFAULT=false;SHARP_GATE=false;NBA_SINGLE_MAX_ODDS=125;SB_MAX_EDGE=99',context);
 const db=new DatabaseSync(':memory:');for(const f of ['0000_public_record.sql','0001_record_settlement.sql','0002_historical_replays.sql','0012_nba_shadow.sql','0018_player_form.sql','0021_injuries.sql','0006_push_alerts.sql','0008_book_alerts.sql','0013_follow_alerts.sql','0027_alert_price_view.sql','0031_alert_kinds.sql','0033_alert_nba.sql','0004_user_accounts.sql','0007_email_alerts.sql','0029_email_predictions.sql','0034_email_nba.sql','0028_prediction_picks.sql','0032_prediction_early.sql','0036_void_reason.sql'])db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''));db.exec('CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT)');
 const wrap=(sql,args=[])=>({bind(...v){return wrap(sql,v)},async first(){return db.prepare(sql).get(...args)||null},async all(){return{results:db.prepare(sql).all(...args)}},async run(){const r=db.prepare(sql).run(...args);return{success:true,meta:{changes:Number(r.changes)}}}});
 const env={DB:{prepare:sql=>wrap(sql),async batch(l){const out=[];for(const s of l)out.push(await s.run());return out}},THE_ODDS_API_KEY:'k',BALLDONTLIE_API_KEY:'k',X_API_KEY:'a',X_API_SECRET:'b',X_ACCESS_TOKEN:'1-c',X_ACCESS_SECRET:'d'};context.env=env;
@@ -176,7 +176,7 @@ const run=c=>vm.runInContext(c,context),req='new Request("https://betthisguy.com
   assert.equal((await run(`postNbaLaunchToX(env,${launchAt+600000})`)).done,true,'once');
   const thread=posts.slice(before);
   assert.match(thread[0].text,/^🏀 NBA player props start today on Bet This Guy\./);assert.ok(!thread[0].reply,'the first post starts the thread');
-  assert.ok(thread.slice(1).every((p,i)=>p.reply),'the rest are replies');assert.match(thread[1].text,/1%\+ at \+125 or shorter, up to 5 a night/);assert.match(thread[4].text,/1-800-GAMBLER/);assert.ok(thread.every(p=>!/https?:|\.com\b/.test(p.text)),'no links in the launch thread');assert.match(thread[0].text,/start today/);
+  assert.ok(thread.slice(1).every((p,i)=>p.reply),'the rest are replies');assert.match(thread[1].text,/1%\+ at \+110 or shorter, up to 5 a night/);assert.match(thread[4].text,/1-800-GAMBLER/);assert.ok(thread.every(p=>!/https?:|\.com\b/.test(p.text)),'no links in the launch thread');assert.match(thread[0].text,/start today/);
   // X counts most symbols and emoji (like • and 🏀) as 2 characters.
   const xLen=t=>[...t].reduce((n,ch)=>{const c=ch.codePointAt(0);return n+(c<=4351||(c>=8192&&c<=8205)||(c>=8208&&c<=8223)||(c>=8242&&c<=8247)?1:2)},0);
   assert.ok(thread.every(p=>xLen(p.text)<=280),'every post fits X\'s limit');

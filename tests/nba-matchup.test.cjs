@@ -88,8 +88,11 @@ const run=code=>vm.runInContext(code,context);run('fetch=globalThis.fetch');
    for(const [n,vals] of [['hotwr',Array(10).fill(8)],['flatwr',[5,4,5,4,5,5,4,5,5,4]]])db.prepare('INSERT OR REPLACE INTO app_settings (key,value) VALUES (?,?)').run(`matchup:cand|NFL--nf1|${n}|Receptions`,JSON.stringify(mk(vals)));
    const f=(n,extra={})=>({gameId:'NFL--nf1',player:n,market:'Receptions',side:'Over',line:4.5,odds:-110,edge:2,gameTime:'2026-11-08T18:00:00.000Z',...extra});
    const nf=J(await run(`signalGate(env,null,${JSON.stringify([f('Hot WR',{exchange:'Novig'}),f('Flat WR',{exchange:'Novig'}),f('Flat WR Book')])},${at})`));
-   assert.deepEqual(nf.ready.map(p=>p.player).sort(),['Flat WR Book','Hot WR'],'app pick posts when his numbers agree; the sportsbook pick is not held by this rule');
-   assert.deepEqual(nf.held.map(p=>[p.player,p.statsVerdict]),[['Flat WR','neutral']],'an app pick his numbers only roughly back is held');
+   // Off since Nov 23 (Tim): NFL stats didn't predict wins, so NFL app picks aren't held for it.
+   assert.deepEqual(nf.ready.map(p=>p.player).sort(),['Flat WR','Flat WR Book','Hot WR'],'NFL app picks no longer need his numbers to agree');
+   assert.deepEqual(nf.held,[]);
+   run('PM_NFL_STATS_AGREE=true');const on=J(await run(`signalGate(env,null,${JSON.stringify([f('Flat WR',{exchange:'Novig'})])},${at})`));run('PM_NFL_STATS_AGREE=false');
+   assert.deepEqual(on.held.map(p=>[p.player,p.statsVerdict]),[['Flat WR','neutral']],'the old rule still works when switched on');
    // "We passed on N tonight": the held sportsbook picks for this NBA night, by reason (prediction-app ones left out).
    const ps=J(await run(`passedSummary(env,'NBA',${at})`));assert.equal(ps.count,1);assert.deepEqual(ps.reasons,{price:0,stats:1,sharp:0,other:0});}
   // NFL blank stat = 0 (Nov 3, J.K. Dobbins: carries and a TD, receiving left blank).

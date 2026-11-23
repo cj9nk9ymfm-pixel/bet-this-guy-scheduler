@@ -16,12 +16,12 @@ const run=code=>vm.runInContext(code,context),J=v=>JSON.parse(JSON.stringify(v))
 run("PM_PARLAYS_ON=true");
 // The +110 cap and the NFL stats rule (Nov 9) are checked first, then lifted so the
 // fixture's +115 Novig price still exercises how picks and parlays are built.
-assert.deepEqual(J(vm.runInContext('[PM_MAX_NET,PM_NFL_STATS_AGREE]',context)),[110,true]);
+assert.deepEqual(J(vm.runInContext('[PM_MAX_NET,PM_NFL_STATS_AGREE,PREDICTION_MAX,PM_SHARP_GATE,[...PM_NFL_MARKETS]]',context)),[110,false,4,true,['Interceptions Thrown','Passing Touchdowns','Receptions']],'Nov 23 app rules');
 (async()=>{
   {context.env0={DB:{prepare:()=>({bind(){return this},async first(){return null},async all(){return {results:[]}},async run(){return {}}})}};
    const kept=J(await run(`pmPriceCap(env0,[{player:'A',netOdds:110},{player:'B',netOdds:111},{player:'C',netOdds:-140}],0)`)).map(p=>p.player);
    assert.deepEqual(kept,['A','C'],'prediction picks only at +110 or shorter after fees');}
-  run('PM_MAX_NET=1000;PM_NFL_STATS_AGREE=false');
+  run("PM_MAX_NET=1000;PM_NFL_STATS_AGREE=false;PM_SHARP_GATE=false;PREDICTION_MAX=12;NBA_PM.max=12;['Receiving Yards','Rushing Yards','Passing Yards','Rush Attempts','Field Goals Made','Pass Completions','Receiving Yards'].forEach(m=>PM_NFL_MARKETS.add(m))");
   const now=Date.parse('2026-10-11T12:00:00Z'),kick='2026-10-11T17:00:00.000Z',upd=new Date(now-60000).toISOString();
   const m=(over,under)=>({key:'player_receptions',last_update:upd,outcomes:[{name:'Over',description:'Tre Tucker',point:3.5,price:over},{name:'Under',description:'Tre Tucker',point:3.5,price:under}]});
   const book=(key,o,u)=>({key,title:key,last_update:upd,markets:[m(o,u)]});
