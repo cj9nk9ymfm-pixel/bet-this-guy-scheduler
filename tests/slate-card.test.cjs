@@ -42,5 +42,16 @@ const pm=[{id:'pm1',player:'Kyle Kuzma',side:'Over',line:4.5,market:'Rebounds',o
   const many=Array.from({length:17},(_,i)=>({...sb[0],id:`nba|2026-11-10|m${i}`,player:`Player ${i}`}));
   context.args={sport:'NBA',first:Date.parse(t1),sbRows:many,pmRows:[],day:'2026-11-10'};
   assert.match(await run('slate2Card(env,args)'),/\+3 more picks at betthisguy.com/);
-  console.log('PASS: slate card v2: headline by start time, counts, sticker, games by tip, chips, faces, NFL wording, overflow');
+  // Results card v2 (Nov 23): record, word, money, a row per pick with the final stat, wins first.
+  {const lg=(p,a,res)=>JSON.stringify([{player:p,book:'BetMGM',actualValue:a,result:res}]);
+   const sb=[{kind:'prop',player:'Bam Adebayo',side:'Under',line:9.5,market:'Rebounds',odds:105,result:'lost',legs_json:lg('Bam Adebayo',15,'lost'),game_time:t1},{kind:'prop',player:'Jalen Suggs',side:'Under',line:1.5,market:'3-Pointers Made',odds:110,result:'won',legs_json:lg('Jalen Suggs',0,'won'),game_time:t1}];
+   const pmr=[{player:'Klay Thompson',side:'Over',line:3.5,market:'3-Pointers Made',odds:-104,exchange:'Novig',actual:3,result:'lost',game_time:t1},{player:'Alex Sarr',side:'Over',line:6.5,market:'Rebounds',odds:104,exchange:'Novig',actual:7,result:'won',game_time:t1}];
+   context.args={sport:'NBA',first:Date.parse(t1),rec:'2–2',net:7,wins:2,losses:2,parts:[{label:'Sportsbook',rec:'1–1',money:10},{label:'Prediction apps',rec:'1–1',money:-3}],sbRows:sb,pmRows:pmr};
+   const r=await run('results2Card(env,args)');
+   assert.match(r,/NBA RESULTS · TUESDAY, NOV 10/);assert.match(r,/>2–2</);assert.match(r,/\+\$7/);assert.doesNotMatch(r,/Cashed|Rough one/,'even night: no word');
+   assert.ok(r.indexOf('Jalen Suggs')<r.indexOf('Bam Adebayo'),'wins first');assert.match(r,/Final 0 · 1.5 under/);assert.match(r,/Final 3 · missed by 0.5/);assert.match(r,/Final 7 · cleared by 0.5/);assert.match(r,/Final 15</);
+   assert.match(r,/LAST 3 NIGHTS/,'a winning run of nights');assert.match(r,/Losses included\. Always\./);
+   context.args={...context.args,rec:'1–4',net:-300,wins:1,losses:4};assert.match(await run('results2Card(env,args)'),/Rough one/);
+   context.args={...context.args,rec:'4–1',net:250,wins:4,losses:1,sport:'NFL'};const n=await run('results2Card(env,args)');assert.match(n,/Cashed/);assert.match(n,/NFL RESULTS/);assert.match(n,/on the day at/);}
+  console.log('PASS: results card v2 (wins first, final stats, word by night, NFL wording); slate card v2: headline by start time, counts, sticker, games by tip, chips, faces, NFL wording, overflow');
 })().catch(e=>{console.error(e);process.exit(1)});
