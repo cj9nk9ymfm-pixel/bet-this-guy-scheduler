@@ -6038,6 +6038,84 @@ async function xReplyAlerts(env,now=Date.now()){
   if(fresh.length>5)await fetch('https://ntfy.sh/'+encodeURIComponent(env.ALERT_NTFY_TOPIC),{method:'POST',headers:{Title:`${fresh.length-5} more replies on X`,Tags:'speech_balloon',Click:'https://x.com/notifications/mentions'},body:'Open your mentions to answer them.',signal:AbortSignal.timeout(10000)}).catch(()=>{});
   return {replies:fresh.length,sent};
 }
+// Following cleanup (Nov 24, Tim): @BetThisGuy followed ~3.7K accounts with ~1K following back.
+// app_settings x-follow-cleanup: 'scan' reads who we follow and who follows us (one X page a run,
+// 1,000 accounts a page) and judges each one; 'on' also unfollows the cuts, 2 a run (every 10 min),
+// at most X_UNFOLLOW_DAY a day so it looks like a person, not a purge. 'off' (default) does nothing.
+// The verdict, in order:
+//   cut   bot or spam (no posts, or a default photo and almost none; spam words)
+//   keep  a big sports or betting account (50K+ followers): players, teams, media, books
+//   cut   no posts in 60+ days
+//   keep  follows us back
+//   keep  sports or betting (name, handle or bio), or one of the reply-target accounts
+//   cut   everything else (off-topic and doesn't follow back)
+// A row set to status 'keep' by hand is never unfollowed. Progress in app_settings x-follow-scan.
+const X_UNFOLLOW_DAY=300,X_UNFOLLOW_RUN=2,X_FOLLOW_INACTIVE_DAYS=60;
+const X_FOLLOW_SPORTS=/\b(nfl|nba|wnba|ncaa|cfb|cbb|mlb|nhl|ufc|mma|sports?|bet|bets|betting|bettor|bettors|picks?|props?|parlays?|odds|sportsbooks?|wagers?|fantasy|dfs|handicapp\w*|cappers?|gambl\w*|espn|bleacher|the athletic|insider|reporter|analyst|podcast|draftkings|fanduel|betmgm|caesars|prizepicks|underdog|kalshi|polymarket|novig|prophetx|fanatics|hoops|football|basketball|hardwood|gridiron|touchdowns?|buckets|chiefs|bills|ravens|bengals|browns|steelers|texans|colts|jaguars|titans|broncos|raiders|chargers|cowboys|giants|eagles|commanders|bears|lions|packers|vikings|falcons|panthers|saints|buccaneers|bucs|cardinals|rams|49ers|niners|seahawks|celtics|nets|knicks|76ers|sixers|raptors|bulls|cavaliers|cavs|pistons|pacers|bucks|hawks|hornets|heat|magic|wizards|nuggets|timberwolves|wolves|thunder|blazers|jazz|warriors|clippers|lakers|suns|kings|mavericks|mavs|rockets|grizzlies|pelicans|spurs)\b/i;
+const X_FOLLOW_SPAM=/(onlyfans|only fans|nsfw|18\+ content|sugar ?(daddy|baby)|crypto giveaway|airdrop|forex|binary options?|investment manager|recover (your )?(lost|stolen)|hacked account|dm (me )?for promo|promo(tion)? available|follow ?back|followback|\bf4f\b|#?ifb\b|teamfollowback)/i;
+const xSnowflakeTime=id=>{try{return Number(BigInt(String(id))>>22n)+1288834974657}catch{return null}};
+function xFollowVerdict(u,now=Date.now(),keepHandles=new Set()){
+  const text=`${u.name||''} ${u.username||''} ${u.description||''}`,tweets=Number(u.tweets)||0,followers=Number(u.followers)||0,last=Date.parse(u.last_post||'');
+  if(tweets===0||(u.default_photo&&tweets<20)||X_FOLLOW_SPAM.test(text))return ['cut','bot or spam'];
+  const sports=X_FOLLOW_SPORTS.test(text)||keepHandles.has(String(u.username||'').toLowerCase());
+  if(sports&&followers>=50000)return ['keep','big sports account'];
+  if(Number.isFinite(last)&&now-last>X_FOLLOW_INACTIVE_DAYS*86400000)return ['cut',`no posts in ${X_FOLLOW_INACTIVE_DAYS}+ days`];
+  if(u.follows_back)return ['keep','follows us back'];
+  if(sports)return ['keep','sports or betting'];
+  return ['cut',"off-topic, doesn't follow back"];
+}
+async function xFollowGet(env,url,params){
+  const r=await fetch(`${url}?${new URLSearchParams(params)}`,{headers:{authorization:await xOAuthHeader(env,'GET',url,params)},signal:AbortSignal.timeout(20000)});
+  if(r.status===429)return {wait:Number(r.headers.get('x-rate-limit-reset'))*1000||null};
+  if(!r.ok)throw new Error(`X ${url.split('/').slice(-1)[0]} read failed (${r.status}${r.status===403?': this X plan may not allow it':''})`);
+  return {body:await r.json().catch(()=>({}))};
+}
+async function xFollowCleanup(env,now=Date.now()){
+  const mode=await appSetting(env,'x-follow-cleanup').catch(()=>null);
+  if(!env.DB||!xReady(env)||!['scan','on'].includes(mode))return {off:true};
+  const user=String(env.X_ACCESS_TOKEN||'').split('-')[0];if(!/^\d+$/.test(user))return {off:true};
+  let st={};try{st=JSON.parse(await appSetting(env,'x-follow-scan')||'{}')}catch{}
+  if(st.waitUntil&&now<st.waitUntil)return {waiting:true};
+  const save=()=>setAppSetting(env,'x-follow-scan',JSON.stringify(st)),stamp=new Date(now).toISOString();
+  // 1. Who follows us.
+  if(!st.phase||st.phase==='followers'){
+    st.phase='followers';
+    const got=await xFollowGet(env,`https://api.twitter.com/2/users/${user}/followers`,{max_results:'1000',...(st.token?{pagination_token:st.token}:{})});
+    if(got.wait){st.waitUntil=got.wait;await save();return {phase:st.phase,rateLimited:true}}
+    const ids=(got.body.data||[]).map(u=>String(u.id));
+    if(ids.length)await env.DB.batch(ids.map(id=>env.DB.prepare('INSERT INTO x_followers (id,scanned_at) VALUES (?,?) ON CONFLICT(id) DO UPDATE SET scanned_at=excluded.scanned_at').bind(id,stamp)));
+    st.followers=(st.followers||0)+ids.length;st.token=got.body.meta?.next_token||null;if(!st.token)st.phase='following';delete st.waitUntil;
+    await save();return {phase:'followers',read:ids.length};
+  }
+  // 2. Who we follow, judged as each page lands.
+  if(st.phase==='following'){
+    const got=await xFollowGet(env,`https://api.twitter.com/2/users/${user}/following`,{max_results:'1000','user.fields':'description,profile_image_url,public_metrics,most_recent_tweet_id',...(st.token?{pagination_token:st.token}:{})});
+    if(got.wait){st.waitUntil=got.wait;await save();return {phase:st.phase,rateLimited:true}}
+    const back=new Set(((await env.DB.prepare('SELECT id FROM x_followers').all()).results||[]).map(r=>String(r.id)));
+    const keepHandles=new Set(String(await appSetting(env,'x-reply-targets').catch(()=>null)||X_REPLY_TARGETS).split(',').map(h=>h.trim().replace(/^@/,'').toLowerCase()).filter(Boolean));
+    const rows=(got.body.data||[]).map(u=>{const t=u.most_recent_tweet_id?xSnowflakeTime(u.most_recent_tweet_id):null,row={id:String(u.id),username:String(u.username||''),name:String(u.name||''),description:String(u.description||'').slice(0,300),followers:u.public_metrics?.followers_count??null,tweets:u.public_metrics?.tweet_count??null,last_post:t?new Date(t).toISOString():null,default_photo:/default_profile/.test(String(u.profile_image_url||''))?1:0,follows_back:back.has(String(u.id))?1:0};
+      [row.verdict,row.reason]=xFollowVerdict(row,now,keepHandles);return row});
+    if(rows.length)await env.DB.batch(rows.map(r=>env.DB.prepare('INSERT INTO x_following (id,username,name,description,followers,tweets,last_post,default_photo,follows_back,verdict,reason,scanned_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET username=excluded.username,name=excluded.name,description=excluded.description,followers=excluded.followers,tweets=excluded.tweets,last_post=excluded.last_post,default_photo=excluded.default_photo,follows_back=excluded.follows_back,verdict=excluded.verdict,reason=excluded.reason,scanned_at=excluded.scanned_at').bind(r.id,r.username,r.name,r.description,r.followers,r.tweets,r.last_post,r.default_photo,r.follows_back,r.verdict,r.reason,stamp)));
+    st.following=(st.following||0)+rows.length;st.token=got.body.meta?.next_token||null;if(!st.token){st.phase='review';st.scannedAt=stamp}delete st.waitUntil;
+    await save();return {phase:'following',read:rows.length};
+  }
+  // 3. Unfollow the cuts, slowly, once it's switched on.
+  if(mode!=='on')return {phase:st.phase,review:true};
+  const day=new Date(now).toISOString().slice(0,10),done=Number(await appSetting(env,`x-unfollow-day:${day}`).catch(()=>0))||0;
+  if(done>=X_UNFOLLOW_DAY)return {phase:'unfollow',dayCap:true};
+  const cuts=((await env.DB.prepare("SELECT id,username FROM x_following WHERE verdict='cut' AND status IS NULL ORDER BY follows_back,followers LIMIT ?").bind(Math.min(X_UNFOLLOW_RUN,X_UNFOLLOW_DAY-done)).all()).results)||[];
+  if(!cuts.length){if(st.phase!=='done'){st.phase='done';st.finishedAt=stamp;await save()}return {phase:'done'}}
+  let n=0;
+  for(const c of cuts){
+    const url=`https://api.twitter.com/2/users/${user}/following/${c.id}`;
+    const r=await fetch(url,{method:'DELETE',headers:{authorization:await xOAuthHeader(env,'DELETE',url)},signal:AbortSignal.timeout(15000)});
+    if(r.status===429){st.waitUntil=Number(r.headers.get('x-rate-limit-reset'))*1000||now+15*60000;await save();break}
+    if(!r.ok){await env.DB.prepare("UPDATE x_following SET status='failed' WHERE id=?").bind(c.id).run();if(r.status===403||r.status===401)throw new Error(`X unfollow refused (${r.status})`);continue}
+    await env.DB.prepare("UPDATE x_following SET status='unfollowed',unfollowed_at=? WHERE id=?").bind(stamp,c.id).run();n++;
+  }
+  if(n)await setAppSetting(env,`x-unfollow-day:${day}`,String(done+n));
+  return {phase:'unfollow',unfollowed:n};
+}
 // 4. Reply targets (Nov 16, Tim): twice a day (noon and 5 PM ET) the owner's phone gets the three
 // busiest fresh posts from big betting accounts, plus our top pick as the angle, to reply to by hand.
 // We never auto-reply to other accounts. app_settings x-reply-targets: a comma list of handles
@@ -6551,7 +6629,8 @@ async function runXPosts(env,now=Date.now()){
   const metrics=await xMetricsDaily(env,now).catch(error=>({error:error.message}));
   const replyAlerts=await xReplyAlerts(env,now).catch(async error=>{await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} reply alerts: ${error.message}`).catch(()=>{});return {error:error.message}});
   const targets=await xReplyTargets(env,now).catch(async error=>{await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} reply targets: ${error.message}`).catch(()=>{});return {error:error.message}});
-  return {metrics,replyAlerts,targets,picks,weekly,closing,combo,final,catchUp,slate,pmSlate,pin,recap,proof,nbaLaunch,nba,nbaPick,nbaPm,predictions,results,summary};
+  const follows=await xFollowCleanup(env,now).catch(async error=>{await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} following cleanup: ${error.message}`).catch(()=>{});return {error:error.message}});
+  return {metrics,replyAlerts,targets,follows,picks,weekly,closing,combo,final,catchUp,slate,pmSlate,pin,recap,proof,nbaLaunch,nba,nbaPick,nbaPm,predictions,results,summary};
 }
 // "My book" alerts: a good-value price at one of someone's own sportsbooks.
 // The fair price always comes from every book (3+ pricing both sides, the same
