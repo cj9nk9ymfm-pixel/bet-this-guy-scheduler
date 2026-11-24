@@ -992,6 +992,15 @@ async function gradePredictionNow(env,now=Date.now()){
     statements.push(env.DB.prepare('UPDATE prediction_picks SET actual=?,result=?,graded_at=?,early=? WHERE id=? AND result IS NULL').bind(leg.actualValue??null,result,stamp,early?1:0,r.id));graded++;
     if(final)await recordGradeFlags(env,r.id,rec.gradedLegs).catch(()=>{});
   }
+  // Final stats for picks decided early (Nov 24, Tim: "the kicker made 5 field goals, not 3"): an Over
+  // settled the moment it cleared kept that moment's number. Once the box score is final, the
+  // pick's stat becomes the final one (the result can't change: these stats only go up). early=2 marks it done.
+  const settled=(await env.DB.prepare('SELECT * FROM prediction_picks WHERE early=1 AND game_time<? AND game_time>? ORDER BY game_time LIMIT 10').bind(new Date(now-2*3600000).toISOString(),new Date(now-14*86400000).toISOString()).all().catch(()=>({results:[]}))).results||[];
+  for(const r of settled){
+    const sp=String(r.event_id||'').startsWith('NBA--')?'NBA':'NFL',rec={kind:'prop',sport:sp,player:r.player,market:r.market,side:r.side,line:r.line,odds:r.odds,game_time:r.game_time,legs_json:JSON.stringify([{player:r.player,market:r.market,side:r.side,line:r.line,team:r.team,gameTime:r.game_time,sport:sp}])};
+    const final=await gradePublicRecord(rec,env,cache).catch(()=>null),v=rec.gradedLegs?.[0]?.actualValue;
+    if(final&&v!=null)statements.push(env.DB.prepare('UPDATE prediction_picks SET actual=?,early=2 WHERE id=? AND early=1').bind(v,r.id));
+  }
   const parlays=(await env.DB.prepare('SELECT * FROM prediction_parlays WHERE result IS NULL AND game_time>? ORDER BY game_time LIMIT 15').bind(old).all().catch(()=>({results:[]}))).results||[];
   for(const r of parlays){
     let legs=[];try{legs=JSON.parse(r.legs_json)}catch{continue}
@@ -6274,8 +6283,9 @@ async function postNbaRepliesToX(env,now=Date.now(),limit=2){
     ];
     // The night's prediction-app picks are on the card too, so the recap counts
     // them (Oct 26: it left them out). It waits for them to grade, up to a day.
-    const nightStart=Date.parse(`${night}T06:00:00Z`),pmNight=(((await env.DB.prepare("SELECT result,odds,net_odds FROM prediction_picks WHERE event_id LIKE 'NBA--%' AND game_time>=? AND game_time<?").bind(new Date(nightStart).toISOString(),new Date(nightStart+86400000).toISOString()).all().catch(()=>({results:[]}))).results)||[]);
-    const pmDone=pmNight.every(r=>['won','lost','push','void'].includes(r.result))||now-nightStart>48*3600000;
+    const nightStart=Date.parse(`${night}T06:00:00Z`),pmNight=(((await env.DB.prepare("SELECT result,odds,net_odds,early,game_time FROM prediction_picks WHERE event_id LIKE 'NBA--%' AND game_time>=? AND game_time<?").bind(new Date(nightStart).toISOString(),new Date(nightStart+86400000).toISOString()).all().catch(()=>({results:[]}))).results)||[]);
+    // An early-settled app pick waits for its final stat (up to 8 hours after its game) so the recap shows the real number.
+    const pmDone=pmNight.every(r=>['won','lost','push','void'].includes(r.result)&&!(Number(r.early)===1&&now-Date.parse(r.game_time)<8*3600000))||now-nightStart>48*3600000;
     // The night's record is one number, sportsbook and prediction apps together (Nov 1, Tim); the split goes under it.
     const pmT=pmTally;
     const nightAll=()=>{const s=weeklySummary(rows),pm=pmT(pmNight),w=s.wins+s.parlayWins+pm.w,l=s.losses+s.parlayLosses+pm.l;
@@ -6396,7 +6406,8 @@ async function postCardRecapToX(env,now=Date.now()){
   const official=((await env.DB.prepare("SELECT * FROM public_recommendations WHERE source='market-verified-v2' AND id LIKE 'official|%' AND game_time>? AND game_time<? ORDER BY game_time,posted_at").bind(from,to).all()).results||[]).filter(onDay);
   const pm=((await env.DB.prepare('SELECT * FROM prediction_picks WHERE event_id NOT LIKE \'NBA--%\' AND game_time>? AND game_time<? ORDER BY game_time,posted_at').bind(from,to).all()).results||[]).filter(onDay);
   const pmp=((await env.DB.prepare('SELECT * FROM prediction_parlays WHERE game_time>? AND game_time<? ORDER BY game_time,posted_at').bind(from,to).all().catch(()=>({results:[]}))).results||[]).filter(onDay);
-  const done=r=>['won','lost','push','void'].includes(r.result);
+  // An early-settled app pick waits for its final stat (up to 8 hours after its game; Nov 24).
+  const done=r=>['won','lost','push','void'].includes(r.result)&&!(Number(r.early)===1&&now-Date.parse(r.game_time)<8*3600000);
   if(!official.length&&!pm.length&&!pmp.length)return {posted:0,empty:true};
   // '#now' in the request posts before every stat is in: plays still waiting
   // on official stats are listed as pending and left out of the totals.
