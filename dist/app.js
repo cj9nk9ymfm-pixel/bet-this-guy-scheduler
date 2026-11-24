@@ -1704,6 +1704,7 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
     if(r.pm){const url=window.BTGApps?.link?.(r.pm.exchange);return url?{label:`Bet on ${r.pm.exchange}`,go:()=>{window.btgCount?.(`app:${String(r.pm.exchange).toLowerCase()}`);window.open(url,'_blank','noopener')}}:null}
     const a=bookAction(r,recordLegs(r),false)[0];return a?{label:a.label,go:a.onClick}:null;
   }
+  // Nov 24 (Tim): no "I bet this" on the card (nobody used it in two weeks); the book button is its one action.
   function pickCard(r,i,top=false){
     const l=recordLegs(r)[0]||{},edge=Number(l.edge),fair=fairAm(l.fairPower??l.fairShin),book=l.book||'';
     const apps=(l.exchanges||[]).filter(x=>Number.isFinite(+x.odds)).map(x=>`${htmlEscape(x.exchange)} ${amOdds(x.odds)}`).join(' · ');
@@ -1715,7 +1716,7 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
         <button type="button" class="pc-price" data-slip-price aria-label="Add to slip at ${px}"><b>${px}</b><small>＋ Slip</small></button></div>
       ${whyHtml(r)}
       <p class="pc-edge">${htmlEscape(book?`${book} · `:'')}$${stake} wins $${win}</p>
-      <div class="pc-foot">${(g=>g?`<button type="button" class="pc-go" data-book-go>${htmlEscape(g.label)} ${icon('external')}</button>`:'<span></span>')(cardGo(r))}<button type="button" class="pc-ibet" data-ibet>${window.BTGMyBets?.has?.(r.id)?'✓ Tracking':'I bet this'}</button></div>
+      <div class="pc-foot">${(g=>g?`<button type="button" class="pc-go" data-book-go>${htmlEscape(g.label)} ${icon('external')}</button>`:'<span></span>')(cardGo(r))}</div>
     </div>`;
   }
   function pickRowLite(r,i){
@@ -4084,6 +4085,8 @@ function statsProp(l){
   function open(){render();if(dlg&&!dlg.open)dlg.showModal?.();window.btgCount?.('mybets:open');if(window.BTGAuth?.isSignedIn?.())window.BTGAuth.serverBets?.().then(list=>{server=Array.isArray(list)?list:[];if(dlg?.open)render()}).catch(()=>{})}
   dlg?.querySelector('.mb-close')?.addEventListener('click',()=>dlg.close());dlg?.addEventListener('click',e=>{if(e.target===dlg)dlg.close()});
   document.querySelector('[data-more-action="mybets"]')?.addEventListener('click',()=>{document.getElementById('moreSheet')?.close?.();open()});
+  // Nov 24: no more "I bet this", so More > My bets shows only for someone who already saved bets.
+  {const b=document.querySelector('[data-more-action="mybets"]');if(b&&!load().length)b.hidden=true}
   // Live ticks redraw My bets while it's open (not while an amount is being typed).
   (window.btgLiveHooks||=[]).push(()=>{if(dlg?.open&&!document.activeElement?.classList?.contains('mb-stake')&&dlg.querySelector('.mb-live-row'))render()});
   // After "I bet this" (Nov 5, Tim): notifications on, follow the pick; push possible here,
