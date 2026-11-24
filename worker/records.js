@@ -216,7 +216,8 @@ function officialCandidates(events,now=Date.now(),stats={},opts={}){
   }
   // One market per player/game prevents alternate lines or opposite sides
   // from multiplying the official sample. Highest qualifying edge wins.
-  const seen=new Set();return result.sort((a,b)=>b.edge-a.edge||a.playerKey.localeCompare(b.playerKey)).filter(p=>{if(seen.has(p.playerKey))return false;seen.add(p.playerKey);return true});
+  // opts.everyMarket keeps them all (the pick-test re-check looks up one exact market).
+  const seen=new Set();return result.sort((a,b)=>b.edge-a.edge||a.playerKey.localeCompare(b.playerKey)).filter(p=>{if(opts.everyMarket)return true;if(seen.has(p.playerKey))return false;seen.add(p.playerKey);return true});
 }
 // Parlays post as soon as their legs qualify, like singles (they come from
 // their own next-tier pool, so there's no reason to wait for kickoff).
@@ -3852,11 +3853,11 @@ async function clientError(request,env){
   const ok=new Response(null,{status:204,headers:{'cache-control':'no-store'}});
   if(request.method!=='POST'||!env.DB||USAGE_BOTS.test(request.headers.get('user-agent')||'')||/(?:^|;\s*)btg_owner=1(?:;|$)/.test(request.headers.get('cookie')||''))return ok;
   let b={};try{b=JSON.parse((await request.text()).slice(0,800))}catch{return ok}
-  const msg=String(b.msg||'').slice(0,180),file=String(b.file||'').replace(/[^\w./-]/g,'').slice(0,60),line=Math.max(0,Math.min(1e7,Number(b.line)||0));if(!msg)return ok;
+  const msg=String(b.msg||'').slice(0,180),file=String(b.file||'').replace(/[^\w./-]/g,'').slice(0,60),line=Math.max(0,Math.min(1e7,Number(b.line)||0)),col=Math.max(0,Math.min(1e7,Number(b.col)||0)),stack=String(b.stack||'').replace(/[^\w./:@|()<> -]/g,'').slice(0,300);if(!msg)return ok;
   const raw=`${msg}|${file}|${line}`;let h=5381;for(let i=0;i<raw.length;i++)h=((h*33)^raw.charCodeAt(i))>>>0;const code=h.toString(36).slice(0,8);
   const day=new Date().toISOString().slice(0,10);
   await env.DB.batch([env.DB.prepare('INSERT INTO usage_counts (day,metric,count) VALUES (?,?,1) ON CONFLICT(day,metric) DO UPDATE SET count=count+1').bind(day,`err:${code}`),
-    env.DB.prepare('INSERT OR IGNORE INTO app_settings (key,value) VALUES (?,?)').bind(`errinfo:${code}`,JSON.stringify({msg,file,line,first:new Date().toISOString()}))]).catch(()=>{});
+    env.DB.prepare('INSERT OR IGNORE INTO app_settings (key,value) VALUES (?,?)').bind(`errinfo:${code}`,JSON.stringify({msg,file,line,col,stack,first:new Date().toISOString()}))]).catch(()=>{});
   return ok;
 }
 async function usageHit(request,env,ctx){
@@ -4446,7 +4447,9 @@ function xPollText(r,now=Date.now()){
 // results later. Logged only: nothing posts or holds on it.
 async function recordPickTests(env,boards,existing,now=Date.now()){
   const open=(existing||[]).filter(r=>r.kind==='prop'&&!r.result&&Date.parse(r.game_time)>now);if(!open.length)return {logged:0};
-  let cands=null;const cand=()=>cands||=officialCandidates(boards,now,{},{min:-50});
+  // Every market, not one per player (Nov 24 fix): with the one-per-player rule the player's
+  // best-priced other market won and the re-check found nothing (0 of 36 ever 'still').
+  let cands=null;const cand=()=>cands||=officialCandidates(boards,now,{},{min:-50,everyMarket:true});
   let n=0;
   for(const r of open){
     const key=`pick-test:${r.id}`;let t={};try{t=JSON.parse(await appSetting(env,key)||'{}')}catch{}
