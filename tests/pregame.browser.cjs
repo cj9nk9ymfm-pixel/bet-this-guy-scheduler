@@ -45,6 +45,15 @@ const types = { js: 'application/javascript', css: 'text/css', html: 'text/html;
     assert.equal(await page.locator('#officialNowList .pd-wrap .pr2').count(), picks.length - 1, 'one row for each other pick (the top pick is the card, not a row too)');
     assert.equal(await page.locator('#officialNowList .lv2').count(), 0, 'nothing live before tip-off');
 
+    // Nov 24 (Tim): the book is on the card itself, so a pick is one tap from the bet without opening it.
+    const go = page.locator('#officialNowList .pc2 [data-book-go]').first();
+    assert.match(await go.innerText(), /^Bet (at|on) \S/, 'a Bet at <book> button on the open pick card');
+    const popup = page.waitForEvent('popup', { timeout: 5000 }).catch(() => null);
+    await go.click();
+    assert.ok(await popup, 'the card button opens the book');
+    assert.equal(await page.locator('dialog[open]').count(), 0, 'without opening the pick sheet');
+    if (process.env.CARD_SHOT) await page.locator('#officialNowList .pc2').first().screenshot({ path: process.env.CARD_SHOT });
+
     // The top card's price goes into the slip.
     await page.locator('#officialNowList .pc2 [data-slip-price]').first().click();
     await need('tapping a pick card price should add it to the slip', () => page.waitForFunction(() => state.slip.length === 1, null, { timeout: 15000 }));

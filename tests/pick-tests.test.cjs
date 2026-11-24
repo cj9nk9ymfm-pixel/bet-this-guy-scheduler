@@ -17,6 +17,9 @@ const run=code=>vm.runInContext(code,context);
   const market=(key,player,over,under,point)=>({key,last_update:fresh,outcomes:[{name:'Over',description:player,point,price:over},{name:'Under',description:player,point,price:under}]});
   const props=(soft)=>[['fanduel','FanDuel'],['betmgm','BetMGM'],['williamhill_us','Caesars'],['draftkings','DraftKings']].map(([key,title])=>({key,title,last_update:fresh,markets:Object.entries(soft).map(([player,[mk,point,over,under]])=>key==='draftkings'?market(mk,player,over,under,point):market(mk,player,-110,-110,point))}));
   context.boards=[{id:'evt1',eventID:'NFL--evt1',sport_label:'NFL',commence_time:kickoff,home_team:'Pittsburgh Steelers',away_team:'Cleveland Browns',bookmakers:props({'Nick Chubb':['player_rush_yds',62.5,110,-120]})}];
+  // His receptions line prices better than the pick's market (Nov 24 bug: the re-check kept only
+  // the player's best market, so it never found the pick and never said 'still').
+  for(const bk of context.boards[0].bookmakers)bk.markets.push(market('player_receptions','Nick Chubb',bk.key==='draftkings'?135:-110,bk.key==='draftkings'?-165:-110,2.5));
   const leg=JSON.stringify([{player:'Nick Chubb',market:'Rushing Yards',side:'Over',line:62.5,odds:110,book:'DraftKings',edge:1.8,gameId:'NFL--evt1'}]);
   for(const [id,posted] of [['official|2026-10-06|props|prop|v2|early',new Date(now-10*3600000).toISOString()],['official|2026-10-06|props|prop|v2|late',new Date(now-30*60000).toISOString()]])
     db.prepare("INSERT INTO public_recommendations (id,kind,player,market,side,line,odds,game_id,game_time,legs_json,posted_at,status,result,source) VALUES (?,?,?,?,?,?,?,?,?,?,?,'pending',NULL,'market-verified-v2')").run(id,'prop','Nick Chubb','Rushing Yards','Over',62.5,110,'NFL--evt1',kickoff,leg,posted);
