@@ -6766,17 +6766,32 @@ async function sendBookAlerts(env,events,now=Date.now()){
 // unsubscribe (at most one email every 10 minutes per address, 60 sign-ups
 // an hour in all). Addresses that signed up when a confirm link was required
 // stay pending until they tap it (one reminder: remindPendingSubscribers).
+// The welcome email's proof (Nov 24, Tim): the latest graded picks, wins and losses, and how often
+// this season's picks beat the closing price, so the first email shows the record, not just a promise.
+async function welcomeProof(env){
+  const rows=((await env.DB.prepare("SELECT id,kind,player,market,side,line,odds,result,game_time,legs_json,closing_odds,closing_line FROM public_recommendations WHERE kind='prop' AND result IN ('won','lost') AND status='final' ORDER BY game_time DESC LIMIT 400").all().catch(()=>({results:[]}))).results)||[];
+  if(!rows.length)return null;
+  const dec=o=>o>0?1+o/100:1+100/-o;let beat=0,tracked=0;
+  for(const r of rows){if(r.closing_odds==null)continue;tracked++;
+    const moved=r.closing_line!=null&&Number(r.closing_line)!==Number(r.line);
+    if(moved?(r.side==='Over'?Number(r.closing_line)>Number(r.line):Number(r.closing_line)<Number(r.line)):dec(Number(r.odds))>dec(Number(r.closing_odds)))beat++}
+  const recent=rows.slice(0,6).map(r=>{const l=recordLegs(r)[0]||{},v=l.actualValue;return {won:r.result==='won',text:`${r.player} ${r.side} ${r.line} ${String(r.market||'').toLowerCase()} (${weeklyOdds(r.odds)})${v!=null?` · final ${v}`:''}`}});
+  return {recent,beat,tracked,pct:tracked>=20?Math.round(100*beat/tracked):null};
+}
 const SUB_EMAIL=/^[^\s@<>"]{1,64}@[^\s@<>"]{1,190}\.[a-z]{2,24}$/i;
 async function sendSubscriberEmail(env,email,token,kind){
   if(!env.RESEND_API_KEY)return false;
   const postal=String(env.EMAIL_POSTAL_ADDRESS||'').trim(),stop=`${SITE_URL}/api/email-alerts/unsubscribe?token=${token}`;
   const confirm=kind==='confirm',link=confirm?`${SITE_URL}/api/email-subscribe/confirm?token=${token}`:`${SITE_URL}/`;
+  const proof=confirm?null:await welcomeProof(env).catch(()=>null);
+  const proofHtml=proof?`<tr><td style="padding:4px 0 10px;font-size:13px;font-weight:800;letter-spacing:1px;color:#5a6f8c;">OUR LATEST RESULTS · LOSSES INCLUDED</td></tr>${proof.recent.map(x=>`<tr><td style="padding:10px 14px;border:1px solid #e3ebf5;border-radius:12px;background:#ffffff;font-size:15px;color:#10213d;"><b style="color:${x.won?'#0f9d58':'#d93025'};">${x.won?'✅ Won':'❌ Lost'}</b> · ${weeklyEscape(x.text)}</td></tr><tr><td style="height:8px;"></td></tr>`).join('')}${proof.pct!=null?`<tr><td style="padding:6px 0 4px;font-size:15px;color:#10213d;"><b>${proof.pct}%</b> of our picks this season beat the closing price (${proof.beat} of ${proof.tracked}). That’s the number sharp bettors judge each other by.</td></tr>`:''}`:'';
+  const proofText=proof?`\n\nOur latest results (losses included):\n${proof.recent.map(x=>`${x.won?'Won':'Lost'}: ${x.text}`).join('\n')}${proof.pct!=null?`\n\n${proof.pct}% of our picks this season beat the closing price (${proof.beat} of ${proof.tracked}).`:''}`:'';
   const opts=confirm
     ?{subject:'Confirm your Bet This Guy pick emails',heading:'One tap to start your pick emails',eyebrow:'CONFIRM YOUR EMAIL',lede:'Tap below and we’ll email you each new official pick, with the price and the sportsbook. Picks that lock together come in one email. Didn’t ask for this? Ignore it and you won’t hear from us.',rowsHtml:'',ctaLabel:'Yes, email me picks',ctaUrl:link}
-    :{subject:'You’re in: Bet This Guy picks by email',heading:'You’re on the list',eyebrow:'PICK EMAILS ARE ON',lede:'We’ll email you each new official NFL and NBA pick the moment it locks, with the price and the sportsbook. Picks that lock together come in one email. Every email has a one-click unsubscribe. Didn’t sign up? Use the link below and you won’t hear from us again.',rowsHtml:'',ctaLabel:'See this week’s picks',ctaUrl:link};
+    :{subject:'You’re in: Bet This Guy picks by email',heading:'You’re on the list',eyebrow:'PICK EMAILS ARE ON',lede:'We’ll email you each new official NFL and NBA pick the moment it locks, with the price and the sportsbook. Picks that lock together come in one email. Want them even faster? Turn on phone alerts on the site: they land the second a pick posts. Every email has a one-click unsubscribe. Didn’t sign up? Use the link below and you won’t hear from us again.',rowsHtml:proofHtml,ctaLabel:'See this week’s picks',ctaUrl:link};
   const text=confirm
     ?`One tap to start your Bet This Guy pick emails:\n${link}\n\nPicks that lock together come in one email. Didn’t ask for this? Ignore this email and you won’t hear from us.\n21+ where legal. Gambling problem? Call 1-800-GAMBLER.${postal?`\n${postal}`:''}\n`
-    :`You’re on the Bet This Guy list. We’ll email you each new official pick the moment it locks, with the price and the sportsbook.\n\nThis week’s picks: ${link}\n\nDidn’t sign up, or want to stop? Unsubscribe: ${stop}\n21+ where legal. Gambling problem? Call 1-800-GAMBLER.${postal?`\n${postal}`:''}\n`;
+    :`You’re on the Bet This Guy list. We’ll email you each new official pick the moment it locks, with the price and the sportsbook. Want them faster? Turn on phone alerts on the site.${proofText}\n\nThis week’s picks: ${link}\n\nDidn’t sign up, or want to stop? Unsubscribe: ${stop}\n21+ where legal. Gambling problem? Call 1-800-GAMBLER.${postal?`\n${postal}`:''}\n`;
   const r=await fetch('https://api.resend.com/emails',{method:'POST',headers:{authorization:`Bearer ${env.RESEND_API_KEY}`,'content-type':'application/json'},body:JSON.stringify({from:env.EMAIL_FROM||EMAIL_ALERT_FROM,to:[email],reply_to:env.EMAIL_REPLY_TO||'support@betthisguy.com',subject:opts.subject,html:emailAlertHtml([],confirm?`${SITE_URL}/`:stop,postal,opts),text,...(confirm?{}:{headers:{'List-Unsubscribe':`<${stop}>`,'List-Unsubscribe-Post':'List-Unsubscribe=One-Click'}})}),signal:AbortSignal.timeout(15000)}).catch(()=>null);
   return Boolean(r?.ok);
 }

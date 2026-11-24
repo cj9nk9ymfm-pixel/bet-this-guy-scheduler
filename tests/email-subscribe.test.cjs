@@ -27,9 +27,13 @@ const pick=(id,player,gameTime,postedAt,extra={})=>db.prepare("INSERT INTO publi
 (async()=>{
   // Email alerts without an account: sign up with an address and it's on, with a welcome email.
   env.RESEND_API_KEY='r';
+  for(const [id,player,market,side,line,odds,result,v,t] of [['w1','Proof Player','Assists','Over',4.5,105,'won',7,'2026-09-28T23:00:00Z'],['w2','Miss Player','Rebounds','Under',2.5,-110,'lost',4,'2026-09-28T22:00:00Z']])
+    db.prepare("INSERT INTO public_recommendations(id,kind,player,market,side,line,odds,game_time,legs_json,posted_at,status,result,source) VALUES(?,?,?,?,?,?,?,?,?,?,'final',?,'market-verified-v2')").run(`nba|2026-09-28|props|prop|${id}`,'prop',player,market,side,line,odds,t,JSON.stringify([{player,market,side,line,odds,actualValue:v}]),'2026-09-28T12:00:00Z',result);
   let r=await request('/api/email-subscribe',{method:'POST',body:JSON.stringify({email:'not-an-email'})});assert.equal(r.status,400);
   r=await request('/api/email-subscribe',{method:'POST',body:JSON.stringify({email:'New.Fan@Example.com'})});assert.equal(r.status,200);{const b=await r.json();assert.equal(b.active,true);assert.equal(b.welcome,true)}
   const welcome=sent.find(m=>m.single&&m.body.to[0]==='new.fan@example.com');assert.ok(welcome,'a welcome email goes out');assert.match(welcome.body.subject,/You’re in/);
+  // Nov 24: the welcome email shows our latest graded picks, losses included.
+  assert.match(welcome.body.html,/OUR LATEST RESULTS · LOSSES INCLUDED/);assert.match(welcome.body.html,/✅ Won<\/b> · Proof Player Over 4\.5 assists \(\+105\) · final 7/);assert.match(welcome.body.text,/Lost: Miss Player Under 2\.5 rebounds/);
   const token=db.prepare("SELECT token,status FROM email_subscribers WHERE email='new.fan@example.com'").get();assert.equal(token.status,'active');
   assert.ok(welcome.body.text.includes(`/api/email-alerts/unsubscribe?token=${token.token}`),'the welcome email has the unsubscribe link');
   assert.ok(welcome.body.headers?.['List-Unsubscribe'],'one-click unsubscribe header');
