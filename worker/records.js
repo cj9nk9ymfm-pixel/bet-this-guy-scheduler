@@ -6050,6 +6050,8 @@ async function xReplyAlerts(env,now=Date.now()){
 //   keep  sports or betting (name, handle or bio), or one of the reply-target accounts
 //   cut   everything else (off-topic and doesn't follow back)
 // A row set to status 'keep' by hand is never unfollowed. Progress in app_settings x-follow-scan.
+// Speed: app_settings x-unfollow-pace = "<per run>/<per day>" (e.g. "5/600") overrides the defaults;
+// X allows 50 unfollows per 15 minutes, so per run stays at 8 or under.
 const X_UNFOLLOW_DAY=300,X_UNFOLLOW_RUN=2,X_FOLLOW_INACTIVE_DAYS=60;
 const X_FOLLOW_SPORTS=/\b(nfl|nba|wnba|ncaa|cfb|cbb|mlb|nhl|ufc|mma|sports?|bet|bets|betting|bettor|bettors|picks?|props?|parlays?|odds|sportsbooks?|wagers?|fantasy|dfs|handicapp\w*|cappers?|gambl\w*|espn|bleacher|the athletic|insider|reporter|analyst|podcast|draftkings|fanduel|betmgm|caesars|prizepicks|underdog|kalshi|polymarket|novig|prophetx|fanatics|hoops|football|basketball|hardwood|gridiron|touchdowns?|buckets|chiefs|bills|ravens|bengals|browns|steelers|texans|colts|jaguars|titans|broncos|raiders|chargers|cowboys|giants|eagles|commanders|bears|lions|packers|vikings|falcons|panthers|saints|buccaneers|bucs|cardinals|rams|49ers|niners|seahawks|celtics|nets|knicks|76ers|sixers|raptors|bulls|cavaliers|cavs|pistons|pacers|bucks|hawks|hornets|heat|magic|wizards|nuggets|timberwolves|wolves|thunder|blazers|jazz|warriors|clippers|lakers|suns|kings|mavericks|mavs|rockets|grizzlies|pelicans|spurs)\b/i;
 const X_FOLLOW_SPAM=/(onlyfans|only fans|nsfw|18\+ content|sugar ?(daddy|baby)|crypto giveaway|airdrop|forex|binary options?|investment manager|recover (your )?(lost|stolen)|hacked account|dm (me )?for promo|promo(tion)? available|follow ?back|followback|\bf4f\b|#?ifb\b|teamfollowback)/i;
@@ -6101,9 +6103,10 @@ async function xFollowCleanup(env,now=Date.now()){
   }
   // 3. Unfollow the cuts, slowly, once it's switched on.
   if(mode!=='on')return {phase:st.phase,review:true};
+  const pace=String(await appSetting(env,'x-unfollow-pace').catch(()=>'')||'').match(/^(\d+)\/(\d+)$/),perRun=pace?Math.min(8,Math.max(1,+pace[1])):X_UNFOLLOW_RUN,perDay=pace?Math.min(1000,Math.max(1,+pace[2])):X_UNFOLLOW_DAY;
   const day=new Date(now).toISOString().slice(0,10),done=Number(await appSetting(env,`x-unfollow-day:${day}`).catch(()=>0))||0;
-  if(done>=X_UNFOLLOW_DAY)return {phase:'unfollow',dayCap:true};
-  const cuts=((await env.DB.prepare("SELECT id,username FROM x_following WHERE verdict='cut' AND status IS NULL ORDER BY follows_back,followers LIMIT ?").bind(Math.min(X_UNFOLLOW_RUN,X_UNFOLLOW_DAY-done)).all()).results)||[];
+  if(done>=perDay)return {phase:'unfollow',dayCap:true};
+  const cuts=((await env.DB.prepare("SELECT id,username FROM x_following WHERE verdict='cut' AND status IS NULL ORDER BY follows_back,followers LIMIT ?").bind(Math.min(perRun,perDay-done)).all()).results)||[];
   if(!cuts.length){if(st.phase!=='done'){st.phase='done';st.finishedAt=stamp;await save()}return {phase:'done'}}
   let n=0;
   for(const c of cuts){
