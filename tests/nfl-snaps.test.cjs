@@ -12,7 +12,7 @@ db.exec('CREATE TABLE prediction_picks (id TEXT PRIMARY KEY, exchange TEXT, even
 const wrap=(sql,args=[])=>({bind(...v){return wrap(sql,v)},async first(){return db.prepare(sql).get(...args)||null},async all(){return{results:db.prepare(sql).all(...args)}},async run(){const r=db.prepare(sql).run(...args);return{success:true,meta:{changes:Number(r.changes)}}}});
 for(const f of ['0028_prediction_picks.sql','0032_prediction_early.sql','0036_void_reason.sql'])try{db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''))}catch(e){}
 context.env={BALLDONTLIE_API_KEY:'k',DB:{prepare:sql=>wrap(sql),async batch(l){for(const s of l)await s.run()}}};
-const run=c=>vm.runInContext(c,context);
+const run=c=>vm.runInContext(c,context),J=v=>JSON.parse(JSON.stringify(v));
 const CSV=['game_id,pfr_game_id,season,game_type,week,player,pfr_player_id,position,team,opponent,offense_snaps,offense_pct,defense_snaps,defense_pct,st_snaps,st_pct',
  '2026_10_JAX_TEN,202611150oti,2026,REG,10,Nate Boerkircher,BoerNa00,TE,JAX,TEN,36,0.49,0,0,6,0.2',
  '2026_11_JAX_NYG,202611220nyg,2026,REG,11,Nate Boerkircher,BoerNa00,TE,JAX,NYG,22,0.31,0,0,0,0',
@@ -37,5 +37,11 @@ let fetches=0;context.fetch=async url=>{if(String(url).includes('snap_counts_202
   assert.equal(row('pm|b').result,'void','not on the field: no action');assert.equal(row('pm|b').void_reason,'Did not play');
   await run(`gradePredictionPicks(env,${Date.parse('2026-11-29T18:00:00.000Z')+10*3600000})`);
   assert.equal(row('pm|c').result,null,'waits for the snap file');
+  // Early-settled app picks get their final stat once the game is final (Nov 24: 5 field goals, not 2).
+  ins.run('pm|k','Novig','NFL--k','Drew Stevens','Washington Commanders','Field Goals Made','Over',1.5,102,102,'2026-11-24T01:15:00.000Z','2026-11-23T12:00:00.000Z');
+  db.prepare("UPDATE prediction_picks SET result='won',actual=2,early=1 WHERE id='pm|k'").run();
+  context.gradePublicRecord=async rec=>{rec.gradedLegs=[{actualValue:5,result:'won'}];rec.provisionalResult='won';return 'won'};
+  await run(`gradePredictionNow(env,${Date.parse('2026-11-24T06:00:00.000Z')})`);
+  assert.deepEqual(J(db.prepare("SELECT result,actual,early FROM prediction_picks WHERE id='pm|k'").get()),{result:'won',actual:5,early:2},'final stat replaces the early one');
   console.log('PASS: NFL snap counts: played without a stat counts (0), not on the field is no action, waits until the game is in the snap file');
 })().catch(e=>{console.error(e);process.exit(1)});
