@@ -6054,16 +6054,20 @@ async function xReplyAlerts(env,now=Date.now()){
 // X allows 50 unfollows per 15 minutes, so per run stays at 8 or under.
 const X_UNFOLLOW_DAY=300,X_UNFOLLOW_RUN=2,X_FOLLOW_INACTIVE_DAYS=60;
 const X_FOLLOW_SPORTS=/\b(nfl|nba|wnba|ncaa|cfb|cbb|mlb|nhl|ufc|mma|sports?|bet|bets|betting|bettor|bettors|picks?|props?|parlays?|odds|sportsbooks?|wagers?|fantasy|dfs|handicapp\w*|cappers?|gambl\w*|espn|bleacher|the athletic|insider|reporter|analyst|podcast|draftkings|fanduel|betmgm|caesars|prizepicks|underdog|kalshi|polymarket|novig|prophetx|fanatics|hoops|football|basketball|hardwood|gridiron|touchdowns?|buckets|chiefs|bills|ravens|bengals|browns|steelers|texans|colts|jaguars|titans|broncos|raiders|chargers|cowboys|giants|eagles|commanders|bears|lions|packers|vikings|falcons|panthers|saints|buccaneers|bucs|cardinals|rams|49ers|niners|seahawks|celtics|nets|knicks|76ers|sixers|raptors|bulls|cavaliers|cavs|pistons|pacers|bucks|hawks|hornets|heat|magic|wizards|nuggets|timberwolves|wolves|thunder|blazers|jazz|warriors|clippers|lakers|suns|kings|mavericks|mavs|rockets|grizzlies|pelicans|spurs)\b/i;
+// Betting words the first scan missed (Nov 24 review: 121 accounts hand-fixed), matched inside words too.
+const X_FOLLOW_BETTING=/(barstool|stool|pickem|parlay|sportsbook|draftkings|fanduel|betmgm|prizepicks|pikkit|playbook|sporting|degen|bettor|betting|nosebleed|discord|\+ev|beat the books|\bfade\b|\bplays\b|\bunits\b)/i,X_FOLLOW_BETTING_HANDLE=/(bet|picks|locks)/i;
 const X_FOLLOW_SPAM=/(onlyfans|only fans|nsfw|18\+ content|sugar ?(daddy|baby)|crypto giveaway|airdrop|forex|binary options?|investment manager|recover (your )?(lost|stolen)|hacked account|dm (me )?for promo|promo(tion)? available|follow ?back|followback|\bf4f\b|#?ifb\b|teamfollowback)/i;
 const xSnowflakeTime=id=>{try{return Number(BigInt(String(id))>>22n)+1288834974657}catch{return null}};
 function xFollowVerdict(u,now=Date.now(),keepHandles=new Set()){
   const text=`${u.name||''} ${u.username||''} ${u.description||''}`,tweets=Number(u.tweets)||0,followers=Number(u.followers)||0,last=Date.parse(u.last_post||'');
   if(tweets===0||(u.default_photo&&tweets<20)||X_FOLLOW_SPAM.test(text))return ['cut','bot or spam'];
-  const sports=X_FOLLOW_SPORTS.test(text)||keepHandles.has(String(u.username||'').toLowerCase());
+  const sports=X_FOLLOW_SPORTS.test(text)||X_FOLLOW_BETTING.test(text)||X_FOLLOW_BETTING_HANDLE.test(String(u.username||''))||keepHandles.has(String(u.username||'').toLowerCase());
   if(sports&&followers>=50000)return ['keep','big sports account'];
   if(Number.isFinite(last)&&now-last>X_FOLLOW_INACTIVE_DAYS*86400000)return ['cut',`no posts in ${X_FOLLOW_INACTIVE_DAYS}+ days`];
   if(u.follows_back)return ['keep','follows us back'];
   if(sports)return ['keep','sports or betting'];
+  // On a re-scan, an account followed since the first scan was followed on purpose: only bots and dead accounts go.
+  if(u.isNew)return ['keep','followed since the last scan'];
   return ['cut',"off-topic, doesn't follow back"];
 }
 async function xFollowGet(env,url,params){
@@ -6079,6 +6083,12 @@ async function xFollowCleanup(env,now=Date.now()){
   let st={};try{st=JSON.parse(await appSetting(env,'x-follow-scan')||'{}')}catch{}
   if(st.waitUntil&&now<st.waitUntil)return {waiting:true};
   const save=()=>setAppSetting(env,'x-follow-scan',JSON.stringify(st)),stamp=new Date(now).toISOString();
+  // Monthly re-scan (Nov 24, Tim): 30 days after a cleanup finishes, read both lists again so new bots and
+  // dead accounts get caught. Who follows us is read fresh; hand-kept and unfollowed rows keep their status.
+  if(st.phase==='done'&&Date.parse(st.finishedAt||'')<now-30*86400000){
+    await env.DB.prepare('DELETE FROM x_followers').run();
+    st={phase:'followers',rescan:true,since:st.scannedAt||null};await save();
+  }
   // 1. Who follows us.
   if(!st.phase||st.phase==='followers'){
     st.phase='followers';
@@ -6094,9 +6104,10 @@ async function xFollowCleanup(env,now=Date.now()){
     const got=await xFollowGet(env,`https://api.twitter.com/2/users/${user}/following`,{max_results:'1000','user.fields':'description,profile_image_url,public_metrics,most_recent_tweet_id',...(st.token?{pagination_token:st.token}:{})});
     if(got.wait){st.waitUntil=got.wait;await save();return {phase:st.phase,rateLimited:true}}
     const back=new Set(((await env.DB.prepare('SELECT id FROM x_followers').all()).results||[]).map(r=>String(r.id)));
+    const known=st.rescan?new Set(((await env.DB.prepare('SELECT id FROM x_following').all()).results||[]).map(r=>String(r.id))):null;
     const keepHandles=new Set(String(await appSetting(env,'x-reply-targets').catch(()=>null)||X_REPLY_TARGETS).split(',').map(h=>h.trim().replace(/^@/,'').toLowerCase()).filter(Boolean));
     const rows=(got.body.data||[]).map(u=>{const t=u.most_recent_tweet_id?xSnowflakeTime(u.most_recent_tweet_id):null,row={id:String(u.id),username:String(u.username||''),name:String(u.name||''),description:String(u.description||'').slice(0,300),followers:u.public_metrics?.followers_count??null,tweets:u.public_metrics?.tweet_count??null,last_post:t?new Date(t).toISOString():null,default_photo:/default_profile/.test(String(u.profile_image_url||''))?1:0,follows_back:back.has(String(u.id))?1:0};
-      [row.verdict,row.reason]=xFollowVerdict(row,now,keepHandles);return row});
+      [row.verdict,row.reason]=xFollowVerdict({...row,isNew:Boolean(known&&!known.has(row.id))},now,keepHandles);return row});
     if(rows.length)await env.DB.batch(rows.map(r=>env.DB.prepare('INSERT INTO x_following (id,username,name,description,followers,tweets,last_post,default_photo,follows_back,verdict,reason,scanned_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET username=excluded.username,name=excluded.name,description=excluded.description,followers=excluded.followers,tweets=excluded.tweets,last_post=excluded.last_post,default_photo=excluded.default_photo,follows_back=excluded.follows_back,verdict=excluded.verdict,reason=excluded.reason,scanned_at=excluded.scanned_at').bind(r.id,r.username,r.name,r.description,r.followers,r.tweets,r.last_post,r.default_photo,r.follows_back,r.verdict,r.reason,stamp)));
     st.following=(st.following||0)+rows.length;st.token=got.body.meta?.next_token||null;if(!st.token){st.phase='review';st.scannedAt=stamp}delete st.waitUntil;
     await save();return {phase:'following',read:rows.length};

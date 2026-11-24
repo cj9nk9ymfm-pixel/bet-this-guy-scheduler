@@ -57,5 +57,20 @@ const set=(k,v)=>db.prepare('INSERT INTO app_settings (key,value) VALUES (?,?) O
   assert.equal((await run(`xFollowCleanup(env,${now+10*600000})`)).unfollowed,5,'five a run at the faster pace');
   set('x-unfollow-pace','5/600');set('x-unfollow-day:2026-11-24','600');
   assert.equal((await run(`xFollowCleanup(env,${now+11*600000})`)).dayCap,true,'and its day cap');
+  // Betting words the first pass missed keep an account.
+  assert.equal(run(`xFollowVerdict({username:'riggs',description:'@barstoolsports blogger',tweets:900,followers:400,last_post:new Date(${now}).toISOString()},${now})[0]`),'keep');
+  assert.equal(run(`xFollowVerdict({username:'tom',description:'All plays in the discord',tweets:900,followers:400,last_post:new Date(${now}).toISOString()},${now})[0]`),'keep');
+  // Monthly re-scan: 30 days after it finishes, both lists are read again; an account followed since the
+  // first scan stays unless it's a bot or dead, and hand-kept rows stay kept.
+  set('x-follow-scan',JSON.stringify({phase:'done',finishedAt:new Date(now-31*86400000).toISOString(),scannedAt:new Date(now-33*86400000).toISOString()}));
+  set('x-follow-cleanup','scan');
+  following.push({id:'10',username:'gardenlady',name:'Garden',description:'tomatoes',public_metrics:pm(50,500),most_recent_tweet_id:recent,profile_image_url:'x.jpg'});
+  following.push({id:'11',username:'newbot',name:'x',description:'',public_metrics:pm(1,0),profile_image_url:'x.jpg'});
+  for(let i=0;i<4;i++)await run(`xFollowCleanup(env,${now+(20+i)*600000})`);
+  const v2=Object.fromEntries(db.prepare('SELECT username,verdict,reason,status FROM x_following').all().map(r=>[r.username,r]));
+  assert.equal(v2.gardenlady.verdict,'keep','followed since the last scan: kept');assert.equal(v2.gardenlady.reason,'followed since the last scan');
+  assert.equal(v2.newbot.verdict,'cut','a new bot still goes');
+  assert.equal(v2.bakery2.status,'keep','hand-kept stays kept');
+  assert.equal(JSON.parse(db.prepare("SELECT value FROM app_settings WHERE key='x-follow-scan'").get().value).phase,'review');
   console.log('PASS: following cleanup: scan and verdicts (spam, inactive, off-topic cut; follow-backs and sports kept), unfollows only when on, 2 a run, day cap, hand-kept safe');
 })().catch(e=>{console.error(e);process.exit(1)});
