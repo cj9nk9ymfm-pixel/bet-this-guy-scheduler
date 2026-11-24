@@ -52,5 +52,10 @@ const set=(k,v)=>db.prepare('INSERT INTO app_settings (key,value) VALUES (?,?) O
   // The day cap.
   db.prepare("UPDATE x_following SET status=NULL WHERE username='randomcook'").run();set('x-unfollow-day:2026-11-24','300');
   assert.equal((await run(`xFollowCleanup(env,${now+9*600000})`)).dayCap,true,'300 a day at most');
+  // A faster pace from app_settings: 5 a run, 600 a day.
+  db.prepare("UPDATE x_following SET status=NULL,verdict='cut' WHERE username IN ('randomcook','hoopsguy','friend','LeBron','ActionNetworkHQ')").run();set('x-unfollow-day:2026-11-24','0');set('x-unfollow-pace','5/600');
+  assert.equal((await run(`xFollowCleanup(env,${now+10*600000})`)).unfollowed,5,'five a run at the faster pace');
+  set('x-unfollow-pace','5/600');set('x-unfollow-day:2026-11-24','600');
+  assert.equal((await run(`xFollowCleanup(env,${now+11*600000})`)).dayCap,true,'and its day cap');
   console.log('PASS: following cleanup: scan and verdicts (spam, inactive, off-topic cut; follow-backs and sports kept), unfollows only when on, 2 a run, day cap, hand-kept safe');
 })().catch(e=>{console.error(e);process.exit(1)});
