@@ -31,7 +31,13 @@ context.playerHeadshot=async()=>null;
   db.prepare("INSERT INTO prediction_picks (id,exchange,event_id,player,team,market,side,line,odds,game_time,posted_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)").run('pm|NBA--g1|zachedey','ProphetX','NBA--g1','Zach Edey','Los Angeles Clippers · @ Memphis Grizzlies','Rebounds','Under',7.5,105,'2026-11-26T01:10:00.000Z','2026-11-25T11:40:40.000Z');
   context.id='pm|NBA--g1|zachedey';const p=await run('shareCardData(env,id)');assert.equal(p.price,'49%');assert.equal(p.where,'on ProphetX');assert.match(p.kick,/CLIPPERS @ GRIZZLIES · TIP-OFF 8:10 PM ET/);assert.equal(p.vals.length,0,'no saved games: no chart');
   context.d=p;assert.doesNotMatch(run("shareCardSvg(d,'wide')"),/OF HIS LAST/);
+  // Record card (Nov 25): the /record preview image with live records and the closing-price share.
+  db.prepare("UPDATE prediction_picks SET result='won' WHERE id='pm|NBA--g1|zachedey'").run();
+  const rc=await run('recordCardData(env)');assert.deepEqual({nfl:{...rc.nfl},apps:{...rc.apps}},{nfl:{w:1,l:0},apps:{w:1,l:0}});
+  context.rc=rc;const rsvg=run('recordCardSvg(rc)');assert.match(rsvg,/The full record\./);assert.match(rsvg,/NFL picks/);assert.match(rsvg,/betthisguy\.com\/record/);assert.match(rsvg,/width="1200" height="630"/);
   if(process.env.SHARE_OUT){const {Resvg,initWasm}=require('@resvg/resvg-wasm');await initWasm(fs.readFileSync('node_modules/@resvg/resvg-wasm/index_bg.wasm'));const fontBuffers=["SpaceGrotesk-Bold","Inter-ExtraBold","Inter-SemiBold"].map(n=>fs.readFileSync(`worker/fonts/${n}.ttf`));
-    for(const [n,svg] of [['wide',wide],['square',sq]])fs.writeFileSync(`${process.env.SHARE_OUT}/share-${n}.png`,new Resvg(svg,{fitTo:{mode:'original'},font:{fontBuffers,loadSystemFonts:false,defaultFontFamily:'BTG Inter SB'}}).render().asPng())}
-  console.log('PASS: share card: lock time, kickoff, price and book, last 5 against the line, wide and square; graded picks show the result; app picks show the chance');
+    for(const [n,svg] of [['wide',wide],['square',sq],['record',run('recordCardSvg(rc)')]])fs.writeFileSync(`${process.env.SHARE_OUT}/share-${n}.png`,new Resvg(svg,{fitTo:{mode:'original'},font:{fontBuffers,loadSystemFonts:false,defaultFontFamily:'BTG Inter SB'}}).render().asPng())}
+  // /record goes to the results page, tracked.
+  const red=await run("worker.fetch(new Request('https://betthisguy.com/record'),env,{waitUntil(){}})");assert.equal(red.status,301);assert.equal(red.headers.get('location'),'https://betthisguy.com/trust?utm_source=record');
+  console.log('PASS: share card: lock time, kickoff, price and book, last 5 against the line, wide and square; graded picks show the result; app picks show the chance; the /record preview card and short link');
 })().catch(e=>{console.error(e);process.exit(1)});

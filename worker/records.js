@@ -4829,6 +4829,34 @@ async function shareCardPng(request,env){
   const d=await shareCardData(env,id).catch(()=>null);if(!d)return new Response('',{status:404});
   return new Response(await renderCardPng(shareCardSvg(d,size)),{headers:{'content-type':'image/png','cache-control':'public, max-age=300','content-disposition':`inline; filename="bet-this-guy-${normalizedName(d.player)}-${size}.png"`}});
 }
+// Record card (Nov 25, Tim: a results page to link everywhere): the preview image X, iMessage and
+// Discord show when betthisguy.com/record (or /trust) is shared: NFL, NBA and app records and how
+// often our sportsbook picks beat the closing price. GET /api/record-card.png, cached 30 minutes.
+async function recordCardData(env){
+  const sb=((await env.DB.prepare("SELECT id,side,line,odds,result,closing_odds,closing_line FROM public_recommendations WHERE kind='prop' AND source='market-verified-v2' AND status='final' AND result IN ('won','lost')").all().catch(()=>({results:[]}))).results)||[];
+  const pm=((await env.DB.prepare("SELECT result FROM prediction_picks WHERE result IN ('won','lost') AND void_reason IS NULL").all().catch(()=>({results:[]}))).results)||[];
+  const rec=list=>({w:list.filter(r=>r.result==='won').length,l:list.filter(r=>r.result==='lost').length});
+  const dec=o=>o>0?1+o/100:1+100/-o;let beat=0,tracked=0;
+  for(const r of sb){if(r.closing_odds==null)continue;tracked++;const moved=r.closing_line!=null&&Number(r.closing_line)!==Number(r.line);
+    if(moved?(r.side==='Over'?Number(r.closing_line)>Number(r.line):Number(r.closing_line)<Number(r.line)):dec(Number(r.odds))>dec(Number(r.closing_odds)))beat++}
+  return {nfl:rec(sb.filter(r=>String(r.id).startsWith('official|'))),nba:rec(sb.filter(r=>String(r.id).startsWith('nba|'))),apps:rec(pm),beat,tracked,pct:tracked?Math.round(100*beat/tracked):null};
+}
+function recordCardSvg(d){
+  const GOLD='#ffc83d',NEON='#c6ff2e',INK='#07090d',F={g:'BTG Grotesk',xb:'BTG Inter XB',sb:'BTG Inter SB'};
+  const tile=(x,big,label,hl)=>`<rect x="${x}" y="300" width="250" height="170" rx="22" fill="${hl?'#10301f':'#0d2240'}" stroke="${hl?NEON:'#1f3a6b'}" stroke-width="${hl?3:2}"/><text x="${x+125}" y="390" text-anchor="middle" font-family="${F.g}" font-size="${hl?66:58}" fill="${hl?'url(#neon)':'#ffffff'}">${weeklyEscape(big)}</text><text x="${x+125}" y="436" text-anchor="middle" font-family="${F.xb}" font-size="19" fill="#c9d6ee">${weeklyEscape(label)}</text>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630"><defs><radialGradient id="g1" cx=".5" cy="0" r="1"><stop offset="0" stop-color="#2f6bff"/><stop offset=".55" stop-color="#0b1a4a"/><stop offset="1" stop-color="#050b1d"/></radialGradient><linearGradient id="neon" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ecffb0"/><stop offset="1" stop-color="${NEON}"/></linearGradient></defs><rect width="1200" height="630" fill="url(#g1)"/>
+<text x="600" y="92" text-anchor="middle" font-family="${F.xb}" font-size="22" letter-spacing="6" fill="${GOLD}">BET THIS GUY · EVERY PICK, GRADED</text>
+<text x="600" y="172" text-anchor="middle" font-family="${F.g}" font-size="64" letter-spacing="-2" fill="url(#neon)">The full record.</text>
+<text x="600" y="232" text-anchor="middle" font-family="${F.g}" font-size="40" letter-spacing="-1" fill="#ffffff">Locked before the game. Losses included.</text>
+${tile(60,d.pct!=null?`${d.pct}%`:'—','beat the closing price',1)}${tile(340,`${d.nfl.w}–${d.nfl.l}`,'NFL picks')}${tile(620,`${d.nba.w}–${d.nba.l}`,'NBA picks')}${tile(900,`${d.apps.w}–${d.apps.l}`,'Prediction apps')}
+<rect x="400" y="530" width="400" height="56" rx="28" fill="${GOLD}"/><text x="600" y="567" text-anchor="middle" font-family="${F.g}" font-size="28" fill="${INK}">betthisguy.com/record</text>
+<text x="1150" y="600" text-anchor="end" font-family="${F.sb}" font-size="16" fill="#9fb3d9">21+</text></svg>`;
+}
+async function recordCardPng(env){
+  if(!env.DB||typeof renderCardPng!=='function')return new Response('',{status:404});
+  const d=await recordCardData(env);
+  return new Response(await renderCardPng(recordCardSvg(d)),{headers:{'content-type':'image/png','cache-control':'public, max-age=1800'}});
+}
 function xPickSvg(c){
   if(X_SPOT&&c.parlay)return xSpotSvg({...c,kicker:`${c.res?'RESULT':String(c.pill?.label&&!c.res?c.pill.label:'OFFICIAL PARLAY').replace(/^SPORTSBOOK PARLAY$/,'OFFICIAL PARLAY')} · ${c.sport||'NFL'}`,when:c.footLeft?String(c.footLeft).replace(/^(\w)(\w*)/,(m,a,b)=>a+b.toLowerCase()):''});
   if(!X_SPOT||c.parlay||!c.spot)return xCardSvg(c);
