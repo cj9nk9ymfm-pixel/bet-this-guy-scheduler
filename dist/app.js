@@ -1378,6 +1378,17 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
   };
 })();
 
+// Market moved against us (Nov 25, Tim: the Edey Under went +105 to +120 after we posted). An open
+// pick whose current price says its chance dropped 3+ points since we locked it: the market moved
+// against this one, so we'd pass at today's price. App picks: the app's latest price; sportsbook
+// picks: the last price on the trail. Display only: a posted pick stays on the record either way.
+function btgMovedAgainst(r){try{
+  if(!r||r.kind==='parlay'||['won','lost','push'].includes(r.result)||!(Date.parse(r.game_time||'')>Date.now()))return null;
+  const pct=o=>{o=Number(o);if(!Number.isFinite(o)||Math.abs(o)<100)return null;return 100/(o>0?1+o/100:1+100/-o)};
+  let from=null,to=null;
+  if(r.pm){from=Number(r.pm.pct);to=r.pm.now==null?null:Number(r.pm.now)}
+  else{const legs=JSON.parse(r.legs_json||'[]'),last=(Array.isArray(legs[0]?.priceTrail)?legs[0].priceTrail:[]).filter(p=>p&&p.o!=null&&Number(p.l??r.line)===Number(r.line)).at(-1);from=pct(r.odds);to=last?pct(last.o):null}
+  return Number.isFinite(from)&&Number.isFinite(to)&&from-to>=3?{from:Math.round(from),to:Math.round(to)}:null}catch{return null}}
 // First impression: a banner with last week's official record, a strip of
 // last week's hits, a positive headline, verdict-first cards and a desktop
 // board that uses the space an empty bet slip would take.
@@ -1509,11 +1520,11 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
         else if(r.closing_odds!=null){const a=oddsDecimal(r.odds),c=oddsDecimal(r.closing_odds),e=a&&c?(a/c-1)*100:0;rows.push(['Closing price',`${formatOdds(r.closing_odds)} · ${e>.05?'we beat the close':e<-.05?'close was better':'same as the close'}`,e>.05?'pos':''])}
         else rows.push(['Closing price','Not recorded',''])}
       else{rows.push(['Locked at',posted,'']);
-        const last=(Array.isArray(first.priceTrail)?first.priceTrail:[]).filter(p=>p&&p.o!=null).at(-1);if(last){const a=oddsDecimal(r.odds),b=oddsDecimal(last.o);rows.push(['Price now',`${formatOdds(last.o)}${a&&b&&b<a-1e-9?' · you got the better price':a&&b&&b>a+1e-9?' · better now':''}`,a&&b&&b<a-1e-9?'pos':''])}}
+        const last=(Array.isArray(first.priceTrail)?first.priceTrail:[]).filter(p=>p&&p.o!=null).at(-1);if(last){const a=oddsDecimal(r.odds),b=oddsDecimal(last.o),mv=btgMovedAgainst(r);rows.push(['Price now',`${formatOdds(last.o)}${mv?' · the market moved against this one since we posted. We’d pass at today’s price.':a&&b&&b<a-1e-9?' · you got the better price':a&&b&&b>a+1e-9?' · better now':''}`,mv?'neg':a&&b&&b<a-1e-9?'pos':''])}}
     }else{rows.push(['Posted',when(r.posted_at),''])}
     // Prediction picks: the app and its chance, the fair chance, and the price.
     if(r.pm){if(isParlay)rows.unshift(['App',`${r.pm.exchange} · ${r.pm.pct}% chance`,'']);
-      if(!done&&r.pm.now!=null){const fair=r.pm.fair,gone=fair&&r.pm.now>=fair-1;rows.push(['App price now',`${r.pm.now}% on ${r.pm.exchange}${gone?' · past our price, skip':r.pm.now<=r.pm.pct?' · same or better than we locked':' · still under fair'}`,gone?'neg':'pos'])}
+      if(!done&&r.pm.now!=null){const fair=r.pm.fair,gone=fair&&r.pm.now>=fair-1,mv=btgMovedAgainst(r);rows.push(['App price now',`${r.pm.now}% on ${r.pm.exchange}${mv?` · the market moved against this one since we posted (${mv.from}% to ${mv.to}%). We’d pass at today’s price.`:gone?' · past our price, skip':r.pm.now<=r.pm.pct?' · same or better than we locked':' · still under fair'}`,mv||gone?'neg':'pos'])}
       for(let i=rows.length-1;i>=0;i--)if(/^(vs fair price|Price now)$/.test(rows[i][0]))rows.splice(i,1)}
     const legRows=isParlay?legs.map(l=>({title:l.player,text:`${legText(l)}${l.voided?` · ${l.voidReason||'Ruled out'}, leg voided`:''}`,odds:r.pm?(l.odds!=null?`${Math.round(100/oddsDecimal(l.odds))}%`:''):formatOdds(l.odds),result:done||l.result?l.result:null,onClick:()=>openLegSheet(l,r)})):null;
     const trail=isParlay?[]:(Array.isArray(first.priceTrail)?first.priceTrail:[]).filter(p=>p&&p.o!=null).map(p=>p.o);
@@ -1716,7 +1727,7 @@ function btgRefHost(){try{const h=document.referrer?new URL(document.referrer).h
       <div class="pc-head"><span class="pc-tag">${top?'Top pick':'Official pick'}</span><span class="pc-cd">${icon('clock')} ${htmlEscape(countdown(r.game_time))}</span></div>
       <div class="pc-main">${face(r)}<div class="pc-mid"><b class="pc-name">${htmlEscape(r.player||'')}</b><span class="pc-bet">${htmlEscape(`${r.side} ${r.line} ${String(r.market||'').toLowerCase()}`)}</span><span class="pc-game">${htmlEscape([gameOf(r),kickoff(r.game_time)].filter(Boolean).join(' · '))}</span></div>
         <button type="button" class="pc-price" data-slip-price aria-label="Add to slip at ${px}"><b>${px}</b><small>＋ Slip</small></button></div>
-      ${whyHtml(r)}
+      ${whyHtml(r)}${(mv=>mv?`<p class="pc-moved">Market moved against this one since we posted (${mv.from}% to ${mv.to}%). We’d pass at today’s price.</p>`:'')(btgMovedAgainst(r))}
       <p class="pc-edge">${htmlEscape(book?`${book} · `:'')}$${stake} wins $${win}</p>
       <div class="pc-foot">${(g=>g?`<button type="button" class="pc-go" data-book-go>${htmlEscape(g.label)} ${icon('external')}</button>`:'<span></span>')(cardGo(r))}</div>
     </div>`;
