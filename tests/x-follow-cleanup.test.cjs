@@ -58,8 +58,8 @@ const set=(k,v)=>db.prepare('INSERT INTO app_settings (key,value) VALUES (?,?) O
   set('x-unfollow-pace','5/600');set('x-unfollow-day:2026-11-24','600');
   assert.equal((await run(`xFollowCleanup(env,${now+11*600000})`)).dayCap,true,'and its day cap');
   // Betting words the first pass missed keep an account.
-  assert.equal(run(`xFollowVerdict({username:'riggs',description:'@barstoolsports blogger',tweets:900,followers:400,last_post:new Date(${now}).toISOString()},${now})[0]`),'keep');
-  assert.equal(run(`xFollowVerdict({username:'tom',description:'All plays in the discord',tweets:900,followers:400,last_post:new Date(${now}).toISOString()},${now})[0]`),'keep');
+  assert.equal(run(`xFollowVerdict({username:'riggs',description:'@barstoolsports blogger',tweets:900,followers:60000,last_post:new Date(${now}).toISOString()},${now})[0]`),'keep','a big betting account');
+  assert.equal(run(`xFollowVerdict({username:'tom',description:'All plays in the discord',tweets:900,followers:400,last_post:new Date(${now}).toISOString()},${now})[0]`),'cut','Nov 25: small sports accounts that don\'t follow back go');
   // Monthly re-scan: 30 days after it finishes, both lists are read again; an account followed since the
   // first scan stays unless it's a bot or dead, and hand-kept rows stay kept.
   set('x-follow-scan',JSON.stringify({phase:'done',finishedAt:new Date(now-31*86400000).toISOString(),scannedAt:new Date(now-33*86400000).toISOString()}));
@@ -72,5 +72,5 @@ const set=(k,v)=>db.prepare('INSERT INTO app_settings (key,value) VALUES (?,?) O
   assert.equal(v2.newbot.verdict,'cut','a new bot still goes');
   assert.equal(v2.bakery2.status,'keep','hand-kept stays kept');
   assert.equal(JSON.parse(db.prepare("SELECT value FROM app_settings WHERE key='x-follow-scan'").get().value).phase,'review');
-  console.log('PASS: following cleanup: scan and verdicts (spam, inactive, off-topic cut; follow-backs and sports kept), unfollows only when on, 2 a run, day cap, hand-kept safe');
+  console.log('PASS: following cleanup: scan and verdicts (spam, inactive, off-topic and small non-following sports accounts cut; follow-backs, big accounts and reply targets kept), unfollows only when on, 2 a run, day cap, hand-kept safe');
 })().catch(e=>{console.error(e);process.exit(1)});
