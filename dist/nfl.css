@@ -2821,3 +2821,12 @@ body.light .x-welcome{background:#eef4ff;border-color:#9fbaf5}body.light .x-welc
 /* Market moved against an open pick (Nov 25). */
 .pc2 .pc-moved{margin:6px 0 0;padding:7px 10px;border-radius:10px;background:rgba(248,113,113,.12);border:1px solid rgba(248,113,113,.4);color:#fca5a5;font-size:12.5px;line-height:1.4}
 body.light .pc2 .pc-moved{background:#fef2f2;border-color:#fecaca;color:#b91c1c}
+/* My books after an email sign-up (Nov 25). */
+.em-books{margin:10px 0 0;padding:12px;border-radius:12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1)}
+.em-books p{margin:0 0 8px;font-size:13px;color:#c9d0d8}
+.em-books .emb-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.em-books .emb-chip{padding:7px 12px;border-radius:999px;border:1px solid #2a3340;background:#14181e;color:#dbe2ea;font:600 13px "DM Sans",sans-serif;cursor:pointer}
+.em-books .emb-chip[aria-pressed="true"]{background:#2bd97c;border-color:#2bd97c;color:#06120b}
+.em-books .emb-save{height:36px;padding:0 18px;border:0;border-radius:10px;background:#2bd97c;color:#06120b;font:800 14px "DM Sans",sans-serif;cursor:pointer}
+.em-books .emb-msg{margin:8px 0 0}
+body.light .em-books{background:#f8fafc;border-color:#e2e8f0}body.light .em-books p{color:#334155}body.light .em-books .emb-chip{background:#fff;border-color:#cbd5e1;color:#0f172a}

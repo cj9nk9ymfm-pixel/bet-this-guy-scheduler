@@ -3820,7 +3820,7 @@ async function cspReport(request,env,ctx){
 }
 // Anonymous usage counts: daily totals per metric. No cookies, IP addresses or
 // per-person identifiers are stored; unknown metric names are ignored.
-const USAGE_METRICS=new Set([...['picks','switch'].flatMap(k=>['<1s','1-2s','2-4s','4s+'].map(b=>`perf:${k}:${b}`)),'card:stats','slip:copy','slip:topm','alerts:x','alerts:chooser','alerts:choose-email','alerts:choose-site','go:safari','go:novig','a2hs:shown','alerts:banner-hide','alerts:fromweek','alerts:lapsed','alerts:denied','alerts:unsupported','board:browse','board:value','empty:alerts','email:pitch','hero:picks','official:bet','prop:bet','slip:addpicks','view:nba','sheet:alerts','sheet:email','sheet:xproof','email:subscribe','email:open','reply:copy','reply:image','partner:novig:copy','app:novig','app:prophetx','app:kalshi','app:polymarket','app:betopenly','welcome:shown','welcome:alerts','welcome:account','welcome:skip','welcome:close','welcome:reopen','view:home','view:trust','view:picks','view:player','view:nfl','live:league-tab','sheet:player-page','follow:on','follow:off','follow:ask-shown','follow:ask-close','follow:ask-on','share:from-hit','view:week','visit:new','visit:return','card:open','slip:add','parlay:add','share','hit:open','profile:open','affiliate:click','alerts:on','alerts:off','gate:shown','gate:signup','gate:login','nudge:shown','nudge:alerts','nudge:signup','nudge:shown-a','nudge:shown-b','nudge:alerts-b','email:inline-board','mybets:add','mybets:open','sheet:line','email:after-shown','email:after-close','email:inline-after','slip:bar','slip:stake-chip','board:browse','alerts:email','view:post','post:copy','post:open','post:image','src:reddit','src:x','src:google','src:social','src:other','src:direct','src:xbio','src:xpost','src:search','src:email','email:home-shown-b','email:inline-homeb','email:home-shown-c','email:inline-homec','welcome:email','email:inline-welcome','email:inline-banner','email:inline-sheet','email:inline-home','email:home-shown','email:inline-nudge','email:nudge-shown','email:nudge-close','welcome:a2hs','live:strip','slip:parlay']);
+const USAGE_METRICS=new Set([...['picks','switch'].flatMap(k=>['<1s','1-2s','2-4s','4s+'].map(b=>`perf:${k}:${b}`)),'card:stats','slip:copy','slip:topm','alerts:x','alerts:chooser','alerts:choose-email','alerts:choose-site','go:safari','go:novig','a2hs:shown','alerts:banner-hide','alerts:fromweek','alerts:lapsed','alerts:denied','alerts:unsupported','board:browse','board:value','empty:alerts','email:pitch','hero:picks','official:bet','prop:bet','slip:addpicks','view:nba','sheet:alerts','sheet:email','sheet:xproof','email:subscribe','email:books','email:books-shown','email:open','reply:copy','reply:image','partner:novig:copy','app:novig','app:prophetx','app:kalshi','app:polymarket','app:betopenly','welcome:shown','welcome:alerts','welcome:account','welcome:skip','welcome:close','welcome:reopen','view:home','view:trust','view:picks','view:player','view:nfl','live:league-tab','sheet:player-page','follow:on','follow:off','follow:ask-shown','follow:ask-close','follow:ask-on','share:from-hit','view:week','visit:new','visit:return','card:open','slip:add','parlay:add','share','hit:open','profile:open','affiliate:click','alerts:on','alerts:off','gate:shown','gate:signup','gate:login','nudge:shown','nudge:alerts','nudge:signup','nudge:shown-a','nudge:shown-b','nudge:alerts-b','email:inline-board','mybets:add','mybets:open','sheet:line','email:after-shown','email:after-close','email:inline-after','slip:bar','slip:stake-chip','board:browse','alerts:email','view:post','post:copy','post:open','post:image','src:reddit','src:x','src:google','src:social','src:other','src:direct','src:xbio','src:xpost','src:search','src:email','email:home-shown-b','email:inline-homeb','email:home-shown-c','email:inline-homec','welcome:email','email:inline-welcome','email:inline-banner','email:inline-sheet','email:inline-home','email:home-shown','email:inline-nudge','email:nudge-shown','email:nudge-close','welcome:a2hs','live:strip','slip:parlay']);
 const USAGE_BOTS=/bot|crawl|spider|slurp|preview|facebookexternalhit|curl|wget|python|headless|lighthouse|scrap|fetch|http-?client|okhttp|axios|go-http|java\/|ruby|perl|php|gptbot|claude|anthropic|perplexity|bytespider|amazonbot|petal|semrush|ahrefs|meta-external|externalagent|feed|monitor|uptime|check/i;
 // Traffic that isn't a person (Nov 16, Tim: real numbers): no Accept-Language (every browser sends
 // one), or from a cloud or hosting network rather than a home or phone connection.
@@ -4085,7 +4085,7 @@ async function sendNbaEmails(env,now=Date.now()){
   const from=env.EMAIL_FROM||EMAIL_ALERT_FROM,postal=String(env.EMAIL_POSTAL_ADDRESS||'').trim(),opts={subject,heading:weeklyEscape(heading),eyebrow:'NBA PICK',lede:'Locked before tip-off and graded in public, with its own NBA record.',rowsHtml:picks.map(emailPickRow).join(''),ctaUrl:`${SITE_URL}/?league=NBA`};
   let sent=0;
   for(let i=0;i<people.length;i+=100){
-    const batch=people.slice(i,i+100).map(person=>{const unsubscribe=`${SITE_URL}/api/email-alerts/unsubscribe?token=${person.token}`;return {from,to:[person.email],reply_to:env.EMAIL_REPLY_TO||'support@betthisguy.com',subject,html:emailAlertHtml(picks,unsubscribe,postal,opts),text:emailAlertText(picks,unsubscribe,postal,{heading}).replace(`See the picks: ${SITE_URL}/`,`See the picks: ${SITE_URL}/?league=NBA`),headers:{'List-Unsubscribe':`<${unsubscribe}>`,'List-Unsubscribe-Post':'List-Unsubscribe=One-Click'}}});
+    const batch=people.slice(i,i+100).map(person=>{const unsubscribe=`${SITE_URL}/api/email-alerts/unsubscribe?token=${person.token}`;const mine=picksForBooks(picks,person);return {from,to:[person.email],reply_to:env.EMAIL_REPLY_TO||'support@betthisguy.com',subject,html:emailAlertHtml(mine,unsubscribe,postal,{...opts,rowsHtml:mine.map(emailPickRow).join('')}),text:emailAlertText(mine,unsubscribe,postal,{heading}).replace(`See the picks: ${SITE_URL}/`,`See the picks: ${SITE_URL}/?league=NBA`),headers:{'List-Unsubscribe':`<${unsubscribe}>`,'List-Unsubscribe-Post':'List-Unsubscribe=One-Click'}}});
     try{const response=await fetch('https://api.resend.com/emails/batch',{method:'POST',headers:{authorization:`Bearer ${env.RESEND_API_KEY}`,'content-type':'application/json'},body:JSON.stringify(batch),signal:AbortSignal.timeout(15000)});if(response.ok)sent+=batch.length;else console.warn('nba_emails_failed',response.status)}
     catch(error){console.warn('nba_emails_failed',error.message)}
   }
@@ -4284,10 +4284,15 @@ async function sendTestEmail(env,user,profile,now=Date.now()){
 // Everyone who gets pick emails: accounts with email alerts on, plus
 // confirmed email-only subscribers, one row per address. kind 'nba' or
 // 'predictions' keeps only people who chose those picks.
+// My books (Nov 25, Tim): picks at a subscriber's own books come first in their pick emails.
+const EMAIL_BOOKS=['DraftKings','FanDuel','BetMGM','Caesars','Fanatics'];
+function emailBooksOf(person){try{const b=JSON.parse(person?.books||'[]');return Array.isArray(b)?b.filter(x=>EMAIL_BOOKS.includes(x)):[]}catch{return []}}
+function picksForBooks(picks,person){const mine=new Set(emailBooksOf(person));if(!mine.size)return picks;const at=r=>recordLegs(r).some(l=>mine.has(String(l.book||'')))?0:1;return [...picks].sort((a,b)=>at(a)-at(b))}
 async function emailPeople(env,kind=null){
   const acct=kind==='nba'?' AND COALESCE(a.nba,1)=1':kind==='predictions'?' AND a.predictions=1':'',sub=kind==='nba'?' AND nba=1':kind==='predictions'?' AND predictions=1':'';
   const accounts=(await env.DB.prepare(`SELECT a.token,p.email,a.auth_user_id AS uid FROM email_alerts a JOIN user_profiles p ON p.auth_user_id=a.auth_user_id WHERE a.enabled=1${acct} ORDER BY a.created_at LIMIT 2000`).all()).results||[];
-  let subs=[];try{subs=(await env.DB.prepare(`SELECT token,email FROM email_subscribers WHERE status='active'${sub} ORDER BY created_at LIMIT 2000`).all()).results||[]}catch{}
+  // books (Nov 25): the sign-up's own sportsbooks; the plain query is the fallback if the column isn't there yet.
+  let subs=[];try{subs=(await env.DB.prepare(`SELECT token,email,books FROM email_subscribers WHERE status='active'${sub} ORDER BY created_at LIMIT 2000`).all()).results||[]}catch{try{subs=(await env.DB.prepare(`SELECT token,email FROM email_subscribers WHERE status='active'${sub} ORDER BY created_at LIMIT 2000`).all()).results||[]}catch{}}
   const seen=new Set(),out=[];for(const p of [...accounts,...subs]){const k=String(p.email||'').trim().toLowerCase();if(!k||seen.has(k))continue;seen.add(k);out.push(p)}
   return out;
 }
@@ -4310,7 +4315,8 @@ async function sendEmailAlerts(env,now=Date.now()){
   for(let i=0;i<people.length;i+=100){
     const batch=people.slice(i,i+100).map(person=>{
       const unsubscribe=`${SITE_URL}/api/email-alerts/unsubscribe?token=${person.token}`;
-      return {from,to:[person.email],reply_to:env.EMAIL_REPLY_TO||'support@betthisguy.com',subject,html:emailAlertHtml(picks,unsubscribe,postal),text:emailAlertText(picks,unsubscribe,postal),headers:{'List-Unsubscribe':`<${unsubscribe}>`,'List-Unsubscribe-Post':'List-Unsubscribe=One-Click'}};
+      const mine=picksForBooks(picks,person);
+      return {from,to:[person.email],reply_to:env.EMAIL_REPLY_TO||'support@betthisguy.com',subject,html:emailAlertHtml(mine,unsubscribe,postal),text:emailAlertText(mine,unsubscribe,postal),headers:{'List-Unsubscribe':`<${unsubscribe}>`,'List-Unsubscribe-Post':'List-Unsubscribe=One-Click'}};
     });
     try{
       const response=await fetch('https://api.resend.com/emails/batch',{method:'POST',headers:{authorization:`Bearer ${env.RESEND_API_KEY}`,'content-type':'application/json'},body:JSON.stringify(batch),signal:AbortSignal.timeout(15000)});
@@ -6922,6 +6928,17 @@ async function emailSubscribeApi(request,env,ctx){
   if(!env.DB)return reply({success:false,error:'Unavailable'},503);
   if(url.pathname==='/api/email-subscribe/confirm')return emailConfirmPage(url,env);
   if(request.method!=='POST')return reply({success:false},405);
+  // POST /api/email-subscribe/books {key, books:[...]}: the books step after sign-up (Nov 25).
+  if(url.pathname==='/api/email-subscribe/books'){
+    let b={};try{b=JSON.parse((await request.text()).slice(0,1000))}catch{}
+    const key=String(b.key||'');if(!/^[a-f0-9]{32}$/.test(key))return reply({success:false},400);
+    let pref=null;try{pref=JSON.parse(await appSetting(env,`email-prefs:${key}`)||'null')}catch{}
+    if(!pref?.email||Date.now()-Number(pref.at)>3600000)return reply({success:false,error:'That took too long. Change your books from any pick email.'},410);
+    const books=[...new Set((Array.isArray(b.books)?b.books:[]).map(String))].filter(x=>EMAIL_BOOKS.includes(x));
+    await env.DB.prepare('UPDATE email_subscribers SET books=? WHERE email=?').bind(JSON.stringify(books),pref.email).run();
+    ctx?.waitUntil?.(countUsage(env,['email:books'],request).catch(()=>{}));
+    return reply({success:true,books});
+  }
   let body={};try{body=JSON.parse((await request.text()).slice(0,2000))}catch{}
   const email=String(body.email||'').trim().toLowerCase();
   if(!SUB_EMAIL.test(email)||email.length>254)return reply({success:false,error:'That doesn’t look like an email address.'},400);
@@ -6938,7 +6955,9 @@ async function emailSubscribeApi(request,env,ctx){
   if(!(await sendSubscriberEmail(env,email,token,'welcome')))return reply({success:false,error:'We couldn’t send the email. Try again in a minute.'},502);
   await env.DB.prepare("INSERT INTO email_subscribers (email,token,status,nba,created_at,confirm_sent_at,confirmed_at) VALUES (?,?,'active',?,?,?,?) ON CONFLICT(email) DO UPDATE SET token=excluded.token,status='active',nba=excluded.nba,confirm_sent_at=excluded.confirm_sent_at,confirmed_at=excluded.confirmed_at").bind(email,token,nba,stamp,stamp,stamp).run();
   ctx?.waitUntil?.(countUsage(env,['email:subscribe'],request).catch(()=>{}));
-  return reply({success:true,active:true,welcome:true});
+  // A one-hour key for the "which books do you use?" step right after sign-up (never the unsubscribe token).
+  const prefsKey=emailAlertToken().slice(0,32);await setAppSetting(env,`email-prefs:${prefsKey}`,JSON.stringify({email,at:now})).catch(()=>{});
+  return reply({success:true,active:true,welcome:true,prefsKey,books:EMAIL_BOOKS});
 }
 // Addresses still pending from when a confirm link was required get it once
 // more, a day after signing up, then never again (marker email-reconfirm:<token>).

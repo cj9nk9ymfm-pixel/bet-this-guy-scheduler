@@ -13,7 +13,7 @@ const context=vm.createContext({URL,URLSearchParams,Request,Response,Headers,Abo
 const template=read('worker/index.template.js');
 vm.runInContext(template.slice(template.indexOf('const API_BASE')).replace('__MOVEMENT_SERVER__',read('worker/movement.js')).replace('__LIVE_SERVER__',read('worker/live.js')).replace('__STATS_SHARED__',read('dist/stats.js')).replace('__RECORDS_SERVER__',read('worker/records.js')).replace('__ACCOUNTS_SERVER__',read('worker/accounts.js')).replace('export default {','this.worker={'),context);
 const db=new DatabaseSync(':memory:');db.exec('PRAGMA foreign_keys=ON');
-for(const f of ['0000_public_record.sql','0001_record_settlement.sql','0002_historical_replays.sql','0004_user_accounts.sql','0006_push_alerts.sql','0007_email_alerts.sql','0029_email_predictions.sql','0034_email_nba.sql','0028_prediction_picks.sql','0008_book_alerts.sql','0013_follow_alerts.sql','0027_alert_price_view.sql','0031_alert_kinds.sql','0033_alert_nba.sql','0035_email_subscribers.sql'])db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''));
+for(const f of ['0000_public_record.sql','0001_record_settlement.sql','0002_historical_replays.sql','0004_user_accounts.sql','0006_push_alerts.sql','0007_email_alerts.sql','0029_email_predictions.sql','0034_email_nba.sql','0028_prediction_picks.sql','0008_book_alerts.sql','0013_follow_alerts.sql','0027_alert_price_view.sql','0031_alert_kinds.sql','0033_alert_nba.sql','0035_email_subscribers.sql','0046_email_books.sql'])db.exec(read('drizzle/'+f).replaceAll('--> statement-breakpoint',''));
 // Shaped like D1: run() reports changes under meta.
 const wrap=(sql,args=[])=>({bind(...values){return wrap(sql,values)},async first(){return db.prepare(sql).get(...args)||null},async all(){return{results:db.prepare(sql).all(...args)}},async run(){const r=db.prepare(sql).run(...args);return{success:true,meta:{changes:Number(r.changes)}}}});
 const DB={prepare:sql=>wrap(sql),async batch(list){const out=[];for(const s of list)out.push(await s.run());return out}};
@@ -35,6 +35,18 @@ const pick=(id,player,gameTime,postedAt,extra={})=>db.prepare("INSERT INTO publi
   // Nov 24: the welcome email shows our latest graded picks, losses included.
   assert.match(welcome.body.html,/OUR LATEST RESULTS · LOSSES INCLUDED/);assert.match(welcome.body.html,/✅ Won<\/b> · Proof Player Over 4\.5 assists \(\+105\) · final 7/);assert.match(welcome.body.text,/Lost: Miss Player Under 2\.5 rebounds/);
   const token=db.prepare("SELECT token,status FROM email_subscribers WHERE email='new.fan@example.com'").get();assert.equal(token.status,'active');
+  // Nov 25: my books. Sign-up hands back a one-hour key (not the unsubscribe token); the books step saves them.
+  {const r1=await request('/api/email-subscribe',{method:'POST',body:JSON.stringify({email:'books.fan@example.com'})}),d1=await r1.json();
+    assert.match(d1.prefsKey,/^[a-f0-9]{32}$/);assert.deepEqual(d1.books,['DraftKings','FanDuel','BetMGM','Caesars','Fanatics']);
+    const tok=db.prepare("SELECT token FROM email_subscribers WHERE email='books.fan@example.com'").get().token;assert.ok(!tok.startsWith(d1.prefsKey),'not the unsubscribe token');
+    let r2=await request('/api/email-subscribe/books',{method:'POST',body:JSON.stringify({key:'0'.repeat(32),books:['FanDuel']})});assert.equal(r2.status,410,'unknown key');
+    r2=await request('/api/email-subscribe/books',{method:'POST',body:JSON.stringify({key:d1.prefsKey,books:['FanDuel','Bovada','FanDuel']})});assert.equal(r2.status,200);
+    assert.equal(db.prepare("SELECT books FROM email_subscribers WHERE email='books.fan@example.com'").get().books,'["FanDuel"]','only known books, once');
+    const people=plain(await run('emailPeople(env)'));const fan=people.find(p=>p.email==='books.fan@example.com');assert.equal(fan.books,'["FanDuel"]');
+    context.fan=fan;context.picks2=[{id:'a',legs_json:JSON.stringify([{book:'DraftKings'}])},{id:'b',legs_json:JSON.stringify([{book:'FanDuel'}])}];
+    assert.deepEqual(plain(await run('picksForBooks(picks2,fan).map(p=>p.id)')),['b','a'],'their book first');
+    assert.deepEqual(plain(await run('picksForBooks(picks2,{}).map(p=>p.id)')),['a','b'],'no books: unchanged');
+    db.prepare("DELETE FROM email_subscribers WHERE email='books.fan@example.com'").run()}
   assert.ok(welcome.body.text.includes(`/api/email-alerts/unsubscribe?token=${token.token}`),'the welcome email has the unsubscribe link');
   assert.ok(welcome.body.headers?.['List-Unsubscribe'],'one-click unsubscribe header');
   // A second sign-up within 10 minutes doesn't send another email.

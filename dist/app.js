@@ -3695,14 +3695,26 @@ function statsProp(l){
   window.BTGEmailSub={open(source){window.btgCount?.('email:open');$('emailIphoneNote').hidden=!(ios||source==='iphone');{const n=$('emailBlockedNote');if(n)n.hidden=!['alerts:denied','alerts:unsupported'].includes(source)}status('');$('emailSubSend').disabled=false;if(typeof dlg.showModal==='function')dlg.showModal();else dlg.setAttribute('open','');setTimeout(()=>{try{$('emailSubInput').focus()}catch{}},60)}};
   const close=()=>dlg.close?.();$('emailDialogX').onclick=close;dlg.addEventListener('click',e=>{if(e.target===dlg)close()});
   const valid=email=>/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(email);
+  // My books (Nov 25, Tim): right after a new sign-up, "Which books do you use?" chips; their pick
+  // emails then list picks at those books first (/api/email-subscribe/books, a one-hour key).
+  let prefs=null;
+  const booksStep=after=>{if(!prefs?.key||!after?.parentNode||after.parentNode.querySelector('.em-books'))return;
+    const box=document.createElement('div');box.className='em-books';
+    box.innerHTML=`<p>Which sportsbooks do you use? We’ll put picks at your books first.</p><div class="emb-chips">${(prefs.books||[]).map(b=>`<button type="button" class="emb-chip" aria-pressed="false" data-book="${htmlEscape(b)}">${htmlEscape(b)}</button>`).join('')}</div><button type="button" class="emb-save">Save</button><p class="emb-msg" role="status" hidden></p>`;
+    after.after(box);window.btgCount?.('email:books-shown');
+    box.querySelectorAll('.emb-chip').forEach(c=>c.onclick=()=>c.setAttribute('aria-pressed',c.getAttribute('aria-pressed')==='true'?'false':'true'));
+    box.querySelector('.emb-save').onclick=async()=>{const books=[...box.querySelectorAll('.emb-chip[aria-pressed="true"]')].map(c=>c.dataset.book),m=box.querySelector('.emb-msg');m.hidden=false;
+      try{const r=await fetch('/api/email-subscribe/books',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({key:prefs.key,books})}),d=await r.json().catch(()=>({}));if(!r.ok||!d.success)throw new Error(d.error||'Couldn’t save that. Try again.');
+        m.textContent=books.length?`Saved: ${books.join(', ')} first.`:'Saved.';box.querySelectorAll('button').forEach(b=>b.disabled=true)}catch(error){m.textContent=error.message}}};
   const send=async(email,nba=true)=>{const r=await fetch('/api/email-subscribe',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email,nba})}),d=await r.json().catch(()=>({}));
     if(!r.ok||!d.success)throw new Error(d.error||'We couldn’t sign you up. Try again in a minute.');
+    prefs=d.prefsKey?{key:d.prefsKey,books:Array.isArray(d.books)?d.books:[]}:null;
     try{localStorage.setItem('btg-email-sub','1')}catch{}
     return d.welcome?'You’re in. Each new pick lands in your inbox the moment it locks. (We sent a welcome email; not there? Check spam.)':d.active?'You’re already on the list. New picks will land in your inbox.':'Almost done: tap the confirm link we emailed you. Not there in a minute? Check spam.'};
   $('emailSubForm').addEventListener('submit',async e=>{e.preventDefault();const email=$('emailSubInput').value.trim();
     if(!valid(email)){status('Enter a full email address, like you@example.com.','err');return}
     $('emailSubSend').disabled=true;status('Sending…');
-    try{status(await send(email,$('emailSubNba').checked),'ok')}
+    try{status(await send(email,$('emailSubNba').checked),'ok');booksStep($('emailSubForm'))}
     catch(error){status(error.message,'err');$('emailSubSend').disabled=false}});
   // One-field sign-up placed right where someone already is (the alerts
   // banner, the bet screen), so email takes one step instead of a pop-up.
@@ -3713,7 +3725,7 @@ function statsProp(l){
     form.addEventListener('submit',async e=>{e.preventDefault();const email=input.value.trim();
       if(!valid(email)){say('Enter a full email address, like you@example.com.','err');input.focus();return}
       button.disabled=true;say('Sending…','');window.btgCount?.(`email:inline-${source}`);
-      try{say(await send(email),'ok');input.disabled=true;button.textContent='✓ You’re in';document.documentElement.classList.add('email-on');try{localStorage.setItem('btg-email-sub','1')}catch{}}
+      try{say(await send(email),'ok');input.disabled=true;button.textContent='✓ You’re in';document.documentElement.classList.add('email-on');try{localStorage.setItem('btg-email-sub','1')}catch{};booksStep(form)}
       catch(error){say(error.message,'err');button.disabled=false}});
     host.appendChild(form);return form};
 })();
