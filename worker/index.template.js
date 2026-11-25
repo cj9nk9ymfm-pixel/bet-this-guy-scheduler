@@ -1605,6 +1605,7 @@ async function routeRequest(request, env, ctx) {
     if (url.pathname === "/api/x-status") return json(await xStatus(env), 200, { "cache-control": "no-store" });
     if (url.pathname === "/api/x-card.png") return xCardPreview(request, env);
     if (url.pathname === "/api/share-card.png") return shareCardPng(request, env);
+    if (url.pathname === "/api/record-card.png") return recordCardPng(env);
     if (url.pathname === "/api/hit") return usageHit(request, env, ctx);
     if (url.pathname === "/api/client-error") return clientError(request, env);
     if (url.pathname === "/api/passed") return new Response(JSON.stringify(await passedSummary(env, url.searchParams.get("sport") === "NBA" ? "NBA" : "NFL", Date.now(), url.searchParams.get("market") === "pm" ? "pm" : "book").catch(() => ({ success: false }))), { headers: { "content-type": "application/json; charset=utf-8", "cache-control": "public, max-age=120" } });
@@ -1642,6 +1643,8 @@ async function routeRequest(request, env, ctx) {
       const nbaData = nba ? `<script>window.BTG_HOME_NBA=${JSON.stringify({ success: true, sport: "NBA", ...nba }).replace(/</g, "\\u003c")}</script>` : "";
       return new Response(withSiteChrome(STATIC[url.pathname][1].replace("<!--HOME_DATA-->", () => data + nbaData), "/", track), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache" } });
     }
+    // betthisguy.com/record (Nov 25, Tim): the short link to the full record, tracked.
+    if (url.pathname === "/record" || url.pathname === "/results") return Response.redirect(`${url.origin}/trust${url.search || "?utm_source=record"}`, 301);
     if ((url.pathname === "/trust" || url.pathname === "/about" || url.pathname === "/legal") && env.DB && typeof STATIC !== "undefined") {
       const snapshot = url.pathname === "/legal" ? "" : await trustSnapshot(env).catch(() => ""), track = await siteTrack(env).catch(() => "");
       return new Response(withSiteChrome(STATIC[url.pathname][1].replace("<!--RECORD_SNAPSHOT-->", () => snapshot), url.pathname, track), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache" } });
