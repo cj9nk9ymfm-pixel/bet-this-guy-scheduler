@@ -4756,6 +4756,73 @@ function xSpotResult(l,res,money){
   const need=Number.isFinite(line)?(String(l.side).toLowerCase()==='under'?`needed ${Math.floor(line)} or fewer`:`needed ${Math.ceil(line)} or more`):'';
   return {res,actual,need,money};
 }
+// Share card (Nov 25, Tim: "give me a graphic I can post places and replies"): every pick as a
+// ready-to-share image, wide (1200x675, X and replies) or square (1080x1080, Instagram, Threads,
+// Discord), with when it locked on the site, the kickoff, the price and book, and his last 5
+// against the line. A graded pick shows its result instead of "Locked". GET
+// /api/share-card.png?id=<pick id>&size=wide|square. Never posts anything.
+const SHARE_NICK=t=>String(t||'').trim().split(/\s+/).pop().toUpperCase();
+function shareGame(team){const [a,b]=String(team||'').split(' · '),home=String(b||'').replace(/^(@|vs)\s+/,'');return a&&home?`${SHARE_NICK(a)} @ ${SHARE_NICK(home)}`:''}
+const shareEt=(t,o)=>new Date(t).toLocaleString('en-US',{timeZone:'America/New_York',...o});
+async function shareCardData(env,id){
+  const pm=String(id).startsWith('pm|');
+  const row=pm?await env.DB.prepare('SELECT * FROM prediction_picks WHERE id=?').bind(id).first():await env.DB.prepare("SELECT * FROM public_recommendations WHERE id=? AND kind='prop' AND source='market-verified-v2'").bind(id).first();
+  if(!row)return null;
+  const leg=pm?{}:(recordLegs(row)[0]||{}),sport=pm?(String(row.event_id||'').startsWith('NBA--')?'NBA':'NFL'):(String(id).startsWith('nba|')?'NBA':'NFL');
+  const team=pm?row.team:leg.team,result=pm?(row.void_reason?'push':row.result):row.result,actual=pm?row.actual:leg.actualValue;
+  const m=await savedMatchup(env,id)||(pm?await savedMatchup(env,candKey({eventId:row.event_id,player:row.player,market:row.market})):null);
+  const line=Number(row.line),over=row.side==='Over',vals=(m?.logs||[]).slice(0,5).map(g=>Number(g.v)).filter(Number.isFinite).reverse();
+  const hits=vals.filter(v=>over?v>line:v<line).length;
+  const shot=typeof playerHeadshot==='function'?await playerHeadshot(row.player,sport,true).catch(()=>null):null;
+  const lead=(Date.parse(row.game_time)-Date.parse(row.posted_at))/3600000;
+  return {player:row.player,bet:`${row.side} ${row.line} ${String(row.market||'').toLowerCase()}`,side:row.side,line,
+    price:pm?`${exchangePct(row.odds)}%`:weeklyOdds(row.odds),where:pm?`on ${row.exchange}`:`at ${leg.book||'the book'}`,
+    locked:`LOCKED ${shareEt(row.posted_at,{weekday:'short'}).toUpperCase()} ${shareEt(row.posted_at,{hour:'numeric',minute:'2-digit'})} ET`,
+    kick:`${shareGame(team)}${shareGame(team)?' · ':''}KICKOFF ${shareEt(row.game_time,{hour:'numeric',minute:'2-digit'})} ET`.replace('KICKOFF',sport==='NBA'?'TIP-OFF':'KICKOFF'),
+    ahead:lead>=1?`${Math.round(lead)} hour${Math.round(lead)===1?'':'s'} before ${sport==='NBA'?'tip-off':'kickoff'}`:'',
+    vals,hits,sport,result:['won','lost','push'].includes(result)?result:null,actual,
+    photo:shot?.bytes?{type:shot.type||'image/png',b64:xBase64(shot.bytes)}:null};
+}
+function shareCardSvg(d,size='wide'){
+  const e=weeklyEscape,GOLD='#ffc83d',NEON='#c6ff2e',GRL='#34d399',RED='#f87171',INK='#07090d',F={g:'BTG Grotesk',xb:'BTG Inter XB',sb:'BTG Inter SB'};
+  const sq=size==='square',W=sq?1080:1200,H=sq?1080:675;
+  const pill=d.result?(d.result==='won'?`WON${d.actual!=null?` · FINAL ${d.actual}`:''}`:d.result==='lost'?`LOST${d.actual!=null?` · FINAL ${d.actual}`:''}`:'VOID · STAKE BACK'):d.locked,pillFill=d.result==='won'?NEON:d.result==='lost'?RED:GOLD;
+  const defs=`<defs><radialGradient id="g1" cx=".5" cy="0" r="1"><stop offset="0" stop-color="#2f6bff"/><stop offset=".55" stop-color="#0b1a4a"/><stop offset="1" stop-color="#050b1d"/></radialGradient><linearGradient id="neon" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ecffb0"/><stop offset="1" stop-color="${NEON}"/></linearGradient><clipPath id="ph"><circle cx="0" cy="0" r="74"/></clipPath></defs>`;
+  const head=(cx,cy)=>`<g transform="translate(${cx} ${cy})"><circle r="80" fill="#13305e" stroke="${NEON}" stroke-width="4"/>${d.photo?`<image href="data:${d.photo.type};base64,${d.photo.b64}" x="-110" y="-62" width="220" height="160" clip-path="url(#ph)"/>`:`<text y="18" text-anchor="middle" font-family="${F.g}" font-size="52" fill="#fff">${e(String(d.player).split(' ').map(s=>s[0]||'').join('').slice(0,2))}</text>`}</g>`;
+  const chart=(x,y,w,h)=>{if(!d.vals.length)return '';const max=Math.max(d.line*1.7,...d.vals,1),step=w/d.vals.length,bw=step*.56,ly=y+h-h*d.line/max,over=d.side==='Over';
+    return d.vals.map((v,i)=>{const bh=Math.max(4,h*v/max),bx=x+i*step+(step-bw)/2,ok=over?v>d.line:v<d.line;return `<rect x="${bx}" y="${y+h-bh}" width="${bw}" height="${bh}" rx="8" fill="${ok?GRL:RED}"/><text x="${bx+bw/2}" y="${y+h-bh-10}" text-anchor="middle" font-family="${F.g}" font-size="26" fill="#fff">${e(String(v))}</text>`}).join('')+
+    `<line x1="${x-6}" y1="${ly}" x2="${x+w+6}" y2="${ly}" stroke="${GOLD}" stroke-width="3" stroke-dasharray="10 8"/>`};
+  const label=d.vals.length?`${d.side.toUpperCase()} IN ${d.hits} OF HIS LAST ${d.vals.length}`:'',lineNote=`GOLD LINE = ${d.line}`;
+  const foot=d.result?'Graded from the box score. Every pick, win or lose.':`${d.ahead?`Posted ${d.ahead}. `:''}Graded win or lose.`;
+  if(sq)return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">${defs}<rect width="${W}" height="${H}" fill="url(#g1)"/>
+<rect x="290" y="60" width="500" height="50" rx="25" fill="${pillFill}"/><text x="540" y="94" text-anchor="middle" font-family="${F.xb}" font-size="22" letter-spacing="2" fill="${INK}">${e(pill)}</text>
+<text x="540" y="160" text-anchor="middle" font-family="${F.xb}" font-size="22" letter-spacing="2" fill="#9fb3d9">${e(d.kick)}</text>${head(540,290)}
+<text x="540" y="445" text-anchor="middle" font-family="${F.g}" font-size="72" letter-spacing="-2" fill="#ffffff">${e(d.player)}</text>
+<text x="540" y="515" text-anchor="middle" font-family="${F.g}" font-size="56" letter-spacing="-1" fill="url(#neon)">${e(d.bet)}</text>
+<text x="540" y="580" text-anchor="middle" font-family="${F.xb}" font-size="30" fill="#ffffff">${e(d.price)} <tspan fill="${GRL}">${e(d.where)}</tspan></text>
+${d.vals.length?`<rect x="110" y="620" width="860" height="300" rx="24" fill="#0d2240" stroke="#1f3a6b" stroke-width="2"/><text x="140" y="664" font-family="${F.xb}" font-size="22" letter-spacing="2" fill="#bfe7cf">${e(label)} <tspan fill="${GOLD}">· ${e(lineNote)}</tspan></text>${chart(170,710,740,170)}`:''}
+<text x="540" y="985" text-anchor="middle" font-family="${F.sb}" font-size="26" fill="#ffffff">${e(foot)}</text>
+<text x="540" y="1030" text-anchor="middle" font-family="${F.g}" font-size="30" fill="${GOLD}">betthisguy.com</text>
+<text x="1040" y="1050" text-anchor="end" font-family="${F.sb}" font-size="16" fill="#9fb3d9">21+</text></svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">${defs}<rect width="${W}" height="${H}" fill="url(#g1)"/>
+<rect x="60" y="48" width="440" height="44" rx="22" fill="${pillFill}"/><text x="280" y="78" text-anchor="middle" font-family="${F.xb}" font-size="20" letter-spacing="2" fill="${INK}">${e(pill)}</text>
+<text x="1140" y="78" text-anchor="end" font-family="${F.xb}" font-size="20" letter-spacing="2" fill="#9fb3d9">${e(d.kick)}</text>${head(160,250)}
+<text x="270" y="225" font-family="${F.g}" font-size="60" letter-spacing="-2" fill="#ffffff">${e(d.player)}</text>
+<text x="272" y="290" font-family="${F.g}" font-size="48" letter-spacing="-1" fill="url(#neon)">${e(d.bet)}</text>
+${d.ahead&&!d.result?`<text x="274" y="328" font-family="${F.sb}" font-size="20" fill="#bfd0ee">Posted on betthisguy.com ${e(d.ahead)}</text>`:''}
+<rect x="60" y="380" width="380" height="200" rx="22" fill="#0d2240" stroke="#1f3a6b" stroke-width="2"/>
+<text x="250" y="462" text-anchor="middle" font-family="${F.g}" font-size="76" fill="#ffffff">${e(d.price)}</text>
+<text x="250" y="510" text-anchor="middle" font-family="${F.xb}" font-size="24" fill="${GRL}">${e(d.where)}</text>
+${d.vals.length?`<rect x="480" y="340" width="660" height="240" rx="22" fill="#0d2240" stroke="#1f3a6b" stroke-width="2"/><text x="510" y="378" font-family="${F.xb}" font-size="19" letter-spacing="2" fill="#bfe7cf">${e(label)} <tspan fill="${GOLD}">· ${e(lineNote)}</tspan></text>${chart(530,410,560,130)}`:''}
+<text x="590" y="630" text-anchor="end" font-family="${F.sb}" font-size="24" fill="#ffffff">${e(d.result?'Every pick graded, win or lose.':'Graded win or lose.')}</text><text x="610" y="630" font-family="${F.g}" font-size="26" fill="${GOLD}">betthisguy.com</text>
+<text x="1150" y="660" text-anchor="end" font-family="${F.sb}" font-size="15" fill="#9fb3d9">21+</text></svg>`;
+}
+async function shareCardPng(request,env){
+  const p=new URL(request.url).searchParams,id=String(p.get('id')||''),size=p.get('size')==='square'?'square':'wide';
+  if(!env.DB||!/^(official|nba|pm)\|[\w|.-]{8,200}$/.test(id)||typeof renderCardPng!=='function')return new Response('',{status:404});
+  const d=await shareCardData(env,id).catch(()=>null);if(!d)return new Response('',{status:404});
+  return new Response(await renderCardPng(shareCardSvg(d,size)),{headers:{'content-type':'image/png','cache-control':'public, max-age=300','content-disposition':`inline; filename="bet-this-guy-${normalizedName(d.player)}-${size}.png"`}});
+}
 function xPickSvg(c){
   if(X_SPOT&&c.parlay)return xSpotSvg({...c,kicker:`${c.res?'RESULT':String(c.pill?.label&&!c.res?c.pill.label:'OFFICIAL PARLAY').replace(/^SPORTSBOOK PARLAY$/,'OFFICIAL PARLAY')} · ${c.sport||'NFL'}`,when:c.footLeft?String(c.footLeft).replace(/^(\w)(\w*)/,(m,a,b)=>a+b.toLowerCase()):''});
   if(!X_SPOT||c.parlay||!c.spot)return xCardSvg(c);
