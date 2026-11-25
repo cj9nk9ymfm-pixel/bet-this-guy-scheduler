@@ -5052,6 +5052,23 @@ async function xResultData(env,r,season){
 }
 // Result posts: once an official pick we posted is final, post the result
 // with its graphic, as a reply under the original pick when we have its id.
+// Cashed mid-game (Nov 25, Tim: Thanksgiving): a win decided while the game is still on (an Over
+// that cleared early) also gets its own short post quoting the result reply, which reaches more
+// people than a reply does. At most X_LIVE_CASH_DAY a day (Eastern); app_settings x-live-cash = 'off' stops it.
+const X_LIVE_CASH_DAY=3;
+function xLiveCashText(r){
+  const l=recordLegs(r)[0]||{},v=l.actualValue,unit=String(r.market||'').toLowerCase();
+  return xShort(`✅ Cashed before the final whistle.\n\n${r.player} ${weeklyLegText(r)} (${weeklyOdds(r.odds)})${v!=null?` is already at ${v} ${Number(v)===1?unit.replace(/s$/,''):unit}`:' is already a winner'}, and the game's still going.\n\nEvery pick posts here the second it locks. 21+`);
+}
+async function xLiveCash(env,r,replyId,now=Date.now()){
+  if(!replyId||r.kind==='parlay'||r.status!=='provisional'||r.result!=='won'||await appSetting(env,'x-live-cash')==='off')return {skipped:true};
+  if(!(Date.parse(r.game_time)<now&&now-Date.parse(r.game_time)<4.5*3600000))return {skipped:true};
+  const day=new Date(now).toLocaleDateString('en-CA',{timeZone:'America/New_York'}),key=`x-live-cash:${day}`,done=Number(await appSetting(env,key)||0);
+  if(done>=X_LIVE_CASH_DAY||!(await xClaim(env,`xlc:${r.id}`,now)))return {skipped:true};
+  const sent=await xPost(env,xLiveCashText(r),null,null,String(replyId));
+  await xDone(env,`xlc:${r.id}`,now);await setAppSetting(env,key,String(done+1));
+  return {posted:1,id:sent?.data?.id||null};
+}
 async function postResultsToX(env,now=Date.now(),limit=1){
   if(!env.DB||!xReady(env))return {posted:0,disabled:true};
   const every=await xPickPosts(env);if(every)limit=Math.max(limit,3);let pollIds=null;
@@ -5077,6 +5094,7 @@ async function postResultsToX(env,now=Date.now(),limit=1){
       const sent=await xReplySafe(env,xResultText(r,season),mediaId,[parent,await appSetting(env,`xcard:${r.id}`)]);
       await xDone(env,`xr:${r.id}`,now);await xSetTail(env,r.id,sent);
       posted++;await setAppSetting(env,'x-last-post',`${new Date(now).toISOString()} result ${mediaId?'graphic':'text'} ${sent?.data?.id||''} ${r.id}`).catch(()=>{});
+      await xLiveCash(env,r,sent?.data?.id,now).catch(error=>setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} live cash: ${error.message}`).catch(()=>{}));
     }catch(error){
       console.warn('x_result_failed',error.message);
       await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(`xr:${r.id}`).run().catch(()=>{});
