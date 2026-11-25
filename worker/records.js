@@ -6289,6 +6289,28 @@ async function relayChannels(env,now=Date.now()){
     await setAppSetting(env,j.key,stamp);const to=await relaySend(env,j.text,j.image,'relay');if(to.length)sent++;else await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(j.key).run().catch(()=>{})}
   return {queued:jobs.length,sent};
 }
+// Odds coverage check (Nov 25, Tim: "do we have odds from Betr? any more books or prediction markets
+// than before?"): once, when app_settings odds-books-probe = 'run', one upcoming NFL game and one NBA
+// game are priced for one prop market across every US region (us, us2, us_dfs, us_ex), and the books
+// that answered are saved in odds-books-probe-result. About 8 credits. Never used for picks.
+async function oddsBooksProbe(env,now=Date.now()){
+  if(!env.DB||!env.THE_ODDS_API_KEY||await appSetting(env,'odds-books-probe')!=='run')return {off:true};
+  await setAppSetting(env,'odds-books-probe',`running ${new Date(now).toISOString()}`);
+  const out={at:new Date(now).toISOString(),regions:'us,us2,us_dfs,us_ex',sports:{}};
+  for(const [sport,key,market] of [['NFL','americanfootball_nfl','player_receptions'],['NBA','basketball_nba','player_rebounds']]){
+    try{
+      const ev=await fetch(`${API_BASE}/sports/${key}/events?${new URLSearchParams({apiKey:env.THE_ODDS_API_KEY,dateFormat:'iso'})}`,{signal:AbortSignal.timeout(15000)});
+      const list=(await ev.json().catch(()=>[])).filter(e=>Date.parse(e.commence_time)>now+30*60000).sort((a,b)=>Date.parse(a.commence_time)-Date.parse(b.commence_time));
+      const e=list[0];if(!e){out.sports[sport]={error:'no upcoming game'};continue}
+      const r=await fetch(`${API_BASE}/sports/${key}/events/${e.id}/odds?${new URLSearchParams({apiKey:env.THE_ODDS_API_KEY,regions:out.regions,markets:market,oddsFormat:'american',dateFormat:'iso'})}`,{signal:AbortSignal.timeout(20000)});
+      const body=await r.json().catch(()=>({}));
+      out.sports[sport]={game:`${e.away_team} @ ${e.home_team}`,market,status:r.status,remaining:r.headers.get('x-requests-remaining'),
+        books:(body.bookmakers||[]).map(b=>({key:b.key,title:b.title,outcomes:(b.markets||[]).reduce((n,m)=>n+(m.outcomes||[]).length,0)}))};
+    }catch(error){out.sports[sport]={error:error.message}}
+  }
+  await setAppSetting(env,'odds-books-probe-result',JSON.stringify(out));await setAppSetting(env,'odds-books-probe','done');
+  return {done:true};
+}
 // 4. Reply targets (Nov 16, Tim): twice a day (noon and 5 PM ET) the owner's phone gets the three
 // busiest fresh posts from big betting accounts, plus our top pick as the angle, to reply to by hand.
 // We never auto-reply to other accounts. app_settings x-reply-targets: a comma list of handles
@@ -6803,8 +6825,9 @@ async function runXPosts(env,now=Date.now()){
   const replyAlerts=await xReplyAlerts(env,now).catch(async error=>{await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} reply alerts: ${error.message}`).catch(()=>{});return {error:error.message}});
   const targets=await xReplyTargets(env,now).catch(async error=>{await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} reply targets: ${error.message}`).catch(()=>{});return {error:error.message}});
   const relay=await relayChannels(env,now).catch(error=>({error:error.message}));
+  const probe=await oddsBooksProbe(env,now).catch(error=>({error:error.message}));
   const follows=await xFollowCleanup(env,now).catch(async error=>{await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} following cleanup: ${error.message}`).catch(()=>{});return {error:error.message}});
-  return {metrics,replyAlerts,targets,relay,follows,picks,weekly,closing,combo,final,catchUp,slate,pmSlate,pin,recap,proof,nbaLaunch,nba,nbaPick,nbaPm,predictions,results,summary};
+  return {metrics,replyAlerts,targets,relay,probe,follows,picks,weekly,closing,combo,final,catchUp,slate,pmSlate,pin,recap,proof,nbaLaunch,nba,nbaPick,nbaPm,predictions,results,summary};
 }
 // "My book" alerts: a good-value price at one of someone's own sportsbooks.
 // The fair price always comes from every book (3+ pricing both sides, the same
