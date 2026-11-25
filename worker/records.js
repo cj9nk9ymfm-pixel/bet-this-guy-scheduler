@@ -5801,6 +5801,73 @@ async function recordTeammateShadow(env,boards,injuries,now=Date.now()){
   if(statements.length)await env.DB.batch(statements);
   return {triggers,logged,tracked:open.length};
 }
+// Extra-books test (Nov 25, Tim): every book and app the odds provider has that we don't use
+// (Bovada, BetOnline, Circa, Fliff, ReBet, Betwhale, Courtside, PrizePicks, Underdog, Dabble,
+// ParlayPlay, Pick6, ...). Once per game, 2 to 3 hours before it starts, our pick markets are
+// priced across every US region (us, us2, us_dfs, us_ex: about 36 credits an NFL game, 20 an NBA
+// game). The fair price comes from our licensed books (3+ pricing both sides), as for real picks.
+//   venue: that book's price beats fair by 1%+ (12% cap): would picks AT that book win?
+//   fair:  with that book added to the fair price, an official-book pick appears (added) or goes
+//          away (dropped): would that book make our fair price better?
+// Graded from the box score with the rest of the shadow tests; never posted. Off with
+// app_settings extra-books = 'off'. DFS pick'em apps are tagged so the report keeps them apart.
+const EXTRA_SKIP=new Set([...LICENSED_BOOKS,'novig','prophetx','polymarket','kalshi']);
+const EXTRA_DFS=new Set(['prizepicks','underdog','dabble_us_dfs','parlayplay','pick6','betr_us_dfs','sleeper','chalkboard']);
+const EXTRA_MARKETS={NFL:['player_receptions','player_reception_yds','player_rush_yds','player_rush_attempts','player_pass_yds','player_pass_tds','player_pass_interceptions','player_field_goals'],NBA:['player_points','player_rebounds','player_assists','player_threes','player_points_rebounds_assists']};
+function extraBookRows(event,sport,now){
+  const matchup=`${event.away_team} · @ ${event.home_team}`,eventId=`${sport}--${event.id}`,stamp=new Date(now).toISOString(),groups=new Map();
+  for(const book of event.bookmakers||[])for(const m of book.markets||[]){const label=recordLabels[m.key];if(!label)continue;
+    for(const o of m.outcomes||[]){const x=exchangeOutcome(o);if(!x.player||x.line===null||x.odds===null||!['over','under'].includes(x.side)||Math.abs(x.odds)<100)continue;
+      const k=JSON.stringify([normalizedName(x.player),label,x.line]),g=groups.get(k)||{player:x.player,market:label,line:x.line,books:new Map()};
+      const pair=g.books.get(book.key)||{title:book.title||book.key};pair[x.side]=x.odds;g.books.set(book.key,pair);groups.set(k,g)}}
+  const p=(o,u)=>{const a=1/recordDecimal(o),b=1/recordDecimal(u);return a/(a+b)},rows=[];
+  for(const g of groups.values()){
+    const lic=[...g.books.entries()].filter(([k,v])=>LICENSED_BOOKS.has(k)&&v.over!=null&&v.under!=null);if(lic.length<3)continue;
+    const sum=lic.reduce((s,[,v])=>s+p(v.over,v.under),0),fair=sum/lic.length;
+    const best=side=>{const o=lic.filter(([k])=>OFFICIAL_BOOKS.has(k)).map(([k,v])=>({book:k,title:v.title,odds:v[side]})).sort((a,b)=>recordDecimal(b.odds)-recordDecimal(a.odds))[0];return o||null};
+    for(const [key,v] of g.books){if(EXTRA_SKIP.has(key))continue;
+      for(const side of ['over','under']){if(v[side]==null)continue;const f=side==='over'?fair:1-fair,edge=100*(f-1/recordDecimal(v[side]));
+        if(edge>=1&&edge<=12)rows.push({id:`xb|venue|${eventId}|${key}|${normalizedName(g.player)}|${g.market}|${side}|${g.line}`,kind:'venue',sport,eventId,matchup,player:g.player,market:g.market,side:side==='over'?'Over':'Under',line:g.line,book:key,title:v.title,odds:v[side],fair:+(100*f).toFixed(2),edge:+edge.toFixed(2),fairWith:null,edgeWith:null,change:EXTRA_DFS.has(key)?'dfs':null,gameTime:event.commence_time,stamp})}
+      if(v.over==null||v.under==null)continue;
+      const fw=(sum+p(v.over,v.under))/(lic.length+1);
+      for(const side of ['over','under']){const b=best(side);if(!b||b.odds==null)continue;const fb=side==='over'?fair:1-fair,fx=side==='over'?fw:1-fw,eb=100*(fb-1/recordDecimal(b.odds)),ex=100*(fx-1/recordDecimal(b.odds)),qb=eb>=1&&eb<=12,qx=ex>=1&&ex<=12;
+        if(qb!==qx)rows.push({id:`xb|fair|${eventId}|${key}|${normalizedName(g.player)}|${g.market}|${side}|${g.line}`,kind:'fair',sport,eventId,matchup,player:g.player,market:g.market,side:side==='over'?'Over':'Under',line:g.line,book:key,title:v.title,odds:b.odds,fair:+(100*fb).toFixed(2),edge:+eb.toFixed(2),fairWith:+(100*fx).toFixed(2),edgeWith:+ex.toFixed(2),change:qx?'added':'dropped',gameTime:event.commence_time,stamp,venue:b.title})}}
+  }
+  return rows;
+}
+async function recordExtraBooks(env,now=Date.now()){
+  if(!env.DB||!env.THE_ODDS_API_KEY||await appSetting(env,'extra-books')==='off'||(oddsCreditsLeft!==null&&oddsCreditsLeft<LOW_ODDS_CREDITS))return {off:true};
+  let logged=0,games=0;
+  for(const [sport,key] of [['NFL','americanfootball_nfl'],['NBA','basketball_nba']]){
+    const ev=await fetch(`${API_BASE}/sports/${key}/events?${new URLSearchParams({apiKey:env.THE_ODDS_API_KEY,dateFormat:'iso'})}`,{signal:AbortSignal.timeout(15000)}).catch(()=>null);
+    const list=ev?.ok?(await ev.json().catch(()=>[])):[];
+    for(const e of list.filter(x=>{const t=Date.parse(x.commence_time)-now;return t>2*3600000&&t<=3*3600000}).slice(0,8)){
+      const claim=`extra-books:${sport}--${e.id}`;if(await appSetting(env,claim))continue;await setAppSetting(env,claim,new Date(now).toISOString());
+      const r=await fetch(`${API_BASE}/sports/${key}/events/${e.id}/odds?${new URLSearchParams({apiKey:env.THE_ODDS_API_KEY,regions:'us,us2,us_dfs,us_ex',markets:EXTRA_MARKETS[sport].join(','),oddsFormat:'american',dateFormat:'iso'})}`,{signal:AbortSignal.timeout(20000)}).catch(()=>null);
+      const left=r?.headers?.get('x-requests-remaining');if(left!=null&&Number.isFinite(Number(left)))oddsCreditsLeft=Number(left);
+      if(!r?.ok)continue;games++;
+      const rows=extraBookRows(await r.json().catch(()=>({})),sport,now);
+      if(rows.length)await env.DB.batch(rows.map(x=>env.DB.prepare('INSERT OR IGNORE INTO extra_book_shadow (id,kind,sport,event_id,matchup,player,market,side,line,book,book_title,odds,fair,edge,fair_with,edge_with,change,game_time,logged_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(x.id,x.kind,x.sport,x.eventId,x.matchup,x.player,x.market,x.side,x.line,x.book,x.kind==='fair'?`${x.title} (bet at ${x.venue})`:x.title,x.odds,x.fair,x.edge,x.fairWith,x.edgeWith,x.change,x.gameTime,x.stamp)));
+      logged+=rows.length;
+    }
+  }
+  return {games,logged};
+}
+async function gradeExtraBooks(env,now=Date.now(),limit=40){
+  if(!env.DB)return {graded:0};
+  const rows=((await env.DB.prepare('SELECT * FROM extra_book_shadow WHERE result IS NULL AND game_time<? AND game_time>? ORDER BY game_time LIMIT ?').bind(new Date(now-4*3600000).toISOString(),new Date(now-14*86400000).toISOString(),limit).all().catch(()=>({results:[]}))).results)||[];
+  const cache=new Map(),statements=[],stamp=new Date(now).toISOString();
+  for(const r of rows){const record={sport:r.sport,player:r.player,team:r.matchup||'',gameTime:r.game_time,market:r.market,side:r.side,line:r.line};
+    const stat=await recordPlayerStats(record,env,undefined,cache).catch(()=>null);
+    const dnp=r.sport==='NBA'?stat?.scoreboardFinal&&!stat.missingPlayerStats&&!BTGStats.nbaPlayed(stat):false;
+    if(dnp||((!stat||stat.missingPlayerStats)&&now-Date.parse(r.game_time)>3*86400000)){statements.push(env.DB.prepare('UPDATE extra_book_shadow SET result=?,graded_at=? WHERE id=?').bind('void',stamp,r.id));continue}
+    if(!stat||stat.missingPlayerStats||!stat.scoreboardFinal)continue;
+    const value=BTGStats.metric(record,stat).value,result=value===null?null:BTGStats.grade(r.side,r.line,value);
+    if(result)statements.push(env.DB.prepare('UPDATE extra_book_shadow SET actual=?,result=?,graded_at=? WHERE id=?').bind(value,result,stamp,r.id));
+  }
+  if(statements.length)await env.DB.batch(statements);
+  return {graded:statements.length,checked:rows.length};
+}
 async function gradeTeammateShadow(env,now=Date.now(),limit=30){
   if(!env.DB||!env.BALLDONTLIE_API_KEY)return {graded:0};
   // The box-score lookup needs the game ("Away · @ Home"); teammate rows don't
@@ -6826,8 +6893,9 @@ async function runXPosts(env,now=Date.now()){
   const targets=await xReplyTargets(env,now).catch(async error=>{await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} reply targets: ${error.message}`).catch(()=>{});return {error:error.message}});
   const relay=await relayChannels(env,now).catch(error=>({error:error.message}));
   const probe=await oddsBooksProbe(env,now).catch(error=>({error:error.message}));
+  const extraBooks=await recordExtraBooks(env,now).catch(error=>({error:error.message}));
   const follows=await xFollowCleanup(env,now).catch(async error=>{await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} following cleanup: ${error.message}`).catch(()=>{});return {error:error.message}});
-  return {metrics,replyAlerts,targets,relay,probe,follows,picks,weekly,closing,combo,final,catchUp,slate,pmSlate,pin,recap,proof,nbaLaunch,nba,nbaPick,nbaPm,predictions,results,summary};
+  return {metrics,replyAlerts,targets,relay,probe,extraBooks,follows,picks,weekly,closing,combo,final,catchUp,slate,pmSlate,pin,recap,proof,nbaLaunch,nba,nbaPick,nbaPm,predictions,results,summary};
 }
 // "My book" alerts: a good-value price at one of someone's own sportsbooks.
 // The fair price always comes from every book (3+ pricing both sides, the same
