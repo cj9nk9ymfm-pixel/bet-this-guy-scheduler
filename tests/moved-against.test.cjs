@@ -1,6 +1,6 @@
 // Market moved against a pick (Nov 25, Tim: the Edey Under went +105 to +120 after we posted). An open
-// pick whose chance dropped 3+ points since it locked pings the owner's phone once, and the site's
-// card and sheet say we'd pass at today's price. The pick stays on the record either way.
+// pick whose chance dropped 3+ points since it locked: the site's card and sheet say we'd pass at
+// today's price (no phone ping: Tim doesn't want one). The pick stays on the record either way.
 const assert=require('node:assert/strict'),vm=require('node:vm'),{webcrypto}=require('node:crypto'),{DatabaseSync}=require('node:sqlite');
 const {read}=require('./helpers/client.cjs');
 const pushes=[],mail=[];
@@ -23,13 +23,6 @@ run('fetch=globalThis.fetch');
   const legs=trail=>JSON.stringify([{player:'Sb Guy',market:'Assists',side:'Over',line:5.5,odds:-110,book:'DraftKings',priceTrail:trail}]);
   db.prepare("INSERT INTO public_recommendations(id,kind,player,market,side,line,odds,game_time,legs_json,posted_at,status,source) VALUES(?,?,?,?,?,?,?,?,?,?,'pending','market-verified-v2')").run('nba|2026-11-25|props|prop|v2|sb1','prop','Sb Guy','Assists','Over',5.5,-110,tip,legs([{t:1,o:-110,l:5.5},{t:2,o:105,l:5.5}]),'2026-11-25T12:00:00Z');
   db.prepare("INSERT INTO public_recommendations(id,kind,player,market,side,line,odds,game_time,legs_json,posted_at,status,source) VALUES(?,?,?,?,?,?,?,?,?,?,'pending','market-verified-v2')").run('nba|2026-11-25|props|prop|v2|sb2','prop','Line Mover','Assists','Over',5.5,-110,tip,legs([{t:1,o:120,l:6.5}]),'2026-11-25T12:00:00Z');
-  const out=await run(`movedAgainstPings(env,${now})`);
-  assert.equal(out.moved,2,'the Edey-style app move and the sportsbook price move; small, our-way and other-line moves are not');
-  assert.equal(ntfy.length,2);
-  const edey=ntfy.find(n=>/zachedey/.test(n.title));assert.match(edey.body,/Under 7\.5 rebounds: 49% when we posted, 45% now at ProphetX[\s\S]*stays on the record/);assert.match(edey.click,/league=NBA&pick=pm%7CNBA--g1%7Czachedey/);
-  assert.match(ntfy.find(n=>/Sb Guy/.test(n.title)).body,/52% when we posted, 49% now at DraftKings/);
-  await run(`movedAgainstPings(env,${now+600000})`);assert.equal(ntfy.length,2,'once per pick');
-  delete context.env.ALERT_NTFY_TOPIC;assert.equal((await run(`movedAgainstPings(env,${now})`)).off,true,'needs the phone-alert topic');
   // The site's flag (same rule): extracted from dist/app.js and run on its own.
   const app=read('dist/app.js'),fn=app.slice(app.indexOf('function btgMovedAgainst'),app.indexOf('// First impression: a banner'));
   const c2=vm.createContext({Date:{now:()=>now,parse:Date.parse},JSON,Number,Math,Array});vm.runInContext(fn,c2);
@@ -39,5 +32,5 @@ run('fetch=globalThis.fetch');
   assert.equal(mv({pm:{pct:48.8,now:45},game_time:tip,result:'won'}),null,'graded: no flag');
   assert.ok(mv({odds:-110,line:5.5,game_time:tip,legs_json:legs([{o:105,l:5.5}])}),'sportsbook price moved against');
   assert.equal(mv({odds:-110,line:5.5,game_time:tip,legs_json:legs([{o:-125,l:5.5}])}),null,'moved our way: no flag');
-  console.log('PASS: market moved against a pick: one phone ping per pick (app and sportsbook, 3+ points), and the site flag on the card and sheet; the pick stays on the record');
+  console.log('PASS: market moved against a pick: the site flag on the card and sheet (3+ points, open picks only, not when it moved our way); the pick stays on the record');
 })().catch(e=>{console.error(e);process.exit(1)});

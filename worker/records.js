@@ -6148,28 +6148,6 @@ async function xFollowCleanup(env,now=Date.now()){
   if(n)await setAppSetting(env,`x-unfollow-day:${day}`,String(done+n));
   return {phase:'unfollow',unfollowed:n};
 }
-// Market moved against a pick (Nov 25, Tim: the Edey Under went +105 to +120 after we posted).
-// An open pick whose latest price says its chance dropped MOVED_AGAINST_PTS+ points since it
-// locked pings the owner's phone once. The site shows the same note on the card and sheet.
-// A posted pick stays on the record either way ("if we posted it we die by it").
-const MOVED_AGAINST_PTS=3;
-const oddsPct=o=>{o=Number(o);if(!Number.isFinite(o)||Math.abs(o)<100)return null;return 100/(o>0?1+o/100:1+100/-o)};
-async function movedAgainstPings(env,now=Date.now()){
-  if(!env.DB||!env.ALERT_NTFY_TOPIC)return {off:true};
-  const stamp=new Date(now).toISOString(),hits=[];
-  const pm=((await env.DB.prepare('SELECT id,player,market,side,line,odds,close_odds,exchange,game_time FROM prediction_picks WHERE result IS NULL AND game_time>? AND close_odds IS NOT NULL').bind(stamp).all().catch(()=>({results:[]}))).results)||[];
-  for(const r of pm){const a=oddsPct(r.odds),b=oddsPct(r.close_odds);if(a!=null&&b!=null&&a-b>=MOVED_AGAINST_PTS)hits.push({r,from:a,to:b,where:r.exchange,league:String(r.id).includes('|NBA--')?'NBA':''})}
-  const sb=((await env.DB.prepare("SELECT id,player,market,side,line,odds,legs_json,game_time FROM public_recommendations WHERE kind='prop' AND result IS NULL AND game_time>?").bind(stamp).all().catch(()=>({results:[]}))).results)||[];
-  for(const r of sb){const l=recordLegs(r)[0]||{},last=(Array.isArray(l.priceTrail)?l.priceTrail:[]).filter(p=>p&&p.o!=null&&Number(p.l??r.line)===Number(r.line)).at(-1),a=oddsPct(r.odds),b=last?oddsPct(last.o):null;
-    if(a!=null&&b!=null&&a-b>=MOVED_AGAINST_PTS)hits.push({r,from:a,to:b,where:l.book||'the book',league:String(r.id).startsWith('nba|')?'NBA':''})}
-  let sent=0;
-  for(const h of hits.slice(0,5)){
-    const key=`moved-ping:${h.r.id}`;if(await appSetting(env,key))continue;await setAppSetting(env,key,stamp);
-    await fetch('https://ntfy.sh/'+encodeURIComponent(env.ALERT_NTFY_TOPIC),{method:'POST',headers:{Title:`Market moved against ${h.r.player}`,Tags:'chart_with_downwards_trend',Click:`${SITE_URL}/?${h.league?'league=NBA&':''}pick=${encodeURIComponent(h.r.id)}`},
-      body:`${h.r.player} ${h.r.side} ${h.r.line} ${String(h.r.market||'').toLowerCase()}: ${Math.round(h.from)}% when we posted, ${Math.round(h.to)}% now at ${h.where}.\n\nIt stays on the record. The site now tells people we'd pass at today's price.`,signal:AbortSignal.timeout(10000)}).then(()=>sent++).catch(()=>{});
-  }
-  return {moved:hits.length,sent};
-}
 // 4. Reply targets (Nov 16, Tim): twice a day (noon and 5 PM ET) the owner's phone gets the three
 // busiest fresh posts from big betting accounts, plus our top pick as the angle, to reply to by hand.
 // We never auto-reply to other accounts. app_settings x-reply-targets: a comma list of handles
@@ -6683,9 +6661,8 @@ async function runXPosts(env,now=Date.now()){
   const metrics=await xMetricsDaily(env,now).catch(error=>({error:error.message}));
   const replyAlerts=await xReplyAlerts(env,now).catch(async error=>{await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} reply alerts: ${error.message}`).catch(()=>{});return {error:error.message}});
   const targets=await xReplyTargets(env,now).catch(async error=>{await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} reply targets: ${error.message}`).catch(()=>{});return {error:error.message}});
-  const moved=await movedAgainstPings(env,now).catch(error=>({error:error.message}));
   const follows=await xFollowCleanup(env,now).catch(async error=>{await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} following cleanup: ${error.message}`).catch(()=>{});return {error:error.message}});
-  return {metrics,replyAlerts,targets,moved,follows,picks,weekly,closing,combo,final,catchUp,slate,pmSlate,pin,recap,proof,nbaLaunch,nba,nbaPick,nbaPm,predictions,results,summary};
+  return {metrics,replyAlerts,targets,follows,picks,weekly,closing,combo,final,catchUp,slate,pmSlate,pin,recap,proof,nbaLaunch,nba,nbaPick,nbaPm,predictions,results,summary};
 }
 // "My book" alerts: a good-value price at one of someone's own sportsbooks.
 // The fair price always comes from every book (3+ pricing both sides, the same
