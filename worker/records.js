@@ -4779,6 +4779,8 @@ async function shareCardData(env,id){
   const m=await savedMatchup(env,id)||(pm?await savedMatchup(env,candKey({eventId:row.event_id,player:row.player,market:row.market})):null);
   const line=Number(row.line),over=row.side==='Over',vals=(m?.logs||[]).slice(0,5).map(g=>Number(g.v)).filter(Number.isFinite).reverse();
   const hits=vals.filter(v=>over?v>line:v<line).length;
+  // The saved ESPN ids first, the same as /api/player-photo (without them the lookup misses).
+  if(typeof savedEspnIds==='function')await savedEspnIds(env,sport==='NBA'?'nba':'nfl').catch(()=>{});
   const shot=typeof playerHeadshot==='function'?await playerHeadshot(row.player,sport,true).catch(()=>null):null;
   const lead=(Date.parse(row.game_time)-Date.parse(row.posted_at))/3600000;
   return {player:row.player,bet:`${row.side} ${row.line} ${String(row.market||'').toLowerCase()}`,side:row.side,line,
