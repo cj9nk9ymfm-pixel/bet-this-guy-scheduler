@@ -2808,3 +2808,13 @@ html body #propsSection>.board-browse,.board-browse{display:grid!important;grid-
 .board-browse .bb-go{grid-column:2;grid-row:1/span 2;color:#7fb4ff;font:800 20px "DM Sans",sans-serif}
 body.light .pc,body.light .ln,body.light .hero-email,html body.light #propsSection>.board-browse{background:#fff!important;color:#0f172a!important;box-shadow:0 8px 24px -18px rgba(15,23,42,.35)!important}
 body.light .ln-rec,body.light .board-browse b{color:#0f172a}body.light .pc-why1{color:#334155}
+/* Visitors from X (Nov 25). */
+.x-welcome{margin:0 0 14px;padding:16px 16px 14px;border-radius:16px;border:1px solid rgba(198,255,46,.45);background:linear-gradient(180deg,rgba(47,107,255,.22),rgba(11,26,74,.35))}
+.x-welcome .xw-eye{margin:0 0 4px;font:800 11px/1.2 "DM Sans",sans-serif;letter-spacing:.16em;color:#ffc83d}
+.x-welcome .xw-title{margin:0 0 10px;font:800 21px/1.2 "DM Sans",sans-serif;color:#f2f4f7}
+.x-welcome .xw-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.x-welcome .xw-chip{padding:5px 10px;border-radius:999px;background:#13305e;color:#dbe6ff;font:700 13px "DM Sans",sans-serif}
+.x-welcome .xw-chip.hl{background:#c6ff2e;color:#07090d}
+.x-welcome .xw-sub{margin:0 0 12px;font-size:13px;line-height:1.45;color:#b6c3d6}
+.x-welcome .xw-btn{width:100%;height:44px;border:0;border-radius:12px;background:#2bd97c;color:#06120b;font:800 15px "DM Sans",sans-serif;cursor:pointer}
+body.light .x-welcome{background:#eef4ff;border-color:#9fbaf5}body.light .x-welcome .xw-title{color:#0f172a}body.light .x-welcome .xw-sub{color:#475569}body.light .x-welcome .xw-chip{background:#dbe6ff;color:#10213d}
