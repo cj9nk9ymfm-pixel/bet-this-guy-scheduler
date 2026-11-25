@@ -6215,6 +6215,42 @@ async function xFollowCleanup(env,now=Date.now()){
   if(n)await setAppSetting(env,`x-unfollow-day:${day}`,String(done+n));
   return {phase:'unfollow',unfollowed:n};
 }
+// Telegram and Discord (Nov 25, Tim): every new pick and every result also goes to our Telegram
+// channel and Discord server, with the pick's share card. Needs the TELEGRAM_BOT_TOKEN +
+// TELEGRAM_CHAT_ID secrets and/or DISCORD_WEBHOOK_URL; without them nothing is sent. Picks posted
+// in the last 6 hours and results graded in the last 12, each once (relay:p:<id>, relay:r:<id>),
+// at most 6 messages a run. app_settings relay = 'off' stops it.
+const RELAY_PER_RUN=6;
+function relayPickText(r,sport,where,price,game){
+  return `🔒 New ${sport} pick\n${r.player} ${r.side} ${r.line} ${String(r.market||'').toLowerCase()}\n${price} ${where}${game?` · ${game}`:''}\n\nLocked before the game, graded win or lose.`;
+}
+async function relaySend(env,text,image,src){
+  const link=`${SITE_URL}/?utm_source=${src}`,sent=[];
+  if(env.TELEGRAM_BOT_TOKEN&&env.TELEGRAM_CHAT_ID){
+    const r=await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendPhoto`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({chat_id:env.TELEGRAM_CHAT_ID,photo:image,caption:`${text}\n${link.replace('utm_source='+src,'utm_source=telegram')}`}),signal:AbortSignal.timeout(15000)}).catch(()=>null);
+    if(r?.ok)sent.push('telegram')}
+  if(env.DISCORD_WEBHOOK_URL&&/^https:\/\/(discord|discordapp)\.com\/api\/webhooks\//.test(env.DISCORD_WEBHOOK_URL)){
+    const r=await fetch(env.DISCORD_WEBHOOK_URL,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username:'Bet This Guy',content:`${text}\n<${link.replace('utm_source='+src,'utm_source=discord')}>`,embeds:[{image:{url:image}}]}),signal:AbortSignal.timeout(15000)}).catch(()=>null);
+    if(r?.ok)sent.push('discord')}
+  return sent;
+}
+async function relayChannels(env,now=Date.now()){
+  if(!env.DB||!((env.TELEGRAM_BOT_TOKEN&&env.TELEGRAM_CHAT_ID)||env.DISCORD_WEBHOOK_URL)||await appSetting(env,'relay')==='off')return {off:true};
+  const since6=new Date(now-6*3600000).toISOString(),since12=new Date(now-12*3600000).toISOString(),stamp=new Date(now).toISOString(),jobs=[];
+  const card=id=>`${SITE_URL}/api/share-card.png?id=${encodeURIComponent(id)}&size=wide`;
+  const sb=((await env.DB.prepare("SELECT id,player,market,side,line,odds,legs_json,game_time,posted_at,result,status,settled_at FROM public_recommendations WHERE kind='prop' AND source='market-verified-v2' AND (posted_at>? OR (result IS NOT NULL AND settled_at>?)) ORDER BY posted_at").bind(since6,since12).all().catch(()=>({results:[]}))).results)||[];
+  for(const r of sb){const l=recordLegs(r)[0]||{},sport=String(r.id).startsWith('nba|')?'NBA':'NFL',game=shareGame(l.team);
+    if(r.posted_at>since6&&Date.parse(r.game_time)>now)jobs.push({key:`relay:p:${r.id}`,text:relayPickText(r,sport,`at ${l.book||'the book'}`,weeklyOdds(r.odds),game),image:card(r.id)});
+    if(['won','lost','push'].includes(r.result)&&r.settled_at>since12&&(r.status==='final'||l.decidedEarly))jobs.push({key:`relay:r:${r.id}`,text:`${r.result==='won'?'✅ Won':r.result==='lost'?'❌ Lost':'↩️ Void'}: ${r.player} ${r.side} ${r.line} ${String(r.market||'').toLowerCase()} (${weeklyOdds(r.odds)})${l.actualValue!=null?` · final ${l.actualValue}`:''}`,image:card(r.id)})}
+  const pm=((await env.DB.prepare('SELECT id,exchange,event_id,player,team,market,side,line,odds,game_time,posted_at,result,void_reason,graded_at,actual FROM prediction_picks WHERE posted_at>? OR (result IS NOT NULL AND graded_at>?) ORDER BY posted_at').bind(since6,since12).all().catch(()=>({results:[]}))).results)||[];
+  for(const r of pm){const sport=String(r.event_id||'').startsWith('NBA--')?'NBA':'NFL',res=r.void_reason?'push':r.result;
+    if(r.posted_at>since6&&Date.parse(r.game_time)>now)jobs.push({key:`relay:p:${r.id}`,text:relayPickText(r,`${sport} app`,`on ${r.exchange}`,`${exchangePct(r.odds)}%`,shareGame(r.team)),image:card(r.id)});
+    if(['won','lost','push'].includes(res)&&r.graded_at>since12)jobs.push({key:`relay:r:${r.id}`,text:`${res==='won'?'✅ Won':res==='lost'?'❌ Lost':'↩️ Void'}: ${r.player} ${r.side} ${r.line} ${String(r.market||'').toLowerCase()} (${exchangePct(r.odds)}% on ${r.exchange})${r.actual!=null?` · final ${r.actual}`:''}`,image:card(r.id)})}
+  let sent=0;
+  for(const j of jobs){if(sent>=RELAY_PER_RUN)break;if(await appSetting(env,j.key))continue;
+    await setAppSetting(env,j.key,stamp);const to=await relaySend(env,j.text,j.image,'relay');if(to.length)sent++;else await env.DB.prepare('DELETE FROM app_settings WHERE key=?').bind(j.key).run().catch(()=>{})}
+  return {queued:jobs.length,sent};
+}
 // 4. Reply targets (Nov 16, Tim): twice a day (noon and 5 PM ET) the owner's phone gets the three
 // busiest fresh posts from big betting accounts, plus our top pick as the angle, to reply to by hand.
 // We never auto-reply to other accounts. app_settings x-reply-targets: a comma list of handles
@@ -6728,8 +6764,9 @@ async function runXPosts(env,now=Date.now()){
   const metrics=await xMetricsDaily(env,now).catch(error=>({error:error.message}));
   const replyAlerts=await xReplyAlerts(env,now).catch(async error=>{await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} reply alerts: ${error.message}`).catch(()=>{});return {error:error.message}});
   const targets=await xReplyTargets(env,now).catch(async error=>{await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} reply targets: ${error.message}`).catch(()=>{});return {error:error.message}});
+  const relay=await relayChannels(env,now).catch(error=>({error:error.message}));
   const follows=await xFollowCleanup(env,now).catch(async error=>{await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} following cleanup: ${error.message}`).catch(()=>{});return {error:error.message}});
-  return {metrics,replyAlerts,targets,follows,picks,weekly,closing,combo,final,catchUp,slate,pmSlate,pin,recap,proof,nbaLaunch,nba,nbaPick,nbaPm,predictions,results,summary};
+  return {metrics,replyAlerts,targets,relay,follows,picks,weekly,closing,combo,final,catchUp,slate,pmSlate,pin,recap,proof,nbaLaunch,nba,nbaPick,nbaPm,predictions,results,summary};
 }
 // "My book" alerts: a good-value price at one of someone's own sportsbooks.
 // The fair price always comes from every book (3+ pricing both sides, the same
