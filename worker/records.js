@@ -6168,8 +6168,8 @@ async function xReplyAlerts(env,now=Date.now()){
 //   keep  a big sports or betting account (50K+ followers): players, teams, media, books
 //   cut   no posts in 60+ days
 //   keep  follows us back
-//   keep  sports or betting (name, handle or bio), or one of the reply-target accounts
-//   cut   everything else (off-topic and doesn't follow back)
+//   keep  one of the reply-target accounts
+//   cut   everything else, sports accounts under 50K included (Nov 25: under 1,000 following)
 // A row set to status 'keep' by hand is never unfollowed. Progress in app_settings x-follow-scan.
 // Speed: app_settings x-unfollow-pace = "<per run>/<per day>" (e.g. "5/600") overrides the defaults;
 // X allows 50 unfollows per 15 minutes, so per run stays at 8 or under.
@@ -6186,7 +6186,9 @@ function xFollowVerdict(u,now=Date.now(),keepHandles=new Set()){
   if(sports&&followers>=50000)return ['keep','big sports account'];
   if(Number.isFinite(last)&&now-last>X_FOLLOW_INACTIVE_DAYS*86400000)return ['cut',`no posts in ${X_FOLLOW_INACTIVE_DAYS}+ days`];
   if(u.follows_back)return ['keep','follows us back'];
-  if(sports)return ['keep','sports or betting'];
+  // Nov 25 (Tim: "get under 1,000"): smaller sports and betting accounts that don't follow back go
+  // too; the reply-target accounts stay. (Big ones are kept above.)
+  if(keepHandles.has(String(u.username||'').toLowerCase()))return ['keep','reply target'];
   // On a re-scan, an account followed since the first scan was followed on purpose: only bots and dead accounts go.
   if(u.isNew)return ['keep','followed since the last scan'];
   return ['cut',"off-topic, doesn't follow back"];
