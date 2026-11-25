@@ -1360,7 +1360,7 @@ const btgOwner=(()=>{try{const q=new URLSearchParams(location.search).get('me');
 // their own host (ref:<host>) so "other" can be broken down.
 function btgSource(){try{const utm=new URLSearchParams(location.search).get('utm_source')||'',ref=document.referrer?new URL(document.referrer).hostname:'',v=(utm||ref).toLowerCase();
   if(ref&&!utm&&(ref===location.hostname||/(^|\.)betthisguy\.com$/.test(ref)))return null;if(!v)return 'src:direct';
-  if(v==='xbio')return 'src:xbio';
+  if(v==='xbio')return 'src:xbio';if(v==='xpost')return 'src:xpost';
   if(/reddit|redd\.it/.test(v))return 'src:reddit';if(/(^|\.)(x|twitter)\.com$|^t\.co$|^x$|twitter/.test(v))return 'src:x';if(/google\./.test(v)||v==='google')return 'src:google';
   if(/facebook|instagram|threads|tiktok|discord|t\.me|telegram|whatsapp|snapchat|linkedin/.test(v))return 'src:social';
   if(/bing\.|duckduckgo|yahoo\.|brave\.|ecosia|baidu|yandex/.test(v))return 'src:search';
@@ -4148,3 +4148,24 @@ function statsProp(l){
 
 // Slip legs in a game update with the live board (Nov 4).
 (window.btgLiveHooks||=[]).push(()=>{try{if(typeof renderSlip==='function'&&(state.slip||[]).some(leg=>window.BTGLive?.legStatus?.({...leg.p,side:leg.side}))&&!document.querySelector('#slipLegs')?.contains(document.activeElement))renderSlip()}catch{}});
+// Visitors from X (Nov 25, Tim: drive the Thanksgiving traffic): the bio link (utm_source=xbio),
+// links in our posts (utm_source=xpost) or any x.com / t.co visit get a short block at the top of
+// the home page: what we are, the closing-price record and the record, and one button to the
+// email box (or phone alerts). Shown for the whole visit; counts funnel:x-landing and -tap.
+(()=>{if(typeof document==='undefined'||typeof document.getElementById!=='function'||typeof location==='undefined')return;
+  let fromX=false;try{const src=typeof btgSource==='function'?btgSource():null;fromX=['src:xbio','src:xpost','src:x'].includes(src)||sessionStorage.getItem('btg-from-x')==='1';if(fromX)sessionStorage.setItem('btg-from-x','1')}catch{}
+  const hero=document.getElementById('heroBanner');if(!fromX||!hero||document.getElementById('xWelcome'))return;
+  const box=document.createElement('section');box.id='xWelcome';box.className='x-welcome';box.setAttribute('aria-label','Welcome from X');
+  const league=typeof LEAGUE!=='undefined'&&LEAGUE==='NBA'?'NBA':'NFL';
+  box.innerHTML=`<p class="xw-eye">WELCOME FROM X</p><h2 class="xw-title">Locked before the game. Graded in public.</h2><div class="xw-chips" data-xw-chips></div><p class="xw-sub">Every pick posts the second it locks, with the price and the sportsbook. Losses included.</p><button type="button" class="xw-btn" data-xw-go>Get every pick the second it locks</button>`;
+  hero.prepend(box);window.btgCount?.('funnel:x-landing');
+  const paint=s=>{const el=box.querySelector('[data-xw-chips]');if(!el||!s)return;const chips=[];
+    if(Number(s.tracked)>=20)chips.push(`<span class="xw-chip hl">${Math.round(100*Number(s.beat)/Number(s.tracked))}% beat the closing price</span>`);
+    if(Number.isFinite(Number(s.wins)))chips.push(`<span class="xw-chip">${league} ${Number(s.wins)}–${Number(s.losses)}</span>`);
+    el.innerHTML=chips.join('')};
+  paint(window.BTG_SEASON);addEventListener('btg:season',()=>paint(window.BTG_SEASON));
+  box.querySelector('[data-xw-go]').onclick=()=>{window.btgCount?.('funnel:x-landing-tap');
+    const em=document.getElementById('heroEmail'),input=em?.querySelector('input');
+    if(em&&input){em.scrollIntoView({behavior:'smooth',block:'center'});setTimeout(()=>input.focus({preventScroll:true}),400)}
+    else document.querySelector('#heroBanner [data-alerts-toggle]')?.click()};
+})();
