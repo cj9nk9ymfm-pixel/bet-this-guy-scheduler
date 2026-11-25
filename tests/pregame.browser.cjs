@@ -67,6 +67,12 @@ const types = { js: 'application/javascript', css: 'text/css', html: 'text/html;
     const bookBtn = page.locator('dialog[open] [data-bs-book]');
     assert.equal(await bookBtn.count(), 1, 'a Bet at <book> button on the sheet');
     assert.match(await bookBtn.innerText(), /^Bet at \S/, 'labelled with the book');
+    // Nov 25 (Tim): the share card, wide and square, from the pick's sheet.
+    assert.equal(await page.locator('dialog[open] .bs-btn:has-text("Wide graphic")').count(), 1, 'a Wide graphic button');
+    assert.equal(await page.locator('dialog[open] .bs-btn:has-text("Square graphic")').count(), 1, 'a Square graphic button');
+    const cardPop = page.waitForEvent('popup', { timeout: 5000 }).catch(() => null);
+    await page.locator('dialog[open] .bs-btn:has-text("Wide graphic")').click();
+    const pop = await cardPop; assert.ok(pop && /\/api\/share-card\.png\?id=.+&size=wide$/.test(pop.url()), `opens the wide share card: ${pop?.url()}`);
     if (process.env.SHOT) await page.locator('dialog[open]').first().screenshot({ path: process.env.SHOT });
     await page.keyboard.press('Escape');await page.waitForTimeout(300);
 
