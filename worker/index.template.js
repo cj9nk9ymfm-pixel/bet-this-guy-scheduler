@@ -1522,7 +1522,7 @@ async function runCron(controller,env,ctx){
 // Filled in by scripts/build-worker.mjs with each asset's content fingerprint.
 const ASSET_VERSIONS = /*__ASSET_VERSIONS__*/{};
 const SITE_URL = "https://betthisguy.com";
-const ROBOTS_TXT = `User-agent: *\nAllow: /\nAllow: /api/record\nDisallow: /api/\n\nSitemap: ${SITE_URL}/sitemap.xml\n`;
+const ROBOTS_TXT = `User-agent: *\nAllow: /\nAllow: /api/record\nAllow: /api/share-card.png\nAllow: /api/record-card.png\nAllow: /api/player-photo\nDisallow: /api/\n\nSitemap: ${SITE_URL}/sitemap.xml\n`;
 const SITEMAP_XML = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${["/", "/about", "/trust", "/legal"].map(path => `  <url><loc>${SITE_URL}${path}</loc></url>`).join("\n")}\n</urlset>\n`;
 const SECURITY_HEADERS = {
   "x-content-type-options": "nosniff",
@@ -1626,6 +1626,7 @@ async function routeRequest(request, env, ctx) {
     if (url.pathname === "/where" || url.pathname === "/where/") return new Response(wherePage(), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=3600" } });
     if (url.pathname === "/nfl" || url.pathname === "/nfl/") { const page = await nflThisWeekPage(request, env).catch(() => null); if (page) { ctx.waitUntil(countUsage(env, ["view:nfl"], request).catch(() => {})); return page; } }
     if (url.pathname === "/nba" || url.pathname.startsWith("/nba/")) { const page = await nbaPage(request, env).catch(() => null); if (page) { ctx.waitUntil(countUsage(env, ["view:nba"], request).catch(() => {})); return page; } }
+    if (url.pathname.startsWith("/pick/")) { const page = await pickPage(request, env).catch(() => null); if (page) { ctx.waitUntil(countUsage(env, ["view:pick"], request).catch(() => {})); return page; } }
     if (url.pathname.startsWith("/player/")) { const page = await playerPage(request, env).catch(() => null); if (page) { ctx.waitUntil(countUsage(env, ["view:player"], request).catch(() => {})); return page; } }
     if (url.pathname === "/picks" || url.pathname.startsWith("/picks/")) { const page = await weeklyPage(request, env).catch(() => null); if (page) { ctx.waitUntil(countUsage(env, [url.pathname.replace(/\/$/, "") === "/picks" ? "view:picks" : "view:week"], request).catch(() => {})); return page; } }
     if (url.pathname === "/bet-this-guy-logo-v3.png") {
