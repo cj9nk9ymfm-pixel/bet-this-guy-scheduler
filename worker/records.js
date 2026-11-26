@@ -6378,6 +6378,45 @@ async function oddsBooksProbe(env,now=Date.now()){
   await setAppSetting(env,'odds-books-probe-result',JSON.stringify(out));await setAppSetting(env,'odds-books-probe','done');
   return {done:true};
 }
+// Auto replies (Nov 25, Tim): when someone replies to us or tags @BetThisGuy with a question we can
+// answer straight (the record, or where to get the picks), the account answers once. X allows
+// automated replies only to people who engaged first, so we never reply to anyone else's posts.
+// Every 10 minutes, newest mentions only; one auto reply per person a day, at most
+// X_AUTO_REPLY_DAY a day, never twice in one thread. app_settings x-auto-replies = 'off' stops it.
+const X_AUTO_REPLY_DAY=10;
+const X_ASK_RECORD=/\b(record|track record|results|receipts|proof|legit|scam|roi|win rate|w-l|how (are|have|r) (you|y'?all|u|ya) (doing|done|been doing)|how'?s the record|show (me )?(the )?(record|results|receipts))\b/i;
+const X_ASK_WHERE=/\b(link|website|site|alerts?|where (do|can|should) i|how (do|can) i (get|follow|tail|see)|where (are|r) (the )?picks|join)\b/i;
+function xAutoReplyText(text,rec){
+  const t=String(text||'').replace(/@\w+/g,' ');
+  if(X_ASK_RECORD.test(t)&&rec)return `Every pick we've posted, graded win or lose: NFL ${rec.nfl.w}–${rec.nfl.l}, NBA ${rec.nba.w}–${rec.nba.l}${rec.pct!=null?`, and ${rec.pct}% beat the closing price`:''}. Full record, every pick: betthisguy.com/record`;
+  if(X_ASK_WHERE.test(t))return `Every pick posts here and on the site the second it locks, with the price and the book. Free alerts: betthisguy.com/?utm_source=xreply`;
+  return null;
+}
+async function xAutoReplies(env,now=Date.now()){
+  if(!env.DB||!xReady(env)||await appSetting(env,'x-auto-replies')==='off')return {off:true};
+  const last=Date.parse(String(await appSetting(env,'x-auto-at')||''));if(Number.isFinite(last)&&now-last<10*60000)return {skipped:true};
+  await setAppSetting(env,'x-auto-at',new Date(now).toISOString());
+  const user=String(env.X_ACCESS_TOKEN||'').split('-')[0];if(!/^\d+$/.test(user))return {off:true};
+  const since=String(await appSetting(env,'x-auto-since')||''),base=`https://api.twitter.com/2/users/${user}/mentions`;
+  const params={max_results:'20','tweet.fields':'author_id,created_at,conversation_id',...(/^\d+$/.test(since)?{since_id:since}:{start_time:new Date(now-30*60000).toISOString()})};
+  const r=await fetch(`${base}?${new URLSearchParams(params)}`,{headers:{authorization:await xOAuthHeader(env,'GET',base,params)},signal:AbortSignal.timeout(15000)});
+  if(!r.ok)throw new Error(`X mentions read failed (${r.status})`);
+  const body=await r.json().catch(()=>({}));if(body.meta?.newest_id)await setAppSetting(env,'x-auto-since',String(body.meta.newest_id));
+  const day=new Date(now).toLocaleDateString('en-CA',{timeZone:'America/New_York'}),dayKey=`x-auto-day:${day}`;let done=Number(await appSetting(env,dayKey)||0),sent=0;
+  let rec=null;
+  for(const t of (body.data||[]).filter(x=>String(x.author_id)!==user).reverse()){
+    if(done>=X_AUTO_REPLY_DAY)break;
+    if(!rec&&X_ASK_RECORD.test(String(t.text||'')))rec=await recordCardData(env).catch(()=>null);
+    const text=xAutoReplyText(t.text,rec);if(!text)continue;
+    if(await appSetting(env,`x-auto-user:${t.author_id}:${day}`)||await appSetting(env,`x-auto-thread:${t.conversation_id||t.id}`))continue;
+    if(!(await xClaim(env,`x-auto:${t.id}`,now)))continue;
+    try{const res=await xPost(env,xShort(text),null,String(t.id));await xDone(env,`x-auto:${t.id}`,now);
+      await setAppSetting(env,`x-auto-user:${t.author_id}:${day}`,'1');await setAppSetting(env,`x-auto-thread:${t.conversation_id||t.id}`,String(res?.data?.id||'1'));done++;sent++}
+    catch(error){await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} auto reply: ${error.message}`).catch(()=>{});break}
+  }
+  if(sent)await setAppSetting(env,dayKey,String(done));
+  return {mentions:(body.data||[]).length,sent};
+}
 // 4. Reply targets (Nov 16, Tim): twice a day (noon and 5 PM ET) the owner's phone gets the three
 // busiest fresh posts from big betting accounts, plus our top pick as the angle, to reply to by hand.
 // We never auto-reply to other accounts. app_settings x-reply-targets: a comma list of handles
@@ -6891,11 +6930,12 @@ async function runXPosts(env,now=Date.now()){
   const metrics=await xMetricsDaily(env,now).catch(error=>({error:error.message}));
   const replyAlerts=await xReplyAlerts(env,now).catch(async error=>{await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} reply alerts: ${error.message}`).catch(()=>{});return {error:error.message}});
   const targets=await xReplyTargets(env,now).catch(async error=>{await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} reply targets: ${error.message}`).catch(()=>{});return {error:error.message}});
+  const autoReplies=await xAutoReplies(env,now).catch(async error=>{await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} auto replies: ${error.message}`).catch(()=>{});return {error:error.message}});
   const relay=await relayChannels(env,now).catch(error=>({error:error.message}));
   const probe=await oddsBooksProbe(env,now).catch(error=>({error:error.message}));
   const extraBooks=await recordExtraBooks(env,now).catch(error=>({error:error.message}));
   const follows=await xFollowCleanup(env,now).catch(async error=>{await setAppSetting(env,'x-last-error',`${new Date(now).toISOString()} following cleanup: ${error.message}`).catch(()=>{});return {error:error.message}});
-  return {metrics,replyAlerts,targets,relay,probe,extraBooks,follows,picks,weekly,closing,combo,final,catchUp,slate,pmSlate,pin,recap,proof,nbaLaunch,nba,nbaPick,nbaPm,predictions,results,summary};
+  return {metrics,replyAlerts,targets,autoReplies,relay,probe,extraBooks,follows,picks,weekly,closing,combo,final,catchUp,slate,pmSlate,pin,recap,proof,nbaLaunch,nba,nbaPick,nbaPm,predictions,results,summary};
 }
 // "My book" alerts: a good-value price at one of someone's own sportsbooks.
 // The fair price always comes from every book (3+ pricing both sides, the same
