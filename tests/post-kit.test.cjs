@@ -64,7 +64,7 @@ add(week,'s',{player:'Started Guy',market:'Receptions',side:'Over',line:3.5,odds
   {const res=await run("worker.fetch(new Request('https://betthisguy.com/robots.txt'),env,{waitUntil(){}})");assert.match(res.headers.get('content-security-policy-report-only')||'',/frame-ancestors 'none'.*report-uri \/api\/csp-report/);
    const waits=[];await run(`routeRequest(new Request('https://betthisguy.com/api/csp-report',{method:'POST',body:JSON.stringify({'csp-report':{'violated-directive':'img-src','blocked-uri':'https://evil.example/x.png'}})}),env,{waitUntil(p){globalThis.__w=p}})`);await run('globalThis.__w');
    assert.equal(JSON.parse(db.prepare("SELECT value FROM app_settings WHERE key='csp-reports'").get().value)['img-src evil.example'],1)}
-  assert.ok(robots.includes('Allow: /api/record\nDisallow: /api/'));
+  assert.ok(robots.includes('Allow: /api/record\n')&&robots.includes('Allow: /api/share-card.png\nAllow: /api/record-card.png\nAllow: /api/player-photo\nDisallow: /api/'),'the record API and the link-preview images are open to crawlers (Nov 26); the rest of /api/ is not');
   // The home page knows last week's banner will have stats and hits, and reserves their space.
   const layout=JSON.parse(JSON.stringify(await run(`homeRecentRows(env).then(rows=>homeLayout(rows,${now}))`)));
   assert.deepEqual(layout,{stats:true,hits:true});
